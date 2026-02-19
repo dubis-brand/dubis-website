@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DUBIS - For the Rest of Us</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <!-- NAVIGATION -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <span class="logo-paw">🐾</span>
+                <span class="logo-text">DUBIS</span>
+            </div>
+            <ul class="nav-links">
+                <li><a href="#home">Home</a></li>
+                <li><a href="#shop">Shop</a></li>
+                <li><a href="#about">About</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+            <div class="nav-right">
+                <button class="lang-toggle" onclick="toggleLang()">עב</button>
+                <button class="cart-btn">🛒 <span id="cart-count">0</span></button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- HERO SECTION -->
+    <section id="home" class="hero">
+        <div class="hero-content">
+            <p class="hero-tagline">Not a model. Never wanted to be.</p>
+            <h1 class="hero-title">DUBIS</h1>
+            <p class="hero-subtitle">For the rest of us.</p>
+            <p class="hero-desc">Real clothes for real people. No filters. No apologies. Just you, comfortably being you.</p>
+            <a href="#shop" class="btn-primary">Shop the Collection</a>
+        </div>
+        <div class="hero-paw">🐾</div>
+    </section>
+
+    <!-- BRAND STORY -->
+    <section class="brand-strip">
+        <div class="marquee">
+            <span>"I'm not fat, I'm a limited edition"</span>
+            <span class="sep">🐾</span>
+            <span>"Napping is my cardio"</span>
+            <span class="sep">🐾</span>
+            <span>"Low maintenance, high value"</span>
+            <span class="sep">🐾</span>
+            <span>"I survived. That's enough."</span>
+            <span class="sep">🐾</span>
+            <span>"More of me to love"</span>
+            <span class="sep">🐾</span>
+            <span>"Not a model. Never wanted to be."</span>
+            <span class="sep">🐾</span>
+        </div>
+    </section>
+
+    <!-- SHOP SECTION -->
+    <section id="shop" class="shop">
+        <div class="section-header">
+            <h2>The Collection</h2>
+            <p>Wear what you mean. Mean what you wear.</p>
+        </div>
+
+        <div class="filter-tabs">
+            <button class="filter-btn active" onclick="filterProducts('all')">All</button>
+            <button class="filter-btn" onclick="filterProducts('tshirt')">T-Shirts</button>
+            <button class="filter-btn" onclick="filterProducts('hoodie')">Hoodies</button>
+            <button class="filter-btn" onclick="filterProducts('cap')">Caps</button>
+        </div>
+
+        <div class="products-grid" id="products-grid">
+            <!-- Products injected by JS -->
+        </div>
+    </section>
+
+    <!-- ABOUT SECTION -->
+    <section id="about" class="about">
+        <div class="about-container">
+            <div class="about-text">
+                <h2>Who is the DUBIS bear?</h2>
+                <p>He's 45. Has a belly. Hair is thinning. Works hard. Loves his family. Doesn't apologize for any of it.</p>
+                <p>He doesn't buy clothes to look like a model. He buys clothes because he wants to feel good in his own skin.</p>
+                <p>Sound familiar? This brand is for you.</p>
+                <p class="about-tagline">DUBIS — For the rest of us. 🐾</p>
+            </div>
+            <div class="about-paw">
+                <div class="big-paw">🐾</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CONTACT SECTION -->
+    <section id="contact" class="contact">
+        <h2>Get in Touch</h2>
+        <p>Questions? Ideas? Just want to say hi?</p>
+        <a href="mailto:dubis.brand@gmail.com" class="btn-secondary">dubis.brand@gmail.com</a>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+        <div class="footer-logo">
+            <span>🐾</span> DUBIS
+        </div>
+        <p>© 2026 DUBIS. All rights reserved. For the rest of us.</p>
+    </footer>
+
+    <!-- CART MODAL -->
+    <div class="cart-modal" id="cart-modal">
+        <div class="cart-content">
+            <div class="cart-header">
+                <h3>Your Cart 🐾</h3>
+                <button onclick="closeCart()">✕</button>
+            </div>
+            <div class="cart-items" id="cart-items">
+                <p class="cart-empty">Your cart is empty. Go treat yourself.</p>
+            </div>
+            <div class="cart-footer">
+                <div class="cart-total">Total: $<span id="cart-total">0</span></div>
+                <button class="btn-primary" onclick="checkout()">Checkout</button>
+            </div>
+        </div>
+    </div>
+    <div class="cart-overlay" id="cart-overlay" onclick="closeCart()"></div>
+
+    <script src="js/products.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
