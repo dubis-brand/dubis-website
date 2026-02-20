@@ -3,11 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DUBIS - For the Rest of Us</title>
+
+    <!-- SEO -->
+    <title>DUBIS - Real Clothes for Real People | For the Rest of Us</title>
+    <meta name="description" content="DUBIS is a clothing brand for real people - not models. Comfortable, honest clothes with attitude for men and women 40+. T-shirts, hoodies and caps with personality.">
+    <meta name="keywords" content="DUBIS, plus size clothing, real people fashion, dad bod clothes, funny t-shirts, hoodies, comfortable clothes">
+    <meta name="author" content="DUBIS Brand">
+    <link rel="canonical" href="https://www.dubis.net/">
+
+    <!-- Open Graph / Social -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://www.dubis.net/">
+    <meta property="og:title" content="DUBIS - For the Rest of Us">
+    <meta property="og:description" content="Real clothes for real people. No filters. No apologies. Just you, comfortably being you.">
+    <meta property="og:image" content="https://www.dubis.net/images/real6.jpg">
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:title" content="DUBIS - For the Rest of Us">
+    <meta property="twitter:description" content="Real clothes for real people. No filters. No apologies.">
+    <meta property="twitter:image" content="https://www.dubis.net/images/real6.jpg">
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "ClothingStore",
+      "name": "DUBIS",
+      "description": "Real clothes for real people. For the rest of us.",
+      "url": "https://www.dubis.net",
+      "email": "dubis.brand@gmail.com",
+      "logo": "https://www.dubis.net/images/real4.jpg",
+      "sameAs": []
+    }
+    </script>
+
+    <!-- Security Headers via meta -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
 </head>
 <body>
+
+    <!-- COOKIE CONSENT BANNER -->
+    <div class="cookie-banner" id="cookie-banner">
+        <div class="cookie-content">
+            <span>🐾 We use cookies to improve your experience. We keep it minimal - just what's needed.</span>
+            <div class="cookie-buttons">
+                <button class="btn-cookie-accept" onclick="acceptCookies()">Accept</button>
+                <button class="btn-cookie-decline" onclick="declineCookies()">Decline</button>
+                <a href="#privacy" class="cookie-link">Privacy Policy</a>
+            </div>
+        </div>
+    </div>
 
     <!-- NAVIGATION -->
     <nav class="navbar">
@@ -19,6 +68,7 @@
             <ul class="nav-links">
                 <li><a href="#home">Home</a></li>
                 <li><a href="#shop">Shop</a></li>
+                <li><a href="#real-people">Real People</a></li>
                 <li><a href="#about">About</a></li>
                 <li><a href="#contact">Contact</a></li>
             </ul>
@@ -41,8 +91,8 @@
         <div class="hero-paw">🐾</div>
     </section>
 
-    <!-- BRAND STORY -->
-    <section class="brand-strip">
+    <!-- MARQUEE STRIP -->
+    <section class="brand-strip" aria-hidden="true">
         <div class="marquee">
             <span>"I'm not fat, I'm a limited edition"</span>
             <span class="sep">🐾</span>
@@ -59,6 +109,31 @@
         </div>
     </section>
 
+    <!-- REAL PEOPLE SECTION -->
+    <section id="real-people" class="real-people">
+        <div class="section-header">
+            <h2>This Is Us 🐻</h2>
+            <p>The DUBIS community. Real people, real bodies, real confidence.</p>
+        </div>
+        <div class="avatars-grid">
+            <div class="avatar-card">
+                <img src="images/real1.jpg" alt="Real DUBIS person wearing I am not fat I am a limited edition tshirt" loading="lazy">
+            </div>
+            <div class="avatar-card">
+                <img src="images/real2.jpg" alt="Real DUBIS person wearing Napping is my cardio hoodie" loading="lazy">
+            </div>
+            <div class="avatar-card">
+                <img src="images/real3.jpg" alt="Real DUBIS person wearing More of me to love tshirt" loading="lazy">
+            </div>
+            <div class="avatar-card">
+                <img src="images/real4.jpg" alt="Real DUBIS person wearing I survived thats enough tshirt" loading="lazy">
+            </div>
+            <div class="avatar-card avatar-wide">
+                <img src="images/real6.jpg" alt="Real DUBIS people - friends group photo" loading="lazy">
+            </div>
+        </div>
+    </section>
+
     <!-- SHOP SECTION -->
     <section id="shop" class="shop">
         <div class="section-header">
@@ -67,14 +142,42 @@
         </div>
 
         <div class="filter-tabs">
-            <button class="filter-btn active" onclick="filterProducts('all')">All</button>
-            <button class="filter-btn" onclick="filterProducts('tshirt')">T-Shirts</button>
-            <button class="filter-btn" onclick="filterProducts('hoodie')">Hoodies</button>
-            <button class="filter-btn" onclick="filterProducts('cap')">Caps</button>
+            <button class="filter-btn active" onclick="filterProducts('all', this)">All</button>
+            <button class="filter-btn" onclick="filterProducts('tshirt', this)">T-Shirts</button>
+            <button class="filter-btn" onclick="filterProducts('hoodie', this)">Hoodies</button>
+            <button class="filter-btn" onclick="filterProducts('cap', this)">Caps</button>
         </div>
 
-        <div class="products-grid" id="products-grid">
-            <!-- Products injected by JS -->
+        <div class="products-grid" id="products-grid"></div>
+    </section>
+
+    <!-- QUALITY PROMISE -->
+    <section class="quality-promise">
+        <div class="promise-container">
+            <h2>What You See Is What You Get 🐾</h2>
+            <p>We know the worry — ordering online and getting something that looks nothing like the photo. Here's our promise:</p>
+            <div class="promise-grid">
+                <div class="promise-item">
+                    <div class="promise-icon">🏭</div>
+                    <h3>Print on Demand</h3>
+                    <p>Every item is made fresh for you via Printful — one of the world's leading print-on-demand services. No old stock, no cheap bulk.</p>
+                </div>
+                <div class="promise-item">
+                    <div class="promise-icon">👕</div>
+                    <h3>Real Materials</h3>
+                    <p>Premium 100% cotton tees (Bella+Canvas). Heavyweight hoodies (Gildan). Garments that feel good on real bodies.</p>
+                </div>
+                <div class="promise-item">
+                    <div class="promise-icon">🔍</div>
+                    <h3>Quality Control</h3>
+                    <p>Every order goes through Printful's quality check before shipping. If something's wrong, they reprint. Simple.</p>
+                </div>
+                <div class="promise-item">
+                    <div class="promise-icon">↩️</div>
+                    <h3>Easy Returns</h3>
+                    <p>Not happy? Contact us. We'll sort it out. No drama, no fine print. We're real people too.</p>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -101,20 +204,44 @@
         <a href="mailto:dubis.brand@gmail.com" class="btn-secondary">dubis.brand@gmail.com</a>
     </section>
 
+    <!-- PRIVACY POLICY -->
+    <section id="privacy" class="privacy-section">
+        <div class="privacy-container">
+            <h2>Privacy Policy</h2>
+            <p><strong>Last updated:</strong> February 2026</p>
+            <p>DUBIS ("we", "us") respects your privacy. Here's what you need to know:</p>
+            <h3>What we collect</h3>
+            <p>When you make a purchase: name, email, shipping address, and payment info (processed securely — we never store card details).</p>
+            <h3>Cookies</h3>
+            <p>We use minimal cookies for essential site functionality only. We do not use tracking or advertising cookies without your consent.</p>
+            <h3>Third parties</h3>
+            <p>We use Printful for fulfillment and a payment processor for transactions. Your data is shared only as needed to complete your order.</p>
+            <h3>Your rights</h3>
+            <p>You can request access, correction or deletion of your data at any time. Email us: <a href="mailto:dubis.brand@gmail.com">dubis.brand@gmail.com</a></p>
+        </div>
+    </section>
+
     <!-- FOOTER -->
     <footer class="footer">
         <div class="footer-logo">
             <span>🐾</span> DUBIS
         </div>
+        <div class="footer-links">
+            <a href="#privacy">Privacy Policy</a>
+            <span>·</span>
+            <a href="#contact">Contact</a>
+            <span>·</span>
+            <a href="#shop">Shop</a>
+        </div>
         <p>© 2026 DUBIS. All rights reserved. For the rest of us.</p>
     </footer>
 
     <!-- CART MODAL -->
-    <div class="cart-modal" id="cart-modal">
+    <div class="cart-modal" id="cart-modal" role="dialog" aria-label="Shopping Cart">
         <div class="cart-content">
             <div class="cart-header">
                 <h3>Your Cart 🐾</h3>
-                <button onclick="closeCart()">✕</button>
+                <button onclick="closeCart()" aria-label="Close cart">✕</button>
             </div>
             <div class="cart-items" id="cart-items">
                 <p class="cart-empty">Your cart is empty. Go treat yourself.</p>
@@ -126,6 +253,15 @@
         </div>
     </div>
     <div class="cart-overlay" id="cart-overlay" onclick="closeCart()"></div>
+
+    <!-- PRODUCT MODAL -->
+    <div class="product-modal" id="product-modal" role="dialog" aria-label="Product Details">
+        <div class="product-modal-content">
+            <button class="modal-close" onclick="closeProductModal()" aria-label="Close">✕</button>
+            <div class="modal-body" id="modal-body"></div>
+        </div>
+    </div>
+    <div class="product-modal-overlay" id="product-modal-overlay" onclick="closeProductModal()"></div>
 
     <script src="js/products.js"></script>
     <script src="js/main.js"></script>

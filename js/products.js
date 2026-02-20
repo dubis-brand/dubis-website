@@ -1,6 +1,10 @@
 // DUBIS - Product Catalog
 // Collection 01 - For the rest of us 🐾
 
+const SIZES_TSHIRT = ['S', 'M', 'L', 'XL', '2XL', '3XL'];
+const SIZES_HOODIE = ['S', 'M', 'L', 'XL', '2XL', '3XL'];
+const SIZES_CAP = ['One Size'];
+
 const products = [
     {
         id: 1,
@@ -9,7 +13,8 @@ const products = [
         typeLabel: "T-Shirt",
         price: 45,
         image: "images/real1.jpg",
-        colors: ["Black", "White", "Cream"]
+        colors: ["Black", "White", "Cream"],
+        sizes: SIZES_TSHIRT
     },
     {
         id: 2,
@@ -18,7 +23,8 @@ const products = [
         typeLabel: "T-Shirt",
         price: 45,
         image: "images/real3.jpg",
-        colors: ["Honey Brown", "Black", "Cream"]
+        colors: ["Honey Brown", "Black", "Cream"],
+        sizes: SIZES_TSHIRT
     },
     {
         id: 3,
@@ -27,7 +33,8 @@ const products = [
         typeLabel: "Hoodie",
         price: 75,
         image: "images/real2.jpg",
-        colors: ["Charcoal", "Cream", "Navy"]
+        colors: ["Charcoal", "Cream", "Navy"],
+        sizes: SIZES_HOODIE
     },
     {
         id: 4,
@@ -36,7 +43,8 @@ const products = [
         typeLabel: "T-Shirt",
         price: 45,
         image: "images/real4.jpg",
-        colors: ["Black", "White", "Gray"]
+        colors: ["Black", "White", "Gray"],
+        sizes: SIZES_TSHIRT
     },
     {
         id: 5,
@@ -45,7 +53,8 @@ const products = [
         typeLabel: "T-Shirt",
         price: 45,
         image: "images/real5.jpg",
-        colors: ["Black", "White", "Cream"]
+        colors: ["Black", "White", "Cream"],
+        sizes: SIZES_TSHIRT
     },
     {
         id: 6,
@@ -54,7 +63,8 @@ const products = [
         typeLabel: "Hoodie",
         price: 75,
         image: "images/real2.jpg",
-        colors: ["Charcoal", "Black", "Navy"]
+        colors: ["Charcoal", "Black", "Navy"],
+        sizes: SIZES_HOODIE
     },
     {
         id: 7,
@@ -63,15 +73,7 @@ const products = [
         typeLabel: "Cap",
         price: 35,
         image: "images/real6.jpg",
-        colors: ["Charcoal", "Cream", "Honey Brown"]
-    },
-    {
-        id: 8,
-        phrase: "More of me to love",
-        type: "hoodie",
-        typeLabel: "Hoodie",
-        price: 75,
-        image: "images/real3.jpg",
-        colors: ["Honey Brown", "Charcoal"]
+        colors: ["Charcoal", "Cream", "Honey Brown"],
+        sizes: SIZES_CAP
     }
 ];
