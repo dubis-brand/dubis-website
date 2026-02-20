@@ -1,5 +1,5 @@
 // DUBIS - Product Catalog
-// Collection 01
+// Collection 01 - For the rest of us 🐾
 
 const products = [
     {
@@ -8,8 +8,8 @@ const products = [
         type: "tshirt",
         typeLabel: "T-Shirt",
         price: 45,
-        icon: "👕",
-        colors: ["White", "Black", "Cream"]
+        image: "images/real1.jpg",
+        colors: ["Black", "White", "Cream"]
     },
     {
         id: 2,
@@ -17,8 +17,8 @@ const products = [
         type: "tshirt",
         typeLabel: "T-Shirt",
         price: 45,
-        icon: "👕",
-        colors: ["Black", "Navy", "Cream"]
+        image: "images/real3.jpg",
+        colors: ["Honey Brown", "Black", "Cream"]
     },
     {
         id: 3,
@@ -26,8 +26,8 @@ const products = [
         type: "hoodie",
         typeLabel: "Hoodie",
         price: 75,
-        icon: "🧥",
-        colors: ["Charcoal", "Cream", "Honey Brown"]
+        image: "images/real2.jpg",
+        colors: ["Charcoal", "Cream", "Navy"]
     },
     {
         id: 4,
@@ -35,7 +35,7 @@ const products = [
         type: "tshirt",
         typeLabel: "T-Shirt",
         price: 45,
-        icon: "👕",
+        image: "images/real4.jpg",
         colors: ["Black", "White", "Gray"]
     },
     {
@@ -44,8 +44,8 @@ const products = [
         type: "tshirt",
         typeLabel: "T-Shirt",
         price: 45,
-        icon: "👕",
-        colors: ["White", "Black", "Cream"]
+        image: "images/real5.jpg",
+        colors: ["Black", "White", "Cream"]
     },
     {
         id: 6,
@@ -53,7 +53,7 @@ const products = [
         type: "hoodie",
         typeLabel: "Hoodie",
         price: 75,
-        icon: "🧥",
+        image: "images/real2.jpg",
         colors: ["Charcoal", "Black", "Navy"]
     },
     {
@@ -62,7 +62,7 @@ const products = [
         type: "cap",
         typeLabel: "Cap",
         price: 35,
-        icon: "🧢",
+        image: "images/real6.jpg",
         colors: ["Charcoal", "Cream", "Honey Brown"]
     },
     {
@@ -71,7 +71,7 @@ const products = [
         type: "hoodie",
         typeLabel: "Hoodie",
         price: 75,
-        icon: "🧥",
-        colors: ["Cream", "Charcoal"]
+        image: "images/real3.jpg",
+        colors: ["Honey Brown", "Charcoal"]
     }
 ];

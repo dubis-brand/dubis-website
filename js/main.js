@@ -12,12 +12,14 @@ function renderProducts(filter = 'all') {
     grid.innerHTML = filtered.map(product => `
         <div class="product-card" data-type="${product.type}">
             <div class="product-image">
-                <div class="product-mockup">"${product.phrase}"</div>
-                <div class="product-type-icon">${product.icon}</div>
+                <img src="${product.image}" alt="${product.phrase}" loading="lazy" />
+                <div class="product-badge">${product.typeLabel}</div>
             </div>
             <div class="product-info">
                 <div class="product-phrase">"${product.phrase}"</div>
-                <div class="product-type">${product.typeLabel}</div>
+                <div class="product-colors">
+                    ${product.colors.map(c => `<span class="color-dot" title="${c}" style="background:${colorToHex(c)}"></span>`).join('')}
+                </div>
                 <div class="product-bottom">
                     <div class="product-price">$${product.price}</div>
                     <button class="add-to-cart" onclick="addToCart(${product.id})">Add to Cart</button>
@@ -140,6 +142,20 @@ function toggleLang() {
     document.querySelector('.lang-toggle').textContent = t.langBtn;
 
     document.body.dir = currentLang === 'he' ? 'rtl' : 'ltr';
+}
+
+// ===== COLOR HELPER =====
+function colorToHex(color) {
+    const map = {
+        'Black': '#2C2C2C',
+        'White': '#F5F0E8',
+        'Cream': '#E8DCC8',
+        'Charcoal': '#3D3D3D',
+        'Navy': '#1B2A4A',
+        'Gray': '#888888',
+        'Honey Brown': '#C17E3A',
+    };
+    return map[color] || '#999';
 }
 
 // ===== CART BUTTON =====
