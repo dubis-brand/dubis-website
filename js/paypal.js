@@ -1,7 +1,12 @@
 // DUBIS - PayPal Integration
-// Agent: CTO | Replace PAYPAL_CLIENT_ID with real Live Client ID
+// Agent: CTO
+// SANDBOX = testing mode | LIVE = real payments
 
-const PAYPAL_CLIENT_ID = 'AQI2SvXkD1gCvVQNvpQ0WJKWJyrOkuMCHge1QjsIVnDyfSmayRwGT4ZAzyTnAGBnqrGGYt795G85BY1r';
+const PAYPAL_ENV = 'sandbox'; // Switch to 'live' when PayPal approves the account
+const PAYPAL_LIVE_CLIENT_ID   = 'AQI2SvXkD1gCvVQNvpQ0WJKWJyrOkuMCHge1QjsIVnDyfSmayRwGT4ZAzyTnAGBnqrGGYt795G85BY1r';
+const PAYPAL_SANDBOX_CLIENT_ID = 'AZj2dQOOGG3j_JixU4GuhgZhgmzMp6qWO8zzyPd6E5pV66iNXWhHa9udoEbpel7ja6W_jcVZ4Ll4JpG_';
+
+const PAYPAL_CLIENT_ID = PAYPAL_ENV === 'live' ? PAYPAL_LIVE_CLIENT_ID : PAYPAL_SANDBOX_CLIENT_ID;
 let paypalLoaded = false;
 
 // Load PayPal SDK dynamically
