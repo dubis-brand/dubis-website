@@ -1,7 +1,7 @@
 // DUBIS - PayPal Integration
 // Agent: CTO | Replace PAYPAL_CLIENT_ID with real Live Client ID
 
-const PAYPAL_CLIENT_ID = 'ENKtCEWzWoui6k77V01SR_XIyRIDSQznE0VJiCqqPQ5CAIQrN84eLgJJqyOMCUikgv0Nkdc2uBTwW17M';
+const PAYPAL_CLIENT_ID = 'AQI2SvXkD1gCvVQNvpQ0WJKWJyrOkuMCHge1QjsIVnDyfSmayRwGT4ZAzyTnAGBnqrGGYt795G85BY1r';
 let paypalLoaded = false;
 
 // Load PayPal SDK dynamically
