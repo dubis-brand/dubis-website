@@ -1,12 +1,10 @@
 // DUBIS - PayPal Integration
-// Agent: CTO
-// Phase 1: Direct PayPal link (works immediately, no SDK needed)
-// Phase 2: Smart Buttons SDK (when account is verified - change USE_SDK to true)
+// Phase 2: Smart Buttons SDK (live)
 
-const USE_SDK = true; // Smart Buttons SDK
-const PAYPAL_ENV = 'live'; // Live payments - real money!
-const PAYPAL_BUSINESS_EMAIL = 'teharlev1976@gmail.com';
-const PAYPAL_LIVE_CLIENT_ID = 'AQI2SvXkD1gCvVQNvpQ0WJKWJyrOkuMCHge1QjsIVnDyfSmayRwGT4ZAzyTnAGBnqrGGYt795G85BY1r';
+const USE_SDK = true;
+const PAYPAL_ENV = 'live';
+const PAYPAL_BUSINESS_EMAIL   = 'teharlev1976@gmail.com';
+const PAYPAL_LIVE_CLIENT_ID   = 'AQI2SvXkD1gCvVQNvpQ0WJKWJyrOkuMCHge1QjsIVnDyfSmayRwGT4ZAzyTnAGBnqrGGYt795G85BY1r';
 const PAYPAL_SANDBOX_CLIENT_ID = 'AZj2dQOOGG3j_JixU4GuhgZhgmzMp6qWO8zzyPd6E5pV66iNXWhHa9udoEbpel7ja6W_jcVZ4Ll4JpG_';
 const PAYPAL_CLIENT_ID = PAYPAL_ENV === 'live' ? PAYPAL_LIVE_CLIENT_ID : PAYPAL_SANDBOX_CLIENT_ID;
 
@@ -15,6 +13,15 @@ let paypalLoaded = false;
 // ===== CHECKOUT ENTRY POINT =====
 async function checkout() {
     if (cart.length === 0) return;
+
+    // ── Auth gate (PRD F3: no guest checkout) ──
+    const token = await getAuthToken();
+    if (!token) {
+        closeCart();
+        requireAuthThenCheckout();
+        return;
+    }
+
     closeCart();
     renderOrderSummary();
 
@@ -36,12 +43,11 @@ async function checkout() {
     }
 }
 
-// ===== PHASE 1: DIRECT PAYPAL LINK (no SDK needed) =====
+// ===== PHASE 1: DIRECT PAYPAL LINK =====
 function renderDirectPayPalButton() {
-    const total = cart.reduce((sum, item) => sum + item.price, 0);
+    const total     = cart.reduce((sum, item) => sum + item.price, 0);
     const itemNames = cart.map(i => `${i.phrase.substring(0, 40)} (${i.selectedSize}/${i.selectedColor})`).join(', ');
     const itemCount = cart.length;
-
     const paypalUrl = buildPayPalUrl(total, itemNames, itemCount);
 
     document.getElementById('paypal-button-container').innerHTML = `
@@ -63,24 +69,23 @@ function buildPayPalUrl(total, itemNames, itemCount) {
         : 'https://www.sandbox.paypal.com/cgi-bin/webscr';
 
     const params = new URLSearchParams({
-        cmd: '_xclick',
-        business: PAYPAL_BUSINESS_EMAIL,
-        item_name: `DUBIS Order (${itemCount} item${itemCount > 1 ? 's' : ''})`,
-        item_number: `DUBIS-${Date.now()}`,
-        amount: total.toFixed(2),
+        cmd:           '_xclick',
+        business:      PAYPAL_BUSINESS_EMAIL,
+        item_name:     `DUBIS Order (${itemCount} item${itemCount > 1 ? 's' : ''})`,
+        item_number:   `DUBIS-${Date.now()}`,
+        amount:        total.toFixed(2),
         currency_code: 'USD',
-        shipping: '0',
-        no_shipping: '0',
-        return: 'https://www.dubis.net/?order=success',
+        shipping:      '0',
+        no_shipping:   '0',
+        return:        'https://www.dubis.net/?order=success',
         cancel_return: 'https://www.dubis.net/?order=cancelled',
-        custom: itemNames.substring(0, 255)
+        custom:        itemNames.substring(0, 255)
     });
 
     return `${base}?${params.toString()}`;
 }
 
 function handlePayPalClick() {
-    // Show success message after redirect
     setTimeout(() => {
         closePaypalModal();
         cart = [];
@@ -96,12 +101,11 @@ function loadPayPalSDK() {
         if (document.getElementById('paypal-sdk')) {
             if (typeof paypal !== 'undefined') { paypalLoaded = true; resolve(); return; }
         }
-
-        const script = document.createElement('script');
-        script.id = 'paypal-sdk';
-        script.src = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD&intent=capture`;
-        script.onload = () => { paypalLoaded = true; resolve(); };
-        script.onerror = () => reject(new Error('PayPal SDK unavailable'));
+        const script    = document.createElement('script');
+        script.id       = 'paypal-sdk';
+        script.src      = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD&intent=capture`;
+        script.onload   = () => { paypalLoaded = true; resolve(); };
+        script.onerror  = () => reject(new Error('PayPal SDK unavailable'));
         document.head.appendChild(script);
     });
 }
@@ -111,6 +115,7 @@ function renderPayPalButtons() {
 
     paypal.Buttons({
         style: { color: 'black', shape: 'rect', label: 'pay', height: 50 },
+
         createOrder: (data, actions) => actions.order.create({
             purchase_units: [{
                 description: 'DUBIS Clothing Order',
@@ -120,58 +125,88 @@ function renderPayPalButtons() {
                     breakdown: { item_total: { currency_code: 'USD', value: total.toFixed(2) } }
                 },
                 items: cart.map(item => ({
-                    name: item.phrase.substring(0, 127),
+                    name:        item.phrase.substring(0, 127),
                     unit_amount: { currency_code: 'USD', value: item.price.toFixed(2) },
-                    quantity: '1',
+                    quantity:    '1',
                     description: `${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}`
                 }))
             }],
             application_context: { brand_name: 'DUBIS', shipping_preference: 'GET_FROM_FILE' }
         }),
-        onApprove: async (data, actions) => {
-            const details = await actions.order.capture();
 
-            // ── Send order to Printful ──────────────────────────
+        onApprove: async (data, actions) => {
+            const details  = await actions.order.capture();
+            const shipping = details.purchase_units[0]?.shipping;
+
+            const shippingAddress = {
+                name:           shipping?.name?.full_name || '',
+                address_line_1: shipping?.address?.address_line_1 || '',
+                address_line_2: shipping?.address?.address_line_2 || '',
+                admin_area_1:   shipping?.address?.admin_area_1 || '',
+                admin_area_2:   shipping?.address?.admin_area_2 || '',
+                country_code:   shipping?.address?.country_code || '',
+                postal_code:    shipping?.address?.postal_code || '',
+            };
+
+            const cartSnapshot = cart.map(item => ({
+                type:          item.type,
+                phrase:        item.phrase,
+                typeLabel:     item.typeLabel,
+                price:         item.price,
+                selectedSize:  item.selectedSize,
+                selectedColor: item.selectedColor,
+            }));
+
+            // ── 1. Send to Printful ──────────────────────────────
+            let printfulOrderId = null;
             try {
-                const shipping = details.purchase_units[0]?.shipping;
-                await fetch('/api/create-printful-order', {
+                const pfRes  = await fetch('/api/create-printful-order', {
                     method:  'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body:    JSON.stringify({
-                        paypalOrderId: details.id,
-                        buyerEmail:    details.payer?.email_address || '',
-                        shippingAddress: {
-                            name:             shipping?.name?.full_name || '',
-                            address_line_1:   shipping?.address?.address_line_1 || '',
-                            address_line_2:   shipping?.address?.address_line_2 || '',
-                            admin_area_1:     shipping?.address?.admin_area_1 || '',
-                            admin_area_2:     shipping?.address?.admin_area_2 || '',
-                            country_code:     shipping?.address?.country_code || '',
-                            postal_code:      shipping?.address?.postal_code || '',
-                        },
-                        cartItems: cart.map(item => ({
-                            type:          item.type,
-                            phrase:        item.phrase,
-                            typeLabel:     item.typeLabel,
-                            price:         item.price,
-                            selectedSize:  item.selectedSize,
-                            selectedColor: item.selectedColor,
-                        })),
+                        paypalOrderId:   details.id,
+                        buyerEmail:      details.payer?.email_address || '',
+                        shippingAddress,
+                        cartItems:       cartSnapshot,
+                    }),
+                });
+                const pfData = await pfRes.json();
+                if (pfData.printfulOrderId) printfulOrderId = String(pfData.printfulOrderId);
+            } catch (err) {
+                console.error('Printful dispatch failed:', err);
+            }
+
+            // ── 2. Save order to Supabase DB ─────────────────────
+            try {
+                const token = await getAuthToken();
+                await fetch('/api/orders/save', {
+                    method:  'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                    },
+                    body: JSON.stringify({
+                        paypalOrderId:   details.id,
+                        buyerEmail:      details.payer?.email_address || '',
+                        shippingAddress,
+                        cartItems:       cartSnapshot,
+                        printfulOrderId,
                     }),
                 });
             } catch (err) {
-                // Payment captured — don't block success, order logged manually
-                console.error('Printful order dispatch failed:', err);
+                console.error('Order save failed:', err);
             }
-            // ───────────────────────────────────────────────────
+            // ─────────────────────────────────────────────────────
 
             closePaypalModal();
             cart = [];
             updateCartCount();
             showSuccessModal();
         },
-        onError: () => renderDirectPayPalButton(),
+
+        onError:  () => renderDirectPayPalButton(),
         onCancel: () => {}
+
     }).render('#paypal-button-container');
 }
 
@@ -217,7 +252,7 @@ function closeSuccessModal() {
     document.getElementById('success-modal').classList.remove('open');
 }
 
-// Handle return from PayPal
+// Handle return from PayPal direct link
 window.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('order') === 'success') {

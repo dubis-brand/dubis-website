@@ -43,6 +43,8 @@
 
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+    <!-- Supabase JS client (auth + DB queries from browser) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -74,6 +76,17 @@
             </ul>
             <div class="nav-right">
                 <button class="lang-toggle" onclick="toggleLang()">עב</button>
+                <!-- Account button + dropdown -->
+                <div class="account-wrapper">
+                    <button class="account-btn" id="account-btn" onclick="openAuthModal('login')">
+                        👤 <span>Sign In</span>
+                    </button>
+                    <div class="account-menu" id="account-menu">
+                        <div class="account-menu-name" id="account-menu-name"></div>
+                        <a onclick="openMyOrders()">My Orders</a>
+                        <a onclick="authLogout()">Sign Out</a>
+                    </div>
+                </div>
                 <button class="cart-btn">🛒 <span id="cart-count">0</span></button>
             </div>
         </div>
@@ -236,6 +249,8 @@
         <p>© 2026 DUBIS. All rights reserved. For the rest of us.</p>
     </footer>
 
+    <!-- ═══ MODALS ═══════════════════════════════════════════════════ -->
+
     <!-- CART MODAL -->
     <div class="cart-modal" id="cart-modal" role="dialog" aria-label="Shopping Cart">
         <div class="cart-content">
@@ -262,6 +277,56 @@
         </div>
     </div>
     <div class="product-modal-overlay" id="product-modal-overlay" onclick="closeProductModal()"></div>
+
+    <!-- AUTH MODAL (Login / Register) -->
+    <div class="auth-modal" id="auth-modal" role="dialog" aria-label="Sign In or Create Account">
+        <div class="auth-modal-content">
+            <button class="modal-close" onclick="closeAuthModal()" aria-label="Close">✕</button>
+            <div class="auth-modal-header">
+                <div class="logo-paw" style="font-size:1.8rem">🐾</div>
+                <h2>Welcome to DUBIS</h2>
+            </div>
+            <div class="auth-tabs">
+                <button class="auth-tab active" id="tab-login"    onclick="showAuthTab('login')">Sign In</button>
+                <button class="auth-tab"         id="tab-register" onclick="showAuthTab('register')">Create Account</button>
+            </div>
+
+            <!-- LOGIN FORM -->
+            <div id="form-login">
+                <input type="email"    id="login-email"    class="auth-input" placeholder="Email"    autocomplete="email"     onkeydown="authLoginOnEnter(event)" />
+                <input type="password" id="login-password" class="auth-input" placeholder="Password" autocomplete="current-password" onkeydown="authLoginOnEnter(event)" />
+                <div id="login-error" class="auth-error"></div>
+                <button id="btn-login" class="btn-primary auth-submit" onclick="authLogin()">Sign In</button>
+                <p class="auth-switch">New here? <a onclick="showAuthTab('register')">Create an account →</a></p>
+            </div>
+
+            <!-- REGISTER FORM -->
+            <div id="form-register" class="hidden">
+                <input type="text"     id="reg-name"     class="auth-input" placeholder="Full Name *"              autocomplete="name"     onkeydown="authRegisterOnEnter(event)" />
+                <input type="email"    id="reg-email"    class="auth-input" placeholder="Email *"                  autocomplete="email"    onkeydown="authRegisterOnEnter(event)" />
+                <input type="password" id="reg-password" class="auth-input" placeholder="Password (min 8 chars) *" autocomplete="new-password" onkeydown="authRegisterOnEnter(event)" />
+                <input type="tel"      id="reg-phone"    class="auth-input" placeholder="Phone (optional)"         autocomplete="tel" />
+                <div id="reg-error" class="auth-error"></div>
+                <button id="btn-register" class="btn-primary auth-submit" onclick="authRegister()">Create Account</button>
+                <p class="auth-switch">Already have an account? <a onclick="showAuthTab('login')">Sign in →</a></p>
+            </div>
+
+            <p class="auth-note">🔒 Your info is used only to fulfill your order. We never sell your data.</p>
+        </div>
+    </div>
+    <div class="auth-overlay" id="auth-overlay" onclick="closeAuthModal()"></div>
+
+    <!-- MY ORDERS MODAL -->
+    <div class="orders-modal" id="orders-modal" role="dialog" aria-label="My Orders">
+        <div class="orders-modal-header">
+            <h2>My Orders 🐾</h2>
+            <button class="modal-close" onclick="closeMyOrders()" aria-label="Close">✕</button>
+        </div>
+        <div id="orders-list">
+            <p class="orders-loading">Loading…</p>
+        </div>
+    </div>
+    <div class="orders-overlay" id="orders-overlay" onclick="closeMyOrders()"></div>
 
     <!-- PAYPAL CHECKOUT MODAL -->
     <div class="paypal-modal" id="paypal-modal" role="dialog" aria-label="Checkout">
@@ -292,9 +357,10 @@
         </div>
     </div>
 
-    <!-- PayPal SDK - will be loaded dynamically with real Client ID -->
+    <!-- Scripts: auth must load before paypal -->
     <script src="js/products.js"></script>
     <script src="js/main.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/paypal.js"></script>
 </body>
 </html>
