@@ -10,10 +10,11 @@ const translations = {
   en: {
     nav_home: 'Home', nav_shop: 'Shop', nav_people: 'Real People',
     nav_about: 'About', nav_contact: 'Contact',
-    hero_desc: 'Real clothes for real people. No filters. No apologies. Just you, comfortably being you.',
-    hero_btn: 'Shop the Collection',
+    hero_tagline: 'We see you.',
+    hero_desc: 'Fashion has had a blind spot for decades. DUBIS is the correction — real clothes, made for the body you actually live in.',
+    hero_btn: 'Find My Fit',
     people_title: 'This Is Us 🐻',
-    people_sub: 'The DUBIS community. Real people, real bodies, real confidence.',
+    people_sub: 'The DUBIS community. People who stopped waiting for fashion to notice them.',
     shop_title: 'The Collection', shop_sub: 'Wear what you mean. Mean what you wear.',
     filter_all: 'All', filter_tshirt: 'T-Shirts', filter_hoodie: 'Hoodies', filter_cap: 'Caps',
     add_btn: '+ Add', view_details: 'View Details',
@@ -26,9 +27,9 @@ const translations = {
     q3_text: 'Every order goes through Printful\'s quality check before shipping. If something\'s wrong, they reprint. Simple.',
     q4_text: 'Not happy? Contact us. We\'ll sort it out. No drama, no fine print. We\'re real people too.',
     about_title: 'Who is the DUBIS bear?',
-    about_p1: 'He\'s 45. Has a belly. Hair is thinning. Works hard. Loves his family. Doesn\'t apologize for any of it.',
-    about_p2: 'He doesn\'t buy clothes to look like a model. He buys clothes because he wants to feel good in his own skin.',
-    about_p3: 'Sound familiar? This brand is for you.',
+    about_p1: 'He built something real. A career. A family. A life he shows up for every single day.',
+    about_p2: 'Fashion spent decades designing around a body type that most people don\'t have. He noticed — and stopped waiting for permission to look good.',
+    about_p3: 'DUBIS was built for people like him. Maybe like you.',
     about_tag: 'DUBIS — For the rest of us. 🐾',
     contact_title: 'Get in Touch', contact_sub: 'Questions? Ideas? Just want to say hi?',
     cart_title: 'Your Cart 🐾', cart_empty: 'Your cart is empty. Go treat yourself.',
@@ -47,10 +48,11 @@ const translations = {
   he: {
     nav_home: 'ראשי', nav_shop: 'חנות', nav_people: 'אנשים אמיתיים',
     nav_about: 'אודות', nav_contact: 'צור קשר',
-    hero_desc: 'בגדים אמיתיים לאנשים אמיתיים. ללא פילטרים. ללא התנצלויות. רק אתה, בנוח עם עצמך.',
-    hero_btn: 'לחנות',
+    hero_tagline: 'אנחנו רואים אותך.',
+    hero_desc: 'האופנה החסירה את רוב האנשים. DUBIS לא. בגדים אמיתיים — לגוף שאתה גר בו.',
+    hero_btn: 'מצא את המידה שלי',
     people_title: 'This Is Us 🐻',
-    people_sub: 'קהילת DUBIS. אנשים אמיתיים, גופים אמיתיים, ביטחון אמיתי.',
+    people_sub: 'קהילת DUBIS. אנשים שעצרו לחכות שהאופנה תשים לב אליהם.',
     shop_title: 'הקולקציה', shop_sub: 'לבש מה שאתה מרגיש.',
     filter_all: 'הכל', filter_tshirt: 'חולצות', filter_hoodie: 'קפוצ\'ונים', filter_cap: 'כובעים',
     add_btn: '+ הוסף', view_details: 'פרטים',
@@ -63,9 +65,9 @@ const translations = {
     q3_text: 'כל הזמנה עוברת בדיקת איכות של Printful לפני משלוח. משהו לא בסדר? הם מדפיסים מחדש. פשוט.',
     q4_text: 'לא מרוצה? צור קשר. נסדר את זה. ללא דרמה, ללא אותיות קטנות. גם אנחנו בני אדם.',
     about_title: 'מי הדובי של DUBIS?',
-    about_p1: 'הוא בן 45. יש לו כרס קטנה. השיער דליל. עובד קשה. אוהב את המשפחה שלו. לא מתנצל על שום דבר מזה.',
-    about_p2: 'הוא לא קונה בגדים כדי להיראות כמו דוגמן. הוא קונה בגדים כי הוא רוצה להרגיש טוב בתוך העור שלו.',
-    about_p3: 'מכיר את זה? המותג הזה בשבילך.',
+    about_p1: 'הוא בנה משהו אמיתי. קריירה. משפחה. חיים שהוא מגיע אליהם כל בוקר.',
+    about_p2: 'האופנה בילתה עשורים בעיצוב לגוף שלא קיים לרוב האנשים. הוא שם לב — ועצר לחכות לאישור להיראות טוב.',
+    about_p3: 'DUBIS נבנתה עבור אנשים כמוהו. אולי כמוך.',
     about_tag: 'DUBIS — לשאר מאיתנו. 🐾',
     contact_title: 'צור קשר', contact_sub: 'שאלות? רעיונות? פשוט רוצה להגיד שלום?',
     cart_title: 'העגלה שלך 🐾', cart_empty: 'העגלה ריקה. תפנק את עצמך.',
@@ -125,8 +127,10 @@ function translateUI(lang) {
   navLinks.forEach((a, i) => { if (navKeys[i]) a.textContent = t[navKeys[i]]; });
 
   // Hero
+  const heroTagline = q('.hero-tagline');
   const heroDesc = q('.hero-desc');
   const heroBtn = q('.hero-content .btn-primary');
+  if (heroTagline) heroTagline.textContent = t.hero_tagline;
   if (heroDesc) heroDesc.textContent = t.hero_desc;
   if (heroBtn) heroBtn.textContent = t.hero_btn;
 
