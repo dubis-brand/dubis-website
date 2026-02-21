@@ -4,6 +4,6 @@
   "private": true,
   "description": "DUBIS — For the rest of us",
   "engines": {
-    "node": "18.x"
+    "node": "24.x"
   }
 }
