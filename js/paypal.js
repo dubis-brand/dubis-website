@@ -177,9 +177,10 @@ function renderPayPalButtons() {
             }
 
             // ── 2. Save order to Supabase DB ─────────────────────
+            let savedOrderId = null;
             try {
                 const token = await getAuthToken();
-                await fetch('/api/orders/save', {
+                const saveRes = await fetch('/api/orders/save', {
                     method:  'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -193,8 +194,29 @@ function renderPayPalButtons() {
                         printfulOrderId,
                     }),
                 });
+                const saveData = await saveRes.json();
+                if (saveData.orderId) savedOrderId = saveData.orderId;
             } catch (err) {
                 console.error('Order save failed:', err);
+            }
+
+            // ── 3. Send confirmation email ────────────────────────
+            try {
+                const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+                await fetch('/api/email/confirm-order', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        buyerEmail:   details.payer?.email_address || '',
+                        buyerName:    user?.user_metadata?.full_name || details.payer?.name?.given_name || '',
+                        orderId:      savedOrderId,
+                        paypalOrderId: details.id,
+                        items:        cartSnapshot,
+                        totalAmount:  cartSnapshot.reduce((s, i) => s + i.price, 0),
+                    }),
+                });
+            } catch (err) {
+                console.error('Confirmation email failed:', err);
             }
             // ─────────────────────────────────────────────────────
 
