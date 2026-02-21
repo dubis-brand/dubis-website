@@ -5,7 +5,7 @@
 
 const USE_SDK = false; // Set to true when PayPal account is verified
 const PAYPAL_ENV = 'sandbox'; // Switch to 'live' when ready
-const PAYPAL_BUSINESS_EMAIL = 'dubis.brand@gmail.com';
+const PAYPAL_BUSINESS_EMAIL = 'teharlev1976@gmail.com';
 const PAYPAL_LIVE_CLIENT_ID = 'AQI2SvXkD1gCvVQNvpQ0WJKWJyrOkuMCHge1QjsIVnDyfSmayRwGT4ZAzyTnAGBnqrGGYt795G85BY1r';
 const PAYPAL_SANDBOX_CLIENT_ID = 'AZj2dQOOGG3j_JixU4GuhgZhgmzMp6qWO8zzyPd6E5pV66iNXWhHa9udoEbpel7ja6W_jcVZ4Ll4JpG_';
 const PAYPAL_CLIENT_ID = PAYPAL_ENV === 'live' ? PAYPAL_LIVE_CLIENT_ID : PAYPAL_SANDBOX_CLIENT_ID;
