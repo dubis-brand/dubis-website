@@ -12,7 +12,7 @@ const products = [
         type: "tshirt",
         typeLabel: "T-Shirt",
         price: 45,
-        image: "images/real1.jpg",
+        image: "images/product-tshirt-black.jpg",
         colors: ["Black", "White", "Cream"],
         sizes: SIZES_TSHIRT
     },
@@ -22,7 +22,7 @@ const products = [
         type: "tshirt",
         typeLabel: "T-Shirt",
         price: 45,
-        image: "images/real3.jpg",
+        image: "images/product-tshirt-black.jpg",
         colors: ["Honey Brown", "Black", "Cream"],
         sizes: SIZES_TSHIRT
     },
@@ -32,7 +32,7 @@ const products = [
         type: "hoodie",
         typeLabel: "Hoodie",
         price: 75,
-        image: "images/real2.jpg",
+        image: "images/product-hoodie.jpg",
         colors: ["Charcoal", "Cream", "Navy"],
         sizes: SIZES_HOODIE
     },
@@ -42,7 +42,7 @@ const products = [
         type: "tshirt",
         typeLabel: "T-Shirt",
         price: 45,
-        image: "images/real4.jpg",
+        image: "images/product-tshirt-black.jpg",
         colors: ["Black", "White", "Gray"],
         sizes: SIZES_TSHIRT
     },
@@ -52,7 +52,7 @@ const products = [
         type: "tshirt",
         typeLabel: "T-Shirt",
         price: 45,
-        image: "images/real5.jpg",
+        image: "images/product-tshirt-black.jpg",
         colors: ["Black", "White", "Cream"],
         sizes: SIZES_TSHIRT
     },
@@ -62,7 +62,7 @@ const products = [
         type: "hoodie",
         typeLabel: "Hoodie",
         price: 75,
-        image: "images/real2.jpg",
+        image: "images/product-hoodie.jpg",
         colors: ["Charcoal", "Black", "Navy"],
         sizes: SIZES_HOODIE
     },
@@ -72,7 +72,7 @@ const products = [
         type: "cap",
         typeLabel: "Cap",
         price: 35,
-        image: "images/real6.jpg",
+        image: "images/product-cap.jpg",
         colors: ["Charcoal", "Cream", "Honey Brown"],
         sizes: SIZES_CAP
     }
