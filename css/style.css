@@ -1089,3 +1089,28 @@ body {
 }
 .success-modal p { color: #555; line-height: 1.6; margin-bottom: 0.5rem; }
 .success-sub { color: var(--honey); font-weight: 600; margin-bottom: 2rem !important; }
+
+/* PayPal Direct Button */
+.paypal-direct-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 14px 24px;
+    background: #FFC439;
+    color: #003087;
+    font-weight: 700;
+    font-size: 1rem;
+    border-radius: 8px;
+    text-decoration: none;
+    transition: background 0.2s;
+    margin: 1rem 0 0.5rem;
+}
+.paypal-direct-btn:hover { background: #f0b429; }
+.paypal-direct-note {
+    text-align: center;
+    font-size: 0.78rem;
+    color: #888;
+    line-height: 1.5;
+    margin-top: 0.5rem;
+}
