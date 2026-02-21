@@ -1,0 +1,9 @@
+{
+  "name": "dubis-website",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DUBIS — For the rest of us",
+  "engines": {
+    "node": "18.x"
+  }
+}

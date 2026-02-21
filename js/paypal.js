@@ -128,12 +128,48 @@ function renderPayPalButtons() {
             }],
             application_context: { brand_name: 'DUBIS', shipping_preference: 'GET_FROM_FILE' }
         }),
-        onApprove: (data, actions) => actions.order.capture().then(details => {
+        onApprove: async (data, actions) => {
+            const details = await actions.order.capture();
+
+            // ── Send order to Printful ──────────────────────────
+            try {
+                const shipping = details.purchase_units[0]?.shipping;
+                await fetch('/api/create-printful-order', {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({
+                        paypalOrderId: details.id,
+                        buyerEmail:    details.payer?.email_address || '',
+                        shippingAddress: {
+                            name:             shipping?.name?.full_name || '',
+                            address_line_1:   shipping?.address?.address_line_1 || '',
+                            address_line_2:   shipping?.address?.address_line_2 || '',
+                            admin_area_1:     shipping?.address?.admin_area_1 || '',
+                            admin_area_2:     shipping?.address?.admin_area_2 || '',
+                            country_code:     shipping?.address?.country_code || '',
+                            postal_code:      shipping?.address?.postal_code || '',
+                        },
+                        cartItems: cart.map(item => ({
+                            type:          item.type,
+                            phrase:        item.phrase,
+                            typeLabel:     item.typeLabel,
+                            price:         item.price,
+                            selectedSize:  item.selectedSize,
+                            selectedColor: item.selectedColor,
+                        })),
+                    }),
+                });
+            } catch (err) {
+                // Payment captured — don't block success, order logged manually
+                console.error('Printful order dispatch failed:', err);
+            }
+            // ───────────────────────────────────────────────────
+
             closePaypalModal();
             cart = [];
             updateCartCount();
             showSuccessModal();
-        }),
+        },
         onError: () => renderDirectPayPalButton(),
         onCancel: () => {}
     }).render('#paypal-button-container');
