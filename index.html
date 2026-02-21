@@ -263,7 +263,38 @@
     </div>
     <div class="product-modal-overlay" id="product-modal-overlay" onclick="closeProductModal()"></div>
 
+    <!-- PAYPAL CHECKOUT MODAL -->
+    <div class="paypal-modal" id="paypal-modal" role="dialog" aria-label="Checkout">
+        <div class="paypal-modal-content">
+            <button class="modal-close" onclick="closePaypalModal()" aria-label="Close">✕</button>
+            <div class="paypal-modal-header">
+                <span class="logo-paw">🐾</span>
+                <h2>Complete Your Order</h2>
+            </div>
+            <div class="paypal-order-summary" id="paypal-order-summary"></div>
+            <div class="paypal-divider">
+                <span>Pay securely with</span>
+            </div>
+            <div id="paypal-button-container"></div>
+            <p class="paypal-note">🔒 Secured by PayPal · 30-day easy returns</p>
+        </div>
+    </div>
+    <div class="paypal-modal-overlay" id="paypal-modal-overlay" onclick="closePaypalModal()"></div>
+
+    <!-- ORDER SUCCESS MODAL -->
+    <div class="success-modal" id="success-modal">
+        <div class="success-content">
+            <div class="success-icon">🐾</div>
+            <h2>Order Confirmed!</h2>
+            <p>Thank you for shopping with DUBIS.<br>You'll receive a confirmation email shortly.</p>
+            <p class="success-sub">Real clothes for real people. 🐻</p>
+            <button class="btn-primary" onclick="closeSuccessModal()">Continue Shopping</button>
+        </div>
+    </div>
+
+    <!-- PayPal SDK - will be loaded dynamically with real Client ID -->
     <script src="js/products.js"></script>
     <script src="js/main.js"></script>
+    <script src="js/paypal.js"></script>
 </body>
 </html>
