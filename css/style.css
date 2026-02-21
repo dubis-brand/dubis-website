@@ -367,6 +367,28 @@ body {
     border: 2px solid #ddd;
     margin-right: 4px;
     cursor: pointer;
+    transition: outline 0.15s;
+}
+
+.color-dot.active-color {
+    outline: 2px solid var(--charcoal);
+    outline-offset: 2px;
+}
+
+/* Color tint overlay on product image when color is selected */
+.product-image {
+    position: relative;
+    overflow: hidden;
+}
+
+.product-image.color-selected::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--color-tint, transparent);
+    pointer-events: none;
+    border-radius: inherit;
+    transition: background 0.3s;
 }
 
 .product-info {
