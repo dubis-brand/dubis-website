@@ -162,13 +162,6 @@ async function signInWithGoogle() {
     if (error) console.error('Google login error:', error.message);
 }
 
-async function signInWithMicrosoft() {
-    const { error } = await _sb.auth.signInWithOAuth({
-        provider: 'azure',
-        options: { redirectTo: 'https://www.dubis.net' }
-    });
-    if (error) console.error('Microsoft login error:', error.message);
-}
 
 // Allow Enter key in login form
 function authLoginOnEnter(e) {
