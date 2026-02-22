@@ -3,11 +3,15 @@
 // =======================================================
 
 const { createClient } = require('@supabase/supabase-js');
+const rateLimit        = require('../_rateLimit');
 
 module.exports = async function handler(req, res) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
+
+    // Rate limit: 10 order saves per IP per minute
+    if (rateLimit(req, res, { max: 10, windowMs: 60_000 })) return;
 
     const {
         paypalOrderId,

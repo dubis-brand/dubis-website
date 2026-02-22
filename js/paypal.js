@@ -218,6 +218,22 @@ function renderPayPalButtons() {
             } catch (err) {
                 console.error('Confirmation email failed:', err);
             }
+            // ── 4. GA4 purchase event ─────────────────────────────
+            if (typeof gtag !== 'undefined') {
+                const orderValue = cartSnapshot.reduce((s, i) => s + (Number(i.price) || 0), 0);
+                gtag('event', 'purchase', {
+                    transaction_id: details.id,
+                    value:          orderValue,
+                    currency:       'USD',
+                    items: cartSnapshot.map((item, idx) => ({
+                        item_id:       String(idx + 1),
+                        item_name:     item.phrase || item.type || 'DUBIS item',
+                        item_category: item.typeLabel || item.type || '',
+                        price:         Number(item.price) || 0,
+                        quantity:      1,
+                    })),
+                });
+            }
             // ─────────────────────────────────────────────────────
 
             closePaypalModal();

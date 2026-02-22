@@ -438,14 +438,20 @@ function colorToHex(color) {
   return map[color] || '#999';
 }
 
-// ===== COOKIES =====
+// ===== COOKIES & ANALYTICS CONSENT =====
 function acceptCookies() {
   localStorage.setItem('dubis-cookies', 'accepted');
   document.getElementById('cookie-banner').style.display = 'none';
+  // Unlock GA4 now that the user has consented
+  if (typeof gtag !== 'undefined') {
+    gtag('consent', 'update', { analytics_storage: 'granted' });
+    gtag('event', 'page_view'); // send the deferred page_view
+  }
 }
 function declineCookies() {
   localStorage.setItem('dubis-cookies', 'declined');
   document.getElementById('cookie-banner').style.display = 'none';
+  // analytics_storage remains 'denied' — GA4 respects this automatically
 }
 function checkCookieConsent() {
   if (localStorage.getItem('dubis-cookies'))

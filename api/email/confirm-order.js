@@ -3,10 +3,15 @@
 // Uses Resend (https://resend.com) — free tier: 3,000 emails/month
 // ================================================================
 
+const rateLimit = require('../_rateLimit');
+
 module.exports = async function handler(req, res) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
+
+    // Rate limit: 5 confirmation emails per IP per minute
+    if (rateLimit(req, res, { max: 5, windowMs: 60_000 })) return;
 
     if (!process.env.RESEND_API_KEY) {
         console.warn('RESEND_API_KEY not set — skipping confirmation email');

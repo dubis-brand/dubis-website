@@ -45,6 +45,25 @@
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
     <!-- Supabase JS client (auth + DB queries from browser) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- ═══ Google Analytics 4 — Consent Mode ══════════════════════════════
+         ⚠  Replace G-XXXXXXXXXX with your real GA4 Measurement ID.
+            Get it from: analytics.google.com → Admin → Data Streams.
+            Analytics only activates AFTER the user accepts cookies.
+    ════════════════════════════════════════════════════════════════════════ -->
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){ dataLayer.push(arguments); }
+        // Default: deny analytics until user consents (GDPR-safe)
+        gtag('consent', 'default', {
+            analytics_storage: 'denied',
+            ad_storage:        'denied',
+            wait_for_update:   500
+        });
+        gtag('js', new Date());
+        gtag('config', 'G-XXXXXXXXXX', { send_page_view: false });
+    </script>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
 </head>
 <body>
 
@@ -55,7 +74,7 @@
             <div class="cookie-buttons">
                 <button class="btn-cookie-accept" onclick="acceptCookies()">Accept</button>
                 <button class="btn-cookie-decline" onclick="declineCookies()">Decline</button>
-                <a href="#privacy" class="cookie-link">Privacy Policy</a>
+                <a href="#privacy" class="cookie-link">Privacy · Terms</a>
             </div>
         </div>
     </div>
@@ -241,6 +260,10 @@
         </div>
         <div class="footer-links">
             <a href="#privacy">Privacy Policy</a>
+            <span>·</span>
+            <a href="/terms">Terms</a>
+            <span>·</span>
+            <a href="/returns">Returns</a>
             <span>·</span>
             <a href="#contact">Contact</a>
             <span>·</span>
