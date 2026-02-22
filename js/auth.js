@@ -180,6 +180,15 @@ async function authLogout() {
     _updateAuthUI();
 }
 
+// ─── ADMIN CHECK ──────────────────────────────────────
+const ADMIN_EMAILS = ['dubis.brand@gmail.com'];
+
+function _isAdmin(user) {
+    if (!user) return false;
+    const email = user.email || '';
+    return ADMIN_EMAILS.includes(email.toLowerCase());
+}
+
 // ─── NAVBAR UI ────────────────────────────────────────
 function _updateAuthUI() {
     const btn = document.getElementById('account-btn');
@@ -196,9 +205,19 @@ function _updateAuthUI() {
 
         const menuName = document.getElementById('account-menu-name');
         if (menuName) menuName.textContent = name || _currentUser.email;
+
+        // Show admin link only for admins
+        const adminLink = document.getElementById('admin-menu-link');
+        if (adminLink) {
+            adminLink.classList.toggle('hidden', !_isAdmin(_currentUser));
+        }
     } else {
         btn.innerHTML = `👤 <span>${t.sign_in || 'Sign In'}</span>`;
         btn.onclick = () => openAuthModal('login');
+
+        // Hide admin link when logged out
+        const adminLink = document.getElementById('admin-menu-link');
+        if (adminLink) adminLink.classList.add('hidden');
     }
 }
 
