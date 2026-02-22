@@ -6,7 +6,7 @@
 // Setup in Printful:
 //   Dashboard → Stores → [your store] → Webhooks
 //   → Add webhook URL: https://www.dubis.net/api/webhooks/printful
-//   → Enable events: shipment_sent, order_updated, order_failed, order_canceled
+//   → Enable events: package_shipped, order_updated, order_failed, order_canceled
 //
 // Env var required: PRINTFUL_WEBHOOK_SECRET (set in Vercel + Printful webhook settings)
 // =======================================================
@@ -86,7 +86,7 @@ module.exports = async function handler(req, res) {
     try {
         switch (type) {
 
-            case 'shipment_sent': {
+            case 'package_shipped': {
                 const trackingNumber = shipment.tracking_number || null;
                 const trackingUrl    = shipment.tracking_url    || null;
                 const shippedAt      = shipment.ship_date
