@@ -153,6 +153,23 @@ async function authLogin() {
     // onAuthStateChange handles the rest (close modal, proceed to checkout if pending)
 }
 
+// ─── SOCIAL LOGIN ─────────────────────────────────────
+async function signInWithGoogle() {
+    const { error } = await _sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: 'https://www.dubis.net' }
+    });
+    if (error) console.error('Google login error:', error.message);
+}
+
+async function signInWithMicrosoft() {
+    const { error } = await _sb.auth.signInWithOAuth({
+        provider: 'azure',
+        options: { redirectTo: 'https://www.dubis.net' }
+    });
+    if (error) console.error('Microsoft login error:', error.message);
+}
+
 // Allow Enter key in login form
 function authLoginOnEnter(e) {
     if (e.key === 'Enter') authLogin();

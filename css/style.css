@@ -1150,6 +1150,13 @@ body {
 .auth-input:focus{outline:none;border-color:#c8a96e}
 .auth-error{color:#ef4444;font-size:.82rem;min-height:1.1em;margin-bottom:.5rem}
 .auth-submit{width:100%;margin-bottom:1rem}
+.btn-social{display:flex;align-items:center;justify-content:center;gap:.6rem;width:100%;padding:.7rem 1rem;border-radius:.5rem;font-size:.92rem;font-weight:500;cursor:pointer;margin-bottom:.6rem;transition:background .15s,box-shadow .15s;box-sizing:border-box}
+.btn-google{background:#fff;border:1px solid #dadce0;color:#3c4043}
+.btn-google:hover{background:#f8f9fa;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.btn-microsoft{background:#fff;border:1px solid #8c8c8c;color:#3c4043}
+.btn-microsoft:hover{background:#f3f3f3;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.social-login-divider{display:flex;align-items:center;gap:.75rem;margin:.4rem 0 1rem;color:#666;font-size:.8rem}
+.social-login-divider::before,.social-login-divider::after{content:'';flex:1;height:1px;background:#333}
 .auth-switch{text-align:center;font-size:.82rem;color:#777}
 .auth-switch a{color:#c8a96e;cursor:pointer}
 .auth-note{text-align:center;font-size:.72rem;color:#555;margin-top:1.25rem}
