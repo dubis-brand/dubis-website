@@ -36,27 +36,40 @@ module.exports = async function handler(req, res) {
         return res.status(500).json({ error: 'Server config error' });
     }
 
-    // Verify the JWT and get the user's email
+    // ── Create clients ───────────────────────────────────────────
     const supabaseAnon = createClient(
         process.env.SUPABASE_URL,
         process.env.SUPABASE_ANON_KEY || '',
         { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    const { data: { user }, error: authError } = await supabaseAnon.auth.getUser(token);
-    if (authError || !user) return res.status(401).json({ error: 'Invalid token' });
-
-    const adminEmails = getAdminEmails();
-    if (!adminEmails.includes(user.email.toLowerCase())) {
-        return res.status(403).json({ error: 'Forbidden' });
-    }
-
-    // ── Fetch all orders (service role bypasses RLS) ──────────────
+    // Service-role client (bypasses RLS)
     const supabase = createClient(
         process.env.SUPABASE_URL,
         process.env.SUPABASE_SERVICE_ROLE_KEY,
         { auth: { autoRefreshToken: false, persistSession: false } }
     );
+
+    // Verify the JWT and get the user's email
+    const { data: { user }, error: authError } = await supabaseAnon.auth.getUser(token);
+    if (authError || !user) return res.status(401).json({ error: 'Invalid token' });
+
+    const email = (user.email || '').toLowerCase();
+    const adminEmails = getAdminEmails();
+
+    // Check static list first, then dynamic admin_users table
+    let isAdmin = adminEmails.includes(email);
+    if (!isAdmin) {
+        const { data } = await supabase
+            .from('admin_users')
+            .select('email')
+            .eq('email', email)
+            .maybeSingle();
+        isAdmin = !!data;
+    }
+    if (!isAdmin) return res.status(403).json({ error: 'Forbidden' });
+
+    // ── Fetch all orders (service role bypasses RLS) ──────────────
 
     const { data: orders, error } = await supabase
         .from('orders')

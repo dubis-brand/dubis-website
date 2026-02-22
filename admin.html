@@ -149,10 +149,38 @@
       padding: .85rem 1.5rem;
       display: flex;
       align-items: center;
+      gap: 1.5rem;
       justify-content: space-between;
       position: sticky;
       top: 0;
       z-index: 10;
+    }
+
+    /* ── Nav tabs ── */
+    .topbar-nav {
+      display: flex;
+      gap: .25rem;
+      flex: 1;
+    }
+
+    .nav-tab {
+      padding: .4rem 1rem;
+      border-radius: 6px;
+      font-size: .8rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid transparent;
+      background: transparent;
+      color: #666;
+      transition: all .2s;
+      letter-spacing: .5px;
+    }
+
+    .nav-tab:hover { color: #e8e0d5; background: #1a1a1a; }
+    .nav-tab.active {
+      color: #c8a96e;
+      background: rgba(200,169,110,.1);
+      border-color: rgba(200,169,110,.25);
     }
 
     .topbar-logo {
@@ -325,11 +353,88 @@
       color: #444;
     }
 
+    /* ── Users Table ── */
+    .user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #c8a96e, #8b6914);
+      color: #0d0d0d;
+      font-weight: 700;
+      font-size: .8rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .user-cell {
+      display: flex;
+      align-items: center;
+      gap: .65rem;
+    }
+
+    .user-name {
+      font-size: .85rem;
+      color: #e8e0d5;
+      line-height: 1.2;
+    }
+
+    .user-email-sub {
+      font-size: .72rem;
+      color: #555;
+    }
+
+    .admin-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .25rem;
+      padding: .18rem .55rem;
+      border-radius: 20px;
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+    }
+
+    .badge-super { background: rgba(200,169,110,.2); color: #c8a96e; border: 1px solid rgba(200,169,110,.3); }
+    .badge-admin { background: rgba(59,130,246,.15); color: #60a5fa; border: 1px solid rgba(59,130,246,.25); }
+    .badge-user  { background: rgba(255,255,255,.05); color: #555; border: 1px solid #1e1e1e; }
+
+    .provider-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .3rem;
+      font-size: .72rem;
+      color: #666;
+    }
+
+    .btn-toggle-admin {
+      padding: .3rem .75rem;
+      border-radius: 5px;
+      font-size: .72rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid;
+      transition: all .2s;
+      white-space: nowrap;
+    }
+
+    .btn-grant  { border-color: rgba(59,130,246,.4); color: #60a5fa; background: rgba(59,130,246,.08); }
+    .btn-grant:hover  { background: rgba(59,130,246,.2); }
+    .btn-revoke { border-color: rgba(239,68,68,.4);  color: #f87171; background: rgba(239,68,68,.08); }
+    .btn-revoke:hover { background: rgba(239,68,68,.2); }
+    .btn-toggle-admin:disabled { opacity: .4; cursor: not-allowed; }
+
+    .users-count { color: #555; font-size: .8rem; margin-left: auto; }
+
     /* ── Responsive ── */
     @media (max-width: 640px) {
       .main-content { padding: 1rem; }
       .search-input { width: 100%; margin-left: 0; }
       td.hide-mobile, th.hide-mobile { display: none; }
+      .topbar-nav { gap: 0; }
+      .nav-tab { padding: .4rem .6rem; font-size: .72rem; }
     }
   </style>
 </head>
@@ -365,6 +470,10 @@
 <div id="dashboard">
   <div class="topbar">
     <div class="topbar-logo">DUBIS</div>
+    <nav class="topbar-nav">
+      <button class="nav-tab active" id="nav-orders" onclick="showSection('orders',this)">📋 Orders</button>
+      <button class="nav-tab" id="nav-users"  onclick="showSection('users',this)">👥 Users</button>
+    </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
       <button class="btn-sm" onclick="adminLogout()">Sign out</button>
@@ -372,6 +481,9 @@
   </div>
 
   <div class="main-content">
+
+  <!-- ══ ORDERS SECTION ══════════════════════════════════ -->
+  <div id="section-orders">
     <div class="stats-grid" id="stats-grid">
       <div class="stat-card">
         <div class="stat-label">Total Orders</div>
@@ -424,14 +536,44 @@
       </table>
       <div class="empty" id="table-empty" style="display:none">No orders found.</div>
     </div>
-  </div>
-</div>
+  </div><!-- /section-orders -->
+
+  <!-- ══ USERS SECTION ═══════════════════════════════════ -->
+  <div id="section-users" style="display:none">
+    <div class="filters">
+      <input class="search-input" type="text" id="user-search"
+             placeholder="Search by name or email…" oninput="renderUsers()"
+             style="margin-left:0;width:260px">
+      <span class="users-count" id="users-count"></span>
+    </div>
+    <div class="table-wrap">
+      <div class="loading" id="users-loading">Loading users… 🐾</div>
+      <table id="users-table" style="display:none">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th class="hide-mobile">Joined</th>
+            <th class="hide-mobile">Last Sign-in</th>
+            <th>Provider</th>
+            <th>Role</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="users-tbody"></tbody>
+      </table>
+      <div class="empty" id="users-empty" style="display:none">No users found.</div>
+    </div>
+  </div><!-- /section-users -->
+
+  </div><!-- /main-content -->
+</div><!-- /dashboard -->
 
 <script>
   const SUPABASE_URL  = 'https://ntzwvqtpdmvvavbhuyeb.supabase.co';
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50end2cXRwZG12dmF2Ymh1eWViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2ODk1ODAsImV4cCI6MjA4NzI2NTU4MH0.EpfZAg28aU6_sOblfkVpkAwp9nDvXMTRCCNz0UJWHEc';
 
-  let _sb = null;
+  let _sb        = null;
+  let _allUsers  = [];
   let _allOrders = [];
   let _currentFilter = 'all';
 
@@ -587,6 +729,159 @@
           <td class="hide-mobile">${tracking}</td>
         </tr>`;
     }).join('');
+  }
+
+  // ── Section navigation ────────────────────────────────
+  let _usersLoaded = false;
+
+  function showSection(name, btn) {
+    document.getElementById('section-orders').style.display = name === 'orders' ? '' : 'none';
+    document.getElementById('section-users').style.display  = name === 'users'  ? '' : 'none';
+    document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    if (name === 'users' && !_usersLoaded) {
+      _usersLoaded = true;
+      loadUsers();
+    }
+  }
+
+  // ── Users: Load ───────────────────────────────────────
+  async function loadUsers() {
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return;
+
+    document.getElementById('users-loading').style.display = '';
+    document.getElementById('users-table').style.display   = 'none';
+    document.getElementById('users-empty').style.display   = 'none';
+
+    try {
+      const res = await fetch('/api/admin/users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (res.status === 403) {
+        document.getElementById('users-loading').textContent = '⛔ Access denied.';
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const json = await res.json();
+      _allUsers = json.users || [];
+      document.getElementById('users-loading').style.display = 'none';
+      renderUsers();
+
+    } catch(err) {
+      document.getElementById('users-loading').textContent = 'Error: ' + err.message;
+    }
+  }
+
+  // ── Users: Render ─────────────────────────────────────
+  function renderUsers() {
+    const search  = (document.getElementById('user-search').value || '').toLowerCase();
+    const tbody   = document.getElementById('users-tbody');
+    const table   = document.getElementById('users-table');
+    const empty   = document.getElementById('users-empty');
+    const counter = document.getElementById('users-count');
+
+    const rows = _allUsers.filter(u => {
+      if (!search) return true;
+      return (u.email + ' ' + (u.full_name || '')).toLowerCase().includes(search);
+    });
+
+    counter.textContent = `${rows.length} user${rows.length !== 1 ? 's' : ''}`;
+
+    if (rows.length === 0) {
+      table.style.display = 'none';
+      empty.style.display = '';
+      return;
+    }
+
+    table.style.display = '';
+    empty.style.display = 'none';
+
+    tbody.innerHTML = rows.map(u => {
+      const initials = ((u.full_name || u.email || '?').charAt(0)).toUpperCase();
+      const name     = u.full_name || '';
+      const joined   = u.created_at
+        ? new Date(u.created_at).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' })
+        : '—';
+      const lastSeen = u.last_sign_in_at
+        ? new Date(u.last_sign_in_at).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
+        : 'Never';
+
+      const providerIcon  = u.provider === 'google' ? '🔵' : u.provider === 'azure' ? '🟦' : '📧';
+      const providerLabel = { google: 'Google', azure: 'Microsoft', email: 'Email' }[u.provider] || u.provider;
+
+      let roleBadge, actionBtn;
+      if (u.is_super_admin) {
+        roleBadge = `<span class="admin-badge badge-super">⭐ Super Admin</span>`;
+        actionBtn = `<span style="color:#333;font-size:.75rem">Protected</span>`;
+      } else if (u.is_admin) {
+        roleBadge = `<span class="admin-badge badge-admin">🛡 Admin</span>`;
+        actionBtn = `<button class="btn-toggle-admin btn-revoke"
+                       onclick="toggleAdmin('${u.email}', false, this)">Revoke Admin</button>`;
+      } else {
+        roleBadge = `<span class="admin-badge badge-user">User</span>`;
+        actionBtn = `<button class="btn-toggle-admin btn-grant"
+                       onclick="toggleAdmin('${u.email}', true, this)">Make Admin</button>`;
+      }
+
+      return `
+        <tr>
+          <td>
+            <div class="user-cell">
+              <div class="user-avatar">${initials}</div>
+              <div>
+                <div class="user-name">${name || '<span style="color:#444">—</span>'}</div>
+                <div class="user-email-sub">${u.email}</div>
+              </div>
+            </div>
+          </td>
+          <td class="hide-mobile" style="color:#666;font-size:.8rem">${joined}</td>
+          <td class="hide-mobile" style="color:#666;font-size:.8rem">${lastSeen}</td>
+          <td><span class="provider-badge">${providerIcon} ${providerLabel}</span></td>
+          <td>${roleBadge}</td>
+          <td>${actionBtn}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  // ── Users: Toggle admin ───────────────────────────────
+  async function toggleAdmin(email, grant, btn) {
+    btn.disabled = true;
+    btn.textContent = grant ? 'Granting…' : 'Revoking…';
+
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+
+    try {
+      const res = await fetch('/api/admin/users', {
+        method:  'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify({ action: grant ? 'grant' : 'revoke', email }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        alert('Error: ' + (json.error || 'Unknown error'));
+        btn.disabled = false;
+        btn.textContent = grant ? 'Make Admin' : 'Revoke Admin';
+        return;
+      }
+
+      // Update local data and re-render without full reload
+      _allUsers = _allUsers.map(u => u.email === email ? { ...u, is_admin: grant } : u);
+      renderUsers();
+
+    } catch(err) {
+      alert('Network error: ' + err.message);
+      btn.disabled = false;
+    }
   }
 
   // ── Logout ────────────────────────────────────────────────
