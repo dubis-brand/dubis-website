@@ -47,9 +47,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- ═══ Google Analytics 4 — Consent Mode ══════════════════════════════
-         ⚠  Replace G-XXXXXXXXXX with your real GA4 Measurement ID.
-            Get it from: analytics.google.com → Admin → Data Streams.
-            Analytics only activates AFTER the user accepts cookies.
+         Analytics only activates AFTER the user accepts cookies (GDPR-safe).
     ════════════════════════════════════════════════════════════════════════ -->
     <script>
         window.dataLayer = window.dataLayer || [];
@@ -61,9 +59,9 @@
             wait_for_update:   500
         });
         gtag('js', new Date());
-        gtag('config', 'G-XXXXXXXXXX', { send_page_view: false });
+        gtag('config', 'G-3V8JLLPR99', { send_page_view: false });
     </script>
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-3V8JLLPR99"></script>
 </head>
 <body>
 
