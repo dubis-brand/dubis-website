@@ -149,6 +149,7 @@ function renderPayPalButtons() {
             };
 
             const cartSnapshot = cart.map(item => ({
+                id:            item.id,
                 type:          item.type,
                 phrase:        item.phrase,
                 typeLabel:     item.typeLabel,

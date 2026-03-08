@@ -12,45 +12,53 @@
 const PRINTFUL_API_BASE = 'https://api.printful.com';
 
 // ─────────────────────────────────────────────────────────────────
-// VARIANT MAP — fill in after creating products on Printful
-// How to find variant IDs:
-//   Printful Dashboard → Stores → Your Products → click product
-//   → "Edit" → variants tab → each row has an ID
-//
-// Format: { 'Color_Size': sync_variant_id }
+// VARIANT MAP — keyed by product ID (1–6), then 'Color_Size'
+// sync_variant_ids retrieved from Printful API after product creation
+// Color names match display names in products.js
 // ─────────────────────────────────────────────────────────────────
 const VARIANT_MAP = {
-  tshirt: {
-    'Black_S':   null, 'Black_M':   null, 'Black_L':   null,
-    'Black_XL':  null, 'Black_2XL': null, 'Black_3XL': null,
-    'White_S':   null, 'White_M':   null, 'White_L':   null,
-    'White_XL':  null, 'White_2XL': null, 'White_3XL': null,
-    'Cream_S':   null, 'Cream_M':   null, 'Cream_L':   null,
-    'Cream_XL':  null, 'Cream_2XL': null, 'Cream_3XL': null,
-    'Gray_S':    null, 'Gray_M':    null, 'Gray_L':    null,
-    'Gray_XL':   null, 'Gray_2XL':  null, 'Gray_3XL':  null,
-    'Honey Brown_S': null, 'Honey Brown_M': null, 'Honey Brown_L': null,
-    'Honey Brown_XL': null, 'Honey Brown_2XL': null, 'Honey Brown_3XL': null,
+  // Product 1: "I'm not fat, I'm a limited edition" — T-Shirt (Black, White, Cream)
+  1: {
+    'Black_S':5225828142,'Black_M':5225828143,'Black_L':5225828144,'Black_XL':5225828145,'Black_2XL':5225828146,'Black_3XL':5225828147,
+    'White_S':5225828148,'White_M':5225828149,'White_L':5225828150,'White_XL':5225828151,'White_2XL':5225828152,'White_3XL':5225828153,
+    'Cream_S':5225828154,'Cream_M':5225828155,'Cream_L':5225828156,'Cream_XL':5225828157,'Cream_2XL':5225828158,'Cream_3XL':5225828159,
   },
-  hoodie: {
-    'Charcoal_S': null, 'Charcoal_M': null, 'Charcoal_L': null,
-    'Charcoal_XL': null, 'Charcoal_2XL': null, 'Charcoal_3XL': null,
-    'Cream_S': null, 'Cream_M': null, 'Cream_L': null,
-    'Cream_XL': null, 'Cream_2XL': null, 'Cream_3XL': null,
-    'Navy_S': null, 'Navy_M': null, 'Navy_L': null,
-    'Navy_XL': null, 'Navy_2XL': null, 'Navy_3XL': null,
-    'Black_S': null, 'Black_M': null, 'Black_L': null,
-    'Black_XL': null, 'Black_2XL': null, 'Black_3XL': null,
+  // Product 2: "More of me to love" — T-Shirt (Honey Brown, Black, Cream)
+  2: {
+    'Honey Brown_S':5225828161,'Honey Brown_M':5225828162,'Honey Brown_L':5225828163,'Honey Brown_XL':5225828164,'Honey Brown_2XL':5225828165,'Honey Brown_3XL':5225828166,
+    'Black_S':5225828167,'Black_M':5225828168,'Black_L':5225828169,'Black_XL':5225828170,'Black_2XL':5225828171,'Black_3XL':5225828172,
+    'Cream_S':5225828173,'Cream_M':5225828174,'Cream_L':5225828175,'Cream_XL':5225828176,'Cream_2XL':5225828177,'Cream_3XL':5225828178,
   },
-  cap: {
-    'Charcoal_One Size': null,
-    'Cream_One Size':    null,
-    'Honey Brown_One Size': null,
-  }
+  // Product 3: "Napping is my cardio" — Hoodie (Charcoal, Cream, Navy)
+  3: {
+    'Charcoal_S':5225828262,'Charcoal_M':5225828265,'Charcoal_L':5225828267,'Charcoal_XL':5225828270,'Charcoal_2XL':5225828272,'Charcoal_3XL':5225828275,
+    'Cream_S':5225828278,'Cream_M':5225828282,'Cream_L':5225828285,'Cream_XL':5225828287,'Cream_2XL':5225828290,'Cream_3XL':5225828292,
+    'Navy_S':5225828295,'Navy_M':5225828297,'Navy_L':5225828300,'Navy_XL':5225828306,'Navy_2XL':5225828314,'Navy_3XL':5225828320,
+  },
+  // Product 4: "I survived. That's enough." — T-Shirt (Black, White, Gray) — Gray missing 3XL
+  4: {
+    'Black_S':5225828420,'Black_M':5225828423,'Black_L':5225828427,'Black_XL':5225828430,'Black_2XL':5225828433,'Black_3XL':5225828437,
+    'White_S':5225828441,'White_M':5225828444,'White_L':5225828447,'White_XL':5225828450,'White_2XL':5225828453,'White_3XL':5225828454,
+    'Gray_S':5225828455,'Gray_M':5225828456,'Gray_L':5225828457,'Gray_XL':5225828458,'Gray_2XL':5225828459,
+  },
+  // Product 5: "Low maintenance, high value" — T-Shirt (Black, White, Cream)
+  5: {
+    'Black_S':5225827918,'Black_M':5225827921,'Black_L':5225827922,'Black_XL':5225827923,'Black_2XL':5225827924,'Black_3XL':5225827925,
+    'White_S':5225827926,'White_M':5225827927,'White_L':5225827928,'White_XL':5225827930,'White_2XL':5225827937,'White_3XL':5225827943,
+    'Cream_S':5225827950,'Cream_M':5225827957,'Cream_L':5225827965,'Cream_XL':5225827971,'Cream_2XL':5225827977,'Cream_3XL':5225827984,
+  },
+  // Product 6: "Not a model. Never wanted to be." — Hoodie (Charcoal, Black, Navy)
+  6: {
+    'Charcoal_S':5225829238,'Charcoal_M':5225829239,'Charcoal_L':5225829240,'Charcoal_XL':5225829241,'Charcoal_2XL':5225829242,'Charcoal_3XL':5225829243,
+    'Black_S':5225829244,'Black_M':5225829245,'Black_L':5225829246,'Black_XL':5225829247,'Black_2XL':5225829248,'Black_3XL':5225829249,
+    'Navy_S':5225829250,'Navy_M':5225829251,'Navy_L':5225829252,'Navy_XL':5225829253,'Navy_2XL':5225829254,'Navy_3XL':5225829255,
+  },
+  // Product 7: Cap — TODO: add after cap is created in Printful
+  // 7: { 'Charcoal_One Size': null, 'Cream_One Size': null, 'Honey Brown_One Size': null },
 };
 
-function getVariantId(type, color, size) {
-  const map = VARIANT_MAP[type];
+function getVariantId(productId, color, size) {
+  const map = VARIANT_MAP[productId];
   if (!map) return null;
   return map[`${color}_${size}`] || null;
 }
@@ -89,7 +97,7 @@ module.exports = async function handler(req, res) {
 
   // ── Case 2: Some variants not mapped yet ──
   const unmapped = cartItems.filter(
-    item => !getVariantId(item.type, item.selectedColor, item.selectedSize)
+    item => !getVariantId(item.id, item.selectedColor, item.selectedSize)
   );
   if (unmapped.length > 0) {
     logManualOrder('UNMAPPED VARIANTS', { paypalOrderId, buyerEmail, unmapped, cartItems, shippingAddress });
@@ -111,7 +119,7 @@ module.exports = async function handler(req, res) {
       zip:          shippingAddress.postal_code,
     },
     items: cartItems.map(item => ({
-      sync_variant_id: getVariantId(item.type, item.selectedColor, item.selectedSize),
+      sync_variant_id: getVariantId(item.id, item.selectedColor, item.selectedSize),
       quantity:        1,
       retail_price:    item.price.toFixed(2),
       name:            `DUBIS "${item.phrase}" — ${item.typeLabel}`,
