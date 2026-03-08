@@ -214,7 +214,8 @@ function renderProducts(filter = 'all') {
          data-selected-color="${product.colors[0]}"
          onclick="openProductModal(${product.id})">
       <div class="product-image" id="card-img-${product.id}">
-        <img src="${product.image}" alt="${product.phrase}" loading="lazy" />
+        <img class="img-view img-back"  src="${productImg(product.id, product.colors[0], 'back')}"  alt="${product.phrase}" loading="lazy" />
+        <img class="img-view img-front" src="${productImg(product.id, product.colors[0], 'front')}" alt="${product.phrase}" loading="lazy" />
         <div class="product-badge">${typeMap[product.type] || product.typeLabel}</div>
         <div class="product-hover-overlay"><span>${t.view_details}</span></div>
       </div>
@@ -248,13 +249,18 @@ function selectCardColor(productId, color, dotEl) {
   dotEl.classList.add('active-color');
   card.dataset.selectedColor = color;
 
-  // Visual: tint image container with selected color at low opacity
+  // Swap images to selected color
   const imgContainer = document.getElementById(`card-img-${productId}`);
   if (imgContainer) {
-    const hex = colorToHex(color);
-    imgContainer.style.setProperty('--color-tint', hex + '33'); // 20% opacity
-    imgContainer.classList.add('color-selected');
+    imgContainer.querySelector('.img-back').src  = productImg(productId, color, 'back');
+    imgContainer.querySelector('.img-front').src = productImg(productId, color, 'front');
   }
+}
+
+// Helper: build per-color image URL (falls back to generic if not found)
+function productImg(productId, color, view) {
+  const safeColor = color.replace(/\s+/g, '-');
+  return `images/product-${productId}-${safeColor}-${view}.jpg`;
 }
 
 // ===== FILTER =====
@@ -275,7 +281,15 @@ function openProductModal(productId) {
 
   body.innerHTML = `
     <div class="modal-image" id="modal-img-${product.id}">
-      <img src="${product.image}" alt="${product.phrase}" />
+      <img id="modal-img-src-${product.id}"
+           src="${productImg(product.id, product.colors[0], 'back')}"
+           alt="${product.phrase}"
+           data-color="${product.colors[0]}"
+           data-view="back" />
+    </div>
+    <div class="modal-view-toggle">
+      <button class="view-btn" onclick="setModalView(${product.id}, 'front', this)">Front</button>
+      <button class="view-btn active" onclick="setModalView(${product.id}, 'back', this)">Back</button>
     </div>
     <div class="modal-info">
       <div class="modal-type">${typeMap[product.type] || product.typeLabel}</div>
@@ -332,11 +346,25 @@ function selectColor(btn, color, productId) {
   btn.classList.add('selected');
   document.getElementById(`selected-color-${productId}`).textContent = color;
 
-  // Update modal image tint
-  const imgContainer = document.getElementById(`modal-img-${productId}`);
-  if (imgContainer) {
-    imgContainer.style.setProperty('--color-tint', colorToHex(color) + '33');
-    imgContainer.classList.add('color-selected');
+  // Swap modal image to selected color (preserve current front/back view)
+  const imgEl = document.getElementById(`modal-img-src-${productId}`);
+  if (imgEl) {
+    const view = imgEl.dataset.view || 'back';
+    imgEl.src = productImg(productId, color, view);
+    imgEl.dataset.color = color;
+  }
+}
+
+function setModalView(productId, view, btn) {
+  btn.closest('.modal-view-toggle').querySelectorAll('.view-btn')
+    .forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  const imgEl = document.getElementById(`modal-img-src-${productId}`);
+  if (imgEl) {
+    const color = imgEl.dataset.color || products.find(p => p.id === productId)?.colors[0] || '';
+    imgEl.src = productImg(productId, color, view);
+    imgEl.dataset.view = view;
   }
 }
 

@@ -338,12 +338,21 @@ body {
     height: 100%;
     object-fit: cover;
     object-position: top center;
-    transition: transform 0.4s ease;
 }
 
-.product-card:hover .product-image img {
-    transform: scale(1.04);
+/* Front/back image crossfade on hover */
+.product-image .img-view {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    object-position: top center;
+    transition: opacity 0.35s ease;
 }
+.product-image .img-back  { opacity: 1; z-index: 1; }
+.product-image .img-front { opacity: 0; z-index: 2; }
+.product-card:hover .product-image .img-front { opacity: 1; }
+.product-card:hover .product-image .img-back  { opacity: 0; }
 
 .product-badge {
     position: absolute;
@@ -375,20 +384,31 @@ body {
     outline-offset: 2px;
 }
 
-/* Color tint overlay on product image when color is selected */
-.product-image {
-    position: relative;
-    overflow: hidden;
+/* View toggle in modal (Front / Back) */
+.modal-view-toggle {
+    display: flex;
+    gap: 6px;
+    padding: 10px 16px;
+    background: rgba(0,0,0,0.04);
+    border-top: 1px solid rgba(0,0,0,0.06);
 }
-
-.product-image.color-selected::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: var(--color-tint, transparent);
-    pointer-events: none;
-    border-radius: inherit;
-    transition: background 0.3s;
+.view-btn {
+    flex: 1;
+    padding: 6px 0;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: var(--white);
+    font-size: 0.78rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    color: var(--charcoal);
+}
+.view-btn.active {
+    background: var(--charcoal);
+    color: var(--white);
+    border-color: var(--charcoal);
 }
 
 .product-info {
