@@ -99,7 +99,7 @@ module.exports = async function handler(req, res) {
   }
 
   // ── Case 1: Gelato not configured yet ──
-  const GELATO_API_KEY = process.env.GELATO_API_KEY;
+  const GELATO_API_KEY = process.env.GELATO_API_KEY || process.env.GELATO;
   if (!GELATO_API_KEY) {
     logManualOrder('NO API KEY', { paypalOrderId, buyerEmail, cartItems, shippingAddress });
     return res.status(200).json({ success: true, manual: true, reason: 'gelato_not_configured' });
