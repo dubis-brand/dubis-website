@@ -191,7 +191,7 @@ module.exports = async function handler(req, res) {
     if (!gRes.ok) {
       logManualOrder('GELATO API ERROR', { paypalOrderId, error: data, gelatoOrder });
       // Payment already captured — return success to customer, handle manually
-      return res.status(200).json({ success: true, manual: true, reason: 'gelato_api_error', _debug: data });
+      return res.status(200).json({ success: true, manual: true, reason: 'gelato_api_error' });
     }
 
     const gelatoOrderId = data.id || data.orderId || data.orderReferenceId;
