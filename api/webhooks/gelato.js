@@ -97,12 +97,15 @@ module.exports = async function handler(req, res) {
     const order = payload.order || payload;
     orderRef  = order.orderReferenceId || order.id;
     newStatus = mapStatus(order.status);
-  } else if (event === 'package_shipped' || event === 'order.shipped') {
+  } else if (event === 'order_item_tracking_code_updated' || event === 'package_shipped') {
+    // Gelato fires order_item_tracking_code_updated when a shipment tracking number is assigned
     const order    = payload.order || payload;
-    const shipment = payload.shipment || (order.shipments || [])[0] || {};
-    orderRef    = order.orderReferenceId || order.id;
+    const item     = (payload.orderItem || payload.items || [])[0] || {};
+    orderRef    = order.orderReferenceId || order.id || payload.orderReferenceId;
     newStatus   = 'shipped';
-    trackingUrl = shipment.trackingUrl || shipment.tracking_url || null;
+    trackingUrl = item.trackingUrl || item.trackingCode
+      ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${item.trackingCode}`
+      : payload.trackingUrl || null;
     isShipped   = true;
   } else {
     // Unknown event — ack and ignore
