@@ -158,10 +158,10 @@ function renderPayPalButtons() {
                 selectedColor: item.selectedColor,
             }));
 
-            // ── 1. Send to Printful ──────────────────────────────
+            // ── 1. Send to Gelato ────────────────────────────────
             let printfulOrderId = null;
             try {
-                const pfRes  = await fetch('/api/create-printful-order', {
+                const pfRes  = await fetch('/api/create-gelato-order', {
                     method:  'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body:    JSON.stringify({
@@ -172,9 +172,10 @@ function renderPayPalButtons() {
                     }),
                 });
                 const pfData = await pfRes.json();
-                if (pfData.printfulOrderId) printfulOrderId = String(pfData.printfulOrderId);
+                if (pfData.gelatoOrderId)  printfulOrderId = String(pfData.gelatoOrderId);
+                if (pfData.printfulOrderId && !printfulOrderId) printfulOrderId = String(pfData.printfulOrderId);
             } catch (err) {
-                console.error('Printful dispatch failed:', err);
+                console.error('Gelato dispatch failed:', err);
             }
 
             // ── 2. Save order to Supabase DB ─────────────────────
