@@ -106,8 +106,9 @@ module.exports = async function handler(req, res) {
 
   // ── Case 3: Full Printful order ──
   const printfulOrder = {
-    external_id: `DUBIS-${paypalOrderId}`,
-    shipping:    'STANDARD',
+    external_id:   `DUBIS-${paypalOrderId}`,
+    shipping:      'STANDARD',
+    confirm:       true,  // Auto-confirm → Printful starts fulfillment immediately
     recipient: {
       name:         shippingAddress.name,
       email:        buyerEmail || '',
@@ -144,7 +145,7 @@ module.exports = async function handler(req, res) {
     if (!pfRes.ok) {
       logManualOrder('PRINTFUL API ERROR', { paypalOrderId, error: data, printfulOrder });
       // Payment already captured — return success to customer, handle manually
-      return res.status(200).json({ success: true, manual: true, reason: 'printful_api_error', _debug: data });
+      return res.status(200).json({ success: true, manual: true, reason: 'printful_api_error' });
     }
 
     console.log(`Printful order created: #${data.result.id} for PayPal ${paypalOrderId}`);
