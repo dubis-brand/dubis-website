@@ -144,7 +144,7 @@ module.exports = async function handler(req, res) {
     if (!pfRes.ok) {
       logManualOrder('PRINTFUL API ERROR', { paypalOrderId, error: data, printfulOrder });
       // Payment already captured — return success to customer, handle manually
-      return res.status(200).json({ success: true, manual: true, reason: 'printful_api_error' });
+      return res.status(200).json({ success: true, manual: true, reason: 'printful_api_error', _debug: data });
     }
 
     console.log(`Printful order created: #${data.result.id} for PayPal ${paypalOrderId}`);
