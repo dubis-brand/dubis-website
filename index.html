@@ -84,6 +84,9 @@
                 <span class="logo-paw">🐾</span>
                 <span class="logo-text">DUBIS</span>
             </div>
+            <button class="hamburger" id="hamburger-btn" onclick="toggleMobileMenu()" aria-label="Menu">
+                <span></span><span></span><span></span>
+            </button>
             <ul class="nav-links">
                 <li><a href="#home">Home</a></li>
                 <li><a href="#shop">Shop</a></li>
@@ -116,8 +119,8 @@
             <p class="hero-tagline">We see you.</p>
             <h1 class="hero-title">DUBIS</h1>
             <p class="hero-subtitle">For the rest of us.</p>
-            <p class="hero-desc">Fashion has had a blind spot for decades. DUBIS is the correction — real clothes, made for the body you actually live in.</p>
-            <a href="#shop" class="btn-primary">Find My Fit</a>
+            <p class="hero-desc">Forty years of fashion designed for someone else's body. We made something different.</p>
+            <a href="#shop" class="btn-primary">Find Your Statement</a>
         </div>
         <div class="hero-paw">🐾</div>
     </section>
@@ -141,35 +144,51 @@
     </section>
 
     <!-- REAL PEOPLE SECTION -->
-    <section id="real-people" class="real-people">
+    <section id="real-people" class="real-people fade-in-section">
         <div class="section-header">
             <h2>This Is Us 🐻</h2>
-            <p>The DUBIS community. People who stopped waiting for fashion to notice them.</p>
+            <p>The DUBIS family. Real people, real bodies, real style — no apologies.</p>
         </div>
         <div class="avatars-grid">
+            <!-- Row 1: 2 portraits + quote card -->
             <div class="avatar-card">
                 <img src="images/real1.jpg" alt="Real DUBIS person wearing I am not fat I am a limited edition tshirt" loading="lazy">
             </div>
             <div class="avatar-card">
                 <img src="images/real2.jpg" alt="Real DUBIS person wearing Napping is my cardio hoodie" loading="lazy">
             </div>
+            <div class="avatar-card avatar-quote">
+                <div class="quote-inner">
+                    <span class="quote-icon">🐾</span>
+                    <p>"Real people.<br>Real bodies.<br>Real style."</p>
+                    <span class="quote-tag">DUBIS — For the rest of us.</span>
+                </div>
+            </div>
+            <!-- Row 2: wide group photo -->
+            <div class="avatar-card avatar-wide">
+                <img src="images/real6.jpg" alt="Real DUBIS people - friends group photo" loading="lazy">
+            </div>
+            <!-- Row 3: 2 more portraits -->
             <div class="avatar-card">
                 <img src="images/real3.jpg" alt="Real DUBIS person wearing More of me to love tshirt" loading="lazy">
             </div>
             <div class="avatar-card">
                 <img src="images/real4.jpg" alt="Real DUBIS person wearing I survived thats enough tshirt" loading="lazy">
             </div>
-            <div class="avatar-card avatar-wide">
-                <img src="images/real6.jpg" alt="Real DUBIS people - friends group photo" loading="lazy">
-            </div>
         </div>
     </section>
 
     <!-- SHOP SECTION -->
-    <section id="shop" class="shop">
+    <section id="shop" class="shop fade-in-section">
         <div class="section-header">
             <h2>The Collection</h2>
             <p>Wear what you mean. Mean what you wear.</p>
+        </div>
+
+        <div class="gender-filter">
+            <button class="gender-btn active" onclick="setGenderFilter('all', this)">All</button>
+            <button class="gender-btn" onclick="setGenderFilter('men', this)">Men</button>
+            <button class="gender-btn" onclick="setGenderFilter('women', this)">Women</button>
         </div>
 
         <div class="filter-tabs">
@@ -177,50 +196,51 @@
             <button class="filter-btn" onclick="filterProducts('tshirt', this)">T-Shirts</button>
             <button class="filter-btn" onclick="filterProducts('hoodie', this)">Hoodies</button>
             <button class="filter-btn" onclick="filterProducts('cap', this)">Caps</button>
+            <button class="filter-btn" onclick="filterProducts('longsleeve', this)">Long-Sleeves</button>
         </div>
 
         <div class="products-grid" id="products-grid"></div>
     </section>
 
     <!-- QUALITY PROMISE -->
-    <section class="quality-promise">
+    <section class="quality-promise fade-in-section">
         <div class="promise-container">
             <h2>What You See Is What You Get 🐾</h2>
             <p>We know the worry — ordering online and getting something that looks nothing like the photo. Here's our promise:</p>
             <div class="promise-grid">
                 <div class="promise-item">
                     <div class="promise-icon">🏭</div>
-                    <h3>Print on Demand</h3>
-                    <p>Every item is made fresh for you via Printful — one of the world's leading print-on-demand services. No old stock, no cheap bulk.</p>
+                    <h3>Made Fresh For You</h3>
+                    <p>Every piece is made for you, the moment you order. Not sitting in a warehouse. Not pre-printed in bulk. Made fresh — because you deserve something made for you, not someone else.</p>
                 </div>
                 <div class="promise-item">
                     <div class="promise-icon">👕</div>
                     <h3>Real Materials</h3>
-                    <p>Premium 100% cotton tees (Bella+Canvas). Heavyweight hoodies (Gildan). Garments that feel good on real bodies.</p>
+                    <p>100% cotton that breathes. Heavyweight hoodies that actually keep you warm. No scratchy seams, no awkward fits. Fabrics chosen because they feel good — on your body, the one you have today.</p>
                 </div>
                 <div class="promise-item">
                     <div class="promise-icon">🔍</div>
                     <h3>Quality Control</h3>
-                    <p>Every order goes through Printful's quality check before shipping. If something's wrong, they reprint. Simple.</p>
+                    <p>Every item is checked before it reaches you. Print not sharp enough? Wrong color? We reprint it. You waited for this — it better be worth the wait.</p>
                 </div>
                 <div class="promise-item">
                     <div class="promise-icon">↩️</div>
                     <h3>Easy Returns</h3>
-                    <p>Not happy? Contact us. We'll sort it out. No drama, no fine print. We're real people too.</p>
+                    <p>30 days. No drama. No fine print. If it doesn't feel like you — send it back, full refund. We're real people. We get it.</p>
                 </div>
             </div>
         </div>
     </section>
 
     <!-- ABOUT SECTION -->
-    <section id="about" class="about">
+    <section id="about" class="about fade-in-section">
         <div class="about-container">
             <div class="about-text">
                 <h2>Who is the DUBIS bear?</h2>
-                <p>He built something real. A career. A family. A life he shows up for every single day.</p>
-                <p>Fashion spent decades designing around a body type that most people don't have. He noticed — and stopped waiting for permission to look good.</p>
-                <p>DUBIS was built for people like him. Maybe like you.</p>
-                <p class="about-tagline">DUBIS — For the rest of us. 🐾</p>
+                <p>He's in his 40s. He built something real — a career, a family, a life he shows up for every single day.</p>
+                <p>He went shopping. Found nothing that fit the body he actually lives in. The clothes assumed a different person — younger, thinner, apologetic.</p>
+                <p>He stopped waiting for fashion to notice him. And built something for the rest of us.</p>
+                <p class="about-tagline">If you've ever felt invisible in a store — you're not invisible here. 🐾</p>
             </div>
             <div class="about-paw">
                 <div class="big-paw">🐾</div>
@@ -229,7 +249,7 @@
     </section>
 
     <!-- CONTACT SECTION -->
-    <section id="contact" class="contact">
+    <section id="contact" class="contact fade-in-section">
         <h2>Get in Touch</h2>
         <p>Questions? Ideas? Just want to say hi?</p>
         <a href="mailto:dubis.brand@gmail.com" class="btn-secondary">dubis.brand@gmail.com</a>
@@ -281,7 +301,7 @@
                 <button onclick="closeCart()" aria-label="Close cart">✕</button>
             </div>
             <div class="cart-items" id="cart-items">
-                <p class="cart-empty">Your cart is empty. Go treat yourself.</p>
+                <p class="cart-empty">Nothing here yet. The right things are one click away. 🐾</p>
             </div>
             <div class="cart-footer">
                 <div class="cart-total">Total: $<span id="cart-total">0</span></div>
@@ -371,10 +391,25 @@
                 <h2>Complete Your Order</h2>
             </div>
             <div class="paypal-order-summary" id="paypal-order-summary"></div>
+            <div class="coupon-row">
+                <input type="text" id="coupon-input" placeholder="Coupon code" maxlength="20" autocomplete="off"
+                    oninput="this.value=this.value.toUpperCase()">
+                <button class="coupon-apply-btn" onclick="applyCoupon()">Apply</button>
+            </div>
+            <div id="coupon-feedback" class="coupon-feedback"></div>
             <div class="paypal-divider">
-                <span>Pay securely with</span>
+                <span>Pay with PayPal</span>
             </div>
             <div id="paypal-button-container"></div>
+            <div class="paypal-divider">
+                <span>Or pay with card</span>
+            </div>
+            <div id="card-button-container"></div>
+            <div class="trust-badges">
+                <span class="trust-badge">🔒 SSL Secured</span>
+                <span class="trust-badge">✓ PayPal Protected</span>
+                <span class="trust-badge">↩ 30-Day Returns</span>
+            </div>
             <p class="paypal-note">🔒 Secured by PayPal · 30-day easy returns</p>
         </div>
     </div>
@@ -385,7 +420,7 @@
         <div class="success-content">
             <div class="success-icon">🐾</div>
             <h2>Order Confirmed!</h2>
-            <p>You made the right call.<br>We'll take it from here — confirmation on its way.</p>
+            <p>You made the right call. 🐾<br>Your order is on its way — real quality, made fresh for you.</p>
             <p class="success-sub">Welcome to the rest of us. 🐻</p>
             <button class="btn-primary" onclick="closeSuccessModal()">Keep Exploring</button>
         </div>
@@ -396,5 +431,13 @@
     <script src="js/main.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/paypal.js"></script>
+    <script>
+      // Page view tracking
+      fetch('/api/analytics/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: location.pathname, referrer: document.referrer || null })
+      }).catch(() => {});
+    </script>
 </body>
 </html>

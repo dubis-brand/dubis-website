@@ -248,10 +248,12 @@ async function openMyOrders() {
     const { data: orders, error } = await _sb
         .from('orders')
         .select('*')
+        .eq('user_id', _currentUser.id)
         .order('created_at', { ascending: false });
 
     if (error) {
-        container.innerHTML = '<p class="orders-empty">Could not load orders. Please try again.</p>';
+        console.error('Orders load error:', error);
+        container.innerHTML = `<p class="orders-empty">Could not load orders. Please try again.<br><small style="opacity:0.5">${error.message || error.code || ''}</small></p>`;
         return;
     }
     if (!orders || orders.length === 0) {
@@ -288,7 +290,7 @@ async function openMyOrders() {
             </div>
             <div class="order-card-footer">
                 <span>Total: <strong>$${Number(o.total_amount).toFixed(2)}</strong></span>
-                ${o.tracking_number ? `<a class="order-tracking" href="https://track.aftership.com/${o.tracking_number}" target="_blank">Track shipment →</a>` : ''}
+                ${(o.tracking_url || o.tracking_number) ? `<a class="order-tracking" href="${o.tracking_url || 'https://www.dhl.com/en/express/tracking.html?AWB=' + o.tracking_number + '&brand=DHL'}" target="_blank">🚚 Track on DHL →</a>` : ''}
             </div>
         </div>`;
     }).join('');

@@ -82,9 +82,10 @@ module.exports = async function handler(req, res) {
     }
 
     // ── Compute summary stats ─────────────────────────────────────
-    const totalRevenue = orders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+    const activeOrders = orders.filter(o => o.status !== 'cancelled');
+    const totalRevenue  = activeOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
     const today = new Date().toISOString().slice(0, 10);
-    const todayRevenue = orders
+    const todayRevenue  = activeOrders
         .filter(o => o.created_at?.slice(0, 10) === today)
         .reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
 
@@ -97,6 +98,7 @@ module.exports = async function handler(req, res) {
         orders,
         stats: {
             total: orders.length,
+            activeTotal: activeOrders.length,
             totalRevenue: totalRevenue.toFixed(2),
             todayRevenue: todayRevenue.toFixed(2),
             statusCounts,

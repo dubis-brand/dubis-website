@@ -9,6 +9,44 @@ const PAYPAL_SANDBOX_CLIENT_ID = 'AZj2dQOOGG3j_JixU4GuhgZhgmzMp6qWO8zzyPd6E5pV66
 const PAYPAL_CLIENT_ID = PAYPAL_ENV === 'live' ? PAYPAL_LIVE_CLIENT_ID : PAYPAL_SANDBOX_CLIENT_ID;
 
 let paypalLoaded = false;
+let appliedCoupon = null; // { code, discount_amount, final_total, name }
+
+async function applyCoupon() {
+    const code = (document.getElementById('coupon-input')?.value || '').trim().toUpperCase();
+    const fb = document.getElementById('coupon-feedback');
+    if (!code) { fb.textContent = 'Please enter a coupon code.'; fb.className = 'coupon-feedback error'; return; }
+    fb.textContent = 'Checking…'; fb.className = 'coupon-feedback';
+    const cartTotal = cart.reduce((sum, item) => sum + item.price, 0);
+    try {
+        const res = await fetch('/api/coupons/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, cartTotal })
+        });
+        const data = await res.json();
+        if (data.valid) {
+            appliedCoupon = data;
+            const discStr = data.discount_type === 'percentage'
+                ? `${data.discount_value}% off`
+                : `$${data.discount_value} off`;
+            fb.textContent = `Coupon applied: ${data.name} — ${discStr}. New total: $${data.final_total.toFixed(2)}`;
+            fb.className = 'coupon-feedback success';
+            updateCartTotalDisplay(data.final_total);
+        } else {
+            appliedCoupon = null;
+            fb.textContent = data.error || 'Invalid coupon code.';
+            fb.className = 'coupon-feedback error';
+        }
+    } catch { fb.textContent = 'Could not validate coupon. Try again.'; fb.className = 'coupon-feedback error'; }
+}
+
+function updateCartTotalDisplay(total) {
+    const summaryEl = document.getElementById('paypal-order-summary');
+    if (summaryEl) {
+        const totalEl = summaryEl.querySelector('.summary-total');
+        if (totalEl) totalEl.textContent = `Total: $${total.toFixed(2)}`;
+    }
+}
 
 // ===== CHECKOUT ENTRY POINT =====
 async function checkout() {
@@ -30,6 +68,11 @@ async function checkout() {
     document.body.style.overflow = 'hidden';
 
     document.getElementById('paypal-button-container').innerHTML = '';
+    appliedCoupon = null;
+    const cpInput = document.getElementById('coupon-input');
+    const cpFb = document.getElementById('coupon-feedback');
+    if (cpInput) cpInput.value = '';
+    if (cpFb) { cpFb.textContent = ''; cpFb.className = 'coupon-feedback'; }
 
     if (USE_SDK) {
         try {
@@ -111,143 +154,173 @@ function loadPayPalSDK() {
 }
 
 function renderPayPalButtons() {
-    const total = cart.reduce((sum, item) => sum + item.price, 0);
+    const cartTotal = cart.reduce((sum, item) => sum + item.price, 0);
 
+    const createOrder = (data, actions) => {
+        const total = appliedCoupon ? appliedCoupon.final_total : cartTotal;
+        return actions.order.create({
+        purchase_units: [{
+            description: 'DUBIS Clothing Order',
+            amount: {
+                currency_code: 'USD',
+                value: total.toFixed(2),
+                breakdown: { item_total: { currency_code: 'USD', value: total.toFixed(2) } }
+            },
+            items: cart.map(item => ({
+                name:        item.phrase.substring(0, 127),
+                unit_amount: { currency_code: 'USD', value: item.price.toFixed(2) },
+                quantity:    '1',
+                description: `${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}`
+            }))
+        }],
+        application_context: { brand_name: 'DUBIS' }
+    });
+    };
+
+    const onApprove = async (data, actions) => {
+            try {
+                const details  = await actions.order.capture();
+                const shipping = details.purchase_units[0]?.shipping;
+
+                const shippingAddress = {
+                    name:           shipping?.name?.full_name || '',
+                    address_line_1: shipping?.address?.address_line_1 || '',
+                    address_line_2: shipping?.address?.address_line_2 || '',
+                    admin_area_1:   shipping?.address?.admin_area_1 || '',
+                    admin_area_2:   shipping?.address?.admin_area_2 || '',
+                    country_code:   shipping?.address?.country_code || '',
+                    postal_code:    shipping?.address?.postal_code || '',
+                };
+
+                const cartSnapshot = cart.map(item => ({
+                    id:            item.id,
+                    type:          item.type,
+                    gender:        item.gender   || 'unisex',
+                    designRef:     item.designRef || null,
+                    phrase:        item.phrase,
+                    typeLabel:     item.typeLabel,
+                    price:         item.price,
+                    selectedSize:  item.selectedSize,
+                    selectedColor: item.selectedColor,
+                }));
+
+                // ── 1. Send to Gelato ────────────────────────────────
+                let printfulOrderId = null;
+                try {
+                    const pfRes  = await fetch('/api/create-gelato-order', {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body:    JSON.stringify({
+                            paypalOrderId:   details.id,
+                            buyerEmail:      details.payer?.email_address || '',
+                            shippingAddress,
+                            cartItems:       cartSnapshot,
+                        }),
+                    });
+                    const pfData = await pfRes.json();
+                    if (pfData.gelatoOrderId)  printfulOrderId = String(pfData.gelatoOrderId);
+                    if (pfData.printfulOrderId && !printfulOrderId) printfulOrderId = String(pfData.printfulOrderId);
+                } catch (err) {
+                    console.error('Gelato dispatch failed:', err);
+                }
+
+                // ── 2. Save order to Supabase DB ─────────────────────
+                let savedOrderId = null;
+                try {
+                    const token = await getAuthToken();
+                    const saveRes = await fetch('/api/orders/save', {
+                        method:  'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({
+                            paypalOrderId:   details.id,
+                            buyerEmail:      details.payer?.email_address || '',
+                            shippingAddress,
+                            cartItems:       cartSnapshot,
+                            printfulOrderId,
+                            couponCode:      appliedCoupon?.code || null,
+                            discountAmount:  appliedCoupon?.discount_amount || null,
+                        }),
+                    });
+                    const saveData = await saveRes.json();
+                    if (saveData.orderId) savedOrderId = saveData.orderId;
+                } catch (err) {
+                    console.error('Order save failed:', err);
+                }
+
+                // ── 3. Send confirmation email ────────────────────────
+                try {
+                    const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+                    await fetch('/api/email/confirm-order', {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            buyerEmail:   details.payer?.email_address || '',
+                            buyerName:    user?.user_metadata?.full_name || details.payer?.name?.given_name || '',
+                            orderId:      savedOrderId,
+                            paypalOrderId: details.id,
+                            items:        cartSnapshot,
+                            totalAmount:  cartSnapshot.reduce((s, i) => s + i.price, 0),
+                        }),
+                    });
+                } catch (err) {
+                    console.error('Confirmation email failed:', err);
+                }
+                // ── 4. GA4 purchase event ─────────────────────────────
+                if (typeof gtag !== 'undefined') {
+                    const orderValue = cartSnapshot.reduce((s, i) => s + (Number(i.price) || 0), 0);
+                    gtag('event', 'purchase', {
+                        transaction_id: details.id,
+                        value:          orderValue,
+                        currency:       'USD',
+                        items: cartSnapshot.map((item, idx) => ({
+                            item_id:       String(idx + 1),
+                            item_name:     item.phrase || item.type || 'DUBIS item',
+                            item_category: item.typeLabel || item.type || '',
+                            price:         Number(item.price) || 0,
+                            quantity:      1,
+                        })),
+                    });
+                }
+                // ─────────────────────────────────────────────────────
+
+                closePaypalModal();
+                cart = [];
+                updateCartCount();
+                showSuccessModal();
+            } catch (err) {
+                console.error('PayPal capture error:', err);
+                const issue = err?.details?.[0]?.issue;
+                if (issue === 'INSTRUMENT_DECLINED') {
+                    return actions.restart();
+                }
+                showPaymentError('Payment could not be completed (' + (issue || err?.message || 'unknown') + '). Please try again.');
+            }
+    };
+
+    const onError = (err) => {
+        console.error('PayPal error:', err);
+        showPaymentError('Payment failed. Please try again or contact support.');
+    };
+
+    // PayPal button
     paypal.Buttons({
+        fundingSource: paypal.FUNDING.PAYPAL,
         style: { color: 'black', shape: 'rect', label: 'pay', height: 50 },
-
-        createOrder: (data, actions) => actions.order.create({
-            purchase_units: [{
-                description: 'DUBIS Clothing Order',
-                amount: {
-                    currency_code: 'USD',
-                    value: total.toFixed(2),
-                    breakdown: { item_total: { currency_code: 'USD', value: total.toFixed(2) } }
-                },
-                items: cart.map(item => ({
-                    name:        item.phrase.substring(0, 127),
-                    unit_amount: { currency_code: 'USD', value: item.price.toFixed(2) },
-                    quantity:    '1',
-                    description: `${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}`
-                }))
-            }],
-            application_context: { brand_name: 'DUBIS', shipping_preference: 'GET_FROM_FILE' }
-        }),
-
-        onApprove: async (data, actions) => {
-            const details  = await actions.order.capture();
-            const shipping = details.purchase_units[0]?.shipping;
-
-            const shippingAddress = {
-                name:           shipping?.name?.full_name || '',
-                address_line_1: shipping?.address?.address_line_1 || '',
-                address_line_2: shipping?.address?.address_line_2 || '',
-                admin_area_1:   shipping?.address?.admin_area_1 || '',
-                admin_area_2:   shipping?.address?.admin_area_2 || '',
-                country_code:   shipping?.address?.country_code || '',
-                postal_code:    shipping?.address?.postal_code || '',
-            };
-
-            const cartSnapshot = cart.map(item => ({
-                id:            item.id,
-                type:          item.type,
-                phrase:        item.phrase,
-                typeLabel:     item.typeLabel,
-                price:         item.price,
-                selectedSize:  item.selectedSize,
-                selectedColor: item.selectedColor,
-            }));
-
-            // ── 1. Send to Gelato ────────────────────────────────
-            let printfulOrderId = null;
-            try {
-                const pfRes  = await fetch('/api/create-gelato-order', {
-                    method:  'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body:    JSON.stringify({
-                        paypalOrderId:   details.id,
-                        buyerEmail:      details.payer?.email_address || '',
-                        shippingAddress,
-                        cartItems:       cartSnapshot,
-                    }),
-                });
-                const pfData = await pfRes.json();
-                if (pfData.gelatoOrderId)  printfulOrderId = String(pfData.gelatoOrderId);
-                if (pfData.printfulOrderId && !printfulOrderId) printfulOrderId = String(pfData.printfulOrderId);
-            } catch (err) {
-                console.error('Gelato dispatch failed:', err);
-            }
-
-            // ── 2. Save order to Supabase DB ─────────────────────
-            let savedOrderId = null;
-            try {
-                const token = await getAuthToken();
-                const saveRes = await fetch('/api/orders/save', {
-                    method:  'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                    },
-                    body: JSON.stringify({
-                        paypalOrderId:   details.id,
-                        buyerEmail:      details.payer?.email_address || '',
-                        shippingAddress,
-                        cartItems:       cartSnapshot,
-                        printfulOrderId,
-                    }),
-                });
-                const saveData = await saveRes.json();
-                if (saveData.orderId) savedOrderId = saveData.orderId;
-            } catch (err) {
-                console.error('Order save failed:', err);
-            }
-
-            // ── 3. Send confirmation email ────────────────────────
-            try {
-                const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
-                await fetch('/api/email/confirm-order', {
-                    method:  'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        buyerEmail:   details.payer?.email_address || '',
-                        buyerName:    user?.user_metadata?.full_name || details.payer?.name?.given_name || '',
-                        orderId:      savedOrderId,
-                        paypalOrderId: details.id,
-                        items:        cartSnapshot,
-                        totalAmount:  cartSnapshot.reduce((s, i) => s + i.price, 0),
-                    }),
-                });
-            } catch (err) {
-                console.error('Confirmation email failed:', err);
-            }
-            // ── 4. GA4 purchase event ─────────────────────────────
-            if (typeof gtag !== 'undefined') {
-                const orderValue = cartSnapshot.reduce((s, i) => s + (Number(i.price) || 0), 0);
-                gtag('event', 'purchase', {
-                    transaction_id: details.id,
-                    value:          orderValue,
-                    currency:       'USD',
-                    items: cartSnapshot.map((item, idx) => ({
-                        item_id:       String(idx + 1),
-                        item_name:     item.phrase || item.type || 'DUBIS item',
-                        item_category: item.typeLabel || item.type || '',
-                        price:         Number(item.price) || 0,
-                        quantity:      1,
-                    })),
-                });
-            }
-            // ─────────────────────────────────────────────────────
-
-            closePaypalModal();
-            cart = [];
-            updateCartCount();
-            showSuccessModal();
-        },
-
-        onError:  () => renderDirectPayPalButton(),
-        onCancel: () => {}
-
+        createOrder, onApprove, onError, onCancel: () => {}
     }).render('#paypal-button-container');
+
+    // Card button (no PayPal account needed)
+    const cardButton = paypal.Buttons({
+        fundingSource: paypal.FUNDING.CARD,
+        style: { color: 'black', shape: 'rect', label: 'pay', height: 50 },
+        createOrder, onApprove, onError, onCancel: () => {}
+    });
+    if (cardButton.isEligible()) {
+        cardButton.render('#card-button-container');
+    }
 }
 
 // ===== ORDER SUMMARY =====
@@ -290,6 +363,20 @@ function showSuccessModal() {
 
 function closeSuccessModal() {
     document.getElementById('success-modal').classList.remove('open');
+}
+
+// ===== PAYMENT STATE HELPERS =====
+function showPaymentProcessing() {
+    const container = document.getElementById('paypal-button-container');
+    if (container) container.innerHTML = '<div style="text-align:center;padding:32px;color:#666">Processing payment…</div>';
+}
+
+function showPaymentError(msg) {
+    const container = document.getElementById('paypal-button-container');
+    if (container) container.innerHTML = `
+        <p style="color:#c00;text-align:center;padding:16px;margin:0">${msg}</p>
+        <button onclick="closePaypalModal()" style="display:block;width:100%;margin-top:8px;padding:12px;background:#111;color:#fff;border:none;cursor:pointer;font-size:14px">Close</button>
+    `;
 }
 
 // Handle return from PayPal direct link

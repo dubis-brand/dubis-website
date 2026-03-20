@@ -14,36 +14,54 @@ const DESIGN_BASE_URL = 'https://www.dubis.net/designs';
 // ─────────────────────────────────────────────────────────────────
 // COLOR MAP — DUBIS display name → Gelato color code
 // Verified against Gelato catalog API (March 2026)
-// T-shirt: black, white, natural, charcoal, navy, sports-grey, sand
-// Hoodie:  black, navy, white, dark-heather (charcoal alt), sand (cream alt)
+// T-shirt: black, white, natural, charcoal, navy, sports-grey, sand, red, forest
+// Hoodie:  black, navy, white, dark-heather, sand
 // ─────────────────────────────────────────────────────────────────
 const COLOR_MAP = {
   tshirt: {
-    'Black':       'black',
-    'White':       'white',
-    'Cream':       'natural',
-    'Honey Brown': 'sand',
-    'Charcoal':    'charcoal',
-    'Navy':        'navy',
-    'Gray':        'sports-grey',
+    'Black':        'black',
+    'White':        'white',
+    'Cream':        'natural',
+    'Honey Brown':  'sand',
+    'Charcoal':     'charcoal',
+    'Navy':         'navy',
+    'Gray':         'sports-grey',
+    'Red':          'red',
+    'Forest Green': 'forest',
   },
   hoodie: {
-    'Black':       'black',
-    'White':       'white',
-    'Cream':       'sand',
-    'Honey Brown': 'sand',
-    'Charcoal':    'dark-heather',
-    'Navy':        'navy',
-    'Gray':        'sports-grey',
+    'Black':        'black',
+    'White':        'white',
+    'Cream':        'sand',
+    'Honey Brown':  'sand',
+    'Charcoal':     'dark-heather',
+    'Navy':         'navy',
+    'Gray':         'sports-grey',
+    'Forest Green': 'forest',
+  },
+  ziphoodie: {
+    'Black':        'black',
+    'White':        'white',
+    'Charcoal':     'dark-heather',
+    'Navy':         'navy',
+    'Honey Brown':  'sand',
+  },
+  longsleeve: {
+    'Black':        'black',
+    'White':        'white',
+    'Cream':        'natural',
+    'Navy':         'navy',
+    'Forest Green': 'forest',
+    'Gray':         'sports-grey',
   },
   cap: {
-    'Black':       'black',
-    'White':       'white',
-    'Cream':       'natural',
-    'Honey Brown': 'sand',
-    'Charcoal':    'dark-heather',
-    'Navy':        'navy',
-    'Gray':        'sports-grey',
+    'Black':        'black',
+    'White':        'white',
+    'Cream':        'natural',
+    'Honey Brown':  'sand',
+    'Charcoal':     'dark-heather',
+    'Navy':         'navy',
+    'Gray':         'sports-grey',
   },
 };
 
@@ -58,17 +76,25 @@ const SIZE_MAP = {
 // ─────────────────────────────────────────────────────────────────
 // DARK COLORS — use white design files on these garments
 // ─────────────────────────────────────────────────────────────────
-const DARK_COLORS = new Set(['Black', 'Charcoal', 'Navy']);
+const DARK_COLORS = new Set(['Black', 'Charcoal', 'Navy', 'Forest Green']);
 
 // ─────────────────────────────────────────────────────────────────
-// Build Gelato productUid from item type, color, size
+// Build Gelato productUid from item type, color, size, gender
+// gender: 'men'|'unisex' → gcu_unisex, 'women' → gcu_women
 // ─────────────────────────────────────────────────────────────────
-function buildProductUid(type, gelatoColor, gelatoSize) {
+function buildProductUid(type, gelatoColor, gelatoSize, gender = 'unisex') {
+  const genderCode = gender === 'women' ? 'women' : 'unisex';
   if (type === 'tshirt') {
-    return `apparel_product_gca_t-shirt_gsc_crewneck_gcu_unisex_gqa_classic_gsi_${gelatoSize}_gco_${gelatoColor}_gpr_4-4`;
+    return `apparel_product_gca_t-shirt_gsc_crewneck_gcu_${genderCode}_gqa_classic_gsi_${gelatoSize}_gco_${gelatoColor}_gpr_4-4`;
   }
   if (type === 'hoodie') {
-    return `apparel_product_gca_hoodie_gsc_pullover_gcu_unisex_gqa_classic_gsi_${gelatoSize}_gco_${gelatoColor}_gpr_4-4`;
+    return `apparel_product_gca_hoodie_gsc_pullover_gcu_${genderCode}_gqa_classic_gsi_${gelatoSize}_gco_${gelatoColor}_gpr_4-4`;
+  }
+  if (type === 'ziphoodie') {
+    return `apparel_product_gca_hoodie_gsc_zip_gcu_${genderCode}_gqa_classic_gsi_${gelatoSize}_gco_${gelatoColor}_gpr_4-4`;
+  }
+  if (type === 'longsleeve') {
+    return `apparel_product_gca_long-sleeve_gsc_crewneck_gcu_${genderCode}_gqa_classic_gsi_${gelatoSize}_gco_${gelatoColor}_gpr_4-4`;
   }
   if (type === 'cap') {
     return `apparel_product_gca_dad-hat_gsc_classic_gcu_unisex_gqa_classic_gsi_os_gco_${gelatoColor}_gpr_4-0`;
@@ -79,13 +105,26 @@ function buildProductUid(type, gelatoColor, gelatoSize) {
 // ─────────────────────────────────────────────────────────────────
 // Select design file URLs for an item
 // dark garment → white ink design; light garment → dark ink design
+// designRef: use a different product's design file (for shared phrases or placeholders)
 // ─────────────────────────────────────────────────────────────────
-function getDesignFiles(productId, color) {
-  const variant = DARK_COLORS.has(color) ? 'white' : 'dark';
+function getDesignFiles(productId, color, designRef) {
+  const variant  = DARK_COLORS.has(color) ? 'white' : 'dark';
+  const designId = designRef || productId;
   return [
-    { type: 'back',  url: `${DESIGN_BASE_URL}/back_design_${productId}_${variant}.png` },
+    { type: 'back',  url: `${DESIGN_BASE_URL}/back_design_${designId}_${variant}.png` },
     { type: 'front', url: `${DESIGN_BASE_URL}/front_logo_${variant}.png` },
   ];
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Normalize postal code — Gelato requires 7 digits, no whitespace
+// Israeli post converted 5-digit → 7-digit by appending '00'
+// ─────────────────────────────────────────────────────────────────
+function normalizePostCode(postCode, country) {
+  if (!postCode) return '';
+  const clean = String(postCode).replace(/\s/g, '');
+  if (country === 'IL' && /^\d{5}$/.test(clean)) return clean + '00';
+  return clean;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -134,7 +173,7 @@ module.exports = async function handler(req, res) {
     const gelatoColor = colorMap[item.selectedColor];
     const gelatoSize  = SIZE_MAP[item.selectedSize];
     const productUid  = gelatoColor && gelatoSize
-      ? buildProductUid(item.type, gelatoColor, gelatoSize)
+      ? buildProductUid(item.type, gelatoColor, gelatoSize, item.gender)
       : null;
     return !productUid;
   });
@@ -157,8 +196,8 @@ module.exports = async function handler(req, res) {
       const gelatoSize  = SIZE_MAP[item.selectedSize];
       return {
         itemReferenceId: `item-${i + 1}`,
-        productUid:      buildProductUid(item.type, gelatoColor, gelatoSize),
-        files:           getDesignFiles(item.id, item.selectedColor),
+        productUid:      buildProductUid(item.type, gelatoColor, gelatoSize, item.gender),
+        files:           getDesignFiles(item.id, item.selectedColor, item.designRef),
         quantity:        1,
       };
     }),
@@ -172,7 +211,7 @@ module.exports = async function handler(req, res) {
       city:         shippingAddress.admin_area_2,
       state:        shippingAddress.admin_area_1 || '',
       country:      shippingAddress.country_code,
-      postCode:     shippingAddress.postal_code,
+      postCode:     normalizePostCode(shippingAddress.postal_code, shippingAddress.country_code),
     },
   };
 

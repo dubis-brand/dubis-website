@@ -18,7 +18,9 @@ module.exports = async function handler(req, res) {
         buyerEmail,
         shippingAddress,
         cartItems,
-        printfulOrderId
+        printfulOrderId,
+        couponCode,
+        discountAmount
     } = req.body;
 
     if (!paypalOrderId || !cartItems || !shippingAddress) {
@@ -48,19 +50,28 @@ module.exports = async function handler(req, res) {
 
     const totalAmount = (cartItems || []).reduce((sum, item) => sum + (Number(item.price) || 0), 0);
 
+    const insertData = {
+        user_id:           userId,
+        paypal_order_id:   paypalOrderId,
+        printful_order_id: printfulOrderId || null,
+        status:            'pending',
+        buyer_email:       buyerEmail || '',
+        shipping_address:  shippingAddress,
+        items:             cartItems,
+        total_amount:      totalAmount,
+        currency:          'USD'
+    };
+    if (couponCode) insertData.coupon_code = String(couponCode).toUpperCase();
+    if (discountAmount) insertData.discount_amount = Number(discountAmount);
+
+    // Increment coupon usage count
+    if (couponCode) {
+        await supabase.rpc('increment_coupon_uses', { coupon_code: String(couponCode).toUpperCase() });
+    }
+
     const { data, error } = await supabase
         .from('orders')
-        .insert({
-            user_id:           userId,
-            paypal_order_id:   paypalOrderId,
-            printful_order_id: printfulOrderId || null,
-            status:            'pending',
-            buyer_email:       buyerEmail || '',
-            shipping_address:  shippingAddress,
-            items:             cartItems,
-            total_amount:      totalAmount,
-            currency:          'USD'
-        })
+        .insert(insertData)
         .select('id')
         .single();
 

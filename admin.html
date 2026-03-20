@@ -6,6 +6,7 @@
   <title>DUBIS Admin</title>
   <meta name="robots" content="noindex, nofollow">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -339,6 +340,14 @@
 
     .track-link:hover { text-decoration: underline; }
 
+    .sync-btn {
+      background: none; border: 1px solid #333; color: #888;
+      border-radius: 4px; padding: 1px 5px; font-size: .8rem;
+      cursor: pointer; margin-left: 4px; transition: color .2s, border-color .2s;
+    }
+    .sync-btn:hover { color: #c8a96e; border-color: #c8a96e; }
+    .sync-btn:disabled { opacity: .4; cursor: default; }
+
     .items-summary { color: #888; font-size: .78rem; max-width: 200px; }
 
     .loading {
@@ -428,6 +437,62 @@
 
     .users-count { color: #555; font-size: .8rem; margin-left: auto; }
 
+    /* ── Charts ── */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 220px 220px;
+      gap: 1rem;
+      margin: 1.5rem 0;
+    }
+    .chart-card {
+      background: #141414;
+      border: 1px solid #1e1e1e;
+      border-radius: 10px;
+      padding: 1rem 1.2rem;
+    }
+    .chart-title {
+      font-size: .7rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #555;
+      margin-bottom: .75rem;
+    }
+    .chart-card canvas { max-height: 180px; }
+
+    /* ── Expandable Order Row ── */
+    tr.order-main-row { cursor: pointer; }
+    tr.order-main-row:hover td { background: rgba(200,169,110,.04); }
+    tr.order-detail-row td { padding: 0; border-bottom: 1px solid #1e1e1e; }
+    tr.order-detail-row.hidden { display: none; }
+    .order-detail-panel {
+      padding: .8rem 1.2rem;
+      background: #111;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: .5rem .8rem;
+      font-size: .78rem;
+      color: #888;
+    }
+    .order-detail-panel strong { color: #c8a96e; }
+
+    /* ── Items Report ── */
+    .items-report { margin-top: 2rem; }
+    .items-report h3 { font-size: .75rem; letter-spacing: 1.5px; text-transform: uppercase; color: #555; margin-bottom: .75rem; }
+    .items-report table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    .items-report th { padding: .5rem .9rem; text-align: left; color: #555; font-size: .68rem; letter-spacing: 1px; text-transform: uppercase; border-bottom: 1px solid #1e1e1e; }
+    .items-report td { padding: .6rem .9rem; border-bottom: 1px solid #141414; }
+    .items-report .qty { color: #c8a96e; font-weight: 600; }
+
+    /* ── Analytics Section ── */
+    .analytics-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    .analytics-chart { background: #141414; border: 1px solid #1e1e1e; border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1.5rem; }
+    .analytics-chart canvas { max-height: 200px; }
+    .top-pages-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    .top-pages-table th { padding: .5rem .9rem; text-align: left; color: #555; font-size: .68rem; letter-spacing: 1px; text-transform: uppercase; border-bottom: 1px solid #1e1e1e; }
+    .top-pages-table td { padding: .6rem .9rem; border-bottom: 1px solid #141414; }
+    .page-bar { height: 4px; background: #c8a96e; border-radius: 2px; margin-top: 3px; }
+
     /* ── Responsive ── */
     @media (max-width: 640px) {
       .main-content { padding: 1rem; }
@@ -435,6 +500,8 @@
       td.hide-mobile, th.hide-mobile { display: none; }
       .topbar-nav { gap: 0; }
       .nav-tab { padding: .4rem .6rem; font-size: .72rem; }
+      .charts-row { grid-template-columns: 1fr; }
+      .analytics-stats { grid-template-columns: 1fr 1fr; }
     }
   </style>
 </head>
@@ -471,8 +538,10 @@
   <div class="topbar">
     <div class="topbar-logo">DUBIS</div>
     <nav class="topbar-nav">
-      <button class="nav-tab active" id="nav-orders" onclick="showSection('orders',this)">📋 Orders</button>
-      <button class="nav-tab" id="nav-users"  onclick="showSection('users',this)">👥 Users</button>
+      <button class="nav-tab active" id="nav-orders"    onclick="showSection('orders',this)">📋 Orders</button>
+      <button class="nav-tab" id="nav-analytics" onclick="showSection('analytics',this)">📊 Analytics</button>
+      <button class="nav-tab" id="nav-users"     onclick="showSection('users',this)">👥 Users</button>
+      <button class="nav-tab" id="nav-coupons"   onclick="showSection('coupons',this)">🏷️ Coupons</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -486,7 +555,7 @@
   <div id="section-orders">
     <div class="stats-grid" id="stats-grid">
       <div class="stat-card">
-        <div class="stat-label">Total Orders</div>
+        <div class="stat-label">Active Orders</div>
         <div class="stat-value" id="stat-total">—</div>
       </div>
       <div class="stat-card">
@@ -502,8 +571,28 @@
         <div class="stat-value" id="stat-pending">—</div>
       </div>
       <div class="stat-card">
+        <div class="stat-label">In Production</div>
+        <div class="stat-value" id="stat-production">—</div>
+      </div>
+      <div class="stat-card">
         <div class="stat-label">Shipped</div>
         <div class="stat-value" id="stat-shipped">—</div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-row">
+      <div class="chart-card">
+        <div class="chart-title">Revenue — Last 30 Days</div>
+        <canvas id="chart-revenue"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">By Status</div>
+        <canvas id="chart-status"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Items Sold</div>
+        <canvas id="chart-items"></canvas>
       </div>
     </div>
 
@@ -536,7 +625,45 @@
       </table>
       <div class="empty" id="table-empty" style="display:none">No orders found.</div>
     </div>
+
+    <!-- Items sold report -->
+    <div class="items-report" id="items-report" style="display:none">
+      <h3>Sales by Item</h3>
+      <table>
+        <thead><tr><th>Product</th><th>Size</th><th>Color</th><th>Qty</th><th>Revenue</th></tr></thead>
+        <tbody id="items-report-body"></tbody>
+      </table>
+    </div>
   </div><!-- /section-orders -->
+
+  <!-- ══ ANALYTICS SECTION ════════════════════════════════ -->
+  <div id="section-analytics" style="display:none">
+    <div class="analytics-stats">
+      <div class="stat-card">
+        <div class="stat-label">Total Page Views</div>
+        <div class="stat-value" id="av-total">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Views Today</div>
+        <div class="stat-value" id="av-today">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Last 30 Days</div>
+        <div class="stat-value" id="av-month">—</div>
+      </div>
+    </div>
+    <div class="analytics-chart">
+      <div class="chart-title">Page Views — Last 30 Days</div>
+      <canvas id="chart-pageviews"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Top Pages (Last 30 Days)</div>
+      <table class="top-pages-table" id="top-pages-table">
+        <thead><tr><th>Page</th><th>Views</th><th style="width:120px">Share</th></tr></thead>
+        <tbody id="top-pages-body"></tbody>
+      </table>
+    </div>
+  </div><!-- /section-analytics -->
 
   <!-- ══ USERS SECTION ═══════════════════════════════════ -->
   <div id="section-users" style="display:none">
@@ -564,6 +691,91 @@
       <div class="empty" id="users-empty" style="display:none">No users found.</div>
     </div>
   </div><!-- /section-users -->
+
+  <!-- ══ COUPONS SECTION ═════════════════════════════════ -->
+  <div id="section-coupons" style="display:none">
+    <div class="filters" style="justify-content:space-between;align-items:center">
+      <h2 style="margin:0;font-size:1.1rem;color:#e8e0d5">Discount Coupons</h2>
+      <button class="btn-sm" style="background:#c8a96e;color:#1a1a1a;font-weight:700" onclick="openCouponModal()">+ New Coupon</button>
+    </div>
+    <div class="table-wrap">
+      <table id="coupons-table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Name</th>
+            <th>Discount</th>
+            <th>Valid Until</th>
+            <th>Uses</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="coupons-tbody"></tbody>
+      </table>
+      <div class="empty" id="coupons-empty" style="display:none">No coupons yet.</div>
+    </div>
+  </div><!-- /section-coupons -->
+
+  <!-- Coupon Modal -->
+  <div id="coupon-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
+    <div style="background:#1e1e1e;border-radius:12px;padding:2rem;width:min(480px,90vw);max-height:90vh;overflow-y:auto">
+      <h3 style="color:#e8e0d5;margin:0 0 1.5rem" id="coupon-modal-title">New Coupon</h3>
+      <div style="display:grid;gap:1rem">
+        <label style="color:#aaa;font-size:.85rem">
+          Coupon Code *
+          <input id="cp-code" type="text" placeholder="SUMMER20" maxlength="20"
+            style="display:block;width:100%;margin-top:.3rem;padding:.6rem .8rem;background:#111;border:1px solid #333;border-radius:6px;color:#e8e0d5;text-transform:uppercase;font-size:.95rem">
+        </label>
+        <label style="color:#aaa;font-size:.85rem">
+          Name / Description *
+          <input id="cp-name" type="text" placeholder="Summer Sale 20%"
+            style="display:block;width:100%;margin-top:.3rem;padding:.6rem .8rem;background:#111;border:1px solid #333;border-radius:6px;color:#e8e0d5;font-size:.95rem">
+        </label>
+        <div style="color:#aaa;font-size:.85rem">
+          Discount Type *
+          <div style="display:flex;gap:1rem;margin-top:.4rem">
+            <label style="color:#e8e0d5;display:flex;align-items:center;gap:.4rem">
+              <input type="radio" name="cp-type" value="percentage" checked> Percentage (%)
+            </label>
+            <label style="color:#e8e0d5;display:flex;align-items:center;gap:.4rem">
+              <input type="radio" name="cp-type" value="fixed"> Fixed Amount ($)
+            </label>
+          </div>
+        </div>
+        <label style="color:#aaa;font-size:.85rem">
+          Discount Value *
+          <input id="cp-value" type="number" min="0.01" step="0.01" placeholder="20"
+            style="display:block;width:100%;margin-top:.3rem;padding:.6rem .8rem;background:#111;border:1px solid #333;border-radius:6px;color:#e8e0d5;font-size:.95rem">
+        </label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
+          <label style="color:#aaa;font-size:.85rem">
+            Valid From *
+            <input id="cp-from" type="date"
+              style="display:block;width:100%;margin-top:.3rem;padding:.6rem .8rem;background:#111;border:1px solid #333;border-radius:6px;color:#e8e0d5;font-size:.95rem">
+          </label>
+          <label style="color:#aaa;font-size:.85rem">
+            Valid Until *
+            <input id="cp-until" type="date"
+              style="display:block;width:100%;margin-top:.3rem;padding:.6rem .8rem;background:#111;border:1px solid #333;border-radius:6px;color:#e8e0d5;font-size:.95rem">
+          </label>
+        </div>
+        <label style="color:#aaa;font-size:.85rem">
+          Max Uses (leave empty = unlimited)
+          <input id="cp-maxuses" type="number" min="1" placeholder="e.g. 100"
+            style="display:block;width:100%;margin-top:.3rem;padding:.6rem .8rem;background:#111;border:1px solid #333;border-radius:6px;color:#e8e0d5;font-size:.95rem">
+        </label>
+        <label style="color:#aaa;font-size:.85rem;display:flex;align-items:center;gap:.5rem">
+          <input id="cp-enabled" type="checkbox" checked style="width:16px;height:16px"> Enabled
+        </label>
+      </div>
+      <div style="display:flex;gap:.8rem;margin-top:1.5rem;justify-content:flex-end">
+        <button onclick="closeCouponModal()" style="padding:.6rem 1.2rem;border-radius:6px;background:#333;color:#aaa;cursor:pointer">Cancel</button>
+        <button onclick="saveCoupon()" style="padding:.6rem 1.4rem;border-radius:6px;background:#c8a96e;color:#1a1a1a;font-weight:700;cursor:pointer">Save Coupon</button>
+      </div>
+      <p id="coupon-modal-error" style="color:#ef4444;font-size:.82rem;margin:.5rem 0 0;min-height:1rem"></p>
+    </div>
+  </div>
 
   </div><!-- /main-content -->
 </div><!-- /dashboard -->
@@ -660,14 +872,17 @@
       _allOrders = json.orders || [];
 
       // Stats
-      document.getElementById('stat-total').textContent   = json.stats.total;
-      document.getElementById('stat-revenue').textContent = `$${json.stats.totalRevenue}`;
-      document.getElementById('stat-today').textContent   = `$${json.stats.todayRevenue}`;
-      document.getElementById('stat-pending').textContent = json.stats.statusCounts.pending || 0;
-      document.getElementById('stat-shipped').textContent = json.stats.statusCounts.shipped || 0;
+      document.getElementById('stat-total').textContent      = json.stats.activeTotal ?? json.stats.total;
+      document.getElementById('stat-revenue').textContent    = `$${json.stats.totalRevenue}`;
+      document.getElementById('stat-today').textContent      = `$${json.stats.todayRevenue}`;
+      document.getElementById('stat-pending').textContent    = json.stats.statusCounts.pending || 0;
+      document.getElementById('stat-production').textContent = json.stats.statusCounts.in_production || 0;
+      document.getElementById('stat-shipped').textContent    = json.stats.statusCounts.shipped || 0;
 
       document.getElementById('table-loading').style.display = 'none';
       renderTable();
+      initCharts(json.stats.statusCounts);
+      buildItemsReport();
 
     } catch(err) {
       document.getElementById('table-loading').textContent = 'Error loading orders: ' + err.message;
@@ -714,36 +929,106 @@
         .join(', ');
       const statusClass = `status-${o.status || 'pending'}`;
       const statusLabel = (o.status || 'pending').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-      const tracking = o.tracking_number
-        ? `<a class="track-link" href="${o.tracking_url || `https://track.aftership.com/${o.tracking_number}`}" target="_blank">${o.tracking_number}</a>`
-        : '<span style="color:#333">—</span>';
+      const trackingLink = o.tracking_number
+        ? `<a class="track-link" href="${o.tracking_url || `https://www.dhl.com/en/express/tracking.html?AWB=${o.tracking_number}&brand=DHL`}" target="_blank">${o.tracking_number}</a>`
+        : '<span style="color:#555">—</span>';
+      const syncBtn = o.printful_order_id
+        ? `<button class="sync-btn" onclick="syncGelato('${o.id}', this)" title="Sync from Gelato">↻</button>`
+        : '';
+
+      const addr = o.shipping_address || {};
+      const addrStr = [addr.name, addr.address_line_1, addr.city, addr.country_code].filter(Boolean).join(', ');
+      const itemsList = (Array.isArray(o.items) ? o.items : [])
+        .map(i => `${i.typeLabel || i.type} ${i.selectedSize || ''} ${i.selectedColor || ''} — $${i.price}`).join('<br>');
 
       return `
-        <tr>
+        <tr class="order-main-row" onclick="toggleOrderDetail('${o.id}')">
           <td>${date}</td>
           <td><span class="order-id">${shortId}</span></td>
           <td class="hide-mobile" style="color:#888;font-size:.8rem">${o.buyer_email || '—'}</td>
           <td><div class="items-summary">${items || '—'}</div></td>
-          <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+          <td id="status-cell-${o.id}"><span class="status-badge ${statusClass}">${statusLabel}</span></td>
           <td class="amount">$${Number(o.total_amount || 0).toFixed(2)}</td>
-          <td class="hide-mobile">${tracking}</td>
+          <td class="hide-mobile" id="tracking-cell-${o.id}" onclick="event.stopPropagation()">${trackingLink} ${syncBtn}</td>
+        </tr>
+        <tr id="detail-${o.id}" class="order-detail-row hidden">
+          <td colspan="7">
+            <div class="order-detail-panel">
+              <div><strong>Items:</strong><br>${itemsList || '—'}</div>
+              <div><strong>Ship to:</strong><br>${addrStr || '—'}</div>
+              <div><strong>Coupon:</strong> ${o.coupon_code || '—'}${o.discount_amount ? ` (−$${o.discount_amount})` : ''}</div>
+              <div><strong>Gelato ID:</strong><br><span style="font-family:monospace;font-size:.72rem;color:#666">${o.printful_order_id || '—'}</span></div>
+            </div>
+          </td>
         </tr>`;
     }).join('');
   }
 
+  // ── Gelato Sync ──────────────────────────────────────
+  async function syncGelato(orderId, btn) {
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return;
+
+    btn.disabled = true;
+    btn.textContent = '…';
+
+    try {
+      const res = await fetch('/api/admin/gelato-sync', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId })
+      });
+      const data = await res.json();
+
+      if (!data.synced) {
+        btn.textContent = '↻';
+        btn.disabled = false;
+        alert(data.reason === 'no_gelato_key' ? 'GELATO_API_KEY not set in Vercel env.' : `Sync failed: ${data.reason}`);
+        return;
+      }
+
+      // Update status cell
+      if (data.status) {
+        const statusCell = document.getElementById(`status-cell-${orderId}`);
+        const label = data.status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        if (statusCell) statusCell.innerHTML = `<span class="status-badge status-${data.status}">${label}</span>`;
+      }
+
+      // Update tracking cell
+      const trackingCell = document.getElementById(`tracking-cell-${orderId}`);
+      if (trackingCell && data.tracking_number) {
+        const href = data.tracking_url || `https://mydhl.express.dhl/en/en/tracking.html#/results?id=${data.tracking_number}`;
+        trackingCell.innerHTML = `<a class="track-link" href="${href}" target="_blank">${data.tracking_number}</a> <button class="sync-btn" onclick="syncGelato('${orderId}', this)" title="Sync from Gelato">↻</button>`;
+      } else {
+        // Log debug info to console for troubleshooting
+        console.log('Gelato sync — no tracking found. Debug:', data._debug, 'gelato_status:', data.gelato_status);
+        btn.textContent = data.gelato_status ? `✓ (${data.gelato_status})` : '✓';
+        setTimeout(() => { btn.textContent = '↻'; btn.disabled = false; }, 3000);
+        return;
+      }
+
+    } catch (e) {
+      console.error('Sync error:', e);
+      btn.textContent = '↻';
+      btn.disabled = false;
+    }
+  }
+
   // ── Section navigation ────────────────────────────────
   let _usersLoaded = false;
+  let _analyticsLoaded = false;
 
   function showSection(name, btn) {
-    document.getElementById('section-orders').style.display = name === 'orders' ? '' : 'none';
-    document.getElementById('section-users').style.display  = name === 'users'  ? '' : 'none';
+    document.getElementById('section-orders').style.display    = name === 'orders'    ? '' : 'none';
+    document.getElementById('section-users').style.display     = name === 'users'     ? '' : 'none';
+    document.getElementById('section-coupons').style.display   = name === 'coupons'   ? '' : 'none';
+    document.getElementById('section-analytics').style.display = name === 'analytics' ? '' : 'none';
     document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-
-    if (name === 'users' && !_usersLoaded) {
-      _usersLoaded = true;
-      loadUsers();
-    }
+    if (name === 'coupons') loadCoupons();
+    if (name === 'users' && !_usersLoaded) { _usersLoaded = true; loadUsers(); }
+    if (name === 'analytics' && !_analyticsLoaded) { _analyticsLoaded = true; loadAnalytics(); }
   }
 
   // ── Users: Load ───────────────────────────────────────
@@ -888,6 +1173,303 @@
   async function adminLogout() {
     await _sb.auth.signOut();
     location.reload();
+  }
+
+  // ══ COUPONS ═══════════════════════════════════════════════
+  let _editingCoupon = null;
+
+  async function loadCoupons() {
+    const token = (await _sb.auth.getSession()).data.session?.access_token;
+    const res = await fetch('/api/admin/coupons', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const { coupons = [] } = await res.json();
+    const tbody = document.getElementById('coupons-tbody');
+    const empty = document.getElementById('coupons-empty');
+
+    if (!coupons.length) {
+      tbody.innerHTML = '';
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
+    tbody.innerHTML = coupons.map(c => {
+      const discStr = c.discount_type === 'percentage'
+        ? `${c.discount_value}%`
+        : `$${c.discount_value}`;
+      const until = new Date(c.valid_until).toLocaleDateString('en-GB');
+      const uses = c.max_uses ? `${c.current_uses}/${c.max_uses}` : `${c.current_uses}/∞`;
+      const expired = new Date(c.valid_until) < new Date();
+      const statusColor = !c.enabled ? '#888' : expired ? '#ef4444' : '#22c55e';
+      const statusText  = !c.enabled ? 'Disabled' : expired ? 'Expired' : 'Active';
+      return `<tr>
+        <td><strong>${c.code}</strong></td>
+        <td>${c.name}</td>
+        <td>${discStr}</td>
+        <td>${until}</td>
+        <td>${uses}</td>
+        <td style="color:${statusColor};font-weight:600">${statusText}</td>
+        <td>
+          <button class="btn-sm" onclick='editCoupon(${JSON.stringify(c)})' style="margin-right:4px">Edit</button>
+          <button class="btn-sm" style="color:#ef4444" onclick="deleteCoupon('${c.code}')">Delete</button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  function openCouponModal(coupon) {
+    _editingCoupon = coupon || null;
+    document.getElementById('coupon-modal-title').textContent = coupon ? 'Edit Coupon' : 'New Coupon';
+    document.getElementById('cp-code').value = coupon?.code || '';
+    document.getElementById('cp-code').disabled = !!coupon;
+    document.getElementById('cp-name').value = coupon?.name || '';
+    document.getElementById('cp-value').value = coupon?.discount_value || '';
+    document.querySelector(`input[name="cp-type"][value="${coupon?.discount_type || 'percentage'}"]`).checked = true;
+    document.getElementById('cp-from').value  = coupon ? coupon.valid_from.split('T')[0] : '';
+    document.getElementById('cp-until').value = coupon ? coupon.valid_until.split('T')[0] : '';
+    document.getElementById('cp-maxuses').value = coupon?.max_uses || '';
+    document.getElementById('cp-enabled').checked = coupon ? coupon.enabled : true;
+    document.getElementById('coupon-modal-error').textContent = '';
+    document.getElementById('coupon-modal').style.display = 'flex';
+  }
+
+  function editCoupon(coupon) { openCouponModal(coupon); }
+
+  function closeCouponModal() {
+    document.getElementById('coupon-modal').style.display = 'none';
+    _editingCoupon = null;
+  }
+
+  async function saveCoupon() {
+    const errEl = document.getElementById('coupon-modal-error');
+    errEl.textContent = '';
+    const payload = {
+      code:          document.getElementById('cp-code').value.trim().toUpperCase(),
+      name:          document.getElementById('cp-name').value.trim(),
+      discount_type: document.querySelector('input[name="cp-type"]:checked').value,
+      discount_value: parseFloat(document.getElementById('cp-value').value),
+      valid_from:    document.getElementById('cp-from').value + 'T00:00:00Z',
+      valid_until:   document.getElementById('cp-until').value + 'T23:59:59Z',
+      max_uses:      parseInt(document.getElementById('cp-maxuses').value) || null,
+      enabled:       document.getElementById('cp-enabled').checked
+    };
+    if (!payload.code || !payload.name || !payload.discount_value || !payload.valid_from || !payload.valid_until) {
+      errEl.textContent = 'Please fill in all required fields.';
+      return;
+    }
+    const token = (await _sb.auth.getSession()).data.session?.access_token;
+    const method = _editingCoupon ? 'PUT' : 'POST';
+    const res = await fetch('/api/admin/coupons', {
+      method,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.error) { errEl.textContent = data.error; return; }
+    closeCouponModal();
+    loadCoupons();
+  }
+
+  async function deleteCoupon(code) {
+    if (!confirm(`Delete coupon "${code}"?`)) return;
+    const token = (await _sb.auth.getSession()).data.session?.access_token;
+    await fetch(`/api/admin/coupons?code=${encodeURIComponent(code)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    loadCoupons();
+  }
+
+  // ── Toggle expandable order detail row ────────────────
+  function toggleOrderDetail(orderId) {
+    const row = document.getElementById(`detail-${orderId}`);
+    if (row) row.classList.toggle('hidden');
+  }
+
+  // ── Charts ────────────────────────────────────────────
+  let _charts = {};
+
+  function initCharts(statusCounts) {
+    // Destroy existing charts first
+    Object.values(_charts).forEach(c => c.destroy());
+    _charts = {};
+
+    const chartDefaults = {
+      plugins: { legend: { labels: { color: '#888', font: { size: 11 } } } },
+      scales: {}
+    };
+
+    // 1. Revenue line chart — last 30 days
+    const days = [];
+    const revenueByDay = {};
+    const countByDay   = {};
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      days.push(d);
+      revenueByDay[d] = 0;
+      countByDay[d]   = 0;
+    }
+    _allOrders.filter(o => o.status !== 'cancelled').forEach(o => {
+      const d = (o.created_at || '').slice(0, 10);
+      if (revenueByDay[d] !== undefined) {
+        revenueByDay[d] += Number(o.total_amount || 0);
+        countByDay[d]   += 1;
+      }
+    });
+
+    const shortDays = days.map(d => { const p = d.split('-'); return `${p[1]}/${p[2]}`; });
+
+    _charts.revenue = new Chart(document.getElementById('chart-revenue'), {
+      type: 'line',
+      data: {
+        labels: shortDays,
+        datasets: [{
+          label: 'Revenue ($)',
+          data: days.map(d => revenueByDay[d]),
+          borderColor: '#c8a96e',
+          backgroundColor: 'rgba(200,169,110,.1)',
+          borderWidth: 2,
+          pointRadius: 2,
+          tension: 0.3,
+          fill: true,
+          yAxisID: 'y'
+        }, {
+          label: 'Orders',
+          data: days.map(d => countByDay[d]),
+          borderColor: '#6366f1',
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          pointRadius: 2,
+          tension: 0.3,
+          yAxisID: 'y2'
+        }]
+      },
+      options: {
+        ...chartDefaults,
+        scales: {
+          x: { ticks: { color: '#555', maxTicksLimit: 8, font: { size: 10 } }, grid: { color: '#1a1a1a' } },
+          y: { ticks: { color: '#888', font: { size: 10 }, callback: v => '$' + v }, grid: { color: '#1a1a1a' }, position: 'left' },
+          y2: { ticks: { color: '#666', font: { size: 10 } }, grid: { display: false }, position: 'right' }
+        }
+      }
+    });
+
+    // 2. Status donut
+    const statusLabels = Object.keys(statusCounts);
+    const statusColors = { pending:'#f59e0b', in_production:'#3b82f6', shipped:'#8b5cf6', delivered:'#22c55e', cancelled:'#ef4444' };
+    _charts.status = new Chart(document.getElementById('chart-status'), {
+      type: 'doughnut',
+      data: {
+        labels: statusLabels.map(s => s.replace(/_/g,' ')),
+        datasets: [{ data: statusLabels.map(s => statusCounts[s]), backgroundColor: statusLabels.map(s => statusColors[s] || '#555'), borderWidth: 0 }]
+      },
+      options: { ...chartDefaults, cutout: '65%' }
+    });
+
+    // 3. Items bar
+    const itemAgg = {};
+    _allOrders.filter(o => o.status !== 'cancelled').forEach(o => {
+      (Array.isArray(o.items) ? o.items : []).forEach(i => {
+        const key = i.typeLabel || i.type || 'Unknown';
+        itemAgg[key] = (itemAgg[key] || 0) + 1;
+      });
+    });
+    const itemEntries = Object.entries(itemAgg).sort((a,b) => b[1]-a[1]);
+    _charts.items = new Chart(document.getElementById('chart-items'), {
+      type: 'bar',
+      data: {
+        labels: itemEntries.map(e => e[0]),
+        datasets: [{ label: 'Units Sold', data: itemEntries.map(e => e[1]), backgroundColor: '#c8a96e', borderRadius: 4 }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#555', font: { size: 10 } }, grid: { color: '#1a1a1a' } },
+          y: { ticks: { color: '#888', font: { size: 10 } }, grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  // ── Items Report ──────────────────────────────────────
+  function buildItemsReport() {
+    const agg = {}; // key → { qty, revenue }
+    _allOrders.filter(o => o.status !== 'cancelled').forEach(o => {
+      (Array.isArray(o.items) ? o.items : []).forEach(i => {
+        const key = `${i.typeLabel||i.type}||${i.selectedSize||''}||${i.selectedColor||''}`;
+        if (!agg[key]) agg[key] = { type: i.typeLabel||i.type, size: i.selectedSize||'', color: i.selectedColor||'', qty: 0, revenue: 0 };
+        agg[key].qty++;
+        agg[key].revenue += Number(i.price || 0);
+      });
+    });
+
+    const rows = Object.values(agg).sort((a,b) => b.qty - a.qty);
+    const tbody = document.getElementById('items-report-body');
+    const section = document.getElementById('items-report');
+
+    if (rows.length === 0) { section.style.display = 'none'; return; }
+    section.style.display = '';
+    tbody.innerHTML = rows.map(r => `
+      <tr>
+        <td>${r.type}</td><td style="color:#888">${r.size}</td>
+        <td style="color:#888">${r.color}</td>
+        <td class="qty">${r.qty}</td>
+        <td style="color:#c8a96e">$${r.revenue.toFixed(2)}</td>
+      </tr>`).join('');
+  }
+
+  // ── Analytics ─────────────────────────────────────────
+  let _pageviewsChart = null;
+
+  async function loadAnalytics() {
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return;
+
+    try {
+      const res = await fetch('/api/admin/analytics', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      document.getElementById('av-total').textContent = data.totalViews.toLocaleString();
+      document.getElementById('av-today').textContent = data.todayViews.toLocaleString();
+      const monthTotal = (data.viewsPerDay || []).reduce((s,d) => s + d.views, 0);
+      document.getElementById('av-month').textContent = monthTotal.toLocaleString();
+
+      // Page views chart
+      if (_pageviewsChart) _pageviewsChart.destroy();
+      const labels = (data.viewsPerDay || []).map(d => { const p = d.date.split('-'); return `${p[1]}/${p[2]}`; });
+      const values = (data.viewsPerDay || []).map(d => d.views);
+      _pageviewsChart = new Chart(document.getElementById('chart-pageviews'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{ label: 'Page Views', data: values, backgroundColor: 'rgba(200,169,110,.6)', borderRadius: 3 }]
+        },
+        options: {
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#555', maxTicksLimit: 10, font: { size: 10 } }, grid: { color: '#1a1a1a' } },
+            y: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: '#1a1a1a' } }
+          }
+        }
+      });
+
+      // Top pages table
+      const maxViews = (data.topPages[0]?.views || 1);
+      document.getElementById('top-pages-body').innerHTML = (data.topPages || []).map(p => `
+        <tr>
+          <td style="font-family:monospace;font-size:.8rem;color:#aaa">${p.path}</td>
+          <td style="color:#c8a96e;font-weight:600">${p.views}</td>
+          <td><div class="page-bar" style="width:${Math.round(p.views/maxViews*100)}%"></div></td>
+        </tr>`).join('');
+
+    } catch(e) {
+      console.error('Analytics error:', e);
+    }
   }
 </script>
 </body>
