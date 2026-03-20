@@ -39,11 +39,11 @@ function getBaseUid(type, gender) {
 
 // ── Gelato catalog URLs ────────────────────────────────────────
 const GELATO_CATALOG_URLS = {
-    tshirt:     'https://www.gelato.com/en/catalog/apparel/t-shirts',
-    hoodie:     'https://www.gelato.com/en/catalog/apparel/hoodies',
-    ziphoodie:  'https://www.gelato.com/en/catalog/apparel/hoodies',
-    longsleeve: 'https://www.gelato.com/en/catalog/apparel/long-sleeve-shirts',
-    cap:        'https://www.gelato.com/en/catalog/apparel/hats-and-caps',
+    tshirt:     'https://www.gelato.com/products/t-shirt',
+    hoodie:     'https://www.gelato.com/products/hoodies',
+    ziphoodie:  'https://www.gelato.com/products/hoodies',
+    longsleeve: 'https://www.gelato.com/products/t-shirt',
+    cap:        'https://www.gelato.com/products',
 };
 
 // ── Fetch one Gelato product for preview image ─────────────────

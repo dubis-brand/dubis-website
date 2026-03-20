@@ -239,8 +239,8 @@ function renderProducts(filter, gender) {
          data-selected-color="${product.colors[0]}"
          onclick="openProductModal(${product.id})">
       <div class="product-image" id="card-img-${product.id}">
-        <img class="img-view img-back"  src="${productImg(product.id, product.colors[0], 'back')}"  alt="${product.phrase}" loading="lazy" />
-        <img class="img-view img-front" src="${productImg(product.id, product.colors[0], 'front')}" alt="${product.phrase}" loading="lazy" />
+        <img class="img-view img-back"  src="${productImg(product.id, product.colors[0], 'back')}"  alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}'" />
+        <img class="img-view img-front" src="${productImg(product.id, product.colors[0], 'front')}" alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}'" />
         <div class="product-badge">${typeMap[product.type] || product.typeLabel}</div>
         <div class="product-hover-overlay"><span>${t.view_details}</span></div>
       </div>
@@ -274,11 +274,15 @@ function selectCardColor(productId, color, dotEl) {
   dotEl.classList.add('active-color');
   card.dataset.selectedColor = color;
 
-  // Swap images to selected color
+  // Swap images to selected color (with fallback if color-specific image missing)
   const imgContainer = document.getElementById(`card-img-${productId}`);
   if (imgContainer) {
-    imgContainer.querySelector('.img-back').src  = productImg(productId, color, 'back');
-    imgContainer.querySelector('.img-front').src = productImg(productId, color, 'front');
+    const product = products.find(p => p.id === productId);
+    const fallback = product?.image || '';
+    const backImg  = imgContainer.querySelector('.img-back');
+    const frontImg = imgContainer.querySelector('.img-front');
+    if (backImg)  { backImg.onerror  = () => { backImg.onerror  = null; backImg.src  = fallback; }; backImg.src  = productImg(productId, color, 'back'); }
+    if (frontImg) { frontImg.onerror = () => { frontImg.onerror = null; frontImg.src = fallback; }; frontImg.src = productImg(productId, color, 'front'); }
   }
 }
 
@@ -319,21 +323,50 @@ function openProductModal(productId) {
   const body = document.getElementById('modal-body');
 
   body.innerHTML = `
-    <div class="modal-image" id="modal-img-${product.id}">
-      <img id="modal-img-src-${product.id}"
-           src="${productImg(product.id, product.colors[0], 'back')}"
-           alt="${product.phrase}"
-           data-color="${product.colors[0]}"
-           data-view="back" />
-    </div>
-    <div class="modal-view-toggle">
-      <button class="view-btn" onclick="setModalView(${product.id}, 'front', this)">Front</button>
-      <button class="view-btn active" onclick="setModalView(${product.id}, 'back', this)">Back</button>
+    <div class="modal-left">
+      <div class="modal-image" id="modal-img-${product.id}">
+        <img id="modal-img-src-${product.id}"
+             src="${productImg(product.id, product.colors[0], 'back')}"
+             alt="${product.phrase}"
+             data-color="${product.colors[0]}"
+             data-view="back"
+             onerror="this.onerror=null;this.src='${product.image}'" />
+      </div>
+      <div class="modal-view-toggle">
+        <button class="view-btn" onclick="setModalView(${product.id}, 'front', this)">Front</button>
+        <button class="view-btn active" onclick="setModalView(${product.id}, 'back', this)">Back</button>
+      </div>
     </div>
     <div class="modal-info">
       <div class="modal-type">${typeMap[product.type] || product.typeLabel}</div>
       <h2 class="modal-phrase">"${product.phrase}"</h2>
       <div class="modal-price">$${product.price}</div>
+      <div class="modal-option">
+        <label>${t.modal_color}</label>
+        <div class="modal-colors" id="modal-colors-${product.id}">
+          ${product.colors.map((c, i) => `
+            <button class="color-btn ${i === 0 ? 'selected' : ''}"
+              onclick="selectColor(this, '${c}', ${product.id})"
+              style="background:${colorToHex(c)}" title="${c}" data-color="${c}">
+            </button>
+          `).join('')}
+        </div>
+        <span class="selected-label" id="selected-color-${product.id}">${product.colors[0]}</span>
+      </div>
+      <div class="modal-option">
+        <label>${t.modal_size}</label>
+        <div class="modal-sizes" id="modal-sizes-${product.id}">
+          ${product.sizes.map((s, i) => `
+            <button class="size-btn ${i === 0 ? 'selected' : ''}"
+              onclick="selectSize(this, '${s}', ${product.id})" data-size="${s}">
+              ${s}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+      <button class="btn-primary modal-add-btn" onclick="addToCartFromModal(${product.id})">
+        ${t.modal_add}
+      </button>
       ${product.description ? `<p class="product-description">${product.description}</p>` : ''}
       <div class="product-tabs">
         <button class="prod-tab active" onclick="switchTab(this,'tab-details-${product.id}')">Details</button>
@@ -359,37 +392,11 @@ function openProductModal(productId) {
       <div class="prod-tab-content hidden" id="tab-care-${product.id}">
         <ul class="care-list">${(product.care || []).map(c => `<li>${c}</li>`).join('')}</ul>
       </div>
-      <div class="modal-option">
-        <label>${t.modal_color}</label>
-        <div class="modal-colors" id="modal-colors-${product.id}">
-          ${product.colors.map((c, i) => `
-            <button class="color-btn ${i === 0 ? 'selected' : ''}"
-              onclick="selectColor(this, '${c}', ${product.id})"
-              style="background:${colorToHex(c)}" title="${c}" data-color="${c}">
-            </button>
-          `).join('')}
-        </div>
-        <span class="selected-label" id="selected-color-${product.id}">${product.colors[0]}</span>
-      </div>
-      <div class="modal-option">
-        <label>${t.modal_size}</label>
-        <div class="modal-sizes" id="modal-sizes-${product.id}">
-          ${product.sizes.map((s, i) => `
-            <button class="size-btn ${i === 0 ? 'selected' : ''}"
-              onclick="selectSize(this, '${s}', ${product.id})" data-size="${s}">
-              ${s}
-            </button>
-          `).join('')}
-        </div>
-      </div>
       <div class="modal-quality">
         <span>${t.modal_made}</span>
         <span>${t.modal_material}</span>
         <span>${t.modal_returns}</span>
       </div>
-      <button class="btn-primary modal-add-btn" onclick="addToCartFromModal(${product.id})">
-        ${t.modal_add}
-      </button>
     </div>
   `;
 
@@ -423,6 +430,8 @@ function selectColor(btn, color, productId) {
   const imgEl = document.getElementById(`modal-img-src-${productId}`);
   if (imgEl) {
     const view = imgEl.dataset.view || 'back';
+    const product = products.find(p => p.id === productId);
+    imgEl.onerror = () => { imgEl.onerror = null; imgEl.src = product?.image || ''; };
     imgEl.src = productImg(productId, color, view);
     imgEl.dataset.color = color;
   }
@@ -436,6 +445,8 @@ function setModalView(productId, view, btn) {
   const imgEl = document.getElementById(`modal-img-src-${productId}`);
   if (imgEl) {
     const color = imgEl.dataset.color || products.find(p => p.id === productId)?.colors[0] || '';
+    const product = products.find(p => p.id === productId);
+    imgEl.onerror = () => { imgEl.onerror = null; imgEl.src = product?.image || ''; };
     imgEl.src = productImg(productId, color, view);
     imgEl.dataset.view = view;
   }
