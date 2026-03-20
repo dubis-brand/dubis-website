@@ -37,14 +37,22 @@ function getBaseUid(type, gender) {
     return null;
 }
 
-// ── Gelato catalog URLs ────────────────────────────────────────
-const GELATO_CATALOG_URLS = {
-    tshirt:     'https://www.gelato.com/products/t-shirt',
-    hoodie:     'https://www.gelato.com/products/hoodies',
-    ziphoodie:  'https://www.gelato.com/products/hoodies',
-    longsleeve: 'https://www.gelato.com/products/t-shirt',
-    cap:        'https://www.gelato.com/products',
-};
+// ── Gelato catalog URLs — specific product pages per type+gender ───────────
+function getGelatoUrl(type, gender) {
+    const w = gender === 'women';
+    if (type === 'tshirt')     return w
+        ? 'https://www.gelato.com/custom/womens-clothing/t-shirts/classic-womens-crewneck-t-shirt'
+        : 'https://www.gelato.com/custom/mens-clothing/t-shirts/classic-unisex-crewneck-t-shirt';
+    if (type === 'hoodie')     return w
+        ? 'https://www.gelato.com/custom/womens-clothing/hoodies'
+        : 'https://www.gelato.com/custom/mens-clothing/hoodies/classic-unisex-pullover-hoodie';
+    if (type === 'ziphoodie')  return 'https://www.gelato.com/custom/mens-clothing/hoodies/classic-unisex-zip-hoodie';
+    if (type === 'longsleeve') return w
+        ? 'https://www.gelato.com/custom/womens-clothing/long-sleeve-shirts'
+        : 'https://www.gelato.com/custom/mens-clothing/long-sleeve-shirts';
+    if (type === 'cap')        return 'https://www.gelato.com/custom/hats/dad-hats';
+    return 'https://www.gelato.com/custom';
+}
 
 // ── Fetch one Gelato product for preview image ─────────────────
 async function fetchGelatoPreview(uid, apiKey) {
@@ -108,7 +116,7 @@ module.exports = async function handler(req, res) {
         return {
             ...p,
             baseUid,
-            gelatoUrl:    GELATO_CATALOG_URLS[p.type] || 'https://www.gelato.com',
+            gelatoUrl:    getGelatoUrl(p.type, p.gender),
             previewImage: previewImages[baseUid] || null,
         };
     });
