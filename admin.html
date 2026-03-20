@@ -493,6 +493,118 @@
     .top-pages-table td { padding: .6rem .9rem; border-bottom: 1px solid #141414; }
     .page-bar { height: 4px; background: #c8a96e; border-radius: 2px; margin-top: 3px; }
 
+    /* ── Products Section ── */
+    .products-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .product-admin-card {
+      background: #1a1a1a;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #1e1e1e;
+      transition: border-color .2s;
+    }
+    .product-admin-card:hover { border-color: #2a2a2a; }
+
+    .product-preview-img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      background: #111;
+      display: block;
+    }
+    .product-preview-placeholder {
+      width: 100%;
+      aspect-ratio: 1;
+      background: #111;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #2a2a2a;
+      font-size: 2.5rem;
+    }
+
+    .product-admin-info { padding: .85rem; }
+
+    .product-id-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: .25rem;
+    }
+    .product-id { font-size: .65rem; color: #444; letter-spacing: 1px; text-transform: uppercase; }
+    .product-gender-badge {
+      font-size: .62rem;
+      padding: .15rem .45rem;
+      border-radius: 10px;
+      font-weight: 600;
+      letter-spacing: .5px;
+    }
+    .gender-unisex { background: rgba(200,169,110,.12); color: #c8a96e; }
+    .gender-men    { background: rgba(59,130,246,.12); color: #60a5fa; }
+    .gender-women  { background: rgba(236,72,153,.12); color: #f472b6; }
+
+    .product-phrase {
+      font-size: .82rem;
+      color: #e8e0d5;
+      margin: .3rem 0 .35rem;
+      line-height: 1.35;
+      font-style: italic;
+    }
+    .product-meta { font-size: .72rem; color: #555; margin-bottom: .5rem; }
+    .product-uid {
+      font-family: monospace;
+      font-size: .6rem;
+      color: #333;
+      margin-bottom: .7rem;
+      word-break: break-all;
+      line-height: 1.4;
+    }
+    .product-actions { display: flex; gap: .4rem; }
+    .product-actions .btn-sm { flex: 1; text-align: center; font-size: .7rem; }
+    .btn-gelato {
+      flex: 1;
+      text-align: center;
+      text-decoration: none;
+      padding: .4rem .6rem;
+      border-radius: 5px;
+      font-size: .7rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid rgba(200,169,110,.4);
+      color: #c8a96e;
+      background: rgba(200,169,110,.08);
+      transition: background .2s;
+      display: block;
+    }
+    .btn-gelato:hover { background: rgba(200,169,110,.18); }
+
+    .products-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+      gap: .5rem;
+    }
+    .gender-filter-tabs { display: flex; gap: .3rem; }
+    .gender-filter-tab {
+      padding: .3rem .75rem;
+      border-radius: 20px;
+      font-size: .75rem;
+      cursor: pointer;
+      border: 1px solid #2a2a2a;
+      background: transparent;
+      color: #666;
+      transition: all .2s;
+    }
+    .gender-filter-tab:hover,
+    .gender-filter-tab.active { border-color: #c8a96e; color: #c8a96e; background: rgba(200,169,110,.08); }
+
     /* ── Responsive ── */
     @media (max-width: 640px) {
       .main-content { padding: 1rem; }
@@ -542,6 +654,7 @@
       <button class="nav-tab" id="nav-analytics" onclick="showSection('analytics',this)">📊 Analytics</button>
       <button class="nav-tab" id="nav-users"     onclick="showSection('users',this)">👥 Users</button>
       <button class="nav-tab" id="nav-coupons"   onclick="showSection('coupons',this)">🏷️ Coupons</button>
+      <button class="nav-tab" id="nav-products"  onclick="showSection('products',this)">🛍️ Products</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -716,6 +829,21 @@
       <div class="empty" id="coupons-empty" style="display:none">No coupons yet.</div>
     </div>
   </div><!-- /section-coupons -->
+
+  <!-- ══ PRODUCTS SECTION ════════════════════════════════ -->
+  <div id="section-products" style="display:none">
+    <div class="products-header">
+      <h2 style="margin:0;font-size:1.1rem;color:#e8e0d5">Product Catalog</h2>
+      <div class="gender-filter-tabs">
+        <button class="gender-filter-tab active" onclick="filterProductCards('all',this)">All</button>
+        <button class="gender-filter-tab" onclick="filterProductCards('unisex',this)">Unisex</button>
+        <button class="gender-filter-tab" onclick="filterProductCards('men',this)">Men</button>
+        <button class="gender-filter-tab" onclick="filterProductCards('women',this)">Women</button>
+      </div>
+    </div>
+    <div class="loading" id="products-loading" style="display:none">Loading catalog… 🐾</div>
+    <div class="products-grid" id="products-grid"></div>
+  </div><!-- /section-products -->
 
   <!-- Coupon Modal -->
   <div id="coupon-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
@@ -1018,17 +1146,20 @@
   // ── Section navigation ────────────────────────────────
   let _usersLoaded = false;
   let _analyticsLoaded = false;
+  let _productsLoaded = false;
 
   function showSection(name, btn) {
     document.getElementById('section-orders').style.display    = name === 'orders'    ? '' : 'none';
     document.getElementById('section-users').style.display     = name === 'users'     ? '' : 'none';
     document.getElementById('section-coupons').style.display   = name === 'coupons'   ? '' : 'none';
     document.getElementById('section-analytics').style.display = name === 'analytics' ? '' : 'none';
+    document.getElementById('section-products').style.display  = name === 'products'  ? '' : 'none';
     document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     if (name === 'coupons') loadCoupons();
     if (name === 'users' && !_usersLoaded) { _usersLoaded = true; loadUsers(); }
     if (name === 'analytics' && !_analyticsLoaded) { _analyticsLoaded = true; loadAnalytics(); }
+    if (name === 'products' && !_productsLoaded) { _productsLoaded = true; loadProducts(); }
   }
 
   // ── Users: Load ───────────────────────────────────────
@@ -1417,6 +1548,89 @@
         <td class="qty">${r.qty}</td>
         <td style="color:#c8a96e">$${r.revenue.toFixed(2)}</td>
       </tr>`).join('');
+  }
+
+  // ══ PRODUCTS ══════════════════════════════════════════
+  let _allProducts = [];
+  let _productsGender = 'all';
+
+  async function loadProducts() {
+    const loadingEl = document.getElementById('products-loading');
+    const gridEl    = document.getElementById('products-grid');
+    loadingEl.style.display = '';
+    gridEl.innerHTML = '';
+
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+
+    try {
+      const res = await fetch('/api/admin/gelato-catalog', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      _allProducts = json.products || [];
+    } catch (err) {
+      loadingEl.textContent = 'Error loading catalog: ' + err.message;
+      return;
+    }
+
+    loadingEl.style.display = 'none';
+    renderProductCards();
+  }
+
+  function filterProductCards(gender, btn) {
+    _productsGender = gender;
+    document.querySelectorAll('.gender-filter-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderProductCards();
+  }
+
+  function renderProductCards() {
+    const grid = document.getElementById('products-grid');
+    const filtered = _productsGender === 'all'
+      ? _allProducts
+      : _allProducts.filter(p => p.gender === _productsGender);
+
+    if (filtered.length === 0) {
+      grid.innerHTML = '<div class="empty">No products found.</div>';
+      return;
+    }
+
+    grid.innerHTML = filtered.map(p => {
+      const genderClass = `gender-${p.gender}`;
+      const genderLabel = { unisex: 'Unisex', men: 'Men', women: 'Women' }[p.gender] || p.gender;
+      const imgHtml = p.previewImage
+        ? `<img src="${p.previewImage}" class="product-preview-img" alt="${p.phrase}" loading="lazy">`
+        : `<img src="images/product-${p.id}.jpg" class="product-preview-img" alt="${p.phrase}" loading="lazy"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+           <div class="product-preview-placeholder" style="display:none">👕</div>`;
+      const uid = p.baseUid || '';
+
+      return `
+      <div class="product-admin-card" data-gender="${p.gender}">
+        ${imgHtml}
+        <div class="product-admin-info">
+          <div class="product-id-row">
+            <span class="product-id">#${p.id} · ${p.typeLabel}</span>
+            <span class="product-gender-badge ${genderClass}">${genderLabel}</span>
+          </div>
+          <div class="product-phrase">"${p.phrase}"</div>
+          <div class="product-meta">$${p.price} · ${p.typeLabel}</div>
+          <div class="product-uid" title="${uid}">${uid.split('_gqa')[0]}</div>
+          <div class="product-actions">
+            <button class="btn-sm" onclick="copyUid('${uid}', this)" title="Copy full UID">Copy UID</button>
+            <a class="btn-gelato" href="${p.gelatoUrl}" target="_blank" rel="noopener">View on Gelato →</a>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function copyUid(uid, btn) {
+    navigator.clipboard?.writeText(uid).then(() => {
+      if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy UID', 1500); }
+    }).catch(() => prompt('Copy this UID:', uid));
   }
 
   // ── Analytics ─────────────────────────────────────────

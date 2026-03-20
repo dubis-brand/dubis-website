@@ -190,8 +190,7 @@ const products = [
         typeLabel: "T-Shirt",
         gender: "men",
         price: 45,
-        image: "images/product-1.jpg",   // placeholder — replace with product-8 mockup
-        imageRef: 1,
+        image: "images/product-8.jpg",
         designRef: 4,  // placeholder design file
         colors: ["Black", "Charcoal", "Navy", "Red", "Forest Green"],
         sizes: SIZES_TSHIRT,
@@ -210,8 +209,7 @@ const products = [
         typeLabel: "Zip Hoodie",
         gender: "men",
         price: 80,
-        image: "images/product-3.jpg",   // placeholder — replace with product-9 mockup
-        imageRef: 3,
+        image: "images/product-9.jpg",
         designRef: 6,  // placeholder design file
         colors: ["Black", "Navy", "Charcoal"],
         sizes: SIZES_HOODIE,
@@ -230,8 +228,7 @@ const products = [
         typeLabel: "Long-Sleeve",
         gender: "men",
         price: 55,
-        image: "images/product-1.jpg",   // placeholder — replace with product-10 mockup
-        imageRef: 1,
+        image: "images/product-10.jpg",
         designRef: 3,  // napping theme design
         colors: ["Black", "Navy", "White", "Forest Green"],
         sizes: SIZES_LONGSLEEVE,
@@ -253,8 +250,7 @@ const products = [
         typeLabel: "T-Shirt",
         gender: "women",
         price: 45,
-        image: "images/product-2.jpg",   // placeholder — replace with product-11 mockup
-        imageRef: 2,
+        image: "images/product-11.jpg",
         designRef: 3,  // napping theme design
         colors: ["White", "Cream", "Black", "Navy"],
         sizes: SIZES_TSHIRT,
@@ -273,8 +269,7 @@ const products = [
         typeLabel: "T-Shirt",
         gender: "women",
         price: 45,
-        image: "images/product-2.jpg",   // placeholder — replace with product-12 mockup
-        imageRef: 2,
+        image: "images/product-12.jpg",
         designRef: 5,  // placeholder design file
         colors: ["Black", "White", "Cream", "Navy"],
         sizes: SIZES_TSHIRT,
@@ -293,8 +288,7 @@ const products = [
         typeLabel: "Hoodie",
         gender: "women",
         price: 75,
-        image: "images/product-3.jpg",   // placeholder — replace with product-13 mockup
-        imageRef: 3,
+        image: "images/product-13.jpg",
         designRef: 6,  // placeholder design file
         colors: ["Charcoal", "Cream", "Navy", "Honey Brown"],
         sizes: SIZES_HOODIE,
@@ -313,8 +307,7 @@ const products = [
         typeLabel: "Long-Sleeve",
         gender: "women",
         price: 55,
-        image: "images/product-2.jpg",   // placeholder — replace with product-14 mockup
-        imageRef: 2,
+        image: "images/product-14.jpg",
         designRef: 5,  // placeholder design file
         colors: ["Cream", "White", "Black", "Navy"],
         sizes: SIZES_LONGSLEEVE,
