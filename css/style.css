@@ -55,16 +55,38 @@ body {
     text-decoration: none;
 }
 
-.logo-paw {
-    font-size: 1.4rem;
-}
-
 .logo-text {
     font-family: var(--font-display);
     font-size: 1.6rem;
     color: var(--honey);
     letter-spacing: 3px;
     font-weight: 700;
+}
+
+.logo-tm {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    font-size: 0.5rem;
+    width: 15px;
+    height: 15px;
+    vertical-align: super;
+    margin-left: 3px;
+    letter-spacing: 0;
+    font-family: sans-serif;
+    font-weight: 400;
+}
+
+/* Admin logo-tm sizing */
+.admin-logo .logo-tm,
+.topbar-logo .logo-tm {
+    font-size: 0.4em;
+    width: 1.5em;
+    height: 1.5em;
+    border-width: 1px;
+    margin-left: 4px;
 }
 
 .nav-links {
