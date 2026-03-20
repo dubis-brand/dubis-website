@@ -37,15 +37,15 @@ function getBaseUid(type, gender) {
     return null;
 }
 
-// ── Gelato catalog URLs — specific product pages per type+gender ───────────
+// ── Gelato catalog URLs — direct links to specific product pages ────────────
 function getGelatoUrl(type, gender) {
     const w = gender === 'women';
     if (type === 'tshirt')     return w
         ? 'https://www.gelato.com/custom/womens-clothing/t-shirts/classic-womens-crewneck-t-shirt'
-        : 'https://www.gelato.com/custom/mens-clothing/t-shirts/classic-unisex-crewneck-t-shirt';
+        : 'https://www.gelato.com/custom/brands/gildan/classic-unisex-crewneck-t-shirt-gildan-64000';
     if (type === 'hoodie')     return w
         ? 'https://www.gelato.com/custom/womens-clothing/hoodies'
-        : 'https://www.gelato.com/custom/mens-clothing/hoodies/classic-unisex-pullover-hoodie';
+        : 'https://www.gelato.com/custom/brands/gildan/classic-unisex-pullover-hoodie-gildan-18500';
     if (type === 'ziphoodie')  return 'https://www.gelato.com/custom/mens-clothing/hoodies/classic-unisex-zip-hoodie';
     if (type === 'longsleeve') return w
         ? 'https://www.gelato.com/custom/womens-clothing/long-sleeve-shirts'
