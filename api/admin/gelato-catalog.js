@@ -114,7 +114,7 @@ module.exports = async function handler(req, res) {
     }
 
     // ── Fetch Gelato data if API key is available ──────────────
-    const GELATO_API_KEY = process.env.GELATO_API_KEY || process.env.GELATO;
+    const GELATO_API_KEY = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
     let previewImages = {}; // baseUid → imageUrl
     let gelatoCosts   = {}; // baseUid → cost in USD
 
