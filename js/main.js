@@ -332,15 +332,23 @@ function openProductModal(productId) {
              data-view="back"
              onerror="this.onerror=null;this.src='${product.image}'" />
       </div>
-      <div class="modal-view-toggle">
-        <button class="view-btn" onclick="setModalView(${product.id}, 'front', this)">Front</button>
-        <button class="view-btn active" onclick="setModalView(${product.id}, 'back', this)">Back</button>
+      <div class="modal-thumbnails" id="modal-thumbs-${product.id}">
+        <div class="thumb active" data-view="back" onclick="setModalThumb(event, ${product.id}, 'back')">
+          <img src="${productImg(product.id, product.colors[0], 'back')}" alt="Back view"
+               onerror="this.onerror=null;this.src='${product.image}'" />
+        </div>
+        <div class="thumb" data-view="front" onclick="setModalThumb(event, ${product.id}, 'front')">
+          <img src="${productImg(product.id, product.colors[0], 'front')}" alt="Front view"
+               onerror="this.onerror=null;this.src='${product.image}'" />
+        </div>
       </div>
     </div>
     <div class="modal-info">
       <div class="modal-type">${typeMap[product.type] || product.typeLabel}</div>
       <h2 class="modal-phrase">"${product.phrase}"</h2>
       <div class="modal-price">$${product.price}</div>
+      <div class="modal-shipping-info">🚚 Ships in 5–9 business days · <span class="free-ship-badge">Free shipping over $120</span></div>
+      <div class="modal-dtg-badge">DTG — Direct-to-Garment</div>
       <div class="modal-option">
         <label>${t.modal_color}</label>
         <div class="modal-colors" id="modal-colors-${product.id}">
@@ -352,6 +360,7 @@ function openProductModal(productId) {
           `).join('')}
         </div>
         <span class="selected-label" id="selected-color-${product.id}">${product.colors[0]}</span>
+        <div class="modal-selected-color" id="modal-color-name-${product.id}">${product.colors[0]}</div>
       </div>
       <div class="modal-option">
         <label>${t.modal_size}</label>
@@ -426,6 +435,10 @@ function selectColor(btn, color, productId) {
   btn.classList.add('selected');
   document.getElementById(`selected-color-${productId}`).textContent = color;
 
+  // Update color name display
+  const colorNameEl = document.getElementById(`modal-color-name-${productId}`);
+  if (colorNameEl) colorNameEl.textContent = color;
+
   // Swap modal image to selected color (preserve current front/back view)
   const imgEl = document.getElementById(`modal-img-src-${productId}`);
   if (imgEl) {
@@ -435,13 +448,47 @@ function selectColor(btn, color, productId) {
     imgEl.src = productImg(productId, color, view);
     imgEl.dataset.color = color;
   }
+
+  // Update thumbnail images to show newly selected color
+  const thumbsContainer = document.getElementById(`modal-thumbs-${productId}`);
+  if (thumbsContainer) {
+    const product = products.find(p => p.id === productId);
+    thumbsContainer.querySelectorAll('.thumb').forEach(thumb => {
+      const thumbView = thumb.dataset.view;
+      const thumbImg = thumb.querySelector('img');
+      if (thumbImg && thumbView) {
+        thumbImg.onerror = () => { thumbImg.onerror = null; thumbImg.src = product?.image || ''; };
+        thumbImg.src = productImg(productId, color, thumbView);
+      }
+    });
+  }
 }
 
-function setModalView(productId, view, btn) {
-  btn.closest('.modal-view-toggle').querySelectorAll('.view-btn')
-    .forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+function setModalView(productId, view) {
+  // Sync thumbnail active state
+  const thumbsContainer = document.getElementById(`modal-thumbs-${productId}`);
+  if (thumbsContainer) {
+    thumbsContainer.querySelectorAll('.thumb').forEach(t => {
+      t.classList.toggle('active', t.dataset.view === view);
+    });
+  }
 
+  const imgEl = document.getElementById(`modal-img-src-${productId}`);
+  if (imgEl) {
+    const color = imgEl.dataset.color || products.find(p => p.id === productId)?.colors[0] || '';
+    const product = products.find(p => p.id === productId);
+    imgEl.onerror = () => { imgEl.onerror = null; imgEl.src = product?.image || ''; };
+    imgEl.src = productImg(productId, color, view);
+    imgEl.dataset.view = view;
+  }
+}
+
+function setModalThumb(event, productId, view) {
+  const thumbsContainer = document.getElementById(`modal-thumbs-${productId}`);
+  if (thumbsContainer) {
+    thumbsContainer.querySelectorAll('.thumb').forEach(t => t.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+  }
   const imgEl = document.getElementById(`modal-img-src-${productId}`);
   if (imgEl) {
     const color = imgEl.dataset.color || products.find(p => p.id === productId)?.colors[0] || '';
@@ -599,6 +646,23 @@ function animateAddToCart(btn) {
   setTimeout(() => btn.classList.remove('adding'), 500);
 }
 
+// ===== PRICE OVERRIDES FROM SUPABASE =====
+async function loadPriceOverrides() {
+  try {
+    const { data } = await supabase
+      .from('product_prices')
+      .select('product_id, selling_price');
+    if (data) {
+      data.forEach(r => {
+        const p = products.find(p => p.id === r.product_id);
+        if (p) p.price = Number(r.selling_price);
+      });
+    }
+  } catch (e) {
+    // fallback to default prices from products.js
+  }
+}
+
 // ===== INIT =====
 document.querySelector('.cart-btn').addEventListener('click', openCart);
 document.addEventListener('keydown', e => {
@@ -612,8 +676,9 @@ document.querySelectorAll('.nav-links a').forEach(a => {
   });
 });
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   checkCookieConsent();
+  await loadPriceOverrides();
   detectLanguage(); // IP-based language detection → renders products after
   initScrollAnimations();
 });

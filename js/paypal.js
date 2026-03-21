@@ -8,6 +8,9 @@ const PAYPAL_LIVE_CLIENT_ID   = 'AWu0oDEl16mzRrbqX8zWrqFZeqc790LptV1UC5fiz8JnR7M
 const PAYPAL_SANDBOX_CLIENT_ID = 'AZj2dQOOGG3j_JixU4GuhgZhgmzMp6qWO8zzyPd6E5pV66iNXWhHa9udoEbpel7ja6W_jcVZ4Ll4JpG_';
 const PAYPAL_CLIENT_ID = PAYPAL_ENV === 'live' ? PAYPAL_LIVE_CLIENT_ID : PAYPAL_SANDBOX_CLIENT_ID;
 
+const SHIPPING_FEE = 8.99;
+const FREE_SHIPPING_THRESHOLD = 120;
+
 let paypalLoaded = false;
 let appliedCoupon = null; // { code, discount_amount, final_total, name }
 
@@ -40,12 +43,10 @@ async function applyCoupon() {
     } catch { fb.textContent = 'Could not validate coupon. Try again.'; fb.className = 'coupon-feedback error'; }
 }
 
-function updateCartTotalDisplay(total) {
-    const summaryEl = document.getElementById('paypal-order-summary');
-    if (summaryEl) {
-        const totalEl = summaryEl.querySelector('.summary-total');
-        if (totalEl) totalEl.textContent = `Total: $${total.toFixed(2)}`;
-    }
+function updateCartTotalDisplay(discountedSubtotal) {
+    // Re-render the full summary so the coupon row and correct grand total are shown.
+    // appliedCoupon is already set before this is called.
+    renderOrderSummary();
 }
 
 // ===== CHECKOUT ENTRY POINT =====
@@ -154,17 +155,21 @@ function loadPayPalSDK() {
 }
 
 function renderPayPalButtons() {
-    const cartTotal = cart.reduce((sum, item) => sum + item.price, 0);
-
     const createOrder = (data, actions) => {
-        const total = appliedCoupon ? appliedCoupon.final_total : cartTotal;
+        const itemTotal = cart.reduce((sum, i) => sum + i.price, 0);
+        const shipping  = itemTotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+        const discountedTotal = appliedCoupon ? appliedCoupon.final_total : itemTotal;
+        const total = discountedTotal + shipping;
         return actions.order.create({
         purchase_units: [{
             description: 'DUBIS Clothing Order',
             amount: {
                 currency_code: 'USD',
                 value: total.toFixed(2),
-                breakdown: { item_total: { currency_code: 'USD', value: total.toFixed(2) } }
+                breakdown: {
+                    item_total: { currency_code: 'USD', value: (appliedCoupon ? appliedCoupon.final_total : itemTotal).toFixed(2) },
+                    shipping:   { currency_code: 'USD', value: shipping.toFixed(2) }
+                }
             },
             items: cart.map(item => ({
                 name:        item.phrase.substring(0, 127),
@@ -325,27 +330,60 @@ function renderPayPalButtons() {
 
 // ===== ORDER SUMMARY =====
 function renderOrderSummary() {
-    const total = cart.reduce((sum, item) => sum + item.price, 0);
+    const itemTotal = cart.reduce((sum, item) => sum + item.price, 0);
+    const shipping  = itemTotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+    const couponDiscount = appliedCoupon ? (itemTotal - appliedCoupon.final_total) : 0;
+    const grandTotal = itemTotal - couponDiscount + shipping;
+
+    const remaining = Math.max(0, FREE_SHIPPING_THRESHOLD - itemTotal);
+    const pct = Math.min(100, (itemTotal / FREE_SHIPPING_THRESHOLD) * 100);
+
     document.getElementById('paypal-order-summary').innerHTML = `
+        <!-- Free shipping progress bar -->
+        <div class="free-ship-progress">
+            <div class="free-ship-progress-label ${shipping === 0 ? 'reached' : ''}">
+                ${shipping === 0
+                    ? '🎉 You\'ve got free shipping!'
+                    : `Add <strong>$${remaining.toFixed(2)}</strong> more for free shipping`}
+            </div>
+            <div class="free-ship-bar-track">
+                <div class="free-ship-bar-fill" style="width:${pct}%"></div>
+            </div>
+        </div>
+
+        <!-- Items list -->
         <div class="order-items">
             ${cart.map(item => `
                 <div class="order-item">
-                    <img src="${item.image}" alt="${item.phrase}" class="order-item-img" />
+                    <img src="${item.image}" alt="${item.phrase}" class="order-item-img" onerror="this.style.display='none'" />
                     <div class="order-item-info">
                         <div class="order-item-name">"${item.phrase}"</div>
                         <div class="order-item-details">${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}</div>
                     </div>
-                    <div class="order-item-price">$${item.price}</div>
+                    <div class="order-item-price">$${item.price.toFixed(2)}</div>
                 </div>
             `).join('')}
         </div>
-        <div class="order-total-row">
-            <span>Shipping</span>
-            <span class="shipping-note">Calculated at PayPal</span>
-        </div>
-        <div class="order-total-row total">
-            <span>Total</span>
-            <span>$${total}</span>
+
+        <!-- Totals -->
+        <div class="order-totals">
+            <div class="order-total-row">
+                <span>Subtotal</span>
+                <span>$${itemTotal.toFixed(2)}</span>
+            </div>
+            ${couponDiscount > 0 ? `
+            <div class="order-total-row discount">
+                <span>Coupon (${appliedCoupon?.code})</span>
+                <span>−$${couponDiscount.toFixed(2)}</span>
+            </div>` : ''}
+            <div class="order-total-row">
+                <span>Shipping</span>
+                <span>${shipping === 0 ? '<span style="color:var(--honey);font-weight:600">FREE 🎉</span>' : '$' + shipping.toFixed(2)}</span>
+            </div>
+            <div class="order-total-row total">
+                <span>Total</span>
+                <span>$${grandTotal.toFixed(2)}</span>
+            </div>
         </div>
     `;
 }

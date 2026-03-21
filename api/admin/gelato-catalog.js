@@ -68,6 +68,29 @@ async function fetchGelatoPreview(uid, apiKey) {
     }
 }
 
+// ── Fetch Gelato product cost (production price in USD) ────────
+async function fetchGelatoCost(uid, apiKey) {
+    try {
+        const res = await fetch(`https://product.gelatoapis.com/v3/products/${uid}/prices`, {
+            headers: { 'X-API-KEY': apiKey }
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        // prices array: find lowest price (base size/color, USD)
+        const prices = data?.prices || data?.productPrices || [];
+        const usdPrices = prices
+            .filter(p => !p.currency || p.currency === 'USD')
+            .map(p => Number(p.price || p.amount || 0))
+            .filter(v => v > 0);
+        if (!usdPrices.length) return null;
+        const minCents = Math.min(...usdPrices);
+        // Gelato returns prices in cents if > 100, or dollars if < 100
+        return minCents > 100 ? minCents / 100 : minCents;
+    } catch {
+        return null;
+    }
+}
+
 module.exports = async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -91,23 +114,28 @@ module.exports = async function handler(req, res) {
         if (!adminRow) return res.status(403).json({ error: 'Forbidden' });
     }
 
-    // ── Fetch Gelato preview images if API key is available ────
+    // ── Fetch Gelato data if API key is available ──────────────
     const GELATO_API_KEY = process.env.GELATO_API_KEY || process.env.GELATO;
     let previewImages = {}; // baseUid → imageUrl
+    let gelatoCosts   = {}; // baseUid → cost in USD
 
     if (GELATO_API_KEY) {
         // Deduplicate base UIDs
         const uniqueUids = [...new Set(
             DUBIS_PRODUCTS.map(p => getBaseUid(p.type, p.gender)).filter(Boolean)
         )];
-        // Fetch in parallel (max 8 requests)
+        // Fetch preview + cost in parallel
         const results = await Promise.all(
             uniqueUids.map(async uid => ({
                 uid,
-                img: await fetchGelatoPreview(uid, GELATO_API_KEY)
+                img:  await fetchGelatoPreview(uid, GELATO_API_KEY),
+                cost: await fetchGelatoCost(uid, GELATO_API_KEY),
             }))
         );
-        results.forEach(({ uid, img }) => { if (img) previewImages[uid] = img; });
+        results.forEach(({ uid, img, cost }) => {
+            if (img)  previewImages[uid] = img;
+            if (cost) gelatoCosts[uid]   = cost;
+        });
     }
 
     // ── Build response ─────────────────────────────────────────
@@ -118,6 +146,7 @@ module.exports = async function handler(req, res) {
             baseUid,
             gelatoUrl:    getGelatoUrl(p.type, p.gender),
             previewImage: previewImages[baseUid] || null,
+            gelatoCost:   gelatoCosts[baseUid]   || null,
         };
     });
 

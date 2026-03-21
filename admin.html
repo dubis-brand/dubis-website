@@ -615,6 +615,59 @@
       .charts-row { grid-template-columns: 1fr; }
       .analytics-stats { grid-template-columns: 1fr 1fr; }
     }
+
+    /* ── Product profit grid ────────────────────────────────────── */
+    .profit-grid {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 4px 12px;
+      padding: 10px 12px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      margin-top: 8px;
+      font-size: 0.78rem;
+    }
+    .cost-row {
+      display: contents;
+    }
+    .cost-row span:first-child { color: #888; }
+    .cost-row span:last-child  { color: #ccc; text-align: right; font-weight: 500; }
+    .profit-row span:first-child { color: #aaa; font-weight: 600; }
+    .profit-row .profit-val { text-align: right; font-weight: 700; }
+    .profit-positive { color: #4caf50; }
+    .profit-negative { color: #f44336; }
+
+    /* ── Price edit input ───────────────────────────────────────── */
+    .price-edit {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0 4px;
+      border-top: 1px solid #2a2a2a;
+      margin-top: 8px;
+    }
+    .price-edit label { color: #888; font-size: 0.78rem; white-space: nowrap; }
+    .price-edit input {
+      width: 80px;
+      padding: 4px 8px;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 6px;
+      color: #f5c842;
+      font-size: 0.9rem;
+      font-weight: 700;
+      text-align: right;
+    }
+    .price-edit input:focus {
+      outline: none;
+      border-color: #f5c842;
+    }
+    .price-save-status {
+      font-size: 0.72rem;
+      color: #4caf50;
+      display: none;
+    }
+    .price-save-status.visible { display: inline; }
   </style>
 </head>
 <body>
@@ -1577,6 +1630,7 @@
 
     loadingEl.style.display = 'none';
     renderProductCards();
+    renderProductsWithPrices(_allProducts);
   }
 
   function filterProductCards(gender, btn) {
@@ -1618,6 +1672,26 @@
           <div class="product-phrase">"${p.phrase}"</div>
           <div class="product-meta">$${p.price} · ${p.typeLabel}</div>
           <div class="product-uid" title="${uid}">${uid.split('_gqa')[0]}</div>
+          <div class="profit-grid" id="profit-grid-${p.id}">
+            <div class="cost-row">
+              <span>Gelato cost</span>
+              <span id="gc-${p.id}" class="cost-val">loading…</span>
+            </div>
+            <div class="cost-row">
+              <span>Shipping est.</span>
+              <span>~$8.50</span>
+            </div>
+            <div class="cost-row profit-row">
+              <span>Profit</span>
+              <span id="gp-${p.id}" class="profit-val">—</span>
+            </div>
+          </div>
+          <div class="price-edit">
+            <label>Price $</label>
+            <input type="number" id="sp-${p.id}" value="${p.price}" min="1" max="999" step="0.5"
+                   onchange="saveProductPrice(${p.id}, +this.value, this)" />
+            <span class="price-save-status" id="ps-${p.id}">✓ saved</span>
+          </div>
           <div class="product-actions">
             <button class="btn-sm" onclick="copyUid('${uid}', this)" title="Copy full UID">Copy UID</button>
             <a class="btn-gelato" href="${p.gelatoUrl}" target="_blank" rel="noopener">View on Gelato →</a>
@@ -1631,6 +1705,68 @@
     navigator.clipboard?.writeText(uid).then(() => {
       if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy UID', 1500); }
     }).catch(() => prompt('Copy this UID:', uid));
+  }
+
+  // ── Product Profit & Price Management ─────────────────
+  const SHIPPING_EST = 8.50;
+  let currentProducts = [];
+
+  async function renderProductsWithPrices(products) {
+    currentProducts = products;
+    // Load price overrides from Supabase
+    let priceMap = {};
+    try {
+      const { data: priceRows } = await _sb.from('product_prices').select('*');
+      priceMap = Object.fromEntries((priceRows || []).map(r => [r.product_id, Number(r.selling_price)]));
+    } catch (e) {}
+
+    products.forEach(p => {
+      const sell   = priceMap[p.id] || p.price;
+      const cost   = p.gelatoCost != null ? p.gelatoCost : null;
+      const profit = cost != null ? sell - cost - SHIPPING_EST : null;
+      const pct    = profit != null ? ((profit / sell) * 100).toFixed(0) : null;
+
+      const spEl = document.getElementById(`sp-${p.id}`);
+      if (spEl) spEl.value = sell.toFixed(2);
+
+      const gcEl = document.getElementById(`gc-${p.id}`);
+      if (gcEl) gcEl.textContent = cost != null ? `$${cost.toFixed(2)}` : '—';
+
+      const gpEl = document.getElementById(`gp-${p.id}`);
+      if (gpEl && profit != null) {
+        gpEl.textContent = `$${profit.toFixed(2)} (${pct}%)`;
+        gpEl.className = `profit-val ${profit >= 0 ? 'profit-positive' : 'profit-negative'}`;
+      }
+    });
+  }
+
+  async function saveProductPrice(productId, newPrice, inputEl) {
+    if (!newPrice || newPrice < 1) return;
+    try {
+      const { error } = await _sb.from('product_prices').upsert({
+        product_id: productId,
+        selling_price: newPrice,
+        updated_at: new Date().toISOString()
+      });
+      if (!error) {
+        const statusEl = document.getElementById(`ps-${productId}`);
+        if (statusEl) {
+          statusEl.classList.add('visible');
+          setTimeout(() => statusEl.classList.remove('visible'), 2000);
+        }
+        // Recalculate profit display
+        const p = currentProducts.find(p => p.id === productId);
+        if (p && p.gelatoCost != null) {
+          const profit = newPrice - p.gelatoCost - SHIPPING_EST;
+          const pct = ((profit / newPrice) * 100).toFixed(0);
+          const gpEl = document.getElementById(`gp-${productId}`);
+          if (gpEl) {
+            gpEl.textContent = `$${profit.toFixed(2)} (${pct}%)`;
+            gpEl.className = `profit-val ${profit >= 0 ? 'profit-positive' : 'profit-negative'}`;
+          }
+        }
+      }
+    } catch (e) {}
   }
 
   // ── Analytics ─────────────────────────────────────────
