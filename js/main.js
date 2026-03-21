@@ -44,6 +44,12 @@ const translations = {
     modal_material: '👕 Moves with you, not against you.',
     modal_returns: '↩️ Easy returns — no drama.',
     modal_add: 'This Is Mine 🐾',
+    tab_details: 'Details', tab_size: 'Size Guide', tab_care: 'Care',
+    modal_ships: '🚚 Ships in 5–9 business days', modal_free_ship: 'Free shipping over $120',
+    modal_dtg: 'DTG — Direct-to-Garment',
+    modal_fabric: 'Fabric', modal_fit: 'Fit', modal_print: 'Print', modal_print_areas: 'Print areas',
+    size_size: 'Size', size_chest: 'Chest (cm)', size_length: 'Length (cm)',
+    size_vary: '*Measurements may vary ±2cm', size_cap_note: 'Adjustable strap, fits most',
     cookie_text: '🐾 We use cookies to improve your experience. We keep it minimal - just what\'s needed.',
     cookie_accept: 'Accept', cookie_decline: 'Decline', cookie_privacy: 'Privacy Policy',
     footer_privacy: 'Privacy Policy', footer_contact: 'Contact', footer_shop: 'Shop',
@@ -85,6 +91,12 @@ const translations = {
     modal_material: '👕 זז איתך, לא נגדך.',
     modal_returns: '↩️ החזרה קלה — ללא דרמה.',
     modal_add: 'זה שלי 🐾',
+    tab_details: 'פרטים', tab_size: 'מדריך מידות', tab_care: 'טיפול',
+    modal_ships: '🚚 משלוח תוך 5–9 ימי עסקים', modal_free_ship: 'משלוח חינם מעל $120',
+    modal_dtg: 'DTG — הדפסה ישירה על בד',
+    modal_fabric: 'בד', modal_fit: 'גזרה', modal_print: 'הדפסה', modal_print_areas: 'אזורי הדפסה',
+    size_size: 'מידה', size_chest: 'חזה (ס"מ)', size_length: 'אורך (ס"מ)',
+    size_vary: '*מידות עשויות להשתנות ±2 ס"מ', size_cap_note: 'רצועה מתכווננת, מתאים לרוב',
     cookie_text: '🐾 אנחנו משתמשים בעוגיות לשיפור החוויה שלך. שומרים על מינימום.',
     cookie_accept: 'אישור', cookie_decline: 'דחייה', cookie_privacy: 'מדיניות פרטיות',
     footer_privacy: 'מדיניות פרטיות', footer_contact: 'צור קשר', footer_shop: 'חנות',
@@ -347,8 +359,8 @@ function openProductModal(productId) {
       <div class="modal-type">${typeMap[product.type] || product.typeLabel}</div>
       <h2 class="modal-phrase">"${product.phrase}"</h2>
       <div class="modal-price">$${product.price}</div>
-      <div class="modal-shipping-info">🚚 Ships in 5–9 business days · <span class="free-ship-badge">Free shipping over $120</span></div>
-      <div class="modal-dtg-badge">DTG — Direct-to-Garment</div>
+      <div class="modal-shipping-info">${t.modal_ships} · <span class="free-ship-badge">${t.modal_free_ship}</span></div>
+      <div class="modal-dtg-badge">${t.modal_dtg}</div>
       <div class="modal-option">
         <label>${t.modal_color}</label>
         <div class="modal-colors" id="modal-colors-${product.id}">
@@ -376,30 +388,30 @@ function openProductModal(productId) {
       <button class="btn-primary modal-add-btn" onclick="addToCartFromModal(${product.id})">
         ${t.modal_add}
       </button>
-      ${product.description ? `<p class="product-description">${product.description}</p>` : ''}
+      ${(currentLang === 'he' && product.description_he ? product.description_he : product.description) ? `<p class="product-description">${currentLang === 'he' && product.description_he ? product.description_he : product.description}</p>` : ''}
       <div class="product-tabs">
-        <button class="prod-tab active" onclick="switchTab(this,'tab-details-${product.id}')">Details</button>
-        <button class="prod-tab" onclick="switchTab(this,'tab-size-${product.id}')">Size Guide</button>
-        <button class="prod-tab" onclick="switchTab(this,'tab-care-${product.id}')">Care</button>
+        <button class="prod-tab active" onclick="switchTab(this,'tab-details-${product.id}')">${t.tab_details}</button>
+        <button class="prod-tab" onclick="switchTab(this,'tab-size-${product.id}')">${t.tab_size}</button>
+        <button class="prod-tab" onclick="switchTab(this,'tab-care-${product.id}')">${t.tab_care}</button>
       </div>
       <div class="prod-tab-content" id="tab-details-${product.id}">
-        ${product.fabric ? `<p>🧵 <strong>Fabric:</strong> ${product.fabric}</p>` : ''}
-        ${product.fit ? `<p>📐 <strong>Fit:</strong> ${product.fit}</p>` : ''}
-        ${product.printMethod ? `<p>🖨️ <strong>Print:</strong> ${product.printMethod}</p>` : ''}
-        ${product.printAreas ? `<p>📍 <strong>Print areas:</strong> ${product.printAreas.join(', ')}</p>` : ''}
+        ${product.fabric ? `<p>🧵 <strong>${t.modal_fabric}:</strong> ${product.fabric}</p>` : ''}
+        ${product.fit ? `<p>📐 <strong>${t.modal_fit}:</strong> ${product.fit}</p>` : ''}
+        ${product.printMethod ? `<p>🖨️ <strong>${t.modal_print}:</strong> ${product.printMethod}</p>` : ''}
+        ${product.printAreas ? `<p>📍 <strong>${t.modal_print_areas}:</strong> ${product.printAreas.join(', ')}</p>` : ''}
       </div>
       <div class="prod-tab-content hidden" id="tab-size-${product.id}">
         ${product.sizeGuide && product.sizeGuide[0] && product.sizeGuide[0].note
-          ? `<p style="font-size:0.85rem;color:#555">${product.sizeGuide[0].note}</p>`
+          ? `<p style="font-size:0.85rem;color:#555">${t.size_cap_note}</p>`
           : `<table class="size-table">
-              <tr><th>Size</th><th>Chest (cm)</th><th>Length (cm)</th></tr>
+              <tr><th>${t.size_size}</th><th>${t.size_chest}</th><th>${t.size_length}</th></tr>
               ${(product.sizeGuide || []).map(r => `<tr><td>${r.size}</td><td>${r.chest}</td><td>${r.length}</td></tr>`).join('')}
             </table>
-            <small style="color:#888">*Measurements may vary ±2cm</small>`
+            <small style="color:#888">${t.size_vary}</small>`
         }
       </div>
       <div class="prod-tab-content hidden" id="tab-care-${product.id}">
-        <ul class="care-list">${(product.care || []).map(c => `<li>${c}</li>`).join('')}</ul>
+        <ul class="care-list">${(currentLang === 'he' && product.care_he ? product.care_he : (product.care || [])).map(c => `<li>${c}</li>`).join('')}</ul>
       </div>
       <div class="modal-quality">
         <span>${t.modal_made}</span>
@@ -649,13 +661,21 @@ function animateAddToCart(btn) {
 // ===== PRICE OVERRIDES FROM SUPABASE =====
 async function loadPriceOverrides() {
   try {
-    const { data } = await supabase
+    const client = window.supabase.createClient(
+      'https://ntzwvqtpdmvvavbhuyeb.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50end2cXRwZG12dmF2Ymh1eWViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2ODk1ODAsImV4cCI6MjA4NzI2NTU4MH0.EpfZAg28aU6_sOblfkVpkAwp9nDvXMTRCCNz0UJWHEc',
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { data } = await client
       .from('product_prices')
-      .select('product_id, selling_price');
+      .select('product_id, selling_price, gelato_image_url');
     if (data) {
       data.forEach(r => {
         const p = products.find(p => p.id === r.product_id);
-        if (p) p.price = Number(r.selling_price);
+        if (p) {
+          if (r.selling_price) p.price = Number(r.selling_price);
+          if (r.gelato_image_url) p.gelatoImg = r.gelato_image_url;
+        }
       });
     }
   } catch (e) {

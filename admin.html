@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DUBIS Admin</title>
   <meta name="robots" content="noindex, nofollow">
+  <link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <style>
@@ -32,7 +33,7 @@
       font-weight: 700;
       letter-spacing: 6px;
       color: #c8a96e;
-      font-family: Georgia, serif;
+      font-family: 'Anton', sans-serif;
       margin-bottom: .5rem;
     }
 
@@ -189,7 +190,7 @@
       font-weight: 700;
       letter-spacing: 4px;
       color: #c8a96e;
-      font-family: Georgia, serif;
+      font-family: 'Anton', sans-serif;
     }
 
     .topbar-right {
@@ -1654,11 +1655,10 @@
     grid.innerHTML = filtered.map(p => {
       const genderClass = `gender-${p.gender}`;
       const genderLabel = { unisex: 'Unisex', men: 'Men', women: 'Women' }[p.gender] || p.gender;
-      const imgHtml = p.previewImage
-        ? `<img src="${p.previewImage}" class="product-preview-img" alt="${p.phrase}" loading="lazy">`
-        : `<img src="images/product-${p.id}.jpg" class="product-preview-img" alt="${p.phrase}" loading="lazy"
-             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-           <div class="product-preview-placeholder" style="display:none">👕</div>`;
+      const gelatoFallback = p.previewImage ? `this.src='${p.previewImage}'` : `this.style.display='none';this.nextElementSibling.style.display='flex'`;
+      const imgHtml = `<img src="images/product-${p.id}.jpg" class="product-preview-img" alt="${p.phrase}" loading="lazy"
+           onerror="${gelatoFallback}">
+         <div class="product-preview-placeholder" style="display:none">👕</div>`;
       const uid = p.baseUid || '';
 
       return `

@@ -144,6 +144,20 @@ module.exports = async function handler(req, res) {
             if (img)  previewImages[baseUid] = img;
             if (cost) gelatoCosts[baseUid]   = cost;
         });
+
+        // ── Save preview images to Supabase product_prices ──────
+        const imageUpserts = DUBIS_PRODUCTS
+            .map(p => {
+                const imgUrl = previewImages[getBaseUid(p.type, p.gender)];
+                return imgUrl ? { product_id: p.id, gelato_image_url: imgUrl } : null;
+            })
+            .filter(Boolean);
+        if (imageUpserts.length) {
+            await supabase.from('product_prices').upsert(imageUpserts, {
+                onConflict: 'product_id',
+                ignoreDuplicates: false
+            });
+        }
     }
 
     // ── Build response ─────────────────────────────────────────

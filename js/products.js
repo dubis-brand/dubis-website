@@ -45,6 +45,23 @@ const CARE_HOODIE = [
     "Do not dry clean"
 ];
 
+const CARE_TSHIRT_HE = [
+    "כביסה קרה במכונה, בפנים החוצה",
+    "ייבוש בחום נמוך",
+    "אין להלבין",
+    "אל תגהץ ישירות על ההדפסה",
+    "אין לניקוי יבש"
+];
+
+const CARE_HOODIE_HE = CARE_TSHIRT_HE;
+
+const CARE_CAP_HE = [
+    "ניקוי ידני בלבד",
+    "אין כביסה במכונה",
+    "אין לייבש במייבש",
+    "עצב מחדש וייבש באוויר"
+];
+
 const products = [
 
     // ─── UNISEX (appear in All, Men, Women) ────────────────────────────────────
@@ -60,11 +77,13 @@ const products = [
         colors: ["Black", "White", "Cream", "Navy", "Red"],
         sizes: SIZES_TSHIRT,
         description: "Not a problem to be solved. Not a size to be hidden. A limited edition — one of a kind, and completely done apologizing. 100% cotton. Fits real bodies.",
+        description_he: "לא בעיה לפתרון. לא מידה שצריך להסתיר. מהדורה מוגבלת — אחד מסוגו, וגמר להתנצל.",
         fabric: "100% combed ring-spun cotton",
         fit: "Unisex, regular fit",
         printMethod: "DTG — Direct-to-Garment",
         printAreas: ["Front", "Back"],
         care: CARE_TSHIRT,
+        care_he: CARE_TSHIRT_HE,
         sizeGuide: SIZE_GUIDE_TSHIRT
     },
     {
@@ -78,11 +97,13 @@ const products = [
         colors: ["Honey Brown", "Black", "Cream", "Navy"],
         sizes: SIZES_TSHIRT,
         description: "More warmth. More presence. More unapologetic you. For everyone who's tired of taking up less space than they deserve.",
+        description_he: "יותר חום. יותר נוכחות. יותר אתה, ללא התנצלות. למי שנמאס לו לקחת פחות מקום ממה שמגיע לו.",
         fabric: "100% combed ring-spun cotton",
         fit: "Unisex, regular fit",
         printMethod: "DTG — Direct-to-Garment",
         printAreas: ["Front", "Back"],
         care: CARE_TSHIRT,
+        care_he: CARE_TSHIRT_HE,
         sizeGuide: SIZE_GUIDE_TSHIRT
     },
     {
@@ -96,11 +117,13 @@ const products = [
         colors: ["Charcoal", "Cream", "Navy", "Forest Green"],
         sizes: SIZES_HOODIE,
         description: "Cardio is overrated. Rest is a skill. You've perfected it. Heavyweight hoodie — because if you're going to commit to the lifestyle, you might as well dress for it.",
+        description_he: "קרדיו זה מוגזם. מנוחה זו מיומנות. אתה שלטת בה. קפוצ'ון כבד — כי אם אתה מחויב לאורח החיים הזה, לפחות תתלבש בהתאם.",
         fabric: "80% cotton, 20% polyester — heavyweight fleece",
         fit: "Unisex, relaxed fit",
         printMethod: "DTG — Direct-to-Garment",
         printAreas: ["Front", "Back"],
         care: CARE_HOODIE,
+        care_he: CARE_HOODIE_HE,
         sizeGuide: SIZE_GUIDE_HOODIE
     },
     {
@@ -114,11 +137,13 @@ const products = [
         colors: ["Black", "White", "Gray", "Navy", "Charcoal"],
         sizes: SIZES_TSHIRT,
         description: "Some days, surviving is the whole damn victory. Wear this when you want the world to know: you showed up. You made it. That's the win.",
+        description_he: "יש ימים שלשרוד זה הניצחון כולו. לבש את זה כשאתה רוצה שהעולם ידע: הגעת. שרדת. זה הניצחון.",
         fabric: "100% combed ring-spun cotton",
         fit: "Unisex, regular fit",
         printMethod: "DTG — Direct-to-Garment",
         printAreas: ["Front", "Back"],
         care: CARE_TSHIRT,
+        care_he: CARE_TSHIRT_HE,
         sizeGuide: SIZE_GUIDE_TSHIRT
     },
     {
@@ -132,11 +157,13 @@ const products = [
         colors: ["Black", "White", "Cream", "Charcoal", "Honey Brown"],
         sizes: SIZES_TSHIRT,
         description: "You don't need much. But what you bring to the table? Absolutely priceless. This tee gets it.",
+        description_he: "אתה לא דורש הרבה. אבל מה שאתה מביא לשולחן? חסר תחליף. החולצה מבינה.",
         fabric: "100% combed ring-spun cotton",
         fit: "Unisex, regular fit",
         printMethod: "DTG — Direct-to-Garment",
         printAreas: ["Front", "Back"],
         care: CARE_TSHIRT,
+        care_he: CARE_TSHIRT_HE,
         sizeGuide: SIZE_GUIDE_TSHIRT
     },
     {
@@ -150,11 +177,13 @@ const products = [
         colors: ["Charcoal", "Black", "Navy", "Honey Brown"],
         sizes: SIZES_HOODIE,
         description: "Models were never the point. Living is the point. This hoodie is for the people who showed up — every day, without filters, without apology.",
+        description_he: "מודלים לא היו הנקודה. החיים הם הנקודה. הקפוצ'ון הזה הוא לאנשים שהגיעו — כל יום, בלי פילטרים, בלי התנצלות.",
         fabric: "80% cotton, 20% polyester — heavyweight fleece",
         fit: "Unisex, relaxed fit",
         printMethod: "DTG — Direct-to-Garment",
         printAreas: ["Front", "Back"],
         care: CARE_HOODIE,
+        care_he: CARE_HOODIE_HE,
         sizeGuide: SIZE_GUIDE_HOODIE
     },
     {
@@ -168,6 +197,7 @@ const products = [
         colors: ["Charcoal", "Cream", "Honey Brown", "Black", "Navy"],
         sizes: SIZES_CAP,
         description: "A cap for everyone fashion forgot to invite. Consider this your invitation. One size, all bodies, zero pretense.",
+        description_he: "כובע לכולם שהאופנה שכחה להזמין. זו ההזמנה שלך. מידה אחת, כל הגופים, אפס יומרות.",
         fabric: "100% chino cotton twill, unstructured",
         fit: "One Size, adjustable strap",
         printMethod: "Embroidery",
@@ -178,6 +208,7 @@ const products = [
             "Do not tumble dry",
             "Reshape and air dry"
         ],
+        care_he: CARE_CAP_HE,
         sizeGuide: [{ size: 'One Size', note: 'Adjustable strap, fits most head sizes' }]
     },
 
@@ -195,11 +226,13 @@ const products = [
         colors: ["Black", "Charcoal", "Navy", "Red", "Forest Green"],
         sizes: SIZES_TSHIRT,
         description: "You were born for rest. Society had other plans. Wear this every Monday and let the world know where you stand.",
+        description_he: "נולדת לנוח. לחברה היו תוכניות אחרות. לבש את זה כל יום שני ותן לעולם לדעת איפה אתה עומד.",
         fabric: "100% combed ring-spun cotton",
         fit: "Unisex, regular fit",
         printMethod: "DTG — Direct-to-Garment",
         printAreas: ["Front", "Back"],
         care: CARE_TSHIRT,
+        care_he: CARE_TSHIRT_HE,
         sizeGuide: SIZE_GUIDE_TSHIRT
     },
     {
@@ -214,11 +247,13 @@ const products = [
         colors: ["Black", "Navy", "Charcoal"],
         sizes: SIZES_HOODIE,
         description: "Your mind works overtime. Your body deserves the warmup. Zip it up, overthink it later.",
+        description_he: "המוח שלך עובד שעות נוספות. הגוף שלך מגיע להתחמם. סגור את הרוכסן, תחשוב מחדש אחר כך.",
         fabric: "80% cotton, 20% polyester — heavyweight fleece",
         fit: "Unisex, regular fit",
         printMethod: "DTG — Direct-to-Garment",
         printAreas: ["Front", "Back"],
         care: CARE_HOODIE,
+        care_he: CARE_HOODIE_HE,
         sizeGuide: SIZE_GUIDE_HOODIE
     },
     {
@@ -233,11 +268,13 @@ const products = [
         colors: ["Black", "Navy", "White", "Forest Green"],
         sizes: SIZES_LONGSLEEVE,
         description: "Napping is not a hobby. It's a discipline. It's an art form. This sleeve announces your credentials.",
+        description_he: "שינה זה לא תחביב. זו דיסציפלינה. זו אמנות. השרוול הארוך הזה מכריז על האישורים שלך.",
         fabric: "100% combed ring-spun cotton",
         fit: "Unisex, regular fit",
         printMethod: "DTG — Direct-to-Garment",
         printAreas: ["Front", "Back"],
         care: CARE_TSHIRT,
+        care_he: CARE_TSHIRT_HE,
         sizeGuide: SIZE_GUIDE_LONGSLEEVE
     },
 
@@ -255,11 +292,13 @@ const products = [
         colors: ["White", "Cream", "Black", "Navy"],
         sizes: SIZES_TSHIRT,
         description: "She believed. She achieved. She celebrated by sleeping. For the woman who earns every minute of her rest.",
+        description_he: "היא האמינה. היא הגשימה. היא חגגה בשינה. לאישה שמרוויחה כל דקה של מנוחתה.",
         fabric: "100% combed ring-spun cotton",
         fit: "Women's fitted cut",
         printMethod: "DTG — Direct-to-Garment",
         printAreas: ["Front", "Back"],
         care: CARE_TSHIRT,
+        care_he: CARE_TSHIRT_HE,
         sizeGuide: SIZE_GUIDE_TSHIRT
     },
     {
@@ -274,11 +313,13 @@ const products = [
         colors: ["Black", "White", "Cream", "Navy"],
         sizes: SIZES_TSHIRT,
         description: "Two essential ingredients for getting through the day with a smile. Or without one. This tee doesn't judge.",
+        description_he: "שני המרכיבים החיוניים ליום עם חיוך. או בלי. החולצה לא שופטת.",
         fabric: "100% combed ring-spun cotton",
         fit: "Women's fitted cut",
         printMethod: "DTG — Direct-to-Garment",
         printAreas: ["Front", "Back"],
         care: CARE_TSHIRT,
+        care_he: CARE_TSHIRT_HE,
         sizeGuide: SIZE_GUIDE_TSHIRT
     },
     {
@@ -293,11 +334,13 @@ const products = [
         colors: ["Charcoal", "Cream", "Navy", "Honey Brown"],
         sizes: SIZES_HOODIE,
         description: "Welcome to the club. Membership requirements: a couch, a blanket, and absolutely no ambition today. We meet daily.",
+        description_he: "ברוכה הבאה למועדון. דרישות חברות: ספה, שמיכה, ואפס שאיפות להיום. אנחנו נפגשים יום יום.",
         fabric: "80% cotton, 20% polyester — heavyweight fleece",
         fit: "Women's relaxed fit",
         printMethod: "DTG — Direct-to-Garment",
         printAreas: ["Front", "Back"],
         care: CARE_HOODIE,
+        care_he: CARE_HOODIE_HE,
         sizeGuide: SIZE_GUIDE_HOODIE
     },
     {
@@ -312,11 +355,13 @@ const products = [
         colors: ["Cream", "White", "Black", "Navy"],
         sizes: SIZES_LONGSLEEVE,
         description: "It's not laziness — it's loyalty. The most committed relationship in your life. Wear it proudly.",
+        description_he: "זה לא עצלות — זו נאמנות. הקשר המחויב ביותר בחייך. לבשי אותו בגאווה.",
         fabric: "100% combed ring-spun cotton",
         fit: "Women's fitted cut",
         printMethod: "DTG — Direct-to-Garment",
         printAreas: ["Front", "Back"],
         care: CARE_TSHIRT,
+        care_he: CARE_TSHIRT_HE,
         sizeGuide: SIZE_GUIDE_LONGSLEEVE
     },
 ];
