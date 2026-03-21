@@ -71,21 +71,20 @@ async function fetchGelatoPreview(uid, apiKey) {
 // ── Fetch Gelato product cost (production price in USD) ────────
 async function fetchGelatoCost(uid, apiKey) {
     try {
-        const res = await fetch(`https://product.gelatoapis.com/v3/products/${uid}/prices`, {
-            headers: { 'X-API-KEY': apiKey }
-        });
+        const res = await fetch(
+            `https://product.gelatoapis.com/v3/products/${uid}/prices?country=US&currency=USD`,
+            { headers: { 'X-API-KEY': apiKey } }
+        );
         if (!res.ok) return null;
         const data = await res.json();
-        // Gelato returns a root-level array: [{productUid, country, quantity, price, currency}]
-        const prices = Array.isArray(data) ? data : (data?.prices || data?.productPrices || []);
-        const usdPrices = prices
-            .filter(p => p.currency === 'USD' || p.country === 'US')
-            .map(p => Number(p.price || p.pricePerUnit || p.amount || 0))
-            .filter(v => v > 0);
-        if (!usdPrices.length) return null;
-        const minPrice = Math.min(...usdPrices);
-        // Price is in dollars (e.g. 12.50), not cents
-        return Math.round(minPrice * 100) / 100;
+        // Response: [{productUid, country, quantity, price (=total for qty), currency}]
+        const tiers = Array.isArray(data) ? data : [];
+        if (!tiers.length) return null;
+        // Prefer quantity=1 tier; otherwise divide total price by smallest quantity
+        const qty1 = tiers.find(p => p.quantity === 1);
+        if (qty1) return Math.round(qty1.price * 100) / 100;
+        const minTier = tiers.reduce((a, b) => b.quantity < a.quantity ? b : a);
+        return Math.round((minTier.price / minTier.quantity) * 100) / 100;
     } catch {
         return null;
     }
