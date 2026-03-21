@@ -26,7 +26,7 @@ const DUBIS_PRODUCTS = [
     { id: 14, phrase: 'Emotionally attached to my couch',    typeLabel: 'Long-Sleeve',type: 'longsleeve',gender: 'women',  price: 55 },
 ];
 
-// ── Gelato base UIDs (no size/color/print) ────────────────────
+// ── Gelato base UIDs (no size/color/print) — for catalog grouping ─────────
 function getBaseUid(type, gender) {
     const g = gender === 'women' ? 'women' : 'unisex';
     if (type === 'tshirt')     return `apparel_product_gca_t-shirt_gsc_crewneck_gcu_${g}_gqa_classic`;
@@ -35,6 +35,14 @@ function getBaseUid(type, gender) {
     if (type === 'longsleeve') return `apparel_product_gca_long-sleeve_gsc_crewneck_gcu_${g}_gqa_classic`;
     if (type === 'cap')        return 'apparel_product_gca_dad-hat_gsc_classic_gcu_unisex_gqa_classic';
     return null;
+}
+
+// ── Full UIDs for prices API (requires size+color+print) ───────────────────
+function getPriceUid(type, gender) {
+    const base = getBaseUid(type, gender);
+    if (!base) return null;
+    if (type === 'cap') return base + '_gsi_os_gco_black_gpr_4-0';
+    return base + '_gsi_m_gco_black_gpr_4-4';
 }
 
 // ── Gelato catalog URLs — direct links to specific product pages ────────────
@@ -117,40 +125,24 @@ module.exports = async function handler(req, res) {
     const GELATO_API_KEY = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
     let previewImages = {}; // baseUid → imageUrl
     let gelatoCosts   = {}; // baseUid → cost in USD
-    let debugInfo = { hasKey: !!GELATO_API_KEY, keyPrefix: GELATO_API_KEY ? GELATO_API_KEY.slice(0,6) : null, rawSample: null };
 
     if (GELATO_API_KEY) {
-        // Deduplicate base UIDs
-        const uniqueUids = [...new Set(
-            DUBIS_PRODUCTS.map(p => getBaseUid(p.type, p.gender)).filter(Boolean)
-        )];
+        // Deduplicate by baseUid, fetch preview (base) + cost (full UID) in parallel
+        const uniqueTypes = [...new Map(
+            DUBIS_PRODUCTS.map(p => [getBaseUid(p.type, p.gender), p])
+        ).values()];
 
-        // Debug: fetch raw response for first UID
-        try {
-            const testUid = uniqueUids[0];
-            const testRes = await fetch(
-                `https://product.gelatoapis.com/v3/products/${testUid}/prices?country=US&currency=USD`,
-                { headers: { 'X-API-KEY': GELATO_API_KEY } }
-            );
-            debugInfo.testUid = testUid;
-            debugInfo.testStatus = testRes.status;
-            const testData = await testRes.json();
-            debugInfo.rawSample = JSON.stringify(testData).slice(0, 300);
-        } catch(e) {
-            debugInfo.testError = e.message;
-        }
-
-        // Fetch preview + cost in parallel
         const results = await Promise.all(
-            uniqueUids.map(async uid => ({
-                uid,
-                img:  await fetchGelatoPreview(uid, GELATO_API_KEY),
-                cost: await fetchGelatoCost(uid, GELATO_API_KEY),
+            uniqueTypes.map(async p => ({
+                baseUid:  getBaseUid(p.type, p.gender),
+                priceUid: getPriceUid(p.type, p.gender),
+                img:  await fetchGelatoPreview(getBaseUid(p.type, p.gender), GELATO_API_KEY),
+                cost: await fetchGelatoCost(getPriceUid(p.type, p.gender), GELATO_API_KEY),
             }))
         );
-        results.forEach(({ uid, img, cost }) => {
-            if (img)  previewImages[uid] = img;
-            if (cost) gelatoCosts[uid]   = cost;
+        results.forEach(({ baseUid, img, cost }) => {
+            if (img)  previewImages[baseUid] = img;
+            if (cost) gelatoCosts[baseUid]   = cost;
         });
     }
 
@@ -166,5 +158,5 @@ module.exports = async function handler(req, res) {
         };
     });
 
-    return res.status(200).json({ products, debug: debugInfo });
+    return res.status(200).json({ products });
 };
