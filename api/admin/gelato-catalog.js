@@ -76,16 +76,16 @@ async function fetchGelatoCost(uid, apiKey) {
         });
         if (!res.ok) return null;
         const data = await res.json();
-        // prices array: find lowest price (base size/color, USD)
-        const prices = data?.prices || data?.productPrices || [];
+        // Gelato returns a root-level array: [{productUid, country, quantity, price, currency}]
+        const prices = Array.isArray(data) ? data : (data?.prices || data?.productPrices || []);
         const usdPrices = prices
-            .filter(p => !p.currency || p.currency === 'USD')
-            .map(p => Number(p.price || p.amount || 0))
+            .filter(p => p.currency === 'USD' || p.country === 'US')
+            .map(p => Number(p.price || p.pricePerUnit || p.amount || 0))
             .filter(v => v > 0);
         if (!usdPrices.length) return null;
-        const minCents = Math.min(...usdPrices);
-        // Gelato returns prices in cents if > 100, or dollars if < 100
-        return minCents > 100 ? minCents / 100 : minCents;
+        const minPrice = Math.min(...usdPrices);
+        // Price is in dollars (e.g. 12.50), not cents
+        return Math.round(minPrice * 100) / 100;
     } catch {
         return null;
     }
