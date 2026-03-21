@@ -117,12 +117,29 @@ module.exports = async function handler(req, res) {
     const GELATO_API_KEY = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
     let previewImages = {}; // baseUid → imageUrl
     let gelatoCosts   = {}; // baseUid → cost in USD
+    let debugInfo = { hasKey: !!GELATO_API_KEY, keyPrefix: GELATO_API_KEY ? GELATO_API_KEY.slice(0,6) : null, rawSample: null };
 
     if (GELATO_API_KEY) {
         // Deduplicate base UIDs
         const uniqueUids = [...new Set(
             DUBIS_PRODUCTS.map(p => getBaseUid(p.type, p.gender)).filter(Boolean)
         )];
+
+        // Debug: fetch raw response for first UID
+        try {
+            const testUid = uniqueUids[0];
+            const testRes = await fetch(
+                `https://product.gelatoapis.com/v3/products/${testUid}/prices?country=US&currency=USD`,
+                { headers: { 'X-API-KEY': GELATO_API_KEY } }
+            );
+            debugInfo.testUid = testUid;
+            debugInfo.testStatus = testRes.status;
+            const testData = await testRes.json();
+            debugInfo.rawSample = JSON.stringify(testData).slice(0, 300);
+        } catch(e) {
+            debugInfo.testError = e.message;
+        }
+
         // Fetch preview + cost in parallel
         const results = await Promise.all(
             uniqueUids.map(async uid => ({
@@ -149,5 +166,5 @@ module.exports = async function handler(req, res) {
         };
     });
 
-    return res.status(200).json({ products });
+    return res.status(200).json({ products, debug: debugInfo });
 };
