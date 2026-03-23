@@ -2193,7 +2193,8 @@
           <button class="btn-approve" style="flex:1;background:#7c3aed" onclick="publishInstagramPost('${data.id}',\`${(data.description||data.title).replace(/`/g,"'")}\`)">📸 פרסם לאינסטגרם</button>
           <button class="btn-done" style="flex:1" onclick="updateTaskStatus('${data.id}','done');closeTaskDetail()">✓ סמן בוצע</button>`:''}
         ${data.status==='done'?`
-          <button class="btn-approve" style="flex:1;background:#374151" onclick="updateTaskStatus('${data.id}','in_progress');closeTaskDetail()">↩ החזר ל-In Progress</button>`:''}
+          <button class="btn-approve" style="flex:1;background:#374151" onclick="updateTaskStatus('${data.id}','in_progress');closeTaskDetail()">↩ In Progress</button>
+          <button class="btn-approve" style="flex:1;background:#1f2937" onclick="updateTaskStatus('${data.id}','backlog');closeTaskDetail()">↩ Backlog</button>`:''}
       </div>
       ${data.notes?`<p style="font-size:.75rem;color:#666;margin-top:.6rem;font-style:italic">${escHtml(data.notes)}</p>`:''}
       <p style="font-size:.7rem;color:#444;margin-top:.8rem">Created: ${formatDate(data.created_at)}</p>`;
@@ -2205,8 +2206,13 @@
   }
 
   async function publishInstagramPost(taskId, captionHint) {
-    // Build full caption from task content_data if available
+    // Get auth token first
+    const { data: { session: igSession } } = await _sb.auth.getSession();
+    const token = igSession?.access_token;
+
+    // Build caption + check for existing generated image
     let defaultCaption = captionHint || '';
+    let existingImageUrl = '';
     try {
       const { data: taskData } = await window._supabase.from('agent_tasks').select('content_data').eq('id', taskId).single();
       if (taskData?.content_data) {
@@ -2216,24 +2222,63 @@
         if (cd.caption_en) parts.push(cd.caption_en);
         if (cd.hashtags)   parts.push(cd.hashtags);
         if (parts.length) defaultCaption = parts.join('\n\n');
+        existingImageUrl = cd.generated_image_url || '';
       }
     } catch(e) {}
 
-    // Ask for image URL (default: first product image on site)
-    const imageUrl = prompt(
-      'URL של התמונה לפרסום (חייב להיות URL ציבורי):',
-      'https://www.dubis.net/images/product-1-Black-front.jpg'
-    );
-    if (!imageUrl?.trim()) return;
+    // ── Step 1: Image ──
+    let imageUrl = existingImageUrl;
 
+    if (imageUrl) {
+      // Already generated before — offer reuse or regenerate
+      const reuse = confirm('נמצאה תמונה שנוצרה בעבר לפוסט הזה.\n\nלהשתמש בה?\n(ביטול = ייצר תמונה חדשה)');
+      if (!reuse) imageUrl = '';
+    }
+
+    if (!imageUrl) {
+      const wantAI = confirm('לייצר תמונה אוטומטית עם AI לפי תוכן הפוסט?\n\n(ביטול = הזן URL ידנית)');
+      if (wantAI) {
+        // Show loading overlay
+        const loadingEl = document.createElement('div');
+        loadingEl.id = 'ig-loading-overlay';
+        loadingEl.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;color:#e8e0d5;gap:1rem';
+        loadingEl.innerHTML = '<div style="font-size:2rem">🎨</div><div style="font-size:1.1rem">מייצר תמונה עם AI...</div><div style="font-size:.8rem;color:#888">זה יכול לקחת 15-30 שניות</div>';
+        document.body.appendChild(loadingEl);
+        try {
+          const genRes = await fetch('/api/agents?type=generate-image', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_id: taskId })
+          });
+          const genData = await genRes.json();
+          loadingEl.remove();
+          if (genData.image_url) {
+            imageUrl = genData.image_url;
+            alert('✅ תמונה נוצרה!\n' + imageUrl + '\n\nהתמונה נשמרה לפוסט.');
+          } else {
+            alert('שגיאה ביצירת תמונה: ' + (genData.error || 'Unknown') + '\nתזין URL ידנית.');
+          }
+        } catch(e) {
+          document.getElementById('ig-loading-overlay')?.remove();
+          alert('שגיאת רשת ביצירת תמונה: ' + e.message);
+        }
+      }
+    }
+
+    // Manual fallback
+    if (!imageUrl) {
+      const manual = prompt('URL של התמונה לפרסום (חייב להיות URL ציבורי):', '');
+      if (!manual?.trim()) return;
+      imageUrl = manual.trim();
+    }
+
+    // ── Step 2: Caption ──
     const caption = prompt('כיתוב לפוסט (עברית/אנגלית + האשטאגים):', defaultCaption);
     if (!caption?.trim()) return;
 
     if (!confirm('לפרסם לאינסטגרם?')) return;
 
     closeTaskDetail();
-    const { data: { session: igSession } } = await _sb.auth.getSession();
-    const token = igSession?.access_token;
     try {
       const res = await fetch('/api/agents?type=publish', {
         method: 'POST',

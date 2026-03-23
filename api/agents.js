@@ -239,6 +239,79 @@ module.exports = async function handler(req, res) {
         });
     }
 
+    // ── GENERATE-IMAGE ── generate Instagram image via Gemini Imagen ───
+    if (type === 'generate-image') {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser) return res.status(401).json({ error: 'Unauthorized' });
+
+        const { task_id, prompt: customPrompt } = req.body || {};
+        const geminiKey = process.env.GEMINI_API_KEY;
+        if (!geminiKey) return res.status(503).json({ error: 'GEMINI_API_KEY not configured' });
+
+        // Build prompt from task content_data
+        let imagePrompt = customPrompt;
+        if (task_id && !customPrompt) {
+            const { data: task } = await sb.from('agent_tasks')
+                .select('title, description, content_data').eq('id', task_id).single();
+            if (task) {
+                const cd = task.content_data || {};
+                const desc = cd.caption_en || task.description || task.title || '';
+                const format = cd.format || 'feed_post';
+                const baseStyle = 'DUBIS Israeli clothing brand for real people, not fashion models. Urban lifestyle photography, authentic diverse people, dark minimal aesthetic, natural lighting, square 1:1 format. No text in image.';
+                if (format === 'quote_card') {
+                    imagePrompt = `Minimalist dark textured background, urban concrete wall, suitable for text overlay. ${baseStyle}`;
+                } else if (format === 'product_post') {
+                    imagePrompt = `Person wearing casual streetwear, ${desc.substring(0,100)}. ${baseStyle}`;
+                } else {
+                    imagePrompt = `${desc.substring(0,150)}. ${baseStyle}`;
+                }
+            }
+        }
+        if (!imagePrompt) return res.status(400).json({ error: 'prompt or task_id required' });
+
+        // Call Gemini Imagen
+        const geminiRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${geminiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    instances: [{ prompt: imagePrompt }],
+                    parameters: { sampleCount: 1, aspectRatio: '1:1' }
+                })
+            }
+        );
+        const geminiData = await geminiRes.json();
+        if (geminiData.error) return res.status(500).json({ error: geminiData.error.message });
+        const b64 = geminiData.predictions?.[0]?.bytesBase64Encoded;
+        if (!b64) return res.status(500).json({ error: 'Image generation failed — no image returned' });
+
+        // Upload to Supabase Storage (public bucket ig-images)
+        await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
+        const fileName = `ig-${task_id || 'gen'}-${Date.now()}.jpg`;
+        const imageBuffer = Buffer.from(b64, 'base64');
+        const { error: uploadError } = await sb.storage
+            .from('ig-images')
+            .upload(fileName, imageBuffer, { contentType: 'image/jpeg', upsert: true });
+        if (uploadError) return res.status(500).json({ error: uploadError.message });
+
+        const { data: { publicUrl } } = sb.storage.from('ig-images').getPublicUrl(fileName);
+
+        // Save generated image URL into task content_data
+        if (task_id) {
+            const { data: tsk } = await sb.from('agent_tasks').select('content_data').eq('id', task_id).single();
+            const cd = tsk?.content_data || {};
+            await sb.from('agent_tasks').update({
+                content_data: { ...cd, generated_image_url: publicUrl },
+                updated_at: new Date().toISOString()
+            }).eq('id', task_id);
+        }
+
+        console.log(`🎨 Instagram image generated | ${fileName}`);
+        return res.status(200).json({ image_url: publicUrl, prompt_used: imagePrompt });
+    }
+
     // ── PUBLISH ── post content to Instagram via Graph API ────────────
     if (type === 'publish') {
         if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
