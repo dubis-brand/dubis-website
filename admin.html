@@ -2218,7 +2218,8 @@
     if (!confirm('לפרסם לאינסטגרם?')) return;
 
     closeTaskDetail();
-    const token = window._supabaseSession?.access_token;
+    const { data: { session: igSession } } = await _sb.auth.getSession();
+    const token = igSession?.access_token;
     try {
       const res = await fetch('/api/agents?type=publish', {
         method: 'POST',
@@ -2302,7 +2303,8 @@
     btn.classList.add('running');
     btn.textContent = '⏳ מריץ...';
 
-    const token = window._supabaseSession?.access_token;
+    const { data: { session: runSession } } = await _sb.auth.getSession();
+    const token = runSession?.access_token;
     try {
       const res = await fetch('/api/agents?type=run', {
         method: 'POST',
