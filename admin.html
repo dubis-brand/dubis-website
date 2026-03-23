@@ -962,6 +962,40 @@
         position:absolute; top:1rem; right:1rem; background:none; border:none;
         color:#666; font-size:1.2rem; cursor:pointer; }
       .task-detail-close:hover { color:#e8e0d5; }
+
+      /* ── Add Task Modal ── */
+      .add-task-overlay {
+        display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
+        z-index:9999; align-items:center; justify-content:center; }
+      .add-task-overlay.open { display:flex; }
+      .add-task-box {
+        background:#1a1a1a; border-radius:14px; padding:2rem; width:min(560px,94vw);
+        max-height:90vh; overflow-y:auto; position:relative; border:1px solid #2a2a2a; }
+      .add-task-box h3 { color:#e8e0d5; margin:0 0 1.4rem; font-size:1rem; }
+      .at-form-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; }
+      .at-group { display:flex; flex-direction:column; gap:.35rem; margin-bottom:.75rem; }
+      .at-group label { font-size:.72rem; color:#888; text-transform:uppercase; letter-spacing:.5px; }
+      .at-group input, .at-group select, .at-group textarea {
+        background:#111; border:1px solid #2a2a2a; color:#e8e0d5; border-radius:7px;
+        padding:.6rem .85rem; font-size:.85rem; width:100%; box-sizing:border-box; }
+      .at-group input:focus, .at-group select:focus, .at-group textarea:focus {
+        outline:none; border-color:#c8a96e; }
+      .at-group textarea { resize:vertical; min-height:70px; }
+      .at-group select option { background:#1a1a1a; }
+      .btn-submit-task {
+        width:100%; margin-top:.5rem; padding:.85rem; background:#c8a96e; color:#0d0d0d;
+        border:none; border-radius:8px; font-size:.9rem; font-weight:700; cursor:pointer; }
+      .btn-submit-task:hover { background:#e0c080; }
+      .btn-submit-task:disabled { opacity:.5; cursor:not-allowed; }
+      .at-close {
+        position:absolute; top:1rem; right:1rem; background:none; border:none;
+        color:#555; font-size:1.3rem; cursor:pointer; line-height:1; }
+      .at-close:hover { color:#e8e0d5; }
+      .btn-run-agents {
+        background:#1a2a1a; color:#4ade80; border:1px solid #2d4a2d;
+        border-radius:6px; padding:.45rem 1rem; font-size:.8rem; font-weight:600; cursor:pointer; }
+      .btn-run-agents:hover { background:#2d4a2d; }
+      .btn-run-agents.running { opacity:.6; cursor:not-allowed; }
     </style>
 
     <div class="tasks-toolbar">
@@ -976,14 +1010,11 @@
       </select>
       <select id="tasks-filter-agent" onchange="loadTasks()">
         <option value="">All Agents</option>
-        <option value="boss">Boss</option>
-        <option value="cto">CTO</option>
-        <option value="marketing">Marketing</option>
-        <option value="content">Content</option>
-        <option value="design">Design</option>
-        <option value="email_monitor">Email Monitor</option>
-        <option value="site_audit">Site Audit</option>
-        <option value="manual">Manual</option>
+        <option value="cto">🔧 CTO</option>
+        <option value="content">✍️ Content</option>
+        <option value="marketing">📣 Marketing</option>
+        <option value="design">🎨 Design</option>
+        <option value="manual">👤 Manual</option>
       </select>
       <select id="tasks-filter-priority" onchange="loadTasks()">
         <option value="">All Priority</option>
@@ -992,8 +1023,9 @@
         <option value="medium">🟡 Medium</option>
         <option value="low">⚪ Low</option>
       </select>
-      <input id="tasks-search" type="text" placeholder="Search tasks..." oninput="loadTasks()">
-      <button class="btn-add-task" onclick="openAddTaskModal()">+ Add Task</button>
+      <input id="tasks-search" type="text" placeholder="חיפוש..." oninput="loadTasks()">
+      <button class="btn-run-agents" id="btn-run-agents" onclick="runAgentTasks()" title="הרץ משימות מאושרות לכל הסוכנים">▶ הרץ סוכנים</button>
+      <button class="btn-add-task" onclick="openAddTaskModal()">+ הוסף משימה</button>
     </div>
 
     <div class="tasks-stats" id="tasks-stats"></div>
@@ -1013,6 +1045,84 @@
       </div>
     </div>
   </div><!-- /section-tasks -->
+
+  <!-- Add Task Modal -->
+  <div class="add-task-overlay" id="add-task-overlay" onclick="if(event.target===this)closeAddTaskModal()">
+    <div class="add-task-box">
+      <button class="at-close" onclick="closeAddTaskModal()">✕</button>
+      <h3>+ הוסף משימה חדשה</h3>
+
+      <div class="at-group">
+        <label>כותרת *</label>
+        <input type="text" id="at-title" placeholder="תיאור קצר וברור של המשימה" maxlength="200">
+      </div>
+
+      <div class="at-form-row">
+        <div class="at-group">
+          <label>סוכן מבצע *</label>
+          <select id="at-agent">
+            <option value="cto">🔧 CTO — קוד / טכני</option>
+            <option value="content">✍️ Content — תוכן / כתיבה</option>
+            <option value="marketing">📣 Marketing — שיווק / קמפיינים</option>
+            <option value="design">🎨 Design — עיצוב / תמונות</option>
+            <option value="manual" selected>👤 Manual — אני מטפל</option>
+          </select>
+        </div>
+        <div class="at-group">
+          <label>עדיפות</label>
+          <select id="at-priority">
+            <option value="critical">🔴 Critical — דחוף מאוד</option>
+            <option value="high">🟠 High — גבוה</option>
+            <option value="medium" selected>🟡 Medium — בינוני</option>
+            <option value="low">⚪ Low — נמוך</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="at-form-row">
+        <div class="at-group">
+          <label>קטגוריה</label>
+          <select id="at-category">
+            <option value="manual">👤 ידני</option>
+            <option value="feature">✨ פיצ'ר חדש</option>
+            <option value="bug">🐛 תיקון באג</option>
+            <option value="content">✍️ תוכן</option>
+            <option value="design">🎨 עיצוב</option>
+            <option value="marketing">📣 שיווק</option>
+            <option value="ops">⚙️ תפעול</option>
+            <option value="gmail_insight">📧 תובנת מייל</option>
+          </select>
+        </div>
+        <div class="at-group">
+          <label>סטטוס התחלתי</label>
+          <select id="at-status">
+            <option value="backlog" selected>📋 Backlog</option>
+            <option value="in_progress">🔄 In Progress</option>
+            <option value="pending_approval">⏳ Pending Approval</option>
+            <option value="approved">✅ Approved — מוכן להרצה</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="at-group">
+        <label>תיאור מפורט</label>
+        <textarea id="at-description" placeholder="פרטים, הנחיות, מה בדיוק צריך לעשות..."></textarea>
+      </div>
+
+      <div class="at-group">
+        <label>הערות / הקשר</label>
+        <textarea id="at-notes" rows="2" placeholder="לינקים רלוונטיים, הערות, סיבת המשימה..."></textarea>
+      </div>
+
+      <div class="at-group">
+        <label>תאריך יעד (אופציונלי)</label>
+        <input type="date" id="at-due-date">
+      </div>
+
+      <p id="at-error" style="color:#ef4444;font-size:.8rem;margin:.5rem 0 0;display:none"></p>
+      <button class="btn-submit-task" id="btn-submit-task" onclick="submitAddTask()">+ הוסף משימה</button>
+    </div>
+  </div>
 
   <!-- Task Detail Modal -->
   <div class="task-detail-modal" id="task-detail-modal">
@@ -2084,17 +2194,89 @@
   }
 
   function openAddTaskModal() {
-    const title    = prompt('Task title:');
-    if (!title?.trim()) return;
-    const agent    = prompt('Agent (cto/marketing/content/design/manual):', 'manual');
-    const priority = prompt('Priority (critical/high/medium/low):', 'medium');
-    window._supabase.from('agent_tasks').insert({
-      title: title.trim(), agent_id: agent||'manual',
-      priority: priority||'medium', status: 'backlog', category: 'manual'
-    }).then(({ error }) => {
-      if (error) alert('Error: ' + error.message);
-      else loadTasks();
+    document.getElementById('at-title').value       = '';
+    document.getElementById('at-agent').value       = 'manual';
+    document.getElementById('at-priority').value    = 'medium';
+    document.getElementById('at-category').value    = 'manual';
+    document.getElementById('at-status').value      = 'backlog';
+    document.getElementById('at-description').value = '';
+    document.getElementById('at-notes').value       = '';
+    document.getElementById('at-due-date').value    = '';
+    document.getElementById('at-error').style.display = 'none';
+    document.getElementById('btn-submit-task').disabled = false;
+    document.getElementById('add-task-overlay').classList.add('open');
+    setTimeout(() => document.getElementById('at-title').focus(), 50);
+  }
+
+  function closeAddTaskModal() {
+    document.getElementById('add-task-overlay').classList.remove('open');
+  }
+
+  async function submitAddTask() {
+    const title    = document.getElementById('at-title').value.trim();
+    const agent_id = document.getElementById('at-agent').value;
+    const priority = document.getElementById('at-priority').value;
+    const category = document.getElementById('at-category').value;
+    const status   = document.getElementById('at-status').value;
+    const description = document.getElementById('at-description').value.trim();
+    const notes    = document.getElementById('at-notes').value.trim();
+    const due_date = document.getElementById('at-due-date').value || null;
+    const errEl    = document.getElementById('at-error');
+
+    if (!title) {
+      errEl.textContent = 'כותרת המשימה חובה';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    const btn = document.getElementById('btn-submit-task');
+    btn.disabled = true;
+    btn.textContent = 'שומר...';
+    errEl.style.display = 'none';
+
+    const { error } = await window._supabase.from('agent_tasks').insert({
+      title, agent_id, priority, status, category,
+      description: description || null,
+      notes: notes || null,
+      due_date,
     });
+
+    if (error) {
+      errEl.textContent = 'שגיאה: ' + error.message;
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = '+ הוסף משימה';
+    } else {
+      closeAddTaskModal();
+      loadTasks();
+    }
+  }
+
+  async function runAgentTasks() {
+    const btn = document.getElementById('btn-run-agents');
+    if (btn.classList.contains('running')) return;
+    btn.classList.add('running');
+    btn.textContent = '⏳ מריץ...';
+
+    const token = window._supabaseSession?.access_token;
+    try {
+      const res = await fetch('/api/agents?type=run', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.queued > 0) {
+        alert(`✅ ${data.queued} משימות הועברו לביצוע.\n${data.summary || ''}`);
+      } else {
+        alert('אין משימות מאושרות הממתינות להרצה.');
+      }
+      loadTasks();
+    } catch(e) {
+      alert('שגיאה: ' + e.message);
+    }
+
+    btn.classList.remove('running');
+    btn.textContent = '▶ הרץ סוכנים';
   }
 
   function escHtml(s) {

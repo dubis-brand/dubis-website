@@ -176,5 +176,68 @@ module.exports = async function handler(req, res) {
         }
     }
 
-    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs' });
+    // ── RUN ── scan approved tasks and queue them for execution ───────
+    if (type === 'run') {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+
+        const adminUser = await verifyAdmin(req);
+        const isCron    = req.headers['x-vercel-cron'] === '1' ||
+                          req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`;
+        if (!adminUser && !isCron) return res.status(401).json({ error: 'Unauthorized' });
+
+        // Fetch all approved tasks that haven't started yet
+        const { data: tasks, error: fetchErr } = await sb
+            .from('agent_tasks')
+            .select('id, title, agent_id, category, description, notes, priority')
+            .eq('status', 'approved')
+            .order('priority', { ascending: false })
+            .order('created_at', { ascending: true });
+
+        if (fetchErr) return res.status(500).json({ error: fetchErr.message });
+
+        if (!tasks || tasks.length === 0) {
+            return res.status(200).json({ queued: 0, summary: 'No approved tasks found.' });
+        }
+
+        // Group by agent
+        const byAgent = {};
+        for (const t of tasks) {
+            if (!byAgent[t.agent_id]) byAgent[t.agent_id] = [];
+            byAgent[t.agent_id].push(t);
+        }
+
+        // Mark all as in_progress + log a run per agent
+        const now = new Date().toISOString();
+        let queued = 0;
+        const summaryLines = [];
+
+        for (const [agent_id, agentTasks] of Object.entries(byAgent)) {
+            // Update tasks to in_progress
+            const ids = agentTasks.map(t => t.id);
+            await sb.from('agent_tasks')
+                .update({ status: 'in_progress', updated_at: now })
+                .in('id', ids);
+
+            // Log a run
+            const taskTitles = agentTasks.map(t => `• ${t.title}`).join('\n');
+            await sb.from('agent_runs').insert({
+                agent_id,
+                status: 'queued',
+                summary: `${agentTasks.length} tasks queued:\n${taskTitles}`,
+                tasks_created: agentTasks.length,
+            });
+
+            queued += agentTasks.length;
+            summaryLines.push(`${agent_id}: ${agentTasks.length} tasks`);
+        }
+
+        console.log(`Agent run triggered | ${queued} tasks | ${summaryLines.join(', ')}`);
+        return res.status(200).json({
+            queued,
+            agents: Object.keys(byAgent),
+            summary: summaryLines.join(', '),
+        });
+    }
+
+    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run' });
 };

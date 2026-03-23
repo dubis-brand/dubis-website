@@ -122,7 +122,36 @@ module.exports = async function handler(req, res) {
     // ── 0. Gmail scan (runs first so insights are fresh) ────────────────
     await runGmailScan(supabase);
 
-    // ── 1. Pending tasks awaiting approval ──────────────────────────
+    // ── 1a. Auto-trigger approved tasks (daily agent run) ───────────
+    const { data: approvedTasks } = await supabase
+        .from('agent_tasks')
+        .select('id, agent_id, title')
+        .eq('status', 'approved');
+
+    if (approvedTasks && approvedTasks.length > 0) {
+        const now = new Date().toISOString();
+        const ids = approvedTasks.map(t => t.id);
+        await supabase.from('agent_tasks')
+            .update({ status: 'in_progress', updated_at: now })
+            .in('id', ids);
+
+        // Group & log runs
+        const byAgent = {};
+        for (const t of approvedTasks) {
+            if (!byAgent[t.agent_id]) byAgent[t.agent_id] = [];
+            byAgent[t.agent_id].push(t.title);
+        }
+        for (const [agent_id, titles] of Object.entries(byAgent)) {
+            await supabase.from('agent_runs').insert({
+                agent_id, status: 'queued',
+                summary: `${titles.length} tasks auto-queued by morning cron:\n${titles.map(t => `• ${t}`).join('\n')}`,
+                tasks_created: titles.length,
+            });
+        }
+        console.log(`Morning cron: auto-queued ${approvedTasks.length} approved tasks`);
+    }
+
+    // ── 1b. Pending tasks awaiting approval ─────────────────────────
     const { data: pendingTasks } = await supabase
         .from('agent_tasks')
         .select('id, title, description, priority, category, created_at, notes')
