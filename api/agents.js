@@ -312,57 +312,111 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ image_url: publicUrl, prompt_used: imagePrompt });
     }
 
-    // ── PUBLISH ── post content to Instagram via Graph API ────────────
+    // ── PUBLISH ── multi-platform post (Instagram + Facebook + TikTok) ─
     if (type === 'publish') {
         if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
         const adminUser = await verifyAdmin(req);
         if (!adminUser && !isAgentSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
 
-        const igToken   = process.env.INSTAGRAM_ACCESS_TOKEN;
-        const igAccount = process.env.INSTAGRAM_ACCOUNT_ID;
-        if (!igToken || !igAccount) {
-            return res.status(503).json({ error: 'Instagram not configured. Add INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_ACCOUNT_ID to Vercel env vars.' });
-        }
-
-        const { caption, image_url, task_id } = req.body || {};
+        const { caption, image_url, task_id, platforms = {} } = req.body || {};
         if (!caption || !image_url) return res.status(400).json({ error: 'caption and image_url required' });
 
-        const igBase = `https://graph.facebook.com/v19.0/${igAccount}`;
+        // Default: Instagram only when platforms not specified (backward compat)
+        const doInstagram = platforms.instagram !== false && (platforms.instagram === true || !Object.keys(platforms).length);
+        const doFacebook  = platforms.facebook === true;
+        const doTikTok    = platforms.tiktok   === true;
 
-        // Step 1: create media container
-        const containerRes = await fetch(`${igBase}/media`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image_url, caption, access_token: igToken }),
-        });
-        const container = await containerRes.json();
-        if (!containerRes.ok || container.error) {
-            console.error('Instagram container error:', container);
-            return res.status(500).json({ error: container.error?.message || 'Container creation failed' });
+        const result = { success: false, errors: [] };
+
+        // ── Instagram ──────────────────────────────────────────────
+        if (doInstagram) {
+            const igToken   = process.env.INSTAGRAM_ACCESS_TOKEN;
+            const igAccount = process.env.INSTAGRAM_ACCOUNT_ID;
+            if (!igToken || !igAccount) {
+                result.errors.push('Instagram: env vars חסרים (INSTAGRAM_ACCESS_TOKEN / INSTAGRAM_ACCOUNT_ID)');
+            } else {
+                try {
+                    const igBase = `https://graph.facebook.com/v19.0/${igAccount}`;
+                    const cRes = await fetch(`${igBase}/media`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image_url, caption, access_token: igToken }),
+                    });
+                    const container = await cRes.json();
+                    if (!cRes.ok || container.error) {
+                        result.errors.push('Instagram container: ' + (container.error?.message || 'failed'));
+                    } else {
+                        const pRes = await fetch(`${igBase}/media_publish`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ creation_id: container.id, access_token: igToken }),
+                        });
+                        const published = await pRes.json();
+                        if (!pRes.ok || published.error) {
+                            result.errors.push('Instagram publish: ' + (published.error?.message || 'failed'));
+                        } else {
+                            result.instagram_post_id = published.id;
+                            console.log(`✅ Instagram published | ID: ${published.id}`);
+                        }
+                    }
+                } catch(e) { result.errors.push('Instagram: ' + e.message); }
+            }
         }
 
-        // Step 2: publish
-        const publishRes = await fetch(`${igBase}/media_publish`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ creation_id: container.id, access_token: igToken }),
-        });
-        const published = await publishRes.json();
-        if (!publishRes.ok || published.error) {
-            console.error('Instagram publish error:', published);
-            return res.status(500).json({ error: published.error?.message || 'Publish failed' });
+        // ── Facebook Page ──────────────────────────────────────────
+        if (doFacebook) {
+            const fbToken  = process.env.INSTAGRAM_ACCESS_TOKEN; // same long-lived page token
+            const fbPageId = process.env.FACEBOOK_PAGE_ID;
+            if (!fbToken || !fbPageId) {
+                result.errors.push('Facebook: חסר FACEBOOK_PAGE_ID ב-Vercel env vars');
+            } else {
+                try {
+                    const fbRes = await fetch(`https://graph.facebook.com/v19.0/${fbPageId}/photos`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: image_url, caption, access_token: fbToken }),
+                    });
+                    const fbData = await fbRes.json();
+                    if (!fbRes.ok || fbData.error) {
+                        result.errors.push('Facebook: ' + (fbData.error?.message || 'publish failed'));
+                    } else {
+                        result.facebook_post_id = fbData.post_id || fbData.id;
+                        console.log(`✅ Facebook published | ID: ${result.facebook_post_id}`);
+                    }
+                } catch(e) { result.errors.push('Facebook: ' + e.message); }
+            }
         }
 
-        // Mark task as done if task_id provided
-        if (task_id) {
-            await sb.from('agent_tasks')
-                .update({ status: 'done', notes: `Published to Instagram. Post ID: ${published.id}`, updated_at: new Date().toISOString() })
-                .eq('id', task_id);
+        // ── TikTok (placeholder) ───────────────────────────────────
+        if (doTikTok) {
+            const tikToken = process.env.TIKTOK_ACCESS_TOKEN;
+            result.tiktok_note = tikToken
+                ? 'TikTok Content API עדיין לא ממומש — בקרוב'
+                : 'TikTok: חסר TIKTOK_ACCESS_TOKEN — דורש OAuth נפרד';
         }
 
-        console.log(`✅ Instagram post published | ID: ${published.id} | task: ${task_id}`);
-        return res.status(200).json({ success: true, instagram_post_id: published.id });
+        // Overall success
+        const anyPublished = !!(result.instagram_post_id || result.facebook_post_id);
+        const allFailed    = (doInstagram || doFacebook) && !anyPublished;
+        if (allFailed && result.errors.length) {
+            return res.status(500).json({ ...result, error: result.errors.join('; ') });
+        }
+        result.success = true;
+
+        // Mark task done
+        if (task_id && anyPublished) {
+            const notes = [
+                result.instagram_post_id ? `Instagram: ${result.instagram_post_id}` : null,
+                result.facebook_post_id  ? `Facebook: ${result.facebook_post_id}`   : null,
+            ].filter(Boolean).join(' | ');
+            await sb.from('agent_tasks').update({
+                status: 'done', notes: `Published. ${notes}`,
+                updated_at: new Date().toISOString()
+            }).eq('id', task_id);
+        }
+
+        return res.status(200).json(result);
     }
 
     return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish' });

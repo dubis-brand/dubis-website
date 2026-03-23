@@ -992,6 +992,39 @@
         position:absolute; top:1rem; right:1rem; background:none; border:none;
         color:#555; font-size:1.3rem; cursor:pointer; line-height:1; }
       .at-close:hover { color:#e8e0d5; }
+
+      /* ── Publish Preview Modal ── */
+      .publish-modal-overlay {
+        display:none; position:fixed; inset:0; background:rgba(0,0,0,.8);
+        z-index:10000; align-items:center; justify-content:center; }
+      .publish-modal-overlay.open { display:flex; }
+      .publish-modal-box {
+        background:#1a1a1a; border-radius:14px; padding:2rem;
+        width:min(500px,94vw); max-height:92vh; overflow-y:auto;
+        position:relative; border:1px solid #2a2a2a; }
+      .publish-modal-box h3 { color:#e8e0d5; margin:0 0 1.2rem; font-size:1rem; }
+      .pm-image-wrap {
+        width:100%; aspect-ratio:1/1; background:#111; border-radius:10px;
+        overflow:hidden; position:relative; margin-bottom:.75rem; }
+      .pm-image-wrap img { width:100%; height:100%; object-fit:cover; display:block; }
+      .pm-placeholder {
+        position:absolute; inset:0; display:flex; align-items:center;
+        justify-content:center; color:#444; font-size:.85rem; }
+      .pm-loading-badge {
+        position:absolute; inset:0; background:rgba(0,0,0,.75);
+        display:flex; align-items:center; justify-content:center;
+        color:#c8a96e; font-size:.9rem; }
+      .pm-gen-btn {
+        width:100%; padding:.65rem; background:#1a2a1a; color:#4ade80;
+        border:1px solid #2d4a2d; border-radius:8px; font-size:.85rem;
+        font-weight:600; cursor:pointer; }
+      .pm-gen-btn:hover { background:#2d4a2d; }
+      .pm-gen-btn:disabled { opacity:.5; cursor:not-allowed; }
+      .pm-platforms { display:flex; gap:1.2rem; margin:.75rem 0; flex-wrap:wrap; }
+      .pm-platform-check {
+        display:flex; align-items:center; gap:.4rem; cursor:pointer;
+        font-size:.85rem; color:#ccc; }
+      .pm-platform-check input[type=checkbox] { accent-color:#c8a96e; }
       .btn-run-agents {
         background:#1a2a1a; color:#4ade80; border:1px solid #2d4a2d;
         border-radius:6px; padding:.45rem 1rem; font-size:.8rem; font-weight:600; cursor:pointer; }
@@ -1133,6 +1166,42 @@
     <div class="task-detail-box">
       <button class="task-detail-close" onclick="closeTaskDetail()">✕</button>
       <div id="task-detail-content"></div>
+    </div>
+  </div>
+
+  <!-- Publish Preview Modal -->
+  <div class="publish-modal-overlay" id="publish-modal-overlay"
+       onclick="if(event.target===this)closePublishModal()">
+    <div class="publish-modal-box">
+      <button class="at-close" onclick="closePublishModal()">✕</button>
+      <h3>📤 פרסם פוסט</h3>
+
+      <div class="pm-image-wrap" id="pm-image-wrap">
+        <img id="pm-preview-img" src="" alt="תצוגה מקדימה" style="display:none">
+        <div id="pm-placeholder" class="pm-placeholder">אין תמונה — לחץ ייצר או הזן URL</div>
+        <div id="pm-img-loading" class="pm-loading-badge" style="display:none">🎨 מייצר תמונה...</div>
+      </div>
+
+      <button class="pm-gen-btn" id="pm-gen-btn" onclick="generatePostImage()">🎨 ייצר תמונה חדשה עם AI</button>
+
+      <div class="at-group" style="margin-top:.75rem">
+        <label>URL תמונה (ציבורי)</label>
+        <input type="url" id="pm-image-url" placeholder="https://..." oninput="updateImagePreview(this.value)">
+      </div>
+
+      <div class="at-group">
+        <label>כיתוב &nbsp;<span id="pm-char-count" style="color:#666;font-weight:400;font-size:.75rem">0 / 2200</span></label>
+        <textarea id="pm-caption" rows="6" placeholder="כיתוב הפוסט, האשטאגים..." oninput="updateCharCount()" style="resize:vertical"></textarea>
+      </div>
+
+      <div class="pm-platforms">
+        <label class="pm-platform-check"><input type="checkbox" id="pm-platform-instagram" checked><span>📸 Instagram</span></label>
+        <label class="pm-platform-check"><input type="checkbox" id="pm-platform-facebook"><span>📘 Facebook</span></label>
+        <label class="pm-platform-check" title="דורש הגדרת TIKTOK_ACCESS_TOKEN"><input type="checkbox" id="pm-platform-tiktok"><span>🎵 TikTok <small style="color:#555">(בקרוב)</small></span></label>
+      </div>
+
+      <p id="pm-error" style="color:#ef4444;font-size:.8rem;margin:.4rem 0;display:none"></p>
+      <button class="btn-submit-task" id="pm-submit-btn" onclick="submitPublish()" style="width:100%;margin-top:.5rem">📤 פרסם</button>
     </div>
   </div>
 
@@ -2085,6 +2154,7 @@
     email_monitor:'📧 Email Monitor', site_audit:'🔍 Site Audit', manual:'👤 Manual'
   };
   const PRIORITY_ICONS = { critical:'🔴', high:'🟠', medium:'🟡', low:'⚪' };
+  let _publishState = { taskId: null, token: null };
 
   async function loadTasks() {
     if (!window._supabase) return;
@@ -2185,12 +2255,12 @@
           <button class="btn-approve" style="flex:1" onclick="updateTaskStatus('${data.id}','approved');closeTaskDetail()">✓ אשר</button>
           <button class="btn-reject"  style="flex:1" onclick="updateTaskStatus('${data.id}','rejected');closeTaskDetail()">✕ דחה</button>`:''}
         ${data.status==='approved'?`
-          <button class="btn-approve" style="flex:1;background:#7c3aed" onclick="publishInstagramPost('${data.id}',\`${(data.description||data.title).replace(/`/g,"'")}\`)">📸 פרסם לאינסטגרם</button>
+          <button class="btn-approve" style="flex:1;background:#7c3aed" onclick="openPublishModal('${data.id}',\`${(data.description||data.title).replace(/`/g,"'")}\`)">📤 פרסם</button>
           <button class="btn-done" style="flex:1" onclick="updateTaskStatus('${data.id}','done');closeTaskDetail()">✓ סמן בוצע</button>`:''}
         ${data.status==='backlog'?`
           <button class="btn-approve" style="flex:1;background:#3b82f6" onclick="updateTaskStatus('${data.id}','in_progress');closeTaskDetail()">→ התחל</button>`:''}
         ${data.status==='in_progress'?`
-          <button class="btn-approve" style="flex:1;background:#7c3aed" onclick="publishInstagramPost('${data.id}',\`${(data.description||data.title).replace(/`/g,"'")}\`)">📸 פרסם לאינסטגרם</button>
+          <button class="btn-approve" style="flex:1;background:#7c3aed" onclick="openPublishModal('${data.id}',\`${(data.description||data.title).replace(/`/g,"'")}\`)">📤 פרסם</button>
           <button class="btn-done" style="flex:1" onclick="updateTaskStatus('${data.id}','done');closeTaskDetail()">✓ סמן בוצע</button>`:''}
         ${data.status==='done'?`
           <button class="btn-approve" style="flex:1;background:#374151" onclick="updateTaskStatus('${data.id}','in_progress');closeTaskDetail()">↩ In Progress</button>
@@ -2205,95 +2275,158 @@
     document.getElementById('task-detail-modal').classList.remove('open');
   }
 
-  async function publishInstagramPost(taskId, captionHint) {
-    // Get auth token first
-    const { data: { session: igSession } } = await _sb.auth.getSession();
-    const token = igSession?.access_token;
+  async function openPublishModal(taskId, captionHint) {
+    const { data: { session } } = await _sb.auth.getSession();
+    _publishState.token  = session?.access_token;
+    _publishState.taskId = taskId;
 
-    // Build caption + check for existing generated image
-    let defaultCaption = captionHint || '';
-    let existingImageUrl = '';
+    // Reset form
+    document.getElementById('pm-image-url').value = '';
+    document.getElementById('pm-caption').value   = '';
+    document.getElementById('pm-error').style.display = 'none';
+    document.getElementById('pm-submit-btn').disabled = false;
+    document.getElementById('pm-submit-btn').textContent = '📤 פרסם';
+    document.getElementById('pm-gen-btn').disabled = false;
+    document.getElementById('pm-img-loading').style.display = 'none';
+    updateImagePreview('');
+    updateCharCount();
+
+    // Pre-fill from task content_data
     try {
-      const { data: taskData } = await window._supabase.from('agent_tasks').select('content_data').eq('id', taskId).single();
-      if (taskData?.content_data) {
-        const cd = taskData.content_data;
+      const { data } = await window._supabase.from('agent_tasks')
+        .select('content_data').eq('id', taskId).single();
+      if (data?.content_data) {
+        const cd = data.content_data;
         const parts = [];
         if (cd.caption_he) parts.push(cd.caption_he);
         if (cd.caption_en) parts.push(cd.caption_en);
         if (cd.hashtags)   parts.push(cd.hashtags);
-        if (parts.length) defaultCaption = parts.join('\n\n');
-        existingImageUrl = cd.generated_image_url || '';
+        if (parts.length) {
+          document.getElementById('pm-caption').value = parts.join('\n\n');
+          updateCharCount();
+        }
+        if (cd.generated_image_url) {
+          document.getElementById('pm-image-url').value = cd.generated_image_url;
+          updateImagePreview(cd.generated_image_url);
+        }
       }
     } catch(e) {}
 
-    // ── Step 1: Image ──
-    let imageUrl = existingImageUrl;
-
-    if (imageUrl) {
-      // Already generated before — offer reuse or regenerate
-      const reuse = confirm('נמצאה תמונה שנוצרה בעבר לפוסט הזה.\n\nלהשתמש בה?\n(ביטול = ייצר תמונה חדשה)');
-      if (!reuse) imageUrl = '';
+    if (!document.getElementById('pm-caption').value && captionHint) {
+      document.getElementById('pm-caption').value = captionHint;
+      updateCharCount();
     }
 
-    if (!imageUrl) {
-      const wantAI = confirm('לייצר תמונה אוטומטית עם AI לפי תוכן הפוסט?\n\n(ביטול = הזן URL ידנית)');
-      if (wantAI) {
-        // Show loading overlay
-        const loadingEl = document.createElement('div');
-        loadingEl.id = 'ig-loading-overlay';
-        loadingEl.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;color:#e8e0d5;gap:1rem';
-        loadingEl.innerHTML = '<div style="font-size:2rem">🎨</div><div style="font-size:1.1rem">מייצר תמונה עם AI...</div><div style="font-size:.8rem;color:#888">זה יכול לקחת 15-30 שניות</div>';
-        document.body.appendChild(loadingEl);
-        try {
-          const genRes = await fetch('/api/agents?type=generate-image', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ task_id: taskId })
-          });
-          const genData = await genRes.json();
-          loadingEl.remove();
-          if (genData.image_url) {
-            imageUrl = genData.image_url;
-            alert('✅ תמונה נוצרה!\n' + imageUrl + '\n\nהתמונה נשמרה לפוסט.');
-          } else {
-            alert('שגיאה ביצירת תמונה: ' + (genData.error || 'Unknown') + '\nתזין URL ידנית.');
-          }
-        } catch(e) {
-          document.getElementById('ig-loading-overlay')?.remove();
-          alert('שגיאת רשת ביצירת תמונה: ' + e.message);
-        }
+    document.getElementById('publish-modal-overlay').classList.add('open');
+  }
+
+  function closePublishModal() {
+    document.getElementById('publish-modal-overlay').classList.remove('open');
+  }
+
+  function updateImagePreview(url) {
+    const img = document.getElementById('pm-preview-img');
+    const ph  = document.getElementById('pm-placeholder');
+    if (url && url.startsWith('http')) {
+      img.src = url;
+      img.style.display = 'block';
+      ph.style.display  = 'none';
+    } else {
+      img.style.display = 'none';
+      img.src = '';
+      ph.style.display  = 'flex';
+    }
+  }
+
+  function updateCharCount() {
+    const val = document.getElementById('pm-caption').value;
+    const el  = document.getElementById('pm-char-count');
+    el.textContent = `${val.length} / 2200`;
+    el.style.color = val.length > 2100 ? '#ef4444' : '#666';
+  }
+
+  async function generatePostImage() {
+    const btn     = document.getElementById('pm-gen-btn');
+    const loading = document.getElementById('pm-img-loading');
+    const errEl   = document.getElementById('pm-error');
+    btn.disabled  = true;
+    loading.style.display = 'flex';
+    errEl.style.display   = 'none';
+    try {
+      const res = await fetch('/api/agents?type=generate-image', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: _publishState.taskId })
+      });
+      const data = await res.json();
+      if (data.image_url) {
+        document.getElementById('pm-image-url').value = data.image_url;
+        updateImagePreview(data.image_url);
+      } else {
+        errEl.textContent = 'שגיאה ביצירת תמונה: ' + (data.error || 'Unknown');
+        errEl.style.display = 'block';
       }
+    } catch(e) {
+      errEl.textContent = 'שגיאת רשת: ' + e.message;
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      loading.style.display = 'none';
+    }
+  }
+
+  async function submitPublish() {
+    const imageUrl  = document.getElementById('pm-image-url').value.trim();
+    const caption   = document.getElementById('pm-caption').value.trim();
+    const instagram = document.getElementById('pm-platform-instagram').checked;
+    const facebook  = document.getElementById('pm-platform-facebook').checked;
+    const tiktok    = document.getElementById('pm-platform-tiktok').checked;
+    const errEl     = document.getElementById('pm-error');
+    errEl.style.display = 'none';
+
+    if (!imageUrl) { errEl.textContent = 'נדרש URL של תמונה'; errEl.style.display='block'; return; }
+    if (!caption)  { errEl.textContent = 'נדרש כיתוב';         errEl.style.display='block'; return; }
+    if (!instagram && !facebook && !tiktok) {
+      errEl.textContent = 'יש לבחור לפחות פלטפורמה אחת';
+      errEl.style.display = 'block'; return;
     }
 
-    // Manual fallback
-    if (!imageUrl) {
-      const manual = prompt('URL של התמונה לפרסום (חייב להיות URL ציבורי):', '');
-      if (!manual?.trim()) return;
-      imageUrl = manual.trim();
-    }
+    const btn = document.getElementById('pm-submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'מפרסם...';
 
-    // ── Step 2: Caption ──
-    const caption = prompt('כיתוב לפוסט (עברית/אנגלית + האשטאגים):', defaultCaption);
-    if (!caption?.trim()) return;
-
-    if (!confirm('לפרסם לאינסטגרם?')) return;
-
-    closeTaskDetail();
     try {
       const res = await fetch('/api/agents?type=publish', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caption: caption.trim(), image_url: imageUrl.trim(), task_id: taskId })
+        headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caption, image_url: imageUrl,
+          task_id: _publishState.taskId,
+          platforms: { instagram, facebook, tiktok }
+        })
       });
       const data = await res.json();
       if (data.success) {
-        alert('✅ פורסם לאינסטגרם!\nPost ID: ' + data.instagram_post_id);
+        const parts = [];
+        if (data.instagram_post_id) parts.push('Instagram ✅ ' + data.instagram_post_id);
+        if (data.facebook_post_id)  parts.push('Facebook ✅ '  + data.facebook_post_id);
+        if (data.tiktok_note)       parts.push('TikTok ⚠️ '    + data.tiktok_note);
+        if (data.errors?.length)    parts.push('שגיאות: '       + data.errors.join(', '));
+        alert('פורסם!\n' + parts.join('\n'));
+        closePublishModal();
+        closeTaskDetail();
         loadTasks();
       } else {
-        alert('שגיאה: ' + (data.error || 'Unknown error'));
+        errEl.textContent = data.error || 'שגיאה לא ידועה';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = '📤 פרסם';
       }
     } catch(e) {
-      alert('שגיאת רשת: ' + e.message);
+      errEl.textContent = 'שגיאת רשת: ' + e.message;
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = '📤 פרסם';
     }
   }
 
