@@ -2180,21 +2180,59 @@
       ${data.description?`<p style="font-size:.85rem;color:#bbb;margin:.8rem 0;line-height:1.6">${escHtml(data.description)}</p>`:''}
       ${data.content_data&&Object.keys(data.content_data).length
         ?`<pre style="background:#111;border-radius:6px;padding:1rem;font-size:.75rem;color:#aaa;white-space:pre-wrap;word-break:break-word;margin-top:.8rem">${JSON.stringify(data.content_data,null,2)}</pre>`:''}
-      <div style="margin-top:1.2rem;display:flex;gap:.6rem">
+      <div style="margin-top:1.2rem;display:flex;gap:.6rem;flex-wrap:wrap">
         ${data.status==='pending_approval'?`
-          <button class="btn-approve" style="flex:1" onclick="updateTaskStatus('${data.id}','approved');closeTaskDetail()">✓ Approve</button>
-          <button class="btn-reject"  style="flex:1" onclick="updateTaskStatus('${data.id}','rejected');closeTaskDetail()">✕ Reject</button>`:''}
+          <button class="btn-approve" style="flex:1" onclick="updateTaskStatus('${data.id}','approved');closeTaskDetail()">✓ אשר</button>
+          <button class="btn-reject"  style="flex:1" onclick="updateTaskStatus('${data.id}','rejected');closeTaskDetail()">✕ דחה</button>`:''}
+        ${data.status==='approved'?`
+          <button class="btn-approve" style="flex:1;background:#7c3aed" onclick="publishInstagramPost('${data.id}',\`${(data.description||data.title).replace(/`/g,"'")}\`)">📸 פרסם לאינסטגרם</button>
+          <button class="btn-done" style="flex:1" onclick="updateTaskStatus('${data.id}','done');closeTaskDetail()">✓ סמן בוצע</button>`:''}
         ${data.status==='backlog'?`
-          <button class="btn-approve" style="flex:1;background:#3b82f6" onclick="updateTaskStatus('${data.id}','in_progress');closeTaskDetail()">→ Start</button>`:''}
+          <button class="btn-approve" style="flex:1;background:#3b82f6" onclick="updateTaskStatus('${data.id}','in_progress');closeTaskDetail()">→ התחל</button>`:''}
         ${data.status==='in_progress'?`
-          <button class="btn-done" style="flex:1" onclick="updateTaskStatus('${data.id}','done');closeTaskDetail()">✓ Mark Done</button>`:''}
+          <button class="btn-approve" style="flex:1;background:#7c3aed" onclick="publishInstagramPost('${data.id}',\`${(data.description||data.title).replace(/`/g,"'")}\`)">📸 פרסם לאינסטגרם</button>
+          <button class="btn-done" style="flex:1" onclick="updateTaskStatus('${data.id}','done');closeTaskDetail()">✓ סמן בוצע</button>`:''}
       </div>
+      ${data.notes?`<p style="font-size:.75rem;color:#666;margin-top:.6rem;font-style:italic">${escHtml(data.notes)}</p>`:''}
       <p style="font-size:.7rem;color:#444;margin-top:.8rem">Created: ${formatDate(data.created_at)}</p>`;
     modal.classList.add('open');
   }
 
   function closeTaskDetail() {
     document.getElementById('task-detail-modal').classList.remove('open');
+  }
+
+  async function publishInstagramPost(taskId, captionHint) {
+    // Ask for image URL (default: first product image on site)
+    const imageUrl = prompt(
+      'URL של התמונה לפרסום (חייב להיות URL ציבורי):',
+      'https://www.dubis.net/images/product-1-Black-front.jpg'
+    );
+    if (!imageUrl?.trim()) return;
+
+    const caption = prompt('כיתוב לפוסט (עברית/אנגלית + האשטאגים):', captionHint || '');
+    if (!caption?.trim()) return;
+
+    if (!confirm('לפרסם לאינסטגרם?')) return;
+
+    closeTaskDetail();
+    const token = window._supabaseSession?.access_token;
+    try {
+      const res = await fetch('/api/agents?type=publish', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caption: caption.trim(), image_url: imageUrl.trim(), task_id: taskId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('✅ פורסם לאינסטגרם!\nPost ID: ' + data.instagram_post_id);
+        loadTasks();
+      } else {
+        alert('שגיאה: ' + (data.error || 'Unknown error'));
+      }
+    } catch(e) {
+      alert('שגיאת רשת: ' + e.message);
+    }
   }
 
   function openAddTaskModal() {

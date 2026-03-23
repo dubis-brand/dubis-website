@@ -239,5 +239,58 @@ module.exports = async function handler(req, res) {
         });
     }
 
-    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run' });
+    // ── PUBLISH ── post content to Instagram via Graph API ────────────
+    if (type === 'publish') {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser && !isAgentSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+        const igToken   = process.env.INSTAGRAM_ACCESS_TOKEN;
+        const igAccount = process.env.INSTAGRAM_ACCOUNT_ID;
+        if (!igToken || !igAccount) {
+            return res.status(503).json({ error: 'Instagram not configured. Add INSTAGRAM_ACCESS_TOKEN and INSTAGRAM_ACCOUNT_ID to Vercel env vars.' });
+        }
+
+        const { caption, image_url, task_id } = req.body || {};
+        if (!caption || !image_url) return res.status(400).json({ error: 'caption and image_url required' });
+
+        const igBase = `https://graph.facebook.com/v19.0/${igAccount}`;
+
+        // Step 1: create media container
+        const containerRes = await fetch(`${igBase}/media`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image_url, caption, access_token: igToken }),
+        });
+        const container = await containerRes.json();
+        if (!containerRes.ok || container.error) {
+            console.error('Instagram container error:', container);
+            return res.status(500).json({ error: container.error?.message || 'Container creation failed' });
+        }
+
+        // Step 2: publish
+        const publishRes = await fetch(`${igBase}/media_publish`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ creation_id: container.id, access_token: igToken }),
+        });
+        const published = await publishRes.json();
+        if (!publishRes.ok || published.error) {
+            console.error('Instagram publish error:', published);
+            return res.status(500).json({ error: published.error?.message || 'Publish failed' });
+        }
+
+        // Mark task as done if task_id provided
+        if (task_id) {
+            await sb.from('agent_tasks')
+                .update({ status: 'done', notes: `Published to Instagram. Post ID: ${published.id}`, updated_at: new Date().toISOString() })
+                .eq('id', task_id);
+        }
+
+        console.log(`✅ Instagram post published | ID: ${published.id} | task: ${task_id}`);
+        return res.status(200).json({ success: true, instagram_post_id: published.id });
+    }
+
+    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish' });
 };
