@@ -1,0 +1,3 @@
+# Exclude admin-only utility functions that are not needed in production
+# to stay within Vercel Hobby plan limit of 12 serverless functions.
+api/admin/gelato-catalog.js
