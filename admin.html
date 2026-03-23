@@ -2106,7 +2106,7 @@
   }
 
   function renderKanban(tasks) {
-    ['backlog','in_progress','pending_approval','done'].forEach(col => {
+    ['backlog','pending_approval','approved','in_progress','done'].forEach(col => {
       const el = document.getElementById(`col-${col}`);
       if (!el) return;
       const header = el.querySelector('.kanban-col-header').outerHTML;
@@ -2192,6 +2192,8 @@
         ${data.status==='in_progress'?`
           <button class="btn-approve" style="flex:1;background:#7c3aed" onclick="publishInstagramPost('${data.id}',\`${(data.description||data.title).replace(/`/g,"'")}\`)">📸 פרסם לאינסטגרם</button>
           <button class="btn-done" style="flex:1" onclick="updateTaskStatus('${data.id}','done');closeTaskDetail()">✓ סמן בוצע</button>`:''}
+        ${data.status==='done'?`
+          <button class="btn-approve" style="flex:1;background:#374151" onclick="updateTaskStatus('${data.id}','in_progress');closeTaskDetail()">↩ החזר ל-In Progress</button>`:''}
       </div>
       ${data.notes?`<p style="font-size:.75rem;color:#666;margin-top:.6rem;font-style:italic">${escHtml(data.notes)}</p>`:''}
       <p style="font-size:.7rem;color:#444;margin-top:.8rem">Created: ${formatDate(data.created_at)}</p>`;
