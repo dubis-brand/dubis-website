@@ -2205,6 +2205,20 @@
   }
 
   async function publishInstagramPost(taskId, captionHint) {
+    // Build full caption from task content_data if available
+    let defaultCaption = captionHint || '';
+    try {
+      const { data: taskData } = await window._supabase.from('agent_tasks').select('content_data').eq('id', taskId).single();
+      if (taskData?.content_data) {
+        const cd = taskData.content_data;
+        const parts = [];
+        if (cd.caption_he) parts.push(cd.caption_he);
+        if (cd.caption_en) parts.push(cd.caption_en);
+        if (cd.hashtags)   parts.push(cd.hashtags);
+        if (parts.length) defaultCaption = parts.join('\n\n');
+      }
+    } catch(e) {}
+
     // Ask for image URL (default: first product image on site)
     const imageUrl = prompt(
       'URL של התמונה לפרסום (חייב להיות URL ציבורי):',
@@ -2212,7 +2226,7 @@
     );
     if (!imageUrl?.trim()) return;
 
-    const caption = prompt('כיתוב לפוסט (עברית/אנגלית + האשטאגים):', captionHint || '');
+    const caption = prompt('כיתוב לפוסט (עברית/אנגלית + האשטאגים):', defaultCaption);
     if (!caption?.trim()) return;
 
     if (!confirm('לפרסם לאינסטגרם?')) return;
