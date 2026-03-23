@@ -5,11 +5,46 @@
 // DELETE /api/admin/coupons?code=X → delete
 
 const { createClient } = require('@supabase/supabase-js');
+const rateLimit        = require('../_rateLimit');
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'dubis.brand@gmail.com')
     .split(',').map(e => e.trim());
 
+// ── Public coupon validation (no auth) ───────────────────────────────────────
+// Previously at /api/coupons/validate — now merged here for function-count savings
+async function validateCoupon(req, res, supabase) {
+    const { code, cartTotal } = req.body || {};
+    if (!code || typeof cartTotal !== 'number') {
+        return res.status(400).json({ valid: false, error: 'Missing code or cartTotal' });
+    }
+    const cleanCode = String(code).trim().toUpperCase();
+    const now = new Date().toISOString();
+    const { data: coupon, error } = await supabase
+        .from('coupons').select('*')
+        .eq('code', cleanCode).eq('enabled', true)
+        .lte('valid_from', now).gte('valid_until', now).single();
+    if (error || !coupon) return res.status(200).json({ valid: false, error: 'Invalid or expired coupon code' });
+    if (coupon.max_uses !== null && coupon.current_uses >= coupon.max_uses) {
+        return res.status(200).json({ valid: false, error: 'This coupon has reached its usage limit' });
+    }
+    let discountAmount = coupon.discount_type === 'percentage'
+        ? Math.round((cartTotal * coupon.discount_value / 100) * 100) / 100
+        : Math.min(coupon.discount_value, cartTotal);
+    const finalTotal = Math.max(0, Math.round((cartTotal - discountAmount) * 100) / 100);
+    return res.status(200).json({ valid: true, code: cleanCode, name: coupon.name, discount_type: coupon.discount_type, discount_value: coupon.discount_value, discount_amount: discountAmount, final_total: finalTotal });
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 module.exports = async function handler(req, res) {
+    if (rateLimit(req, res, { max: 30, windowMs: 60_000 })) return;
+
+    // Public: coupon validation (no auth required) — replaces /api/coupons/validate
+    if (req.method === 'POST' && req.query.action === 'validate') {
+        const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY,
+            { auth: { autoRefreshToken: false, persistSession: false } });
+        return validateCoupon(req, res, supabase);
+    }
+
     // Verify admin JWT
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {

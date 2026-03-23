@@ -5,3 +5,7 @@ PayPal.key.txt
 
 .vercel
 .env*.local
+node_modules/
+*.bak
+images/test-*.jpg
+supabase-migration-*.sql

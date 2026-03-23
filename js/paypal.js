@@ -21,7 +21,7 @@ async function applyCoupon() {
     fb.textContent = 'Checking…'; fb.className = 'coupon-feedback';
     const cartTotal = cart.reduce((sum, item) => sum + item.price, 0);
     try {
-        const res = await fetch('/api/coupons/validate', {
+        const res = await fetch('/api/admin/coupons?action=validate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ code, cartTotal })
@@ -53,14 +53,6 @@ function updateCartTotalDisplay(discountedSubtotal) {
 async function checkout() {
     if (cart.length === 0) return;
 
-    // ── Auth gate (PRD F3: no guest checkout) ──
-    const token = await getAuthToken();
-    if (!token) {
-        closeCart();
-        requireAuthThenCheckout();
-        return;
-    }
-
     closeCart();
     renderOrderSummary();
 
@@ -68,6 +60,7 @@ async function checkout() {
     document.getElementById('paypal-modal-overlay').classList.add('open');
     document.body.style.overflow = 'hidden';
 
+    // Reset modal state
     document.getElementById('paypal-button-container').innerHTML = '';
     appliedCoupon = null;
     const cpInput = document.getElementById('coupon-input');
@@ -75,6 +68,58 @@ async function checkout() {
     if (cpInput) cpInput.value = '';
     if (cpFb) { cpFb.textContent = ''; cpFb.className = 'coupon-feedback'; }
 
+    // Show contact step, hide payment step
+    const contactStep  = document.getElementById('contact-step');
+    const paymentStep  = document.getElementById('payment-step');
+    if (contactStep) contactStep.style.display = '';
+    if (paymentStep) paymentStep.style.display  = 'none';
+
+    // Pre-fill contact fields if user is logged in
+    const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+    if (user) {
+        const nameEl  = document.getElementById('checkout-name');
+        const emailEl = document.getElementById('checkout-email');
+        if (nameEl  && user.user_metadata?.full_name) nameEl.value  = user.user_metadata.full_name;
+        if (emailEl && user.email)                    emailEl.value = user.email;
+    }
+
+    // Clear error
+    const errEl = document.getElementById('contact-step-error');
+    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+}
+
+// ===== CONTACT STEP SUBMISSION =====
+async function submitContactStep() {
+    const nameEl  = document.getElementById('checkout-name');
+    const emailEl = document.getElementById('checkout-email');
+    const phoneEl = document.getElementById('checkout-phone');
+    const errEl   = document.getElementById('contact-step-error');
+
+    const email = (emailEl?.value || '').trim();
+    const phone = (phoneEl?.value || '').trim();
+    const name  = (nameEl?.value  || '').trim();
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errEl.textContent = 'Please enter a valid email address.';
+        errEl.style.display = 'block';
+        emailEl?.focus();
+        return;
+    }
+    if (!phone || phone.length < 7) {
+        errEl.textContent = 'Please enter a valid phone number.';
+        errEl.style.display = 'block';
+        phoneEl?.focus();
+        return;
+    }
+
+    // Store contact info globally for use in onApprove
+    window.checkoutContact = { name, email, phone };
+
+    // Hide contact step, show payment step
+    document.getElementById('contact-step').style.display  = 'none';
+    document.getElementById('payment-step').style.display  = '';
+
+    // Render PayPal
     if (USE_SDK) {
         try {
             await loadPayPalSDK();
@@ -87,55 +132,17 @@ async function checkout() {
     }
 }
 
-// ===== PHASE 1: DIRECT PAYPAL LINK =====
+// ===== FALLBACK: SDK failed to load =====
 function renderDirectPayPalButton() {
-    const total     = cart.reduce((sum, item) => sum + item.price, 0);
-    const itemNames = cart.map(i => `${i.phrase.substring(0, 40)} (${i.selectedSize}/${i.selectedColor})`).join(', ');
-    const itemCount = cart.length;
-    const paypalUrl = buildPayPalUrl(total, itemNames, itemCount);
-
+    // Do NOT use a silent direct PayPal link — orders won't be saved.
+    // Show a clear error and ask user to refresh.
     document.getElementById('paypal-button-container').innerHTML = `
-        <a href="${paypalUrl}" target="_blank" class="paypal-direct-btn" onclick="handlePayPalClick()">
-            <img src="https://www.paypalobjects.com/webstatic/en_US/i/buttons/PP_logo_h_100x26.png"
-                 alt="PayPal" style="height:20px; vertical-align:middle; margin-right:8px;" />
-            Pay with PayPal
-        </a>
-        <p class="paypal-direct-note">
-            You'll be redirected to PayPal to complete your payment securely.<br>
-            After paying, return here to continue shopping 🐻
-        </p>
+        <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:16px;text-align:center;color:#856404">
+            <strong>⚠️ Payment system could not load.</strong><br>
+            Please close this window, refresh the page, and try again.<br>
+            <small>If the problem persists, contact us at <a href="mailto:dubis.brand@gmail.com" style="color:#856404">dubis.brand@gmail.com</a></small>
+        </div>
     `;
-}
-
-function buildPayPalUrl(total, itemNames, itemCount) {
-    const base = PAYPAL_ENV === 'live'
-        ? 'https://www.paypal.com/cgi-bin/webscr'
-        : 'https://www.sandbox.paypal.com/cgi-bin/webscr';
-
-    const params = new URLSearchParams({
-        cmd:           '_xclick',
-        business:      PAYPAL_BUSINESS_EMAIL,
-        item_name:     `DUBIS Order (${itemCount} item${itemCount > 1 ? 's' : ''})`,
-        item_number:   `DUBIS-${Date.now()}`,
-        amount:        total.toFixed(2),
-        currency_code: 'USD',
-        shipping:      '0',
-        no_shipping:   '0',
-        return:        'https://www.dubis.net/?order=success',
-        cancel_return: 'https://www.dubis.net/?order=cancelled',
-        custom:        itemNames.substring(0, 255)
-    });
-
-    return `${base}?${params.toString()}`;
-}
-
-function handlePayPalClick() {
-    setTimeout(() => {
-        closePaypalModal();
-        cart = [];
-        updateCartCount();
-        showSuccessModal();
-    }, 2000);
 }
 
 // ===== PHASE 2: SMART BUTTONS SDK =====
@@ -241,7 +248,7 @@ function renderPayPalButtons() {
                         },
                         body: JSON.stringify({
                             paypalOrderId:   details.id,
-                            buyerEmail:      details.payer?.email_address || '',
+                            buyerEmail:      details.payer?.email_address || window.checkoutContact?.email || '',
                             shippingAddress,
                             cartItems:       cartSnapshot,
                             printfulOrderId,
@@ -262,8 +269,8 @@ function renderPayPalButtons() {
                         method:  'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            buyerEmail:   details.payer?.email_address || '',
-                            buyerName:    user?.user_metadata?.full_name || details.payer?.name?.given_name || '',
+                            buyerEmail:   details.payer?.email_address || window.checkoutContact?.email || '',
+                            buyerName:    user?.user_metadata?.full_name || window.checkoutContact?.name || details.payer?.name?.given_name || '',
                             orderId:      savedOrderId,
                             paypalOrderId: details.id,
                             items:        cartSnapshot,
@@ -317,15 +324,6 @@ function renderPayPalButtons() {
         createOrder, onApprove, onError, onCancel: () => {}
     }).render('#paypal-button-container');
 
-    // Card button (no PayPal account needed)
-    const cardButton = paypal.Buttons({
-        fundingSource: paypal.FUNDING.CARD,
-        style: { color: 'black', shape: 'rect', label: 'pay', height: 50 },
-        createOrder, onApprove, onError, onCancel: () => {}
-    });
-    if (cardButton.isEligible()) {
-        cardButton.render('#card-button-container');
-    }
 }
 
 // ===== ORDER SUMMARY =====

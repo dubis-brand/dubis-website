@@ -3,12 +3,14 @@
 // Returns page view stats: totals, per-day, top pages
 
 const { createClient } = require('@supabase/supabase-js');
+const rateLimit        = require('../_rateLimit');
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'dubis.brand@gmail.com')
     .split(',').map(e => e.trim().toLowerCase());
 
 module.exports = async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+    if (rateLimit(req, res, { max: 30, windowMs: 60_000 })) return;
 
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });

@@ -20,6 +20,11 @@ module.exports = async function handler(req, res) {
 
     const { buyerEmail, buyerName, orderId, paypalOrderId, items, totalAmount } = req.body;
 
+    // HTML escape helper — prevents XSS in email body
+    const esc = s => String(s || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
     if (!buyerEmail || !items) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -28,10 +33,10 @@ module.exports = async function handler(req, res) {
     const itemsHtml = (items || []).map(item => `
         <tr>
             <td style="padding:8px 0;border-bottom:1px solid #2a2a2a;color:#e8e0d5">
-                "${(item.phrase || '').substring(0, 40)}" — ${item.typeLabel || item.type}
+                "${esc(item.phrase).substring(0, 40)}" — ${esc(item.typeLabel || item.type)}
             </td>
             <td style="padding:8px 0;border-bottom:1px solid #2a2a2a;color:#888;text-align:center">
-                ${item.selectedSize} / ${item.selectedColor}
+                ${esc(item.selectedSize)} / ${esc(item.selectedColor)}
             </td>
             <td style="padding:8px 0;border-bottom:1px solid #2a2a2a;color:#e8e0d5;text-align:right">
                 $${Number(item.price).toFixed(2)}

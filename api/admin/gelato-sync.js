@@ -4,6 +4,7 @@
 // Fetches Gelato status, updates Supabase, returns latest data
 
 const { createClient } = require('@supabase/supabase-js');
+const rateLimit        = require('../_rateLimit');
 
 const GELATO_API_BASE = 'https://order.gelatoapis.com';
 
@@ -36,7 +37,75 @@ const GELATO_STATUS_MAP = {
     returned:       'cancelled',
 };
 
+// ── Bulk sync (called by Vercel cron) ────────────────────────────────────────
+async function runBulkSync(req, res) {
+    const gelatoKey = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
+    if (!gelatoKey) return res.status(500).json({ error: 'Gelato key not configured' });
+
+    const supabase = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    const { data: orders } = await supabase
+        .from('orders')
+        .select('id, status, printful_order_id, tracking_number, tracking_url')
+        .in('status', ['pending', 'in_production', 'shipped'])
+        .not('printful_order_id', 'is', null);
+
+    const results = { updated: 0, unchanged: 0, errors: 0, total: (orders || []).length };
+
+    for (const order of orders || []) {
+        try {
+            const gRes = await fetch(`${GELATO_API_BASE}/v4/orders/${order.printful_order_id}`, {
+                headers: { 'X-API-KEY': gelatoKey }
+            });
+            if (!gRes.ok) { results.errors++; continue; }
+            const g = await gRes.json();
+
+            const rawStatus = (g.status || '').toLowerCase().replace(/ /g, '_');
+            const newStatus = GELATO_STATUS_MAP[rawStatus] || order.status;
+
+            let trackingNumber = order.tracking_number;
+            let trackingUrl    = order.tracking_url;
+            const pkg = g.shipment?.packages?.[0] || g.shipment ||
+                        (g.shipments?.[0]?.packages?.[0]) || g.shipments?.[0] ||
+                        g.fulfillments?.[0];
+            if (pkg) {
+                trackingNumber = pkg.trackingCode || pkg.tracking_code || trackingNumber;
+                trackingUrl    = pkg.trackingUrl  || pkg.tracking_url  || trackingUrl;
+            }
+            if (trackingNumber && !trackingUrl) {
+                trackingUrl = `https://mydhl.express.dhl/en/en/tracking.html#/results?id=${trackingNumber}`;
+            }
+
+            const changed = newStatus !== order.status ||
+                            trackingNumber !== order.tracking_number ||
+                            trackingUrl    !== order.tracking_url;
+
+            if (!changed) { results.unchanged++; continue; }
+
+            await supabase.from('orders').update({ status: newStatus, tracking_number: trackingNumber, tracking_url: trackingUrl }).eq('id', order.id);
+            results.updated++;
+        } catch { results.errors++; }
+    }
+
+    console.log(`✅ Gelato bulk sync | ${results.updated} updated, ${results.unchanged} unchanged, ${results.errors} errors`);
+    return res.status(200).json({ success: true, ...results });
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 module.exports = async function handler(req, res) {
+    if (rateLimit(req, res, { max: 30, windowMs: 60_000 })) return;
+
+    // ── Vercel Cron: GET — bulk sync all active orders (no auth required) ──
+    const isCron = req.headers['x-vercel-cron'] === '1' ||
+                   req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`;
+    if (req.method === 'GET' && isCron) {
+        return runBulkSync(req, res);
+    }
+
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
     // Verify admin JWT

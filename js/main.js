@@ -13,10 +13,10 @@ const translations = {
     nav_home: 'Home', nav_shop: 'Shop', nav_people: 'Real People',
     nav_about: 'About', nav_contact: 'Contact',
     hero_tagline: 'We see you.',
-    hero_desc: 'Forty years of fashion designed for someone else\'s body. We made something different.',
-    hero_btn: 'Find Your Statement',
-    people_title: 'This Is Us 🐻',
-    people_sub: 'The DUBIS family. Real people, real bodies, real style — no apologies.',
+    hero_desc: 'Fashion spent decades designing for someone else. We changed that.',
+    hero_btn: 'Shop the Collection',
+    people_title: 'The DUBIS Crew 🐻',
+    people_sub: 'Real people. Real bodies. No explanations needed.',
     shop_title: 'The Collection', shop_sub: 'Wear what you mean. Mean what you wear.',
     filter_all: 'All', filter_tshirt: 'T-Shirts', filter_hoodie: 'Hoodies', filter_cap: 'Caps',
     filter_longsleeve: 'Long-Sleeves',
@@ -32,10 +32,10 @@ const translations = {
     q3_text: 'Every item is checked before it reaches you. Print not sharp enough? Wrong color? We reprint it. You waited for this — it better be worth the wait.',
     q4_text: '30 days. No drama. No fine print. If it doesn\'t feel like you — send it back, full refund. We\'re real people. We get it.',
     about_title: 'Who is the DUBIS bear?',
-    about_p1: 'He\'s in his 40s. He built something real — a career, a family, a life he shows up for every single day.',
+    about_p1: 'In his 40s. Built something real — a career, a family, a life worth showing up for every single day.',
     about_p2: 'He went shopping. Found nothing that fit the body he actually lives in. The clothes assumed a different person — younger, thinner, apologetic.',
-    about_p3: 'He stopped waiting for fashion to notice him. And built something for the rest of us.',
-    about_tag: 'If you\'ve ever felt invisible in a store — you\'re not invisible here. 🐾',
+    about_p3: 'Stopped waiting for fashion to notice him. And built something that does.',
+    about_tag: 'If you\'ve ever walked out of a store empty-handed — you belong here. 🐾',
     contact_title: 'Get in Touch', contact_sub: 'Questions? Ideas? Just want to say hi?',
     cart_title: 'Your Cart 🐾', cart_empty: 'Nothing here yet. The right things are one click away. 🐾',
     cart_total: 'Total', cart_checkout: 'CHECKOUT',
@@ -53,17 +53,17 @@ const translations = {
     cookie_text: '🐾 We use cookies to improve your experience. We keep it minimal - just what\'s needed.',
     cookie_accept: 'Accept', cookie_decline: 'Decline', cookie_privacy: 'Privacy Policy',
     footer_privacy: 'Privacy Policy', footer_contact: 'Contact', footer_shop: 'Shop',
-    footer_rights: '© 2026 DUBIS. All rights reserved. For the rest of us.',
+    footer_rights: '© 2026 DUBIS. All rights reserved. Built for you.',
     lang_btn: 'עב',
   },
   he: {
     nav_home: 'ראשי', nav_shop: 'חנות', nav_people: 'אנשים אמיתיים',
     nav_about: 'אודות', nav_contact: 'צור קשר',
     hero_tagline: 'אנחנו רואים אותך.',
-    hero_desc: 'ארבעים שנה של אופנה שתוכננה לגוף של מישהו אחר. עשינו משהו אחר.',
-    hero_btn: 'מצא את המסר שלך',
-    people_title: 'This Is Us 🐻',
-    people_sub: 'משפחת DUBIS. אנשים אמיתיים, גופים אמיתיים, סטייל אמיתי — ללא התנצלות.',
+    hero_desc: 'האופנה תכננה עשרות שנים למישהו אחר. שינינו את זה.',
+    hero_btn: 'לקולקציה',
+    people_title: 'החבר\'ה של DUBIS 🐻',
+    people_sub: 'אנשים אמיתיים. גופים אמיתיים. ללא הסברים.',
     shop_title: 'הקולקציה', shop_sub: 'לבש מה שאתה מרגיש.',
     filter_all: 'הכל', filter_tshirt: 'חולצות', filter_hoodie: 'קפוצ\'ונים', filter_cap: 'כובעים',
     filter_longsleeve: 'ארוכות שרוול',
@@ -79,10 +79,10 @@ const translations = {
     q3_text: 'כל פריט נבדק לפני שמגיע אליך. ההדפסה לא חדה? צבע לא נכון? מדפיסים מחדש. חיכית לזה — כדאי שיהיה שווה.',
     q4_text: '30 יום. ללא דרמה. ללא אותיות קטנות. אם זה לא מרגיש כמוך — שלח חזרה, החזר מלא. אנחנו אנשים אמיתיים. מבינים.',
     about_title: 'מי הדובי של DUBIS?',
-    about_p1: 'הוא בן 40. הוא בנה משהו אמיתי — קריירה, משפחה, חיים שהוא מגיע אליהם כל יום.',
-    about_p2: 'הוא הלך לקנות. לא מצא כלום שמתאים לגוף שהוא גר בו. הבגדים הניחו אדם אחר — צעיר יותר, רזה יותר, מתנצל.',
-    about_p3: 'הוא עצר לחכות שהאופנה תשים לב אליו. ובנה משהו לשאר מאיתנו.',
-    about_tag: 'אם אי פעם הרגשת בלתי נראה בחנות — כאן אתה נראה. 🐾',
+    about_p1: 'בן 40. בנה משהו אמיתי — קריירה, משפחה, חיים ששווה להגיע אליהם כל יום.',
+    about_p2: 'הלך לקנות. לא מצא כלום שמתאים לגוף שהוא גר בו. הבגדים הניחו אדם אחר — צעיר יותר, רזה יותר, מתנצל.',
+    about_p3: 'הפסיק לחכות שהאופנה תשים לב. ובנה משהו שכן.',
+    about_tag: 'אם אי פעם יצאת מחנות בידיים ריקות — כאן יש לך מקום. 🐾',
     contact_title: 'צור קשר', contact_sub: 'שאלות? רעיונות? פשוט רוצה להגיד שלום?',
     cart_title: 'העגלה שלך 🐾', cart_empty: 'עדיין ריק. הדברים הנכונים במרחק קליק אחד. 🐾',
     cart_total: 'סה"כ', cart_checkout: 'לתשלום',
@@ -100,7 +100,7 @@ const translations = {
     cookie_text: '🐾 אנחנו משתמשים בעוגיות לשיפור החוויה שלך. שומרים על מינימום.',
     cookie_accept: 'אישור', cookie_decline: 'דחייה', cookie_privacy: 'מדיניות פרטיות',
     footer_privacy: 'מדיניות פרטיות', footer_contact: 'צור קשר', footer_shop: 'חנות',
-    footer_rights: '© 2026 DUBIS. כל הזכויות שמורות. לשאר מאיתנו.',
+    footer_rights: '© 2026 DUBIS. כל הזכויות שמורות. בנוי בשבילך.',
     lang_btn: 'EN',
   }
 };
@@ -269,10 +269,6 @@ function renderProducts(filter, gender) {
         </div>
         <div class="product-bottom">
           <div class="product-price">$${product.price}</div>
-          <button class="add-to-cart"
-            onclick="event.stopPropagation(); quickAddToCart(${product.id}, this)">
-            ${t.add_btn}
-          </button>
         </div>
       </div>
     </div>

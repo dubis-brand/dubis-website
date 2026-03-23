@@ -70,14 +70,16 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Optional webhook secret verification
+  // Webhook secret verification — required
   const secret = process.env.GELATO_WEBHOOK_SECRET;
-  if (secret) {
-    const incoming = req.headers['x-gelato-webhook-secret'] || req.headers['x-webhook-secret'] || '';
-    if (incoming !== secret) {
-      console.warn('Gelato webhook: invalid secret');
-      return res.status(401).json({ error: 'Invalid webhook secret' });
-    }
+  if (!secret) {
+    console.error('GELATO_WEBHOOK_SECRET not configured — rejecting webhook');
+    return res.status(500).json({ error: 'Webhook not configured' });
+  }
+  const incoming = req.headers['x-gelato-webhook-secret'] || req.headers['x-webhook-secret'] || '';
+  if (incoming !== secret) {
+    console.warn('Gelato webhook: invalid secret');
+    return res.status(401).json({ error: 'Invalid webhook secret' });
   }
 
   const payload = req.body;

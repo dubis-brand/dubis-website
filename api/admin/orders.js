@@ -11,6 +11,7 @@
 // =====================================================
 
 const { createClient } = require('@supabase/supabase-js');
+const rateLimit        = require('../_rateLimit');
 
 // Parse admin emails from env
 function getAdminEmails() {
@@ -19,6 +20,8 @@ function getAdminEmails() {
 }
 
 module.exports = async function handler(req, res) {
+    if (rateLimit(req, res, { max: 30, windowMs: 60_000 })) return;
+
     // CORS for same-origin fetch from admin page
     res.setHeader('Access-Control-Allow-Origin', 'https://www.dubis.net');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');

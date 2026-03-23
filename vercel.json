@@ -1,4 +1,8 @@
 {
+  "crons": [
+    { "path": "/api/cron/morning-report", "schedule": "0 5 * * *" },
+    { "path": "/api/admin/gelato-sync",   "schedule": "0 0 * * *" }
+  ],
   "rewrites": [
     { "source": "/admin",   "destination": "/admin.html"   },
     { "source": "/terms",   "destination": "/terms.html"   },

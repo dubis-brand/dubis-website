@@ -134,7 +134,7 @@ const products = [
         gender: "unisex",
         price: 45,
         image: "images/product-4.jpg",
-        colors: ["Black", "White", "Gray", "Navy", "Charcoal"],
+        colors: ["Black", "White", "Charcoal", "Navy"],
         sizes: SIZES_TSHIRT,
         description: "Some days, surviving is the whole damn victory. Wear this when you want the world to know: you showed up. You made it. That's the win.",
         description_he: "יש ימים שלשרוד זה הניצחון כולו. לבש את זה כשאתה רוצה שהעולם ידע: הגעת. שרדת. זה הניצחון.",

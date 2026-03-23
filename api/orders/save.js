@@ -48,6 +48,36 @@ module.exports = async function handler(req, res) {
         if (user) userId = user.id;
     }
 
+    // ── Server-side price validation — reads live prices from Supabase product_prices table ──
+    // Falls back to hardcoded floor prices to prevent $0 fraud
+    const PRICE_FLOOR = { tshirt: 10, hoodie: 20, ziphoodie: 25, longsleeve: 15, cap: 10 };
+    let priceOverrides = {};
+    try {
+        const { data: priceRows } = await supabase.from('product_prices').select('product_id, selling_price');
+        priceOverrides = Object.fromEntries((priceRows || []).map(r => [Number(r.product_id), Number(r.selling_price)]));
+    } catch (err) {
+        console.warn('Could not load product_prices from Supabase:', err.message);
+    }
+
+    for (const item of cartItems) {
+        const floor = PRICE_FLOOR[item.type];
+        if (floor === undefined) {
+            return res.status(400).json({ error: `Unknown product type: ${item.type}` });
+        }
+        const sentPrice = Number(item.price) || 0;
+        // Check against Supabase price if available
+        const supabasePrice = item.id ? priceOverrides[Number(item.id)] : null;
+        if (supabasePrice != null && Math.abs(sentPrice - supabasePrice) > 0.01) {
+            console.warn(`Price mismatch: id=${item.id} type=${item.type} sent=${sentPrice} expected=${supabasePrice}`);
+            return res.status(400).json({ error: 'Price mismatch — please refresh and try again' });
+        }
+        // Always enforce floor price to prevent $0 fraud
+        if (sentPrice < floor) {
+            console.warn(`Price below floor: type=${item.type} sent=${sentPrice} floor=${floor}`);
+            return res.status(400).json({ error: 'Invalid price — please refresh and try again' });
+        }
+    }
+
     const totalAmount = (cartItems || []).reduce((sum, item) => sum + (Number(item.price) || 0), 0);
 
     const insertData = {

@@ -709,6 +709,7 @@
       <button class="nav-tab" id="nav-users"     onclick="showSection('users',this)">👥 Users</button>
       <button class="nav-tab" id="nav-coupons"   onclick="showSection('coupons',this)">🏷️ Coupons</button>
       <button class="nav-tab" id="nav-products"  onclick="showSection('products',this)">🛍️ Products</button>
+      <button class="nav-tab" id="nav-tasks"     onclick="showSection('tasks',this)">🤖 Tasks</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -885,6 +886,142 @@
   </div><!-- /section-coupons -->
 
   <!-- ══ PRODUCTS SECTION ════════════════════════════════ -->
+  <!-- ══ TASKS SECTION ══════════════════════════════════════ -->
+  <div id="section-tasks" style="display:none">
+
+    <style>
+      /* ── Task Board ── */
+      .tasks-toolbar { display:flex; gap:.7rem; align-items:center; flex-wrap:wrap; margin-bottom:1.2rem; }
+      .tasks-toolbar select, .tasks-toolbar input {
+        background:#1a1a1a; border:1px solid #2a2a2a; color:#e8e0d5;
+        padding:.45rem .8rem; border-radius:6px; font-size:.8rem; }
+      .tasks-toolbar input { flex:1; min-width:160px; }
+      .btn-add-task {
+        background:#c8a96e; color:#0d0d0d; border:none; border-radius:6px;
+        padding:.45rem 1rem; font-size:.8rem; font-weight:700; cursor:pointer; margin-left:auto; }
+      .btn-add-task:hover { background:#e0c080; }
+
+      .kanban-board { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; }
+      @media(max-width:900px){ .kanban-board { grid-template-columns:repeat(2,1fr); } }
+      @media(max-width:540px){ .kanban-board { grid-template-columns:1fr; } }
+
+      .kanban-col { background:#111; border-radius:10px; padding:1rem; min-height:200px; }
+      .kanban-col-header {
+        font-size:.72rem; letter-spacing:1.5px; text-transform:uppercase;
+        color:#777; margin-bottom:.9rem; display:flex; justify-content:space-between; align-items:center; }
+      .kanban-col-header span { background:#1e1e1e; border-radius:10px; padding:.15rem .5rem; font-size:.68rem; }
+
+      .task-card {
+        background:#1a1a1a; border-radius:8px; padding:.9rem;
+        margin-bottom:.7rem; border-left:3px solid #333; cursor:pointer;
+        transition:border-color .2s, transform .15s; }
+      .task-card:hover { border-color:#c8a96e; transform:translateX(2px); }
+      .task-card.priority-critical { border-color:#ef4444; }
+      .task-card.priority-high     { border-color:#f97316; }
+      .task-card.priority-medium   { border-color:#c8a96e; }
+      .task-card.priority-low      { border-color:#3f3f3f; }
+
+      .task-card-title { font-size:.85rem; font-weight:600; margin-bottom:.4rem; color:#e8e0d5; }
+      .task-card-meta  { display:flex; gap:.4rem; flex-wrap:wrap; }
+      .task-badge {
+        font-size:.65rem; padding:.15rem .5rem; border-radius:10px;
+        background:#222; color:#aaa; }
+      .task-badge.agent  { color:#c8a96e; }
+      .task-badge.cat    { color:#60a5fa; }
+
+      .task-card-actions { display:flex; gap:.4rem; margin-top:.7rem; }
+      .btn-approve, .btn-reject, .btn-done {
+        flex:1; border:none; border-radius:5px; padding:.35rem .5rem;
+        font-size:.72rem; font-weight:600; cursor:pointer; }
+      .btn-approve { background:#16a34a; color:#fff; }
+      .btn-approve:hover { background:#15803d; }
+      .btn-reject  { background:#1a1a1a; color:#ef4444; border:1px solid #ef4444; }
+      .btn-reject:hover  { background:#ef444420; }
+      .btn-done    { background:#1a1a1a; color:#6b7280; border:1px solid #333; }
+      .btn-done:hover    { background:#2a2a2a; }
+
+      .tasks-stats { display:flex; gap:1rem; margin-bottom:1.2rem; flex-wrap:wrap; }
+      .tasks-stat-card {
+        background:#1a1a1a; border-radius:8px; padding:.8rem 1.2rem;
+        flex:1; min-width:120px; text-align:center; }
+      .tasks-stat-num  { font-size:1.6rem; font-weight:700; color:#c8a96e; }
+      .tasks-stat-label{ font-size:.72rem; color:#666; margin-top:.2rem; }
+
+      .task-detail-modal {
+        display:none; position:fixed; inset:0; background:#000a; z-index:9999;
+        align-items:center; justify-content:center; }
+      .task-detail-modal.open { display:flex; }
+      .task-detail-box {
+        background:#1a1a1a; border-radius:12px; padding:2rem;
+        max-width:520px; width:92%; max-height:80vh; overflow-y:auto; position:relative; }
+      .task-detail-box h3 { font-size:1rem; margin-bottom:1rem; color:#e8e0d5; }
+      .task-detail-box pre {
+        background:#111; border-radius:6px; padding:1rem;
+        font-size:.75rem; color:#aaa; white-space:pre-wrap; word-break:break-word; margin-top:.8rem; }
+      .task-detail-close {
+        position:absolute; top:1rem; right:1rem; background:none; border:none;
+        color:#666; font-size:1.2rem; cursor:pointer; }
+      .task-detail-close:hover { color:#e8e0d5; }
+    </style>
+
+    <div class="tasks-toolbar">
+      <select id="tasks-filter-status" onchange="loadTasks()">
+        <option value="">All Status</option>
+        <option value="backlog">Backlog</option>
+        <option value="in_progress">In Progress</option>
+        <option value="pending_approval">Pending Approval</option>
+        <option value="approved">Approved</option>
+        <option value="done">Done</option>
+        <option value="rejected">Rejected</option>
+      </select>
+      <select id="tasks-filter-agent" onchange="loadTasks()">
+        <option value="">All Agents</option>
+        <option value="boss">Boss</option>
+        <option value="cto">CTO</option>
+        <option value="marketing">Marketing</option>
+        <option value="content">Content</option>
+        <option value="design">Design</option>
+        <option value="email_monitor">Email Monitor</option>
+        <option value="site_audit">Site Audit</option>
+        <option value="manual">Manual</option>
+      </select>
+      <select id="tasks-filter-priority" onchange="loadTasks()">
+        <option value="">All Priority</option>
+        <option value="critical">🔴 Critical</option>
+        <option value="high">🟠 High</option>
+        <option value="medium">🟡 Medium</option>
+        <option value="low">⚪ Low</option>
+      </select>
+      <input id="tasks-search" type="text" placeholder="Search tasks..." oninput="loadTasks()">
+      <button class="btn-add-task" onclick="openAddTaskModal()">+ Add Task</button>
+    </div>
+
+    <div class="tasks-stats" id="tasks-stats"></div>
+
+    <div class="kanban-board" id="kanban-board">
+      <div class="kanban-col" id="col-backlog">
+        <div class="kanban-col-header">Backlog <span id="count-backlog">0</span></div>
+      </div>
+      <div class="kanban-col" id="col-in_progress">
+        <div class="kanban-col-header">In Progress <span id="count-in_progress">0</span></div>
+      </div>
+      <div class="kanban-col" id="col-pending_approval">
+        <div class="kanban-col-header">⏳ Pending Approval <span id="count-pending_approval">0</span></div>
+      </div>
+      <div class="kanban-col" id="col-done">
+        <div class="kanban-col-header">Done <span id="count-done">0</span></div>
+      </div>
+    </div>
+  </div><!-- /section-tasks -->
+
+  <!-- Task Detail Modal -->
+  <div class="task-detail-modal" id="task-detail-modal">
+    <div class="task-detail-box">
+      <button class="task-detail-close" onclick="closeTaskDetail()">✕</button>
+      <div id="task-detail-content"></div>
+    </div>
+  </div>
+
   <div id="section-products" style="display:none">
     <div class="products-header">
       <h2 style="margin:0;font-size:1.1rem;color:#e8e0d5">Product Catalog</h2>
@@ -1027,6 +1164,7 @@
     document.getElementById('admin-user-email').textContent = user.email;
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('dashboard').style.display = 'block';
+    window._supabase = _sb;
     await loadOrders(token);
   }
 
@@ -1208,6 +1346,8 @@
     document.getElementById('section-coupons').style.display   = name === 'coupons'   ? '' : 'none';
     document.getElementById('section-analytics').style.display = name === 'analytics' ? '' : 'none';
     document.getElementById('section-products').style.display  = name === 'products'  ? '' : 'none';
+    document.getElementById('section-tasks').style.display     = name === 'tasks'     ? '' : 'none';
+    if (name === 'tasks') loadTasks();
     document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     if (name === 'coupons') loadCoupons();
@@ -1820,6 +1960,153 @@
     } catch(e) {
       console.error('Analytics error:', e);
     }
+  }
+</script>
+
+<!-- ══ TASK BOARD JS ══════════════════════════════════════ -->
+<script>
+  const AGENT_LABELS = {
+    boss:'👑 Boss', cto:'💻 CTO', marketing:'📢 Marketing',
+    content:'✍️ Content', design:'🎨 Design', supply:'📦 Supply',
+    email_monitor:'📧 Email Monitor', site_audit:'🔍 Site Audit', manual:'👤 Manual'
+  };
+  const PRIORITY_ICONS = { critical:'🔴', high:'🟠', medium:'🟡', low:'⚪' };
+
+  async function loadTasks() {
+    if (!window._supabase) return;
+    const status   = document.getElementById('tasks-filter-status')?.value   || '';
+    const agent    = document.getElementById('tasks-filter-agent')?.value    || '';
+    const priority = document.getElementById('tasks-filter-priority')?.value || '';
+    const search   = document.getElementById('tasks-search')?.value?.trim()  || '';
+
+    let q = window._supabase.from('agent_tasks').select('*').order('created_at', { ascending: false });
+    if (status)   q = q.eq('status', status);
+    if (agent)    q = q.eq('agent_id', agent);
+    if (priority) q = q.eq('priority', priority);
+    if (search)   q = q.ilike('title', `%${search}%`);
+
+    const { data: tasks, error } = await q;
+    if (error) { console.error('Tasks load error:', error); return; }
+    renderKanban(tasks || []);
+    renderTaskStats(tasks || []);
+  }
+
+  function renderKanban(tasks) {
+    ['backlog','in_progress','pending_approval','done'].forEach(col => {
+      const el = document.getElementById(`col-${col}`);
+      if (!el) return;
+      const header = el.querySelector('.kanban-col-header').outerHTML;
+      const colTasks = tasks.filter(t => t.status === col);
+      const countEl = document.getElementById(`count-${col}`);
+      if (countEl) countEl.textContent = colTasks.length;
+      el.innerHTML = header + colTasks.map(t => renderTaskCard(t)).join('');
+    });
+  }
+
+  function renderTaskCard(t) {
+    const isPending = t.status === 'pending_approval';
+    const isActive  = t.status === 'in_progress';
+    const actions = isPending
+      ? `<div class="task-card-actions">
+           <button class="btn-approve" onclick="updateTaskStatus('${t.id}','approved');event.stopPropagation()">✓ Approve</button>
+           <button class="btn-reject"  onclick="updateTaskStatus('${t.id}','rejected');event.stopPropagation()">✕ Reject</button>
+         </div>`
+      : isActive
+      ? `<div class="task-card-actions">
+           <button class="btn-done" onclick="updateTaskStatus('${t.id}','done');event.stopPropagation()">✓ Done</button>
+         </div>`
+      : '';
+    return `
+      <div class="task-card priority-${t.priority}" onclick="openTaskDetail('${t.id}')">
+        <div class="task-card-title">${PRIORITY_ICONS[t.priority]||''} ${escHtml(t.title)}</div>
+        <div class="task-card-meta">
+          <span class="task-badge agent">${AGENT_LABELS[t.agent_id]||t.agent_id}</span>
+          ${t.category?`<span class="task-badge cat">${t.category}</span>`:''}
+          <span class="task-badge">${formatDate(t.created_at)}</span>
+        </div>
+        ${actions}
+      </div>`;
+  }
+
+  function renderTaskStats(tasks) {
+    const stats = [
+      { label:'Backlog',          num: tasks.filter(t=>t.status==='backlog').length },
+      { label:'Pending Approval', num: tasks.filter(t=>t.status==='pending_approval').length },
+      { label:'In Progress',      num: tasks.filter(t=>t.status==='in_progress').length },
+      { label:'Done this week',   num: tasks.filter(t=>t.status==='done'&&isThisWeek(t.updated_at)).length },
+    ];
+    const el = document.getElementById('tasks-stats');
+    if (el) el.innerHTML = stats.map(s=>`
+      <div class="tasks-stat-card">
+        <div class="tasks-stat-num">${s.num}</div>
+        <div class="tasks-stat-label">${s.label}</div>
+      </div>`).join('');
+  }
+
+  async function updateTaskStatus(id, newStatus) {
+    const update = { status: newStatus, updated_at: new Date().toISOString() };
+    if (newStatus === 'approved') update.approved_at = new Date().toISOString();
+    const { error } = await window._supabase.from('agent_tasks').update(update).eq('id', id);
+    if (error) { alert('Update failed: ' + error.message); return; }
+    loadTasks();
+  }
+
+  async function openTaskDetail(id) {
+    const { data, error } = await window._supabase.from('agent_tasks').select('*').eq('id', id).single();
+    if (error || !data) return;
+    const modal = document.getElementById('task-detail-modal');
+    document.getElementById('task-detail-content').innerHTML = `
+      <h3>${PRIORITY_ICONS[data.priority]||''} ${escHtml(data.title)}</h3>
+      <div style="margin:.5rem 0;display:flex;gap:.4rem;flex-wrap:wrap">
+        <span class="task-badge agent">${AGENT_LABELS[data.agent_id]||data.agent_id}</span>
+        <span class="task-badge">${data.status}</span>
+        ${data.category?`<span class="task-badge cat">${data.category}</span>`:''}
+        <span class="task-badge">${PRIORITY_ICONS[data.priority]||''} ${data.priority}</span>
+      </div>
+      ${data.description?`<p style="font-size:.85rem;color:#bbb;margin:.8rem 0;line-height:1.6">${escHtml(data.description)}</p>`:''}
+      ${data.content_data&&Object.keys(data.content_data).length
+        ?`<pre style="background:#111;border-radius:6px;padding:1rem;font-size:.75rem;color:#aaa;white-space:pre-wrap;word-break:break-word;margin-top:.8rem">${JSON.stringify(data.content_data,null,2)}</pre>`:''}
+      <div style="margin-top:1.2rem;display:flex;gap:.6rem">
+        ${data.status==='pending_approval'?`
+          <button class="btn-approve" style="flex:1" onclick="updateTaskStatus('${data.id}','approved');closeTaskDetail()">✓ Approve</button>
+          <button class="btn-reject"  style="flex:1" onclick="updateTaskStatus('${data.id}','rejected');closeTaskDetail()">✕ Reject</button>`:''}
+        ${data.status==='backlog'?`
+          <button class="btn-approve" style="flex:1;background:#3b82f6" onclick="updateTaskStatus('${data.id}','in_progress');closeTaskDetail()">→ Start</button>`:''}
+        ${data.status==='in_progress'?`
+          <button class="btn-done" style="flex:1" onclick="updateTaskStatus('${data.id}','done');closeTaskDetail()">✓ Mark Done</button>`:''}
+      </div>
+      <p style="font-size:.7rem;color:#444;margin-top:.8rem">Created: ${formatDate(data.created_at)}</p>`;
+    modal.classList.add('open');
+  }
+
+  function closeTaskDetail() {
+    document.getElementById('task-detail-modal').classList.remove('open');
+  }
+
+  function openAddTaskModal() {
+    const title    = prompt('Task title:');
+    if (!title?.trim()) return;
+    const agent    = prompt('Agent (cto/marketing/content/design/manual):', 'manual');
+    const priority = prompt('Priority (critical/high/medium/low):', 'medium');
+    window._supabase.from('agent_tasks').insert({
+      title: title.trim(), agent_id: agent||'manual',
+      priority: priority||'medium', status: 'backlog', category: 'manual'
+    }).then(({ error }) => {
+      if (error) alert('Error: ' + error.message);
+      else loadTasks();
+    });
+  }
+
+  function escHtml(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function formatDate(iso) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleDateString('he-IL',{day:'2-digit',month:'2-digit'});
+  }
+  function isThisWeek(iso) {
+    if (!iso) return false;
+    return (new Date() - new Date(iso)) / (1000*60*60*24) <= 7;
   }
 </script>
 </body>
