@@ -6,7 +6,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-const OWNER_EMAIL  = 'teharlev1976@gmail.com';
+const OWNER_EMAIL  = process.env.OWNER_EMAIL || 'dubis.brand@gmail.com';
 const SENDER_EMAIL = 'DUBIS Reports <orders@dubis.net>';
 
 // ── Gmail scan helpers ───────────────────────────────────────────────────────
