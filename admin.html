@@ -2330,8 +2330,8 @@
     const isActive  = t.status === 'in_progress';
     const actions = isPending
       ? `<div class="task-card-actions">
-           <button class="btn-approve" onclick="updateTaskStatus('${t.id}','approved');event.stopPropagation()">✓ Approve</button>
-           <button class="btn-reject"  onclick="updateTaskStatus('${t.id}','rejected');event.stopPropagation()">✕ Reject</button>
+           <button class="btn-approve" onclick="updateTaskStatus('${t.id}','approved','pending_approval');event.stopPropagation()">✓ Approve</button>
+           <button class="btn-reject"  onclick="updateTaskStatus('${t.id}','rejected','pending_approval');event.stopPropagation()">✕ Reject</button>
          </div>`
       : isActive
       ? `<div class="task-card-actions">
@@ -2365,9 +2365,18 @@
       </div>`).join('');
   }
 
-  async function updateTaskStatus(id, newStatus) {
+  async function updateTaskStatus(id, newStatus, fromStatus) {
     const update = { status: newStatus, updated_at: new Date().toISOString() };
     if (newStatus === 'approved') update.approved_at = new Date().toISOString();
+
+    // אם מאשרים תוכן שסוכן יצר (pending_approval → approved),
+    // מסמנים content_approved=true כדי שה-agents לא ירימו את המשימה שוב
+    if (newStatus === 'approved' && fromStatus === 'pending_approval') {
+      const { data: task } = await window._supabase.from('agent_tasks').select('content_data').eq('id', id).single();
+      const cd = task?.content_data || {};
+      update.content_data = { ...cd, content_approved: true };
+    }
+
     const { error } = await window._supabase.from('agent_tasks').update(update).eq('id', id);
     if (error) { alert('Update failed: ' + error.message); return; }
     loadTasks();
@@ -2390,8 +2399,8 @@
         ?`<pre style="background:#111;border-radius:6px;padding:1rem;font-size:.75rem;color:#aaa;white-space:pre-wrap;word-break:break-word;margin-top:.8rem">${JSON.stringify(data.content_data,null,2)}</pre>`:''}
       <div style="margin-top:1.2rem;display:flex;gap:.6rem;flex-wrap:wrap">
         ${data.status==='pending_approval'?`
-          <button class="btn-approve" style="flex:1" onclick="updateTaskStatus('${data.id}','approved');closeTaskDetail()">✓ אשר</button>
-          <button class="btn-reject"  style="flex:1" onclick="updateTaskStatus('${data.id}','rejected');closeTaskDetail()">✕ דחה</button>`:''}
+          <button class="btn-approve" style="flex:1" onclick="updateTaskStatus('${data.id}','approved','pending_approval');closeTaskDetail()">✓ אשר תוכן</button>
+          <button class="btn-reject"  style="flex:1" onclick="updateTaskStatus('${data.id}','rejected','pending_approval');closeTaskDetail()">✕ דחה</button>`:''}
         ${data.status==='approved'?`
           <button class="btn-approve" style="flex:1;background:#7c3aed" onclick="openPublishModal('${data.id}',\`${(data.description||data.title).replace(/`/g,"'")}\`)">📤 פרסם</button>
           <button class="btn-done" style="flex:1" onclick="updateTaskStatus('${data.id}','done');closeTaskDetail()">✓ סמן בוצע</button>`:''}

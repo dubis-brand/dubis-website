@@ -123,10 +123,12 @@ module.exports = async function handler(req, res) {
     await runGmailScan(supabase);
 
     // ── 1a. Auto-trigger approved tasks (daily agent run) ───────────
-    const { data: approvedTasks } = await supabase
+    // סנן החוצה משימות ש-Owner אישר את התוכן שלהן (content_approved=true) — אלו מוכנות לפרסום
+    const { data: allApproved } = await supabase
         .from('agent_tasks')
-        .select('id, agent_id, title')
+        .select('id, agent_id, title, content_data')
         .eq('status', 'approved');
+    const approvedTasks = (allApproved || []).filter(t => !t.content_data?.content_approved);
 
     if (approvedTasks && approvedTasks.length > 0) {
         const now = new Date().toISOString();

@@ -185,16 +185,19 @@ module.exports = async function handler(req, res) {
                           req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`;
         if (!adminUser && !isCron) return res.status(401).json({ error: 'Unauthorized' });
 
-        const { data: tasks, error: fetchErr } = await sb
+        // רק משימות approved שה-Owner לא אישר כבר כ-content (content_approved=true)
+        const { data: allApproved, error: fetchErr } = await sb
             .from('agent_tasks')
             .select('id, title, agent_id, category, description, notes, priority, content_data')
             .eq('status', 'approved')
             .order('priority', { ascending: false })
             .order('created_at', { ascending: true });
 
+        // סנן החוצה משימות שה-Owner אישר את התוכן שלהן (מוכנות לפרסום, לא לעיבוד)
+        const tasks = (allApproved || []).filter(t => !t.content_data?.content_approved);
+
         if (fetchErr) return res.status(500).json({ error: fetchErr.message });
-        if (!tasks || tasks.length === 0) {
-            return res.status(200).json({ queued: 0, summary: 'No approved tasks found.' });
+        if (!tasks || tasks.length === 0) {            return res.status(200).json({ queued: 0, summary: 'No approved tasks found.' });
         }
 
         const byAgent = {};
