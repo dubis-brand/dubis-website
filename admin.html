@@ -2198,7 +2198,7 @@
     products.forEach(p => {
       const sell   = priceMap[p.id] || p.price;
       const cost   = p.gelatoCost != null ? p.gelatoCost : null;
-      const profit = cost != null ? sell - cost - SHIPPING_EST : null;
+      const profit = cost != null ? sell - cost : null; // shipping paid by customer separately
       const pct    = profit != null ? ((profit / sell) * 100).toFixed(0) : null;
 
       const spEl = document.getElementById(`sp-${p.id}`);
@@ -2232,7 +2232,7 @@
         // Recalculate profit display
         const p = currentProducts.find(p => p.id === productId);
         if (p && p.gelatoCost != null) {
-          const profit = newPrice - p.gelatoCost - SHIPPING_EST;
+          const profit = newPrice - p.gelatoCost; // shipping paid by customer separately
           const pct = ((profit / newPrice) * 100).toFixed(0);
           const gpEl = document.getElementById(`gp-${productId}`);
           if (gpEl) {
