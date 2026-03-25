@@ -2154,7 +2154,7 @@
             </div>
             <div class="cost-row">
               <span>Shipping est.</span>
-              <span>~$8.50</span>
+              <span>~$12.87</span>
             </div>
             <div class="cost-row profit-row">
               <span>Profit</span>
@@ -2183,7 +2183,7 @@
   }
 
   // ── Product Profit & Price Management ─────────────────
-  const SHIPPING_EST = 8.50;
+  const SHIPPING_EST = 12.87; // Gelato actual shipping to Israel (IL)
   let currentProducts = [];
 
   async function renderProductsWithPrices(products) {
@@ -2500,8 +2500,10 @@
   function updateImagePreview(url) {
     const img = document.getElementById('pm-preview-img');
     const ph  = document.getElementById('pm-placeholder');
+    // Clear stale handlers first, then hide
+    img.onload  = null;
+    img.onerror = null;
     img.style.display = 'none';
-    img.src = '';
     if (url && url.startsWith('http')) {
       ph.style.display = 'flex';
       ph.textContent = '⏳ טוען תמונה... (עד 30 שניות)';
@@ -2510,10 +2512,12 @@
         ph.style.display  = 'none';
       };
       img.onerror = () => {
-        ph.textContent = '⚠️ לא ניתן לטעון תצוגה מקדימה — התמונה תיטען בפרסום';
+        img.style.display = 'none';
+        ph.textContent = '⚠️ לא ניתן לטעון — הזן URL אחר';
       };
       img.src = url;
     } else {
+      img.src = '';
       ph.textContent = 'אין תמונה — לחץ ייצר או הזן URL';
       ph.style.display = 'flex';
     }
