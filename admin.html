@@ -2155,7 +2155,7 @@
           </div>
           <div class="product-actions">
             <button class="btn-sm" onclick="copyUid('${uid}', this)" title="Copy full UID">Copy UID</button>
-            <a class="btn-gelato" href="${p.gelatoUrl}" target="_blank" rel="noopener">View on Gelato →</a>
+            <a class="btn-gelato" href="${p.gelatoUrl || 'https://dashboard.gelato.com'}" target="_blank" rel="noopener">View on Gelato →</a>
           </div>
         </div>
       </div>`;
@@ -2319,19 +2319,31 @@
       if (!el) return;
       const header = el.querySelector('.kanban-col-header').outerHTML;
       const colTasks = tasks.filter(t => t.status === col);
+      // Set innerHTML first, then update count (otherwise the old header overwrites the count)
+      el.innerHTML = header + colTasks.map(t => renderTaskCard(t)).join('');
       const countEl = document.getElementById(`count-${col}`);
       if (countEl) countEl.textContent = colTasks.length;
-      el.innerHTML = header + colTasks.map(t => renderTaskCard(t)).join('');
     });
   }
 
   function renderTaskCard(t) {
-    const isPending = t.status === 'pending_approval';
-    const isActive  = t.status === 'in_progress';
+    const isPending  = t.status === 'pending_approval';
+    const isActive   = t.status === 'in_progress';
+    const isApproved = t.status === 'approved';
+    const isReadyToPublish = isApproved && t.content_data?.content_approved;
+    const isWaitingAgent   = isApproved && !t.content_data?.content_approved;
     const actions = isPending
       ? `<div class="task-card-actions">
            <button class="btn-approve" onclick="updateTaskStatus('${t.id}','approved','pending_approval');event.stopPropagation()">✓ Approve</button>
            <button class="btn-reject"  onclick="updateTaskStatus('${t.id}','rejected','pending_approval');event.stopPropagation()">✕ Reject</button>
+         </div>`
+      : isReadyToPublish
+      ? `<div class="task-card-actions">
+           <button class="btn-approve" style="background:#1d4ed8" onclick="openPublishModal('${t.id}');event.stopPropagation()">📤 פרסם</button>
+         </div>`
+      : isWaitingAgent
+      ? `<div class="task-card-actions">
+           <button class="btn-approve" style="background:#374151;opacity:.7;cursor:default" onclick="event.stopPropagation()">⏳ ממתין לסוכן</button>
          </div>`
       : isActive
       ? `<div class="task-card-actions">
@@ -2474,14 +2486,22 @@
   function updateImagePreview(url) {
     const img = document.getElementById('pm-preview-img');
     const ph  = document.getElementById('pm-placeholder');
+    img.style.display = 'none';
+    img.src = '';
     if (url && url.startsWith('http')) {
+      ph.style.display = 'flex';
+      ph.textContent = '⏳ טוען תמונה... (עד 30 שניות)';
+      img.onload = () => {
+        img.style.display = 'block';
+        ph.style.display  = 'none';
+      };
+      img.onerror = () => {
+        ph.textContent = '⚠️ לא ניתן לטעון תצוגה מקדימה — התמונה תיטען בפרסום';
+      };
       img.src = url;
-      img.style.display = 'block';
-      ph.style.display  = 'none';
     } else {
-      img.style.display = 'none';
-      img.src = '';
-      ph.style.display  = 'flex';
+      ph.textContent = 'אין תמונה — לחץ ייצר או הזן URL';
+      ph.style.display = 'flex';
     }
   }
 
