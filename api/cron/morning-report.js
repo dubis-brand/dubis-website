@@ -1,7 +1,7 @@
 // DUBIS — Morning Report Cron
 // Vercel Cron: every day at 05:00 UTC (07:00 Israel)
 // Sends daily digest to owner: pending tasks + orders + revenue + Gmail insights
-// Also runs Gmail scan inline (saves insights to agent_tasks first)
+// Gmail scan is handled by Cowork Email Monitor agent (06:45) — this cron only reads results from DB
 // ============================================================================
 
 const { createClient } = require('@supabase/supabase-js');
@@ -119,39 +119,20 @@ module.exports = async function handler(req, res) {
         { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // ── 0. Gmail scan (runs first so insights are fresh) ────────────────
-    await runGmailScan(supabase);
+    // ── 0. Gmail scan ────────────────────────────────────────────────────
+    // ⚠️ DISABLED — Gmail scanning is now handled by the Cowork Email Monitor agent
+    // (runs daily at 06:45 via Cowork Scheduler → writes to agent_tasks).
+    // This cron reads the results from DB (section 3 below) — no direct Gmail call needed.
+    // await runGmailScan(supabase); // <-- REMOVED to prevent duplicates
 
-    // ── 1a. Auto-trigger approved tasks (daily agent run) ───────────
-    // סנן החוצה משימות ש-Owner אישר את התוכן שלהן (content_approved=true) — אלו מוכנות לפרסום
-    const { data: allApproved } = await supabase
-        .from('agent_tasks')
-        .select('id, agent_id, title, content_data')
-        .eq('status', 'approved');
-    const approvedTasks = (allApproved || []).filter(t => !t.content_data?.content_approved);
-
-    if (approvedTasks && approvedTasks.length > 0) {
-        const now = new Date().toISOString();
-        const ids = approvedTasks.map(t => t.id);
-        await supabase.from('agent_tasks')
-            .update({ status: 'in_progress', updated_at: now })
-            .in('id', ids);
-
-        // Group & log runs
-        const byAgent = {};
-        for (const t of approvedTasks) {
-            if (!byAgent[t.agent_id]) byAgent[t.agent_id] = [];
-            byAgent[t.agent_id].push(t.title);
-        }
-        for (const [agent_id, titles] of Object.entries(byAgent)) {
-            await supabase.from('agent_runs').insert({
-                agent_id, status: 'queued',
-                summary: `${titles.length} tasks auto-queued by morning cron:\n${titles.map(t => `• ${t}`).join('\n')}`,
-                tasks_created: titles.length,
-            });
-        }
-        console.log(`Morning cron: auto-queued ${approvedTasks.length} approved tasks`);
-    }
+    // ── 1a. Auto-trigger approved tasks ─────────────────────────────
+    // ⚠️ DISABLED — This was auto-moving approved tasks to in_progress every morning,
+    // which caused tasks approved by the admin to "disappear" from the Approved column.
+    // Cowork agents now handle task execution on their own schedule.
+    // Tasks should stay in 'approved' until manually managed by the admin.
+    //
+    // const { data: allApproved } = await supabase.from('agent_tasks')...
+    // REMOVED to prevent silent status changes in the Task Board.
 
     // ── 1b. Pending tasks awaiting approval ─────────────────────────
     const { data: pendingTasks } = await supabase

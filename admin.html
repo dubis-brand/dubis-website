@@ -1049,6 +1049,10 @@
         <option value="content">✍️ Content</option>
         <option value="marketing">📣 Marketing</option>
         <option value="design">🎨 Design</option>
+        <option value="supply">📦 Supply</option>
+        <option value="email_monitor">📧 Email Monitor</option>
+        <option value="site_audit">🔍 Site Audit</option>
+        <option value="boss">👑 Boss</option>
         <option value="manual">👤 Manual</option>
       </select>
       <select id="tasks-filter-priority" onchange="loadTasks()">
@@ -2380,6 +2384,7 @@
     const stats = [
       { label:'Backlog',          num: tasks.filter(t=>t.status==='backlog').length },
       { label:'Pending Approval', num: tasks.filter(t=>t.status==='pending_approval').length },
+      { label:'✅ Approved',       num: tasks.filter(t=>t.status==='approved').length },
       { label:'In Progress',      num: tasks.filter(t=>t.status==='in_progress').length },
       { label:'Done this week',   num: tasks.filter(t=>t.status==='done'&&isThisWeek(t.updated_at)).length },
     ];
