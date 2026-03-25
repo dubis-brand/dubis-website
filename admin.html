@@ -2073,6 +2073,20 @@
   let _allProducts = [];
   let _productsGender = 'all';
 
+  function _gelatoUrl(type, gender) {
+    const w = gender === 'women';
+    if (type === 'tshirt')     return w ? 'https://www.gelato.com/custom/womens-clothing/t-shirts/classic-womens-crewneck-t-shirt' : 'https://www.gelato.com/custom/brands/gildan/classic-unisex-crewneck-t-shirt-gildan-64000';
+    if (type === 'hoodie')     return w ? 'https://www.gelato.com/custom/womens-clothing/hoodies' : 'https://www.gelato.com/custom/brands/gildan/classic-unisex-pullover-hoodie-gildan-18500';
+    if (type === 'ziphoodie')  return 'https://www.gelato.com/custom/mens-clothing/hoodies/classic-unisex-zip-hoodie';
+    if (type === 'longsleeve') return w ? 'https://www.gelato.com/custom/womens-clothing/long-sleeve-shirts' : 'https://www.gelato.com/custom/mens-clothing/long-sleeve-shirts';
+    if (type === 'cap')        return 'https://www.gelato.com/custom/hats/dad-hats';
+    return 'https://www.gelato.com/custom';
+  }
+
+  function _gelatoCost(type) {
+    return { tshirt: 12.50, hoodie: 24.00, ziphoodie: 28.00, longsleeve: 15.00, cap: 12.00 }[type] || null;
+  }
+
   async function loadProducts() {
     const loadingEl = document.getElementById('products-loading');
     const gridEl    = document.getElementById('products-grid');
@@ -2084,7 +2098,7 @@
 
     try {
       if (typeof products === 'undefined' || !products.length) throw new Error('products.js לא נטען');
-      _allProducts = products;
+      _allProducts = products.map(p => ({ ...p, gelatoUrl: _gelatoUrl(p.type, p.gender), gelatoCost: _gelatoCost(p.type) }));
     } catch (err) {
       loadingEl.textContent = 'Error loading catalog: ' + err.message;
       return;
