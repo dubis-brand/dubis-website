@@ -575,6 +575,13 @@ body {
     color: var(--honey);
 }
 
+.product-shipping-note {
+    font-size: 0.72rem;
+    color: #888;
+    margin-top: 2px;
+    letter-spacing: 0.01em;
+}
+
 .add-to-cart {
     background: var(--charcoal);
     color: var(--white);

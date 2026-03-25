@@ -269,6 +269,7 @@ function renderProducts(filter, gender) {
         </div>
         <div class="product-bottom">
           <div class="product-price">$${product.price}</div>
+          <div class="product-shipping-note">✈️ + shipping &middot; free on $120+</div>
         </div>
       </div>
     </div>
