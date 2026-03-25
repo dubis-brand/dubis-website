@@ -46,6 +46,7 @@ const translations = {
     modal_returns: '↩️ Easy returns — no drama.',
     modal_add: 'This Is Mine 🐾',
     tab_details: 'Details', tab_size: 'Size Guide', tab_care: 'Care',
+    shipping_note: '✈️ + shipping · free on $120+',
     modal_ships: '🚚 Ships in 5–9 business days', modal_free_ship: 'Free shipping over $120',
     modal_dtg: 'DTG — Direct-to-Garment',
     modal_fabric: 'Fabric', modal_fit: 'Fit', modal_print: 'Print', modal_print_areas: 'Print areas',
@@ -94,6 +95,7 @@ const translations = {
     modal_returns: '↩️ החזרה קלה — ללא דרמה.',
     modal_add: 'זה שלי 🐾',
     tab_details: 'פרטים', tab_size: 'מדריך מידות', tab_care: 'טיפול',
+    shipping_note: '✈️ + משלוח · חינם מ-$120',
     modal_ships: '🚚 משלוח תוך 5–9 ימי עסקים', modal_free_ship: 'משלוח חינם מעל $120',
     modal_dtg: 'DTG — הדפסה ישירה על בד',
     modal_fabric: 'בד', modal_fit: 'גזרה', modal_print: 'הדפסה', modal_print_areas: 'אזורי הדפסה',
@@ -273,7 +275,7 @@ function renderProducts(filter, gender) {
         </div>
         <div class="product-bottom">
           <div class="product-price">$${product.price}</div>
-          <div class="product-shipping-note">✈️ + shipping &middot; free on $120+</div>
+          <div class="product-shipping-note">${(translations[currentLang]||translations.en).shipping_note}</div>
         </div>
       </div>
     </div>
