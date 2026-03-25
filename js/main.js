@@ -12,8 +12,9 @@ const translations = {
   en: {
     nav_home: 'Home', nav_shop: 'Shop', nav_people: 'Real People',
     nav_about: 'About', nav_contact: 'Contact',
-    hero_tagline: 'We see you.',
-    hero_desc: 'Fashion spent decades designing for someone else. We changed that.',
+    hero_tagline: 'Fashion that doesn\'t ask you to suck your stomach in.',
+    hero_subtitle: 'Built for the body you actually live in.',
+    hero_desc: 'For years, the fashion industry made clothes for someone else — younger, thinner, and constantly apologizing. DUBIS was born to break the equation. Clothes for real people who refuse to choose between looking great and feeling completely comfortable.',
     hero_btn: 'Shop the Collection',
     people_title: 'The DUBIS Crew 🐻',
     people_sub: 'Real people. Real bodies. No explanations needed.',
@@ -26,16 +27,16 @@ const translations = {
     type_ziphoodie: 'Zip Hoodie', type_longsleeve: 'Long-Sleeve',
     quality_title: 'What You See Is What You Get 🐾',
     quality_sub: 'We know the worry — ordering online and getting something that looks nothing like the photo. Here\'s our promise:',
-    q1_title: 'Made Fresh For You', q2_title: 'Real Materials', q3_title: 'Quality Control', q4_title: 'Easy Returns',
+    q1_title: 'Made Fresh For You', q2_title: 'Fabrics that live with you, not judge you.', q3_title: 'Quality Control', q4_title: 'Easy Returns',
     q1_text: 'Every piece is made for you, the moment you order. Not sitting in a warehouse. Not pre-printed in bulk. Made fresh — because you deserve something made for you, not someone else.',
-    q2_text: '100% cotton that breathes. Heavyweight hoodies that actually keep you warm. No scratchy seams, no awkward fits. Fabrics chosen because they feel good — on your body, the one you have today.',
+    q2_text: '100% breathable cotton and fits that actually understand your body. No annoying seams, no feeling like you need to change for the shirt. Just put it on, feel at home, and step out into the world.',
     q3_text: 'Every item is checked before it reaches you. Print not sharp enough? Wrong color? We reprint it. You waited for this — it better be worth the wait.',
     q4_text: '30 days. No drama. No fine print. If it doesn\'t feel like you — send it back, full refund. We\'re real people. We get it.',
-    about_title: 'Who is the DUBIS bear?',
-    about_p1: 'In his 40s. Built something real — a career, a family, a life worth showing up for every single day.',
-    about_p2: 'He went shopping. Found nothing that fit the body he actually lives in. The clothes assumed a different person — younger, thinner, apologetic.',
-    about_p3: 'Stopped waiting for fashion to notice him. And built something that does.',
-    about_tag: 'If you\'ve ever walked out of a store empty-handed — you belong here. 🐾',
+    about_title: 'Who are we at DUBIS?',
+    about_p1: 'Sometime after 40, it hits you: Life is way too short for clothes that make you feel bad about your body. We\'ve been around, built lives worth waking up for, and we absolutely refuse to apologize for enjoying them.',
+    about_p2: 'But when it comes to fashion? Suddenly it feels like we\'re expected to change ourselves. DUBIS was created to stop this nonsense. We stopped waiting for fashion brands to notice us — and made exactly what we were looking for.',
+    about_p3: 'Clothes for real people. No fake models, just maximum comfort, fits that flatter your actual body, and cynical quotes that tell the world: "This is me, and I own it."',
+    about_tag: 'If you\'re tired of choosing between looking good and feeling comfortable — welcome home. 🐾',
     contact_title: 'Get in Touch', contact_sub: 'Questions? Ideas? Just want to say hi?',
     cart_title: 'Your Cart 🐾', cart_empty: 'Nothing here yet. The right things are one click away. 🐾',
     cart_total: 'Total', cart_checkout: 'CHECKOUT',
@@ -59,8 +60,9 @@ const translations = {
   he: {
     nav_home: 'ראשי', nav_shop: 'חנות', nav_people: 'אנשים אמיתיים',
     nav_about: 'אודות', nav_contact: 'צור קשר',
-    hero_tagline: 'אנחנו רואים אותך.',
-    hero_desc: 'האופנה תכננה עשרות שנים למישהו אחר. שינינו את זה.',
+    hero_tagline: 'אופנה שלא מבקשת ממך להכניס את הבטן.',
+    hero_subtitle: 'בנוי לגוף שאתה באמת גר בו.',
+    hero_desc: 'במשך שנים תעשיית האופנה תפרה בגדים למישהו אחר — צעיר יותר, רזה יותר, ובעיקר: מתנצל. DUBIS נולד כדי לשבור את המשוואה. בגדים לאנשים אמיתיים שמסרבים לבחור בין להיראות מעולה לבין להרגיש הכי בנוח שיש.',
     hero_btn: 'לקולקציה',
     people_title: 'החבר\'ה של DUBIS 🐻',
     people_sub: 'אנשים אמיתיים. גופים אמיתיים. ללא הסברים.',
@@ -73,16 +75,16 @@ const translations = {
     type_ziphoodie: 'קפוצ\'ון רוכסן', type_longsleeve: 'ארוכת שרוול',
     quality_title: 'מה שרואים זה מה שמקבלים 🐾',
     quality_sub: 'אנחנו יודעים את הדאגה — להזמין אונליין ולקבל משהו שלא נראה כמו בתמונה. הנה ההבטחה שלנו:',
-    q1_title: 'מיוצר טרי עבורך', q2_title: 'חומרים אמיתיים', q3_title: 'בקרת איכות', q4_title: 'החזרה קלה',
+    q1_title: 'מיוצר טרי עבורך', q2_title: 'בדים שחיים איתך, לא שופטים אותך.', q3_title: 'בקרת איכות', q4_title: 'החזרה קלה',
     q1_text: 'כל פריט מיוצר עבורך ברגע שהזמנת. לא מחסן. לא הדפסה מראש. טרי — כי מגיע לך משהו שנעשה עבורך, לא עבור מישהו אחר.',
-    q2_text: 'כותנה 100% שנושמת. קפוצ\'ונים כבדים שמחממים באמת. ללא תפרים מגרדים, ללא חיתוכים מוזרים. בדים שנבחרו כי הם מרגישים טוב — על הגוף שלך, זה שיש לך היום.',
+    q2_text: '100% כותנה נושמת וגזרות שבאמת מבינות את הגוף שלך. בלי תפרים מציקים, בלי להרגיש שאתה צריך להשתנות בשביל החולצה. פשוט ללבוש, להרגיש בבית, ולצאת לעולם.',
     q3_text: 'כל פריט נבדק לפני שמגיע אליך. ההדפסה לא חדה? צבע לא נכון? מדפיסים מחדש. חיכית לזה — כדאי שיהיה שווה.',
     q4_text: '30 יום. ללא דרמה. ללא אותיות קטנות. אם זה לא מרגיש כמוך — שלח חזרה, החזר מלא. אנחנו אנשים אמיתיים. מבינים.',
-    about_title: 'מי הדובי של DUBIS?',
-    about_p1: 'בן 40. בנה משהו אמיתי — קריירה, משפחה, חיים ששווה להגיע אליהם כל יום.',
-    about_p2: 'הלך לקנות. לא מצא כלום שמתאים לגוף שהוא גר בו. הבגדים הניחו אדם אחר — צעיר יותר, רזה יותר, מתנצל.',
-    about_p3: 'הפסיק לחכות שהאופנה תשים לב. ובנה משהו שכן.',
-    about_tag: 'אם אי פעם יצאת מחנות בידיים ריקות — כאן יש לך מקום. 🐾',
+    about_title: 'מי אנחנו ב-DUBIS?',
+    about_p1: 'מתישהו אחרי גיל 40 נופל האסימון: החיים קצרים מדי בשביל בגדים שגורמים לנו להרגיש רע עם הגוף שלנו. עברנו דבר או שניים, בנינו חיים ששווה לקום אליהם, וממש לא בא לנו להתנצל על זה שאנחנו נהנים מהם.',
+    about_p2: 'אבל כשזה מגיע לאופנה? פתאום התחושה היא שמצפים מאיתנו להשתנות. DUBIS קם כדי לשים לזה סוף. הפסקנו לחכות שרשתות האופנה יראו אותנו — וייצרנו את מה שתמיד חיפשנו.',
+    about_p3: 'בגדים לאנשים אמיתיים. בלי מודלים שקריים, רק נוחות מקסימלית, גזרות שמחמיאות לגוף בדיוק כמו שהוא, ומשפטים ציניים שאומרים לעולם: "ככה אני, ואני עף על זה".',
+    about_tag: 'אם גם לכם נמאס לבחור בין להיראות טוב לבין להרגיש בנוח — הגעתם הביתה. 🐾',
     contact_title: 'צור קשר', contact_sub: 'שאלות? רעיונות? פשוט רוצה להגיד שלום?',
     cart_title: 'העגלה שלך 🐾', cart_empty: 'עדיין ריק. הדברים הנכונים במרחק קליק אחד. 🐾',
     cart_total: 'סה"כ', cart_checkout: 'לתשלום',
@@ -148,9 +150,11 @@ function translateUI(lang) {
 
   // Hero
   const heroTagline = q('.hero-tagline');
+  const heroSubtitle = q('.hero-subtitle');
   const heroDesc = q('.hero-desc');
   const heroBtn = q('.hero-content .btn-primary');
   if (heroTagline) heroTagline.textContent = t.hero_tagline;
+  if (heroSubtitle && t.hero_subtitle) heroSubtitle.textContent = t.hero_subtitle;
   if (heroDesc) heroDesc.textContent = t.hero_desc;
   if (heroBtn) heroBtn.textContent = t.hero_btn;
 
