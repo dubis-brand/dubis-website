@@ -710,6 +710,7 @@
       <button class="nav-tab" id="nav-coupons"   onclick="showSection('coupons',this)">🏷️ Coupons</button>
       <button class="nav-tab" id="nav-products"  onclick="showSection('products',this)">🛍️ Products</button>
       <button class="nav-tab" id="nav-tasks"     onclick="showSection('tasks',this)">🤖 Tasks</button>
+      <button class="nav-tab" id="nav-agents"    onclick="showSection('agents',this)">🧠 Agents</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -1219,6 +1220,145 @@
     <div class="products-grid" id="products-grid"></div>
   </div><!-- /section-products -->
 
+  <!-- ══ AGENTS ══════════════════════════════════════════ -->
+  <div id="section-agents" style="display:none;padding:1.5rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem">
+      <h2 style="color:#e8c97a;margin:0">🧠 מבנה סוכנים</h2>
+      <button onclick="runAllAgents()" style="background:#2a7a2a;color:#fff;border:none;padding:.6rem 1.2rem;border-radius:6px;cursor:pointer;font-size:.9rem">▶ הרץ כל הסוכנים</button>
+    </div>
+
+    <!-- Stats row -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:2rem" id="agents-stats">
+      <div style="background:#1a1a1a;border-radius:8px;padding:1rem;text-align:center">
+        <div style="font-size:1.8rem;font-weight:700;color:#e8c97a" id="stat-approved">—</div>
+        <div style="color:#999;font-size:.8rem">ממתינות להרצה</div>
+      </div>
+      <div style="background:#1a1a1a;border-radius:8px;padding:1rem;text-align:center">
+        <div style="font-size:1.8rem;font-weight:700;color:#4caf50" id="stat-done">—</div>
+        <div style="color:#999;font-size:.8rem">הושלמו השבוע</div>
+      </div>
+      <div style="background:#1a1a1a;border-radius:8px;padding:1rem;text-align:center">
+        <div style="font-size:1.8rem;font-weight:700;color:#2196f3" id="stat-inprogress">—</div>
+        <div style="color:#999;font-size:.8rem">בתהליך</div>
+      </div>
+      <div style="background:#1a1a1a;border-radius:8px;padding:1rem;text-align:center">
+        <div style="font-size:1.8rem;font-weight:700;color:#ff9800" id="stat-pending">—</div>
+        <div style="color:#999;font-size:.8rem">ממתינות לאישור</div>
+      </div>
+    </div>
+
+    <!-- Agent cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.2rem">
+
+      <!-- Content Agent -->
+      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #e8c97a">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem">
+          <div>
+            <div style="font-size:1.4rem">✍️</div>
+            <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Content Agent</div>
+            <div style="color:#999;font-size:.8rem">יצירת תוכן לאינסטגרם</div>
+          </div>
+          <button onclick="runAgent('content')" class="agent-run-btn">▶ הרץ</button>
+        </div>
+        <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
+          מייצר כיתוב בעברית + אנגלית, האשטאגים ותמונה AI לכל משימת content מאושרת. משימות עוברות ל-<em>pending_approval</em> לבדיקתך לפני פרסום.
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#e8c97a">Gemini 2.0 Flash</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#e8c97a">Imagen 3</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-content">—</span>
+        </div>
+      </div>
+
+      <!-- CTO Agent -->
+      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #2196f3">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem">
+          <div>
+            <div style="font-size:1.4rem">🔧</div>
+            <div style="font-weight:700;color:#e8e0d5;font-size:1rem">CTO Agent</div>
+            <div style="color:#999;font-size:.8rem">ניהול טכני ובאגים</div>
+          </div>
+          <button onclick="runAgent('cto')" class="agent-run-btn">▶ הרץ</button>
+        </div>
+        <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
+          מנתח משימות טכניות ובאגים, מייצר תוכנית יישום מפורטת בעברית (קבצים לשינוי, שלבי פיתוח, בדיקות). שומר כ-notes במשימה.
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#2196f3">Gemini 2.0 Flash</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-cto">—</span>
+        </div>
+      </div>
+
+      <!-- Marketing Agent -->
+      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #e91e63">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem">
+          <div>
+            <div style="font-size:1.4rem">📣</div>
+            <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Marketing Agent</div>
+            <div style="color:#999;font-size:.8rem">אסטרטגיה ושיווק</div>
+          </div>
+          <button onclick="runAgent('marketing')" class="agent-run-btn">▶ הרץ</button>
+        </div>
+        <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
+          מושך נתוני מכירות 7 ימים אחרונים, מנתח ביצועים ומייצר 3-5 המלצות שיווק מעשיות וספציפיות לפעולה.
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#e91e63">Gemini 2.0 Flash</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-marketing">—</span>
+        </div>
+      </div>
+
+      <!-- Supply Agent -->
+      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #ff9800">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem">
+          <div>
+            <div style="font-size:1.4rem">📦</div>
+            <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Supply Agent</div>
+            <div style="color:#999;font-size:.8rem">שרשרת אספקה</div>
+          </div>
+          <button onclick="runAgent('supply')" class="agent-run-btn">▶ הרץ</button>
+        </div>
+        <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
+          מסנכרן סטטוס הזמנות מ-Gelato (ייצור, משלוח, מסירה). רץ אוטומטית כל יום בחצות. עדכון עמנואלי אפשרי.
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#ff9800">Gelato API</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#999">cron 00:00 UTC</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-supply">—</span>
+        </div>
+      </div>
+
+      <!-- Morning Report -->
+      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #9c27b0">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem">
+          <div>
+            <div style="font-size:1.4rem">📧</div>
+            <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Morning Report</div>
+            <div style="color:#999;font-size:.8rem">דוח בוקר יומי</div>
+          </div>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.3rem .6rem;font-size:.75rem;color:#9c27b0">AUTO</span>
+        </div>
+        <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
+          נשלח אוטומטית ל-dubis.brand@gmail.com כל יום ב-07:00. מכיל: סטטיסטיקות יומיות, הזמנות פעילות, תובנות Gmail ומשימות ממתינות.
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#9c27b0">Resend Email</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#9c27b0">Gmail API</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#999">cron 05:00 UTC</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Recent runs -->
+    <div style="margin-top:2rem">
+      <h3 style="color:#e8e0d5;margin-bottom:1rem">⏱ ריצות אחרונות</h3>
+      <div id="agents-runs-list" style="display:flex;flex-direction:column;gap:.5rem">
+        <div style="color:#666;font-size:.85rem">טוען...</div>
+      </div>
+    </div>
+  </div><!-- /section-agents -->
+
   <!-- Coupon Modal -->
   <div id="coupon-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
     <div style="background:#1e1e1e;border-radius:12px;padding:2rem;width:min(480px,90vw);max-height:90vh;overflow-y:auto">
@@ -1530,7 +1670,9 @@
     document.getElementById('section-analytics').style.display = name === 'analytics' ? '' : 'none';
     document.getElementById('section-products').style.display  = name === 'products'  ? '' : 'none';
     document.getElementById('section-tasks').style.display     = name === 'tasks'     ? '' : 'none';
+    document.getElementById('section-agents').style.display    = name === 'agents'    ? '' : 'none';
     if (name === 'tasks') loadTasks();
+    if (name === 'agents') loadAgentsSection();
     document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     if (name === 'coupons') loadCoupons();
@@ -1941,12 +2083,8 @@
     const token = session?.access_token;
 
     try {
-      const res = await fetch('/api/admin/gelato-catalog', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      _allProducts = json.products || [];
+      if (typeof products === 'undefined' || !products.length) throw new Error('products.js לא נטען');
+      _allProducts = products;
     } catch (err) {
       loadingEl.textContent = 'Error loading catalog: ' + err.message;
       return;
@@ -2528,6 +2666,94 @@
     if (!iso) return false;
     return (new Date() - new Date(iso)) / (1000*60*60*24) <= 7;
   }
+
+  // ══ AGENTS SECTION ══════════════════════════════════════
+  async function loadAgentsSection() {
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return;
+    try {
+      const { data: tasks } = await _sb.from('agent_tasks').select('status,agent_id,created_at');
+      const weekAgo = new Date(Date.now() - 7*24*60*60*1000);
+      document.getElementById('stat-approved').textContent   = (tasks||[]).filter(t=>t.status==='approved').length;
+      document.getElementById('stat-done').textContent       = (tasks||[]).filter(t=>t.status==='done'&&new Date(t.created_at)>weekAgo).length;
+      document.getElementById('stat-inprogress').textContent = (tasks||[]).filter(t=>t.status==='in_progress').length;
+      document.getElementById('stat-pending').textContent    = (tasks||[]).filter(t=>t.status==='pending_approval').length;
+      ['content','cto','marketing','supply'].forEach(ag => {
+        const el = document.getElementById('agent-status-'+ag);
+        if (!el) return;
+        const count = (tasks||[]).filter(t=>t.agent_id===ag&&['approved','in_progress'].includes(t.status)).length;
+        el.textContent = count > 0 ? count+' פעיל' : 'אין משימות';
+        el.style.color = count > 0 ? '#ff9800' : '#4caf50';
+      });
+    } catch(e) { console.error('agents stats',e); }
+    try {
+      const { data: runs } = await _sb.from('agent_runs').select('*').order('created_at',{ascending:false}).limit(20);
+      const list = document.getElementById('agents-runs-list');
+      if (!runs||!runs.length) { list.innerHTML='<div style="color:#666;font-size:.85rem">עדיין לא רצו סוכנים</div>'; return; }
+      const emoji = {content:'✍️',cto:'🔧',marketing:'📣',supply:'📦'};
+      list.innerHTML = runs.map(r=>{
+        const sc = r.status==='completed'?'#4caf50':r.status==='completed_with_errors'?'#ff9800':'#2196f3';
+        return `<div style="background:#1a1a1a;border-radius:6px;padding:.7rem 1rem;display:flex;justify-content:space-between;align-items:center;gap:1rem">
+          <div style="display:flex;align-items:center;gap:.6rem;flex:1;min-width:0">
+            <span>${emoji[r.agent_id]||'🤖'}</span>
+            <div style="min-width:0">
+              <div style="color:#e8e0d5;font-size:.85rem;font-weight:600">${r.agent_id}</div>
+              <div style="color:#888;font-size:.75rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:350px">${r.summary||''}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:.6rem;align-items:center;flex-shrink:0">
+            <span style="color:${sc};background:#0a0a0a;padding:.2rem .5rem;border-radius:4px;font-size:.75rem">${r.status}</span>
+            <span style="color:#666;font-size:.75rem">${formatDate(r.created_at)}</span>
+          </div>
+        </div>`;
+      }).join('');
+    } catch(e) { console.error('agents runs',e); }
+  }
+
+  async function runAgent(agentId) {
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return alert('לא מחובר');
+    const btn = document.querySelector(`[onclick="runAgent('${agentId}')"]`);
+    if (btn) { btn.disabled=true; btn.textContent='⏳...'; }
+    try {
+      const res = await fetch('/api/agents?type=run', {
+        method:'POST', headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'}
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error||'שגיאה');
+      alert('✅ '+agentId+' הסתיים\n'+(data.summary||data.queued+' משימות'));
+      loadAgentsSection();
+    } catch(e) { alert('שגיאה: '+e.message); }
+    finally { if (btn) { btn.disabled=false; btn.textContent='▶ הרץ'; } }
+  }
+
+  async function runAllAgents() {
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return alert('לא מחובר');
+    if (!confirm('להריץ את כל הסוכנים?')) return;
+    const btn = document.querySelector('[onclick="runAllAgents()"]');
+    if (btn) { btn.disabled=true; btn.textContent='⏳ מריץ...'; }
+    try {
+      const res = await fetch('/api/agents?type=run', {
+        method:'POST', headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'}
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error||'שגיאה');
+      alert('✅ הסוכנים סיימו!\n'+(data.summary||data.queued+' משימות'));
+      loadAgentsSection();
+    } catch(e) { alert('שגיאה: '+e.message); }
+    finally { if (btn) { btn.disabled=false; btn.textContent='▶ הרץ כל הסוכנים'; } }
+  }
+
 </script>
+<style>
+  .agent-run-btn { background:#2a2a2a;color:#e8c97a;border:1px solid #e8c97a;padding:.3rem .7rem;border-radius:5px;cursor:pointer;font-size:.8rem;transition:all .2s;white-space:nowrap; }
+  .agent-run-btn:hover { background:#e8c97a;color:#0a0a0a; }
+  .agent-run-btn:disabled { opacity:.5;cursor:not-allowed; }
+</style>
+<script src="js/products.js"></script>
 </body>
 </html>
