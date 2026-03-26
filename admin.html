@@ -517,7 +517,10 @@
       object-fit: cover;
       background: #111;
       display: block;
+      cursor: pointer;
+      transition: opacity .2s;
     }
+    .product-preview-img:hover { opacity: .88; }
     .product-preview-placeholder {
       width: 100%;
       aspect-ratio: 1;
@@ -527,6 +530,82 @@
       justify-content: center;
       color: #2a2a2a;
       font-size: 2.5rem;
+    }
+
+    /* ── Color swatches ── */
+    .color-swatches {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: .4rem .85rem .2rem;
+      background: #111;
+      border-bottom: 1px solid #1e1e1e;
+    }
+    .color-swatch {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: transform .15s, border-color .15s;
+      outline: none;
+    }
+    .color-swatch:hover { transform: scale(1.2); }
+    .color-swatch.active { border-color: #c8a96e; transform: scale(1.15); }
+    .color-swatch-label {
+      font-size: .6rem;
+      color: #555;
+      margin-left: auto;
+      align-self: center;
+      letter-spacing: .5px;
+    }
+
+    /* ── Front/Back toggle on product card ── */
+    .fb-toggle {
+      display: flex;
+      background: #0d0d0d;
+      border-bottom: 1px solid #1e1e1e;
+    }
+    .fb-btn {
+      flex: 1;
+      padding: .3rem;
+      font-size: .68rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #555;
+      border: none;
+      background: none;
+      cursor: pointer;
+      transition: color .15s, background .15s;
+    }
+    .fb-btn.active { color: #c8a96e; background: #1a1a0a; }
+
+    /* ── Print files mini preview (in order detail) ── */
+    .print-files-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .print-file-thumb {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .print-file-thumb img {
+      width: 70px;
+      height: 70px;
+      object-fit: contain;
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+    }
+    .print-file-thumb span {
+      font-size: .6rem;
+      color: #555;
+      letter-spacing: .5px;
+      text-transform: uppercase;
     }
 
     .product-admin-info { padding: .85rem; }
@@ -1632,8 +1711,29 @@
 
       const addr = o.shipping_address || {};
       const addrStr = [addr.name, addr.address_line_1, addr.city, addr.country_code].filter(Boolean).join(', ');
+      const DARK_C = new Set(['Black','Charcoal','Navy','Forest Green']);
       const itemsList = (Array.isArray(o.items) ? o.items : [])
-        .map(i => `${i.typeLabel || i.type} ${i.selectedSize || ''} ${i.selectedColor || ''} — $${i.price}`).join('<br>');
+        .map(i => {
+          const variant = DARK_C.has(i.selectedColor) ? 'white' : 'dark';
+          const designId = i.designRef || i.id;
+          const frontUrl = `/designs/front_logo_${variant}.png`;
+          const backUrl  = `/designs/back_design_${designId}_${variant}.png`;
+          const frontBg  = DARK_C.has(i.selectedColor) ? '#111' : '#eee';
+          const backBg   = DARK_C.has(i.selectedColor) ? '#111' : '#eee';
+          return `<div style="margin-bottom:10px">
+            <div style="font-size:.82rem">${i.typeLabel || i.type} ${i.selectedSize || ''} <span style="color:#c8a96e">${i.selectedColor || ''}</span> — $${i.price}</div>
+            <div class="print-files-row">
+              <div class="print-file-thumb">
+                <img src="${frontUrl}" style="background:${frontBg}" onerror="this.style.opacity='.2'">
+                <span>Front</span>
+              </div>
+              <div class="print-file-thumb">
+                <img src="${backUrl}" style="background:${backBg}" onerror="this.style.opacity='.2'">
+                <span>Back</span>
+              </div>
+            </div>
+          </div>`;
+        }).join('');
 
       return `
         <tr class="order-main-row" onclick="toggleOrderDetail('${o.id}')">
@@ -1648,7 +1748,7 @@
         <tr id="detail-${o.id}" class="order-detail-row hidden">
           <td colspan="7">
             <div class="order-detail-panel">
-              <div><strong>Items:</strong><br>${itemsList || '—'}</div>
+              <div><strong>Items + Print Files:</strong><br>${itemsList || '—'}</div>
               <div><strong>Ship to:</strong><br>${addrStr || '—'}</div>
               <div><strong>Coupon:</strong> ${o.coupon_code || '—'}${o.discount_amount ? ` (−$${o.discount_amount})` : ''}</div>
               <div><strong>Gelato ID:</strong><br><span style="font-family:monospace;font-size:.72rem;color:#666">${o.printful_order_id || '—'}</span></div>
@@ -2181,15 +2281,36 @@
     grid.innerHTML = filtered.map(p => {
       const genderClass = `gender-${p.gender}`;
       const genderLabel = { unisex: 'Unisex', men: 'Men', women: 'Women' }[p.gender] || p.gender;
-      const gelatoFallback = p.previewImage ? `this.src='${p.previewImage}'` : `this.style.display='none';this.nextElementSibling.style.display='flex'`;
-      const imgHtml = `<img src="images/product-${p.id}.jpg" class="product-preview-img" alt="${p.phrase}" loading="lazy"
-           onerror="${gelatoFallback}">
-         <div class="product-preview-placeholder" style="display:none">👕</div>`;
       const uid = p.baseUid || '';
+
+      // ── Color swatches + front/back toggle ──
+      const _colorCss = {
+        'Black':'#1a1a1a','White':'#f5f5f5','Cream':'#f5e6c8','Navy':'#1b2a4a',
+        'Gray':'#9e9e9e','Red':'#c0392b','Forest Green':'#2d5a27','Charcoal':'#4a4a4a',
+        'Honey Brown':'#c8853a','Sand':'#d4b896','Sports Grey':'#b0b0b0'
+      };
+      const _defaultColor = (p.colors && p.colors.length > 0) ? p.colors[0] : 'Black';
+      const _c2f = c => c.replace(/\s+/g, '-');
+      const _defaultImg = `images/product-${p.id}-${_c2f(_defaultColor)}-front.jpg`;
+      const _swatches = (p.colors || []).map((c, ci) => {
+        const bg  = _colorCss[c] || '#888';
+        const bdr = c === 'White' ? 'border:1px solid #555;' : '';
+        return `<span class="color-swatch${ci===0?' active':''}" style="background:${bg};${bdr}" title="${c}" onclick="switchProductColor(${p.id},'${c}',this)"></span>`;
+      }).join('');
+      const cardImgHtml = `
+        <div class="product-img-wrapper" style="position:relative">
+          <img id="pimg-${p.id}" src="${_defaultImg}" class="product-preview-img" alt="${p.phrase}" loading="lazy"
+               onerror="this.src='images/product-${p.id}.jpg';this.onerror=null">
+          <div class="fb-toggle">
+            <button class="fb-btn active" onclick="switchProductSide(${p.id},'front',this)">Front</button>
+            <button class="fb-btn"        onclick="switchProductSide(${p.id},'back', this)">Back</button>
+          </div>
+        </div>
+        <div class="color-swatches">${_swatches}</div>`;
 
       return `
       <div class="product-admin-card" data-gender="${p.gender}">
-        ${imgHtml}
+        ${cardImgHtml}
         <div class="product-admin-info">
           <div class="product-id-row">
             <span class="product-id">#${p.id} · ${p.typeLabel}</span>
@@ -2220,7 +2341,8 @@
           </div>
           <div class="product-actions">
             <button class="btn-sm" onclick="copyUid('${uid}', this)" title="Copy full UID">Copy UID</button>
-            <a class="btn-gelato" href="${p.gelatoUrl || 'https://dashboard.gelato.com'}" target="_blank" rel="noopener">View on Gelato →</a>
+            <a class="btn-sm" href="https://www.dubis.net/#product-${p.id}" target="_blank" rel="noopener" style="text-decoration:none">צפה באתר →</a>
+            <a class="btn-gelato" href="${p.gelatoUrl || 'https://dashboard.gelato.com'}" target="_blank" rel="noopener">Gelato →</a>
           </div>
         </div>
       </div>`;
@@ -2231,6 +2353,33 @@
     navigator.clipboard?.writeText(uid).then(() => {
       if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy UID', 1500); }
     }).catch(() => prompt('Copy this UID:', uid));
+  }
+
+  // ── Product card image helpers ─────────────────────────
+  function switchProductColor(productId, color, swatchEl) {
+    const card = swatchEl.closest('.product-admin-card');
+    card.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+    swatchEl.classList.add('active');
+    const activeBtn = card.querySelector('.fb-btn.active');
+    const side = activeBtn ? activeBtn.textContent.trim().toLowerCase() : 'front';
+    const imgEl = document.getElementById('pimg-' + productId);
+    if (!imgEl) return;
+    const colorFile = color.replace(/\s+/g, '-');
+    imgEl.src = `images/product-${productId}-${colorFile}-${side}.jpg`;
+    imgEl.onerror = () => { imgEl.src = `images/product-${productId}.jpg`; imgEl.onerror = null; };
+  }
+
+  function switchProductSide(productId, side, btnEl) {
+    const card = btnEl.closest('.product-admin-card');
+    card.querySelectorAll('.fb-btn').forEach(b => b.classList.remove('active'));
+    btnEl.classList.add('active');
+    const activeSwatch = card.querySelector('.color-swatch.active');
+    const color = activeSwatch ? activeSwatch.title : 'Black';
+    const colorFile = color.replace(/\s+/g, '-');
+    const imgEl = document.getElementById('pimg-' + productId);
+    if (!imgEl) return;
+    imgEl.src = `images/product-${productId}-${colorFile}-${side}.jpg`;
+    imgEl.onerror = () => { imgEl.src = `images/product-${productId}.jpg`; imgEl.onerror = null; };
   }
 
   // ── Product Profit & Price Management ─────────────────
