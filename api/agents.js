@@ -390,13 +390,28 @@ Return ONLY valid JSON (no markdown):
         }
         if (!imagePrompt) return res.status(400).json({ error: 'prompt or task_id required' });
 
-        // Generate image via Pollinations.ai — return URL directly (browser will load it)
+        // Generate image via Pollinations.ai → download → upload to Supabase Storage
+        // (Supabase URL is permanent & served with correct Content-Type for Instagram API)
         const encodedPrompt = encodeURIComponent(imagePrompt + '. Fashion photography. No text overlay. No watermark. Photorealistic.');
-        // Use task_id as seed for deterministic/consistent image per task
         const seed = task_id ? parseInt(task_id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1 : Math.floor(Math.random()*999999);
-        const publicUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1080&nologo=true&model=flux&seed=${seed}`;
+        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1080&nologo=true&model=flux&seed=${seed}&nofeed=true`;
 
-        // Save generated image URL into task content_data
+        // Download image from Pollinations (can take up to 60s to generate)
+        const imgRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(65000) });
+        if (!imgRes.ok) return res.status(500).json({ error: `Pollinations error: ${imgRes.status}` });
+        const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+        // Upload to Supabase Storage (public bucket ig-images)
+        await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
+        const fileName = `ig-${task_id || 'gen'}-${Date.now()}.jpg`;
+        const { error: uploadError } = await sb.storage
+            .from('ig-images')
+            .upload(fileName, imgBuffer, { contentType: 'image/jpeg', upsert: true });
+        if (uploadError) return res.status(500).json({ error: uploadError.message });
+
+        const { data: { publicUrl } } = sb.storage.from('ig-images').getPublicUrl(fileName);
+
+        // Save permanent Supabase URL into task content_data
         if (task_id) {
             const { data: tsk } = await sb.from('agent_tasks').select('content_data').eq('id', task_id).single();
             const cd = tsk?.content_data || {};
@@ -406,7 +421,7 @@ Return ONLY valid JSON (no markdown):
             }).eq('id', task_id);
         }
 
-        console.log(`🎨 Image URL generated via Pollinations | seed:${seed}`);
+        console.log(`🎨 Image generated via Pollinations → uploaded to Supabase | ${fileName}`);
         return res.status(200).json({ image_url: publicUrl, prompt_used: imagePrompt });
     }
 
