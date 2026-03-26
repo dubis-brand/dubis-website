@@ -574,19 +574,29 @@ Return ONLY valid JSON (no markdown):
 
         // Re-use same logic as type=run but inline for content agent only
         const geminiKey = process.env.GEMINI_API_KEY;
-        const { data: allApproved } = await sb
+        // Fetch both 'approved' AND 'pending_approval' tasks that are missing a permanent Supabase image
+        const { data: approvedTasks } = await sb
             .from('agent_tasks')
             .select('id, title, agent_id, category, description, notes, priority, content_data')
             .eq('status', 'approved')
             .eq('agent_id', 'content')
             .order('created_at', { ascending: true });
 
-        // Include ALL approved tasks that are missing a permanent Supabase image
-        const tasks = (allApproved || []).filter(t => {
+        const { data: pendingTasks } = await sb
+            .from('agent_tasks')
+            .select('id, title, agent_id, category, description, notes, priority, content_data')
+            .eq('status', 'pending_approval')
+            .eq('agent_id', 'content')
+            .order('created_at', { ascending: true });
+
+        const allTasks = [...(approvedTasks || []), ...(pendingTasks || [])];
+
+        // Include ALL tasks that are missing a permanent Supabase image
+        const tasks = allTasks.filter(t => {
             const img = t.content_data?.generated_image_url || '';
             return !img.includes('supabase.co'); // still needs an image
         });
-        if (!tasks.length) return res.status(200).json({ queued: 0, summary: 'All content tasks already have Supabase images' });
+        if (!tasks.length) return res.status(200).json({ queued: 0, summary: 'All content tasks already have Supabase images ✅' });
 
         // Process max 3 tasks per call to stay within 90s Vercel limit (Pollinations can take 25s/image)
         const batch = tasks.slice(0, 3);
@@ -664,5 +674,93 @@ Generate a social media post. Return ONLY valid JSON:
         return res.status(200).json({ queued: taskResults.length, remaining: tasks.length - batch.length, results: taskResults });
     }
 
-    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish, content-run' });
+    // ── PUBLISH-READY ── auto-publish all content_approved tasks with Supabase image ──
+    if (type === 'publish-ready') {
+        // Auth: service role key via query param
+        const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+        const token  = req.query.token || req.headers['x-agent-secret'] || '';
+        if (!svcKey || token !== svcKey) return res.status(401).json({ error: 'Unauthorized' });
+
+        const igToken   = process.env.INSTAGRAM_ACCESS_TOKEN;
+        const igAccount = process.env.INSTAGRAM_ACCOUNT_ID;
+        if (!igToken || !igAccount) return res.status(503).json({ error: 'Instagram env vars חסרים' });
+
+        // Fetch all pending_approval content tasks with content_approved=true
+        const { data: candidates, error: fetchErr } = await sb
+            .from('agent_tasks')
+            .select('id, title, content_data')
+            .eq('status', 'pending_approval')
+            .eq('agent_id', 'content')
+            .order('created_at', { ascending: true });
+
+        if (fetchErr) return res.status(500).json({ error: fetchErr.message });
+
+        // Only tasks with supabase image + content_approved
+        const batch = parseInt(req.query.batch || '3', 10);
+        const readyTasks = (candidates || [])
+            .filter(t => {
+                const img = t.content_data?.generated_image_url || '';
+                return t.content_data?.content_approved && img.includes('supabase.co');
+            })
+            .slice(0, batch);
+
+        if (!readyTasks.length) return res.status(200).json({ published: 0, summary: 'אין משימות מוכנות לפרסום עדיין' });
+
+        const igBase = `https://graph.facebook.com/v19.0/${igAccount}`;
+        const results = [];
+        const now = new Date().toISOString();
+
+        for (const task of readyTasks) {
+            const cd = task.content_data || {};
+            const caption = `${cd.caption_he || cd.caption_en || task.title}\n\n${cd.hashtags || '#DUBIS #ForTheRestOfUs'}`;
+            const image_url = cd.generated_image_url;
+
+            try {
+                // Create media container
+                const cRes = await fetch(`${igBase}/media`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image_url, caption, access_token: igToken }),
+                });
+                const container = await cRes.json();
+                if (!cRes.ok || container.error) {
+                    results.push({ id: task.id, title: task.title, status: 'error', error: container.error?.message || 'container failed' });
+                    continue;
+                }
+                // Publish
+                const pRes = await fetch(`${igBase}/media_publish`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ creation_id: container.id, access_token: igToken }),
+                });
+                const pub = await pRes.json();
+                if (!pRes.ok || pub.error) {
+                    results.push({ id: task.id, title: task.title, status: 'error', error: pub.error?.message || 'publish failed' });
+                    continue;
+                }
+                // Mark as done
+                await sb.from('agent_tasks').update({
+                    status: 'done',
+                    content_data: { ...cd, instagram_post_id: pub.id, published_at: now },
+                    updated_at: now
+                }).eq('id', task.id);
+                results.push({ id: task.id, title: task.title, status: 'published', ig_id: pub.id });
+            } catch (e) {
+                results.push({ id: task.id, title: task.title, status: 'error', error: e.message });
+            }
+        }
+
+        const published = results.filter(r => r.status === 'published').length;
+        return res.status(200).json({
+            published,
+            total_ready: readyTasks.length,
+            remaining: (candidates || []).filter(t => {
+                const img = t.content_data?.generated_image_url || '';
+                return t.content_data?.content_approved && img.includes('supabase.co');
+            }).length - readyTasks.length,
+            results
+        });
+    }
+
+    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish, content-run, publish-ready' });
 };
