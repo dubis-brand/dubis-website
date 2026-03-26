@@ -138,6 +138,53 @@ function parseName(fullName = '') {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// DESIGN FILE VALIDATOR
+// Gelato silently rejects undersized files and prints its own default
+// template with no error. This guard catches the problem on our side
+// before the order is ever sent.
+//
+// Rules (based on incident March 2026 — order 3DK112398R8006062B):
+//   - File must be reachable (HTTP 200)
+//   - Content-Length must be ≥ MIN_DESIGN_BYTES (200 KB)
+//     A proper 3600×4200px PNG is ~300–800 KB.
+//     The broken 600×200px file was only ~10 KB.
+// ─────────────────────────────────────────────────────────────────
+const MIN_DESIGN_BYTES = 200 * 1024; // 200 KB minimum
+
+async function validateDesignFile(url) {
+  try {
+    const res = await fetch(url, { method: 'HEAD' });
+    if (!res.ok) {
+      return { ok: false, reason: `HTTP ${res.status} for ${url}` };
+    }
+    const contentLength = parseInt(res.headers.get('content-length') || '0', 10);
+    if (contentLength > 0 && contentLength < MIN_DESIGN_BYTES) {
+      return {
+        ok: false,
+        reason: `Design file too small: ${url} is only ${Math.round(contentLength / 1024)}KB (min ${MIN_DESIGN_BYTES / 1024}KB). Gelato will silently reject it.`,
+      };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: `Cannot reach design file: ${url} — ${err.message}` };
+  }
+}
+
+async function validateAllDesignFiles(items) {
+  const errors = [];
+  const checked = new Set(); // avoid duplicate HEAD requests for same URL
+  for (const item of items) {
+    for (const file of item.files) {
+      if (checked.has(file.url)) continue;
+      checked.add(file.url);
+      const result = await validateDesignFile(file.url);
+      if (!result.ok) errors.push(result.reason);
+    }
+  }
+  return errors;
+}
+
+// ─────────────────────────────────────────────────────────────────
 // FALLBACK LOGGER
 // ─────────────────────────────────────────────────────────────────
 function logManualOrder(label, payload) {
@@ -185,6 +232,27 @@ module.exports = async function handler(req, res) {
 
   // ── Case 3: Full Gelato order ──
   const { firstName, lastName } = parseName(shippingAddress.name);
+
+  // ── Pre-flight: validate design files before sending to Gelato ──
+  // Gelato silently rejects undersized files and prints a default template.
+  // We catch this here so we never ship an order with the wrong design.
+  const preflightItems = cartItems.map((item, i) => ({
+    itemReferenceId: `item-${i + 1}`,
+    files: getDesignFiles(item.id, item.selectedColor, item.designRef),
+  }));
+  const fileErrors = await validateAllDesignFiles(preflightItems);
+  if (fileErrors.length > 0) {
+    const errorMsg = 'DESIGN FILE VALIDATION FAILED — order blocked:\n' + fileErrors.join('\n');
+    console.error(errorMsg);
+    logManualOrder('DESIGN FILE VALIDATION FAILED', { paypalOrderId, buyerEmail, fileErrors, cartItems });
+    // Return error so admin is notified — do NOT silently continue
+    return res.status(500).json({
+      success: false,
+      error: 'design_file_invalid',
+      details: fileErrors,
+      message: 'Design files failed pre-flight validation. Order was not sent to Gelato. Please fix the design files and retry.',
+    });
+  }
 
   const gelatoOrder = {
     orderReferenceId:    `DUBIS-${paypalOrderId}`,
