@@ -197,7 +197,12 @@ module.exports = async function handler(req, res) {
         const tasks = (allApproved || []).filter(t => !t.content_data?.content_approved);
 
         if (fetchErr) return res.status(500).json({ error: fetchErr.message });
-        if (!tasks || tasks.length === 0) {            return res.status(200).json({ queued: 0, summary: 'No approved tasks found.' });
+        if (!tasks || tasks.length === 0) {
+            const readyToPublish = (allApproved || []).filter(t => t.content_data?.content_approved).length;
+            const msg = readyToPublish > 0
+                ? `✅ ${readyToPublish} משימות מוכנות לפרסום (תוכן אושר). אין משימות חדשות לעיבוד.`
+                : 'אין משימות approved הממתינות לעיבוד. הוסף משימות ב-backlog והעבר אותן ל-approved.';
+            return res.status(200).json({ queued: 0, ready_to_publish: readyToPublish, summary: msg });
         }
 
         const byAgent = {};
@@ -245,22 +250,12 @@ Return ONLY valid JSON (no markdown):
                         let gen = {};
                         try { gen = JSON.parse(raw.replace(/```json|```/g,'').trim()); } catch(e) { gen = { caption_en: raw.substring(0,200) }; }
 
-                        // Generate image
+                        // Generate image via Pollinations.ai — URL only (no server download)
                         let imageUrl = cd.generated_image_url || '';
                         if (!imageUrl && gen.image_prompt) {
-                            const iRes = await fetch(
-                                `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${geminiKey}`,
-                                { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ instances: [{ prompt: gen.image_prompt + ' Square 1:1. No text.' }], parameters: { sampleCount: 1, aspectRatio: '1:1' } }) }
-                            );
-                            const iData = await iRes.json();
-                            const b64 = iData.predictions?.[0]?.bytesBase64Encoded;
-                            if (b64) {
-                                await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
-                                const fn = `ig-${task.id}-${Date.now()}.jpg`;
-                                const { error: upErr } = await sb.storage.from('ig-images').upload(fn, Buffer.from(b64,'base64'), { contentType:'image/jpeg', upsert:true });
-                                if (!upErr) imageUrl = sb.storage.from('ig-images').getPublicUrl(fn).data.publicUrl;
-                            }
+                            const prompt = encodeURIComponent(gen.image_prompt + '. Fashion photography. No text overlay. No watermark. Photorealistic.');
+                            const imgSeed = parseInt(task.id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1;
+                            imageUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&nologo=true&model=flux&seed=${imgSeed}`;
                         }
                         await sb.from('agent_tasks').update({
                             content_data: { ...cd, caption_he: gen.caption_he||'', caption_en: gen.caption_en||cd.caption_en||'', hashtags: gen.hashtags||cd.hashtags||'', ...(imageUrl?{generated_image_url:imageUrl}:{}) },
@@ -379,47 +374,27 @@ Return ONLY valid JSON (no markdown):
                 .select('title, description, content_data').eq('id', task_id).single();
             if (task) {
                 const cd = task.content_data || {};
-                const desc = cd.caption_en || task.description || task.title || '';
                 const format = cd.format || 'feed_post';
                 const baseStyle = 'DUBIS Israeli clothing brand for real people, not fashion models. Urban lifestyle photography, authentic diverse people, dark minimal aesthetic, natural lighting, square 1:1 format. No text in image.';
-                if (format === 'quote_card') {
+                if (cd.image_prompt) {
+                    // Use the AI-generated visual prompt (created by Gemini for this task)
+                    imagePrompt = `${cd.image_prompt}. ${baseStyle}`;
+                } else if (format === 'quote_card') {
                     imagePrompt = `Minimalist dark textured background, urban concrete wall, suitable for text overlay. ${baseStyle}`;
                 } else if (format === 'product_post') {
-                    imagePrompt = `Person wearing casual streetwear, ${desc.substring(0,100)}. ${baseStyle}`;
+                    imagePrompt = `Real person wearing DUBIS casual streetwear, urban street setting, ${task.title.substring(0,60)}. ${baseStyle}`;
                 } else {
-                    imagePrompt = `${desc.substring(0,150)}. ${baseStyle}`;
+                    imagePrompt = `${task.title.substring(0,80)}, authentic urban lifestyle moment, DUBIS clothing. ${baseStyle}`;
                 }
             }
         }
         if (!imagePrompt) return res.status(400).json({ error: 'prompt or task_id required' });
 
-        // Call Gemini Imagen
-        const geminiRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${geminiKey}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    instances: [{ prompt: imagePrompt }],
-                    parameters: { sampleCount: 1, aspectRatio: '1:1' }
-                })
-            }
-        );
-        const geminiData = await geminiRes.json();
-        if (geminiData.error) return res.status(500).json({ error: geminiData.error.message });
-        const b64 = geminiData.predictions?.[0]?.bytesBase64Encoded;
-        if (!b64) return res.status(500).json({ error: 'Image generation failed — no image returned' });
-
-        // Upload to Supabase Storage (public bucket ig-images)
-        await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
-        const fileName = `ig-${task_id || 'gen'}-${Date.now()}.jpg`;
-        const imageBuffer = Buffer.from(b64, 'base64');
-        const { error: uploadError } = await sb.storage
-            .from('ig-images')
-            .upload(fileName, imageBuffer, { contentType: 'image/jpeg', upsert: true });
-        if (uploadError) return res.status(500).json({ error: uploadError.message });
-
-        const { data: { publicUrl } } = sb.storage.from('ig-images').getPublicUrl(fileName);
+        // Generate image via Pollinations.ai — return URL directly (browser will load it)
+        const encodedPrompt = encodeURIComponent(imagePrompt + '. Fashion photography. No text overlay. No watermark. Photorealistic.');
+        // Use task_id as seed for deterministic/consistent image per task
+        const seed = task_id ? parseInt(task_id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1 : Math.floor(Math.random()*999999);
+        const publicUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1080&nologo=true&model=flux&seed=${seed}`;
 
         // Save generated image URL into task content_data
         if (task_id) {
@@ -431,7 +406,7 @@ Return ONLY valid JSON (no markdown):
             }).eq('id', task_id);
         }
 
-        console.log(`🎨 Instagram image generated | ${fileName}`);
+        console.log(`🎨 Image URL generated via Pollinations | seed:${seed}`);
         return res.status(200).json({ image_url: publicUrl, prompt_used: imagePrompt });
     }
 
