@@ -265,7 +265,7 @@ Return ONLY valid JSON (no markdown):
                                     : `${task.title}, authentic urban lifestyle, DUBIS Israeli clothing brand, real diverse people, dark minimal aesthetic`);
                             const prompt = encodeURIComponent(imgPromptText + '. Fashion photography. No text overlay. No watermark. Square 1:1 format. Photorealistic.');
                             const imgSeed = parseInt(task.id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1;
-                            const polUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&nologo=true&model=flux&seed=${imgSeed}`;
+                            const polUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&model=flux&seed=${imgSeed}`;
                             try {
                                 const imgRes = await fetch(polUrl, { signal: AbortSignal.timeout(25000) });
                                 if (imgRes.ok) {
@@ -427,7 +427,7 @@ Return ONLY valid JSON (no markdown):
         // (Supabase URL is permanent & served with correct Content-Type for Instagram API)
         const encodedPrompt = encodeURIComponent(imagePrompt + '. Fashion photography. No text overlay. No watermark. Photorealistic.');
         const seed = task_id ? parseInt(task_id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1 : Math.floor(Math.random()*999999);
-        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1080&nologo=true&model=flux&seed=${seed}`;
+        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1080&model=flux&seed=${seed}`;
 
         // Download image from Pollinations (can take up to 60s to generate)
         const imgRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(65000) });
@@ -644,7 +644,7 @@ Generate a social media post. Return ONLY valid JSON:
                             : `${task.title}, authentic urban lifestyle, DUBIS Israeli streetwear brand. Real diverse people, dark minimal aesthetic, natural lighting. No text. No logos.`);
                     const prompt = encodeURIComponent(imgPromptText + '. Fashion photography. No text overlay. No watermark. Photorealistic.');
                     const imgSeed = parseInt(task.id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1;
-                    const polUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&nologo=true&model=flux&seed=${imgSeed}`;
+                    const polUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&model=flux&seed=${imgSeed}`;
                     try {
                         const imgRes = await fetch(polUrl, { signal: AbortSignal.timeout(55000) });
                         if (imgRes.ok) {
