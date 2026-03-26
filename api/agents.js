@@ -226,44 +226,77 @@ module.exports = async function handler(req, res) {
                 for (const task of agentTasks) {
                     try {
                         const cd = task.content_data || {};
-                        if (cd.caption_he && cd.generated_image_url) {
+                        // Skip only if has captions AND a permanent Supabase image URL
+                        const hasPermImg = cd.generated_image_url && cd.generated_image_url.includes('supabase.co');
+                        if (cd.caption_he && hasPermImg) {
                             await sb.from('agent_tasks').update({ status: 'pending_approval', updated_at: now }).eq('id', task.id);
-                            taskResults.push(`✅ ${task.title}: content כבר קיים → pending_approval`);
+                            taskResults.push(`✅ ${task.title}: content קיים → pending_approval`);
                             continue;
                         }
-                        // Generate captions
-                        const cRes = await fetch(
-                            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-                            { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ contents: [{ parts: [{ text:
-                                `You are a social media manager for DUBIS — Israeli clothing brand. Tagline: "For the rest of us."
+                        // Generate captions (skip if already have caption_he)
+                        let gen = {};
+                        if (!cd.caption_he) {
+                            const cRes = await fetch(
+                                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+                                { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ contents: [{ parts: [{ text:
+                                    `You are a social media manager for DUBIS — Israeli clothing brand. Tagline: "For the rest of us."
 Task: ${task.title}
 Description: ${task.description || ''}
 Format: ${cd.format || 'feed_post'}
 Existing English: ${cd.caption_en || ''}
 Return ONLY valid JSON (no markdown):
-{"caption_he":"כיתוב עברית 3-4 משפטים אותנטי","caption_en":"English caption 3-4 sentences","hashtags":"#DUBIS #ForTheRestOfUs ...5-10 tags","image_prompt":"Detailed Imagen prompt: scene mood person DUBIS clothing"}`
-                              }] }] }) }
-                        );
-                        const cData = await cRes.json();
-                        const raw = cData.candidates?.[0]?.content?.parts?.[0]?.text || '';
-                        let gen = {};
-                        try { gen = JSON.parse(raw.replace(/```json|```/g,'').trim()); } catch(e) { gen = { caption_en: raw.substring(0,200) }; }
-
-                        // Generate image via Pollinations.ai — URL only (no server download)
-                        let imageUrl = cd.generated_image_url || '';
-                        if (!imageUrl && gen.image_prompt) {
-                            const prompt = encodeURIComponent(gen.image_prompt + '. Fashion photography. No text overlay. No watermark. Photorealistic.');
-                            const imgSeed = parseInt(task.id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1;
-                            imageUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&nologo=true&model=flux&seed=${imgSeed}`;
+{"caption_he":"כיתוב עברית 3-4 משפטים אותנטי","caption_en":"English caption 3-4 sentences","hashtags":"#DUBIS #ForTheRestOfUs ...5-10 tags","image_prompt":"Detailed scene description: mood lighting setting DUBIS clothing no text no logos"}`
+                                  }] }] }) }
+                            );
+                            const cData = await cRes.json();
+                            const raw = cData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                            try { gen = JSON.parse(raw.replace(/```json|```/g,'').trim()); } catch(e) { gen = { caption_en: raw.substring(0,200) }; }
+                        } else {
+                            gen = { caption_he: cd.caption_he, caption_en: cd.caption_en, hashtags: cd.hashtags };
                         }
+
+                        // Generate image: Pollinations → download → Supabase Storage (permanent URL)
+                        let imageUrl = hasPermImg ? cd.generated_image_url : '';
+                        if (!imageUrl) {
+                            const imgPromptText = gen.image_prompt ||
+                                (cd.format === 'quote_card'
+                                    ? 'Minimalist dark textured background, urban concrete wall, suitable for text overlay. DUBIS Israeli fashion brand aesthetic. No people. No text.'
+                                    : `${task.title}, authentic urban lifestyle, DUBIS Israeli clothing brand, real diverse people, dark minimal aesthetic`);
+                            const prompt = encodeURIComponent(imgPromptText + '. Fashion photography. No text overlay. No watermark. Square 1:1 format. Photorealistic.');
+                            const imgSeed = parseInt(task.id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1;
+                            const polUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&nologo=true&model=flux&seed=${imgSeed}`;
+                            try {
+                                const imgRes = await fetch(polUrl, { signal: AbortSignal.timeout(25000) });
+                                if (imgRes.ok) {
+                                    const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+                                    await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
+                                    const fname = `ig-${task.id}.jpg`;
+                                    await sb.storage.from('ig-images').upload(fname, imgBuf, { contentType: 'image/jpeg', upsert: true });
+                                    const { data: { publicUrl: imgPubUrl } } = sb.storage.from('ig-images').getPublicUrl(fname);
+                                    imageUrl = imgPubUrl;
+                                    console.log(`🖼 Image saved: ${fname}`);
+                                } else {
+                                    console.log(`⚠️ Pollinations ${imgRes.status} for ${task.id}`);
+                                }
+                            } catch(imgErr) {
+                                console.log(`⚠️ Image timeout: ${task.id} — ${imgErr.message}`);
+                            }
+                        }
+
                         await sb.from('agent_tasks').update({
-                            content_data: { ...cd, caption_he: gen.caption_he||'', caption_en: gen.caption_en||cd.caption_en||'', hashtags: gen.hashtags||cd.hashtags||'', ...(imageUrl?{generated_image_url:imageUrl}:{}) },
+                            content_data: {
+                                ...cd,
+                                caption_he: gen.caption_he || cd.caption_he || '',
+                                caption_en: gen.caption_en || cd.caption_en || '',
+                                hashtags:   gen.hashtags   || cd.hashtags   || '',
+                                ...(imageUrl ? { generated_image_url: imageUrl } : {})
+                            },
                             status: 'pending_approval',
                             notes: (task.notes||'') + `\n✍️ תוכן נוצר ע"י AI — ${new Date().toLocaleDateString('he-IL')}`,
                             updated_at: now,
                         }).eq('id', task.id);
-                        taskResults.push(`✅ ${task.title}: תוכן נוצר → pending_approval`);
+                        taskResults.push(`✅ ${task.title}: תוכן${imageUrl?' + תמונה':' (ללא תמונה)'} → pending_approval`);
                     } catch(e) {
                         await sb.from('agent_tasks').update({ status: 'in_progress', updated_at: now }).eq('id', task.id);
                         taskResults.push(`❌ ${task.title}: ${e.message}`);

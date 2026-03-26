@@ -932,6 +932,25 @@
       .task-badge.cat    { color:#60a5fa; }
 
       .task-card-actions { display:flex; gap:.4rem; margin-top:.7rem; }
+      .tc-img { width:100%; height:110px; object-fit:cover; border-radius:5px; margin-bottom:.5rem; }
+      .tc-caption { font-size:.72rem; color:#aaa; line-height:1.4; overflow:hidden; display:-webkit-box;
+        -webkit-line-clamp:2; -webkit-box-orient:vertical; margin-bottom:.4rem; }
+      /* ─── Post Preview Modal ──────────────────────────────── */
+      .pp-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.8); z-index:2000;
+        align-items:center; justify-content:center; padding:1rem; }
+      .pp-overlay.open { display:flex; }
+      .pp-box { background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:1.2rem;
+        width:100%; max-width:380px; max-height:92vh; overflow-y:auto; position:relative; }
+      .pp-box h3 { color:#e8e0d5; margin:0 0 .8rem; font-size:.9rem; }
+      .pp-img-wrap { width:100%; aspect-ratio:1/1; background:#111; border-radius:8px; overflow:hidden;
+        margin-bottom:.8rem; display:flex; align-items:center; justify-content:center; }
+      .pp-img-wrap img { width:100%; height:100%; object-fit:cover; }
+      .pp-caption { font-size:.8rem; color:#e8e0d5; line-height:1.65; white-space:pre-wrap;
+        background:#111; border-radius:6px; padding:.75rem; margin-bottom:.5rem; }
+      .pp-hashtags { font-size:.73rem; color:#c8a96e; margin-bottom:.9rem; }
+      .pp-actions { display:flex; gap:.5rem; }
+      .pp-platforms { display:flex; gap:1rem; margin-bottom:.8rem; font-size:.8rem; color:#aaa; }
+      .pp-platforms label { display:flex; gap:.4rem; align-items:center; cursor:pointer; }
       .btn-approve, .btn-reject, .btn-done {
         flex:1; border:none; border-radius:5px; padding:.35rem .5rem;
         font-size:.72rem; font-weight:600; cursor:pointer; }
@@ -1207,6 +1226,30 @@
 
       <p id="pm-error" style="color:#ef4444;font-size:.8rem;margin:.4rem 0;display:none"></p>
       <button class="btn-submit-task" id="pm-submit-btn" onclick="submitPublish()" style="width:100%;margin-top:.5rem">📤 פרסם</button>
+    </div>
+  </div>
+
+  <!-- ── Post Preview Modal ────────────────────────────────────── -->
+  <div class="pp-overlay" id="pp-overlay" onclick="if(event.target===this)closePP()">
+    <div class="pp-box">
+      <button class="at-close" onclick="closePP()">✕</button>
+      <h3 id="pp-title">👁 תצוגה מקדימה</h3>
+      <div class="pp-img-wrap">
+        <img id="pp-img" src="" alt="post" style="display:none">
+        <span id="pp-img-ph" style="font-size:2rem;color:#333">🖼</span>
+      </div>
+      <div class="pp-caption" id="pp-caption-text"></div>
+      <div class="pp-hashtags" id="pp-hashtags-text"></div>
+      <div class="pp-platforms">
+        <label><input type="checkbox" id="pp-instagram" checked> 📸 Instagram</label>
+        <label><input type="checkbox" id="pp-facebook"> 📘 Facebook</label>
+      </div>
+      <p id="pp-error" style="color:#ef4444;font-size:.8rem;margin:.3rem 0;display:none"></p>
+      <div class="pp-actions">
+        <button id="pp-approve-btn" class="btn-approve" style="flex:2;padding:.5rem" onclick="approveAndPublish()">✅ אשר ופרסם</button>
+        <button class="btn-reject" style="flex:1;padding:.5rem" onclick="rejectPost()">❌ דחה</button>
+      </div>
+      <p style="font-size:.68rem;color:#444;text-align:center;margin-top:.5rem">⏳ פרסום לוקח עד 30 שניות</p>
     </div>
   </div>
 
@@ -2345,32 +2388,49 @@
   }
 
   function renderTaskCard(t) {
-    const isPending  = t.status === 'pending_approval';
-    const isActive   = t.status === 'in_progress';
-    const isApproved = t.status === 'approved';
+    const isPending    = t.status === 'pending_approval';
+    const isActive     = t.status === 'in_progress';
+    const isApproved   = t.status === 'approved';
+    const isContent    = t.agent_id === 'content';
+    const imgUrl       = t.content_data?.generated_image_url || '';
+    const captionHe    = t.content_data?.caption_he || '';
     const isReadyToPublish = isApproved && t.content_data?.content_approved;
     const isWaitingAgent   = isApproved && !t.content_data?.content_approved;
+
     const actions = isPending
       ? `<div class="task-card-actions">
-           <button class="btn-approve" onclick="updateTaskStatus('${t.id}','approved','pending_approval');event.stopPropagation()">✓ Approve</button>
-           <button class="btn-reject"  onclick="updateTaskStatus('${t.id}','rejected','pending_approval');event.stopPropagation()">✕ Reject</button>
+           ${isContent
+             ? `<button class="btn-approve" onclick="openPostPreview('${t.id}');event.stopPropagation()">👁 צפה ואשר</button>`
+             : `<button class="btn-approve" onclick="updateTaskStatus('${t.id}','approved','pending_approval');event.stopPropagation()">✓ Approve</button>`
+           }
+           <button class="btn-reject" onclick="updateTaskStatus('${t.id}','rejected','pending_approval');event.stopPropagation()">✕ Reject</button>
          </div>`
       : isReadyToPublish
       ? `<div class="task-card-actions">
-           <button class="btn-approve" style="background:#1d4ed8" onclick="openPublishModal('${t.id}');event.stopPropagation()">📤 פרסם</button>
+           <button class="btn-approve" style="background:#1d4ed8" onclick="openPostPreview('${t.id}');event.stopPropagation()">📤 פרסם</button>
          </div>`
       : isWaitingAgent
       ? `<div class="task-card-actions">
-           <button class="btn-approve" style="background:#374151;opacity:.7;cursor:default" onclick="event.stopPropagation()">⏳ ממתין לסוכן</button>
+           <button class="btn-approve" style="background:#1d4ed8" onclick="openPostPreview('${t.id}');event.stopPropagation()">📤 פרסם</button>
          </div>`
       : isActive
       ? `<div class="task-card-actions">
            <button class="btn-done" onclick="updateTaskStatus('${t.id}','done');event.stopPropagation()">✓ Done</button>
          </div>`
       : '';
+
+    const imgThumb = (isContent && imgUrl)
+      ? `<img class="tc-img" src="${escHtml(imgUrl)}" loading="lazy" onerror="this.style.display='none'">`
+      : '';
+    const captionSnip = (isContent && captionHe)
+      ? `<div class="tc-caption">${escHtml(captionHe)}</div>`
+      : '';
+
     return `
       <div class="task-card priority-${t.priority}" onclick="openTaskDetail('${t.id}')">
+        ${imgThumb}
         <div class="task-card-title">${PRIORITY_ICONS[t.priority]||''} ${escHtml(t.title)}</div>
+        ${captionSnip}
         <div class="task-card-meta">
           <span class="task-badge agent">${AGENT_LABELS[t.agent_id]||t.agent_id}</span>
           ${t.category?`<span class="task-badge cat">${t.category}</span>`:''}
@@ -2618,6 +2678,98 @@
       btn.disabled = false;
       btn.textContent = '📤 פרסם';
     }
+  }
+
+  // ── Post Preview Modal ──────────────────────────────────────
+  let _ppState = { taskId: null, token: null };
+
+  async function openPostPreview(taskId) {
+    const { data } = await window._supabase.from('agent_tasks').select('*').eq('id', taskId).single();
+    if (!data) return;
+    const cd = data.content_data || {};
+    const { data: { session } } = await window._supabase.auth.getSession();
+    _ppState = { taskId, token: session?.access_token };
+
+    document.getElementById('pp-title').textContent = data.title;
+
+    const imgEl = document.getElementById('pp-img');
+    const phEl  = document.getElementById('pp-img-ph');
+    if (cd.generated_image_url) {
+      imgEl.src = cd.generated_image_url;
+      imgEl.style.display = 'block';
+      phEl.style.display  = 'none';
+    } else {
+      imgEl.style.display = 'none';
+      phEl.style.display  = 'block';
+    }
+
+    document.getElementById('pp-caption-text').textContent = [cd.caption_he, cd.caption_en].filter(Boolean).join('\n\n');
+    document.getElementById('pp-hashtags-text').textContent = cd.hashtags || '';
+    document.getElementById('pp-error').style.display = 'none';
+    const btn = document.getElementById('pp-approve-btn');
+    btn.disabled = false;
+    btn.textContent = '✅ אשר ופרסם';
+    document.getElementById('pp-overlay').classList.add('open');
+  }
+
+  function closePP() {
+    document.getElementById('pp-overlay').classList.remove('open');
+  }
+
+  async function approveAndPublish() {
+    const { taskId, token } = _ppState;
+    const { data: task } = await window._supabase.from('agent_tasks').select('content_data').eq('id', taskId).single();
+    const cd = task?.content_data || {};
+
+    const imageUrl = cd.generated_image_url;
+    if (!imageUrl) {
+      document.getElementById('pp-error').textContent = 'אין תמונה — הרץ שוב את סוכן התוכן';
+      document.getElementById('pp-error').style.display = 'block';
+      return;
+    }
+
+    const caption = [cd.caption_he, cd.caption_en, cd.hashtags].filter(Boolean).join('\n\n');
+    const instagram = document.getElementById('pp-instagram').checked;
+    const facebook  = document.getElementById('pp-facebook').checked;
+
+    const btn = document.getElementById('pp-approve-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ מפרסם...';
+
+    try {
+      const res = await fetch('/api/agents?type=publish', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_url: imageUrl, caption, task_id: taskId, platforms: { instagram, facebook } })
+      });
+      const data = await res.json();
+      if (data.success) {
+        const parts = [];
+        if (data.instagram_post_id) parts.push('Instagram ✅');
+        if (data.facebook_post_id)  parts.push('Facebook ✅');
+        alert('פורסם בהצלחה! ' + parts.join(' | '));
+        closePP();
+        closeTaskDetail();
+        loadTasks();
+      } else {
+        document.getElementById('pp-error').textContent = data.error || (data.errors||[]).join('; ') || 'שגיאה לא ידועה';
+        document.getElementById('pp-error').style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = '✅ אשר ופרסם';
+      }
+    } catch(e) {
+      document.getElementById('pp-error').textContent = 'שגיאת רשת: ' + e.message;
+      document.getElementById('pp-error').style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = '✅ אשר ופרסם';
+    }
+  }
+
+  async function rejectPost() {
+    const { taskId } = _ppState;
+    await window._supabase.from('agent_tasks').update({ status: 'rejected', updated_at: new Date().toISOString() }).eq('id', taskId);
+    closePP();
+    loadTasks();
   }
 
   function openAddTaskModal() {
