@@ -581,13 +581,20 @@ Return ONLY valid JSON (no markdown):
             .eq('agent_id', 'content')
             .order('created_at', { ascending: true });
 
-        const tasks = (allApproved || []).filter(t => !t.content_data?.content_approved);
-        if (!tasks.length) return res.status(200).json({ queued: 0, summary: 'No approved content tasks' });
+        // Include ALL approved tasks that are missing a permanent Supabase image
+        const tasks = (allApproved || []).filter(t => {
+            const img = t.content_data?.generated_image_url || '';
+            return !img.includes('supabase.co'); // still needs an image
+        });
+        if (!tasks.length) return res.status(200).json({ queued: 0, summary: 'All content tasks already have Supabase images' });
+
+        // Process max 3 tasks per call to stay within 90s Vercel limit (Pollinations can take 25s/image)
+        const batch = tasks.slice(0, 3);
 
         const now = new Date().toISOString();
         const taskResults = [];
 
-        for (const task of tasks) {
+        for (const task of batch) {
             try {
                 const cd = task.content_data || {};
                 const hasPermImg = cd.generated_image_url && cd.generated_image_url.includes('supabase.co');
@@ -654,7 +661,7 @@ Generate a social media post. Return ONLY valid JSON:
             }
         }
 
-        return res.status(200).json({ queued: taskResults.length, results: taskResults });
+        return res.status(200).json({ queued: taskResults.length, remaining: tasks.length - batch.length, results: taskResults });
     }
 
     return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish, content-run' });
