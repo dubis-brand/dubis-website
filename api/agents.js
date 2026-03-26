@@ -807,6 +807,8 @@ Generate a social media post. Return ONLY valid JSON:
                     results.push({ id: task.id, title: task.title, status: 'error', error: container.error?.message || 'container failed' });
                     continue;
                 }
+                // Wait for Instagram to process the media container (required)
+                await new Promise(r => setTimeout(r, 7000));
                 // Publish
                 const pRes = await fetch(`${igBase}/media_publish`, {
                     method: 'POST',
