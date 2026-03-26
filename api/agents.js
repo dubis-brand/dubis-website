@@ -598,8 +598,8 @@ Return ONLY valid JSON (no markdown):
         });
         if (!tasks.length) return res.status(200).json({ queued: 0, summary: 'All content tasks already have Supabase images ✅' });
 
-        // Process max 3 tasks per call to stay within 90s Vercel limit (Pollinations can take 25s/image)
-        const batch = tasks.slice(0, 3);
+        // Process 1 task per call — Pollinations can take up to 50s/image (90s Vercel limit)
+        const batch = tasks.slice(0, 1);
 
         const now = new Date().toISOString();
         const taskResults = [];
@@ -643,9 +643,9 @@ Generate a social media post. Return ONLY valid JSON:
                             : `${task.title}, authentic urban lifestyle, DUBIS Israeli streetwear brand. Real diverse people, dark minimal aesthetic, natural lighting. No text. No logos.`);
                     const prompt = encodeURIComponent(imgPromptText + '. Fashion photography. No text overlay. No watermark. Photorealistic.');
                     const imgSeed = parseInt(task.id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1;
-                    const polUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&nologo=true&model=flux&seed=${imgSeed}`;
+                    const polUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&nologo=true&nofeed=true&model=flux&seed=${imgSeed}`;
                     try {
-                        const imgRes = await fetch(polUrl, { signal: AbortSignal.timeout(25000) });
+                        const imgRes = await fetch(polUrl, { signal: AbortSignal.timeout(55000) });
                         if (imgRes.ok) {
                             const imgBuf = Buffer.from(await imgRes.arrayBuffer());
                             await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
