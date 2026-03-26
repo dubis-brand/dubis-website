@@ -644,18 +644,30 @@ Generate a social media post. Return ONLY valid JSON:
                     const prompt = encodeURIComponent(imgPromptText + '. Fashion photography. No text overlay. No watermark. Photorealistic.');
                     const imgSeed = parseInt(task.id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1;
                     const polUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&nologo=true&model=flux-schnell&seed=${imgSeed}`;
+                    let imgError = '';
                     try {
                         const imgRes = await fetch(polUrl, { signal: AbortSignal.timeout(55000) });
                         if (imgRes.ok) {
                             const imgBuf = Buffer.from(await imgRes.arrayBuffer());
                             await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
                             const fname = `ig-${task.id}.jpg`;
-                            await sb.storage.from('ig-images').upload(fname, imgBuf, { contentType: 'image/jpeg', upsert: true });
-                            const { data: { publicUrl: imgPubUrl } } = sb.storage.from('ig-images').getPublicUrl(fname);
-                            imageUrl = imgPubUrl;
+                            const { error: upErr } = await sb.storage.from('ig-images').upload(fname, imgBuf, { contentType: 'image/jpeg', upsert: true });
+                            if (upErr) {
+                                imgError = `upload_err:${upErr.message}`;
+                                console.log(`⚠️ Upload error ${task.id}: ${upErr.message}`);
+                            } else {
+                                const { data: { publicUrl: imgPubUrl } } = sb.storage.from('ig-images').getPublicUrl(fname);
+                                imageUrl = imgPubUrl;
+                                console.log(`✅ Image uploaded: ${imgPubUrl}`);
+                            }
+                        } else {
+                            const errBody = await imgRes.text().catch(() => '');
+                            imgError = `http_${imgRes.status}:${errBody.substring(0,80)}`;
+                            console.log(`⚠️ Pollinations HTTP ${imgRes.status} for ${task.id}: ${errBody.substring(0,100)}`);
                         }
                     } catch(imgErr) {
-                        console.log(`⚠️ Image timeout: ${task.id} — ${imgErr.message}`);
+                        imgError = `catch:${imgErr.message}`;
+                        console.log(`⚠️ Image fetch error ${task.id} — ${imgErr.message}`);
                     }
                 }
 
@@ -665,7 +677,8 @@ Generate a social media post. Return ONLY valid JSON:
                     content_data: newCd,
                     updated_at: now
                 }).eq('id', task.id);
-                taskResults.push(`✅ ${task.title}: ${imageUrl ? 'תמונה+כיתוב' : 'כיתוב בלבד'} → pending_approval`);
+                const imgStatus = imageUrl ? '🖼 תמונה+כיתוב' : `⚠️ כיתוב בלבד [${imgError}]`;
+                taskResults.push(`✅ ${task.title}: ${imgStatus} → pending_approval`);
             } catch(e) {
                 taskResults.push(`❌ ${task.title}: ${e.message}`);
             }
