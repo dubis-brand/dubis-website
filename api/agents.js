@@ -565,5 +565,97 @@ Return ONLY valid JSON (no markdown):
         return res.status(200).json(result);
     }
 
-    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish' });
+    // ── CONTENT-RUN ── GET endpoint for triggering content agent (service role auth) ─
+    if (type === 'content-run') {
+        // Auth: service role key via query param or x-agent-secret header
+        const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+        const token  = req.query.token || req.headers['x-agent-secret'] || '';
+        if (!svcKey || token !== svcKey) return res.status(401).json({ error: 'Unauthorized' });
+
+        // Re-use same logic as type=run but inline for content agent only
+        const geminiKey = process.env.GEMINI_API_KEY;
+        const { data: allApproved } = await sb
+            .from('agent_tasks')
+            .select('id, title, agent_id, category, description, notes, priority, content_data')
+            .eq('status', 'approved')
+            .eq('agent_id', 'content')
+            .order('created_at', { ascending: true });
+
+        const tasks = (allApproved || []).filter(t => !t.content_data?.content_approved);
+        if (!tasks.length) return res.status(200).json({ queued: 0, summary: 'No approved content tasks' });
+
+        const now = new Date().toISOString();
+        const taskResults = [];
+
+        for (const task of tasks) {
+            try {
+                const cd = task.content_data || {};
+                const hasPermImg = cd.generated_image_url && cd.generated_image_url.includes('supabase.co');
+                if (cd.caption_he && hasPermImg) {
+                    await sb.from('agent_tasks').update({ status: 'pending_approval', updated_at: now }).eq('id', task.id);
+                    taskResults.push(`✅ ${task.title}: content קיים → pending_approval`);
+                    continue;
+                }
+
+                let gen = {};
+                if (!cd.caption_he && geminiKey) {
+                    const cRes = await fetch(
+                        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+                        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ contents: [{ parts: [{ text:
+                            `You are a social media manager for DUBIS — Israeli clothing brand. Tagline: "For the rest of us."
+Task: "${task.title}"
+Description: "${task.description || ''}"
+Notes: "${task.notes || ''}"
+Generate a social media post. Return ONLY valid JSON:
+{"caption_he":"כיתוב עברית 3-4 משפטים אותנטי","caption_en":"English caption 3-4 sentences","hashtags":"#DUBIS #ForTheRestOfUs ...5-10 tags","image_prompt":"Detailed scene description: mood lighting setting DUBIS clothing no text no logos"}`
+                          }] }] }) }
+                    );
+                    const cData = await cRes.json();
+                    const raw = cData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                    try { gen = JSON.parse(raw.replace(/```json|```/g,'').trim()); } catch(e) { gen = { caption_en: raw.substring(0,200) }; }
+                } else {
+                    gen = { caption_he: cd.caption_he, caption_en: cd.caption_en, hashtags: cd.hashtags };
+                }
+
+                let imageUrl = hasPermImg ? cd.generated_image_url : '';
+                if (!imageUrl) {
+                    const imgPromptText = gen.image_prompt ||
+                        (cd.format === 'quote_card'
+                            ? 'Minimalist dark textured background, urban concrete wall with subtle grain. Moody low-key lighting. No people. No text. No logos. Abstract dark aesthetic.'
+                            : `${task.title}, authentic urban lifestyle, DUBIS Israeli streetwear brand. Real diverse people, dark minimal aesthetic, natural lighting. No text. No logos.`);
+                    const prompt = encodeURIComponent(imgPromptText + '. Fashion photography. No text overlay. No watermark. Photorealistic.');
+                    const imgSeed = parseInt(task.id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1;
+                    const polUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&nologo=true&model=flux&seed=${imgSeed}`;
+                    try {
+                        const imgRes = await fetch(polUrl, { signal: AbortSignal.timeout(25000) });
+                        if (imgRes.ok) {
+                            const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+                            await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
+                            const fname = `ig-${task.id}.jpg`;
+                            await sb.storage.from('ig-images').upload(fname, imgBuf, { contentType: 'image/jpeg', upsert: true });
+                            const { data: { publicUrl: imgPubUrl } } = sb.storage.from('ig-images').getPublicUrl(fname);
+                            imageUrl = imgPubUrl;
+                        }
+                    } catch(imgErr) {
+                        console.log(`⚠️ Image timeout: ${task.id} — ${imgErr.message}`);
+                    }
+                }
+
+                const newCd = { ...cd, ...gen, generated_image_url: imageUrl || cd.generated_image_url || '' };
+                await sb.from('agent_tasks').update({
+                    status: 'pending_approval',
+                    content_data: newCd,
+                    updated_at: now
+                }).eq('id', task.id);
+                taskResults.push(`✅ ${task.title}: ${imageUrl ? 'תמונה+כיתוב' : 'כיתוב בלבד'} → pending_approval`);
+            } catch(e) {
+                taskResults.push(`❌ ${task.title}: ${e.message}`);
+            }
+        }
+
+        return res.status(200).json({ queued: taskResults.length, results: taskResults });
+    }
+
+    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish, content-run' });
 };
