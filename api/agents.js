@@ -394,7 +394,7 @@ Return ONLY valid JSON (no markdown):
         // (Supabase URL is permanent & served with correct Content-Type for Instagram API)
         const encodedPrompt = encodeURIComponent(imagePrompt + '. Fashion photography. No text overlay. No watermark. Photorealistic.');
         const seed = task_id ? parseInt(task_id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1 : Math.floor(Math.random()*999999);
-        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1080&nologo=true&model=flux&seed=${seed}&nofeed=true`;
+        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1080&nologo=true&model=flux&seed=${seed}`;
 
         // Download image from Pollinations (can take up to 60s to generate)
         const imgRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(65000) });
