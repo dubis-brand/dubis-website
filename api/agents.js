@@ -642,32 +642,83 @@ Generate a social media post. Return ONLY valid JSON:
                         (cd.format === 'quote_card'
                             ? 'Minimalist dark textured background, urban concrete wall with subtle grain. Moody low-key lighting. No people. No text. No logos. Abstract dark aesthetic.'
                             : `${task.title}, authentic urban lifestyle, DUBIS Israeli streetwear brand. Real diverse people, dark minimal aesthetic, natural lighting. No text. No logos.`);
-                    const prompt = encodeURIComponent(imgPromptText + '. Fashion photography. No text overlay. No watermark. Photorealistic.');
-                    const imgSeed = parseInt(task.id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1;
-                    const polUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&model=flux&seed=${imgSeed}`;
-                    try {
-                        const imgRes = await fetch(polUrl, { signal: AbortSignal.timeout(55000) });
-                        if (imgRes.ok) {
-                            const imgBuf = Buffer.from(await imgRes.arrayBuffer());
-                            await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
-                            const fname = `ig-${task.id}.jpg`;
-                            const { error: upErr } = await sb.storage.from('ig-images').upload(fname, imgBuf, { contentType: 'image/jpeg', upsert: true });
-                            if (upErr) {
-                                imgError = `upload_err:${upErr.message}`;
-                                console.log(`⚠️ Upload error ${task.id}: ${upErr.message}`);
+                    const fullPrompt = imgPromptText + '. Fashion photography. Square 1:1. No text overlay. No watermark. Photorealistic.';
+
+                    // ── Primary: Gemini 2.0 Flash Image Generation ──────────────
+                    const geminiImgKey = process.env.GEMINI_API_KEY;
+                    if (geminiImgKey && !imageUrl) {
+                        try {
+                            const gRes = await fetch(
+                                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${geminiImgKey}`,
+                                {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        contents: [{ parts: [{ text: fullPrompt }] }],
+                                        generationConfig: { responseModalities: ['IMAGE', 'TEXT'] }
+                                    }),
+                                    signal: AbortSignal.timeout(55000)
+                                }
+                            );
+                            if (gRes.ok) {
+                                const gData = await gRes.json();
+                                const imgPart = gData.candidates?.[0]?.content?.parts?.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+                                if (imgPart?.inlineData) {
+                                    const imgBuf = Buffer.from(imgPart.inlineData.data, 'base64');
+                                    await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
+                                    const fname = `ig-${task.id}.jpg`;
+                                    const { error: upErr } = await sb.storage.from('ig-images').upload(fname, imgBuf, { contentType: imgPart.inlineData.mimeType || 'image/jpeg', upsert: true });
+                                    if (upErr) {
+                                        imgError = `gemini_upload:${upErr.message}`;
+                                        console.log(`⚠️ Gemini upload err ${task.id}: ${upErr.message}`);
+                                    } else {
+                                        const { data: { publicUrl: imgPubUrl } } = sb.storage.from('ig-images').getPublicUrl(fname);
+                                        imageUrl = imgPubUrl;
+                                        console.log(`✅ Gemini image uploaded: ${imgPubUrl}`);
+                                    }
+                                } else {
+                                    const parts = gData.candidates?.[0]?.content?.parts || [];
+                                    imgError = `gemini_no_img:${JSON.stringify(parts.map(p => p.text ? 'text' : Object.keys(p))).substring(0,80)}`;
+                                    console.log(`⚠️ Gemini returned no image for ${task.id}: ${imgError}`);
+                                }
                             } else {
-                                const { data: { publicUrl: imgPubUrl } } = sb.storage.from('ig-images').getPublicUrl(fname);
-                                imageUrl = imgPubUrl;
-                                console.log(`✅ Image uploaded: ${imgPubUrl}`);
+                                const errBody = await gRes.text().catch(() => '');
+                                imgError = `gemini_${gRes.status}:${errBody.substring(0,80)}`;
+                                console.log(`⚠️ Gemini HTTP ${gRes.status} for ${task.id}: ${errBody.substring(0,100)}`);
                             }
-                        } else {
-                            const errBody = await imgRes.text().catch(() => '');
-                            imgError = `http_${imgRes.status}:${errBody.substring(0,80)}`;
-                            console.log(`⚠️ Pollinations HTTP ${imgRes.status} for ${task.id}: ${errBody.substring(0,100)}`);
+                        } catch(gErr) {
+                            imgError = `gemini_catch:${gErr.message}`;
+                            console.log(`⚠️ Gemini image error ${task.id}: ${gErr.message}`);
                         }
-                    } catch(imgErr) {
-                        imgError = `catch:${imgErr.message}`;
-                        console.log(`⚠️ Image fetch error ${task.id} — ${imgErr.message}`);
+                    }
+
+                    // ── Fallback: Pollinations (requires POLLINATIONS_TOKEN for server) ──
+                    const polToken = process.env.POLLINATIONS_TOKEN || '';
+                    if (!imageUrl && polToken) {
+                        try {
+                            const prompt = encodeURIComponent(fullPrompt);
+                            const imgSeed = parseInt(task.id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1;
+                            const polUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&model=flux&seed=${imgSeed}&token=${polToken}`;
+                            const imgRes = await fetch(polUrl, { signal: AbortSignal.timeout(55000) });
+                            if (imgRes.ok) {
+                                const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+                                await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
+                                const fname = `ig-${task.id}.jpg`;
+                                const { error: upErr } = await sb.storage.from('ig-images').upload(fname, imgBuf, { contentType: 'image/jpeg', upsert: true });
+                                if (upErr) {
+                                    imgError += ` pol_upload:${upErr.message}`;
+                                } else {
+                                    const { data: { publicUrl: imgPubUrl } } = sb.storage.from('ig-images').getPublicUrl(fname);
+                                    imageUrl = imgPubUrl;
+                                    console.log(`✅ Pollinations image: ${imgPubUrl}`);
+                                }
+                            } else {
+                                const errBody = await imgRes.text().catch(() => '');
+                                imgError += ` pol_${imgRes.status}:${errBody.substring(0,60)}`;
+                            }
+                        } catch(polErr) {
+                            imgError += ` pol_catch:${polErr.message}`;
+                        }
                     }
                 }
 
