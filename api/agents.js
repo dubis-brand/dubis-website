@@ -806,10 +806,13 @@ Generate a social media post. Return ONLY valid JSON:
 
     // ── PUBLISH-READY ── auto-publish all content_approved tasks with Supabase image ──
     if (type === 'publish-ready') {
-        // Auth: service role key via query param
+        // Auth: svcKey OR AGENT_SECRET, via query param, x-agent-secret header, or Authorization Bearer
         const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-        const token  = req.query.token || req.headers['x-agent-secret'] || '';
-        if (!svcKey || token !== svcKey) return res.status(401).json({ error: 'Unauthorized' });
+        const agentSecret = process.env.AGENT_SECRET || '';
+        const token = req.query.token || req.headers['x-agent-secret'] || req.headers['authorization']?.replace('Bearer ','').trim() || '';
+        const isAuthed = (svcKey && token === svcKey) || (agentSecret && token === agentSecret);
+        console.log(`[publish-ready] token_len=${token.length} svc_len=${svcKey.length} agent_len=${agentSecret.length} ok=${isAuthed}`);
+        if (!isAuthed) return res.status(401).json({ error: 'Unauthorized', debug: { token_len: token.length, svc_len: svcKey.length, agent_len: agentSecret.length } });
 
         const igToken   = process.env.INSTAGRAM_ACCESS_TOKEN;
         const igAccount = process.env.INSTAGRAM_ACCOUNT_ID;
