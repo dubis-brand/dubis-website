@@ -565,6 +565,22 @@ Return ONLY valid JSON (no markdown):
         return res.status(200).json(result);
     }
 
+    // ── GEMINI-MODELS ── debug: list available Gemini models ────────────────────────
+    if (type === 'gemini-models') {
+        const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+        const token  = req.query.token || req.headers['x-agent-secret'] || '';
+        if (!svcKey || token !== svcKey) return res.status(401).json({ error: 'Unauthorized' });
+        const geminiKey = process.env.GEMINI_API_KEY;
+        if (!geminiKey) return res.status(200).json({ error: 'No GEMINI_API_KEY' });
+        const mRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${geminiKey}&pageSize=100`);
+        const mData = await mRes.json();
+        const imageModels = (mData.models || []).filter(m =>
+            m.name?.toLowerCase().includes('image') ||
+            m.supportedGenerationMethods?.includes('generateContent')
+        ).map(m => ({ name: m.name, methods: m.supportedGenerationMethods, description: m.description?.substring(0,80) }));
+        return res.status(200).json({ total: mData.models?.length, imageRelated: imageModels });
+    }
+
     // ── CONTENT-RUN ── GET endpoint for triggering content agent (service role auth) ─
     if (type === 'content-run') {
         // Auth: service role key via query param or x-agent-secret header
