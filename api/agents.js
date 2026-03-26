@@ -649,7 +649,7 @@ Generate a social media post. Return ONLY valid JSON:
                     if (geminiImgKey && !imageUrl) {
                         try {
                             const gRes = await fetch(
-                                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${geminiImgKey}`,
+                                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiImgKey}`,
                                 {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
