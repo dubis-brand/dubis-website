@@ -57,6 +57,15 @@ function isAgentSecret(req) {
     return secret && req.headers['x-agent-secret'] === secret;
 }
 
+// ── Hebrew text normalization: brand terminology corrections ──
+function fixHebrew(text) {
+    if (!text) return text;
+    return text
+        .replace(/ה?הודי(?:ם|ז)?/g, (m) => m.startsWith('הה') ? 'הקפוצון' : m.endsWith('ם') ? 'קפוצונים' : 'קפוצון')
+        .replace(/\bהודי\b/g, 'קפוצון')
+        .replace(/\bהודים\b/g, 'קפוצונים');
+}
+
 module.exports = async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', 'https://www.dubis.net');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
@@ -236,22 +245,33 @@ module.exports = async function handler(req, res) {
                         // Generate captions (skip if already have caption_he)
                         let gen = {};
                         if (!cd.caption_he) {
+                            const isStory = cd.format === 'story';
+                            const captionPrompt = isStory
+                                ? `You are a social media manager for DUBIS — Israeli clothing brand. Tagline: "For the rest of us."
+IMPORTANT: Write caption_he in Hebrew ONLY. Use "קפוצון" NOT "הודי" for hoodie.
+Task: "${task.title}"
+Description: "${task.description || ''}"
+Format: STORY — Instagram Story. Caption must be SHORT: 1-2 punchy sentences max.
+Return ONLY valid JSON (no markdown):
+{"caption_he":"טקסט קצר לסטורי בעברית — 1-2 משפטים","caption_en":"Short story text 1-2 lines","hashtags":"#DUBIS #ForTheRestOfUs","image_prompt":"DUBIS brand story background: minimal dark urban aesthetic, no people, no text, moody lighting"}`
+                                : `You are a social media manager for DUBIS — Israeli clothing brand. Tagline: "For the rest of us."
+IMPORTANT: Write caption_he in Hebrew ONLY. CRITICAL RULE: use "קפוצון" NOT "הודי" for hoodie. Use "חולצה" for t-shirt.
+Task: "${task.title}"
+Description: "${task.description || ''}"
+Format: ${cd.format || 'feed_post'}
+Existing content: "${cd.caption_en || ''}"
+Return ONLY valid JSON (no markdown):
+{"caption_he":"כיתוב עברית 3-4 משפטים אותנטי, קצר, ישיר","caption_en":"English caption 3-4 sentences","hashtags":"#DUBIS #ForTheRestOfUs ...5-10 tags","image_prompt":"Specific DUBIS photo scene: people in DUBIS streetwear, authentic urban lifestyle, describe exact setting and mood. No text. No logos. Square format."}`
                             const cRes = await fetch(
                                 `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
                                 { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ contents: [{ parts: [{ text:
-                                    `You are a social media manager for DUBIS — Israeli clothing brand. Tagline: "For the rest of us."
-Task: ${task.title}
-Description: ${task.description || ''}
-Format: ${cd.format || 'feed_post'}
-Existing English: ${cd.caption_en || ''}
-Return ONLY valid JSON (no markdown):
-{"caption_he":"כיתוב עברית 3-4 משפטים אותנטי","caption_en":"English caption 3-4 sentences","hashtags":"#DUBIS #ForTheRestOfUs ...5-10 tags","image_prompt":"Detailed scene description: mood lighting setting DUBIS clothing no text no logos"}`
-                                  }] }] }) }
+                                  body: JSON.stringify({ contents: [{ parts: [{ text: captionPrompt }] }] }) }
                             );
                             const cData = await cRes.json();
                             const raw = cData.candidates?.[0]?.content?.parts?.[0]?.text || '';
                             try { gen = JSON.parse(raw.replace(/```json|```/g,'').trim()); } catch(e) { gen = { caption_en: raw.substring(0,200) }; }
+                            // Safety: normalize Hebrew terminology
+                            if (gen.caption_he) gen.caption_he = fixHebrew(gen.caption_he);
                         } else {
                             gen = { caption_he: cd.caption_he, caption_en: cd.caption_en, hashtags: cd.hashtags };
                         }
@@ -632,21 +652,34 @@ Return ONLY valid JSON (no markdown):
 
                 let gen = {};
                 if (!cd.caption_he && geminiKey) {
-                    const cRes = await fetch(
-                        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-                        { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ contents: [{ parts: [{ text:
-                            `You are a social media manager for DUBIS — Israeli clothing brand. Tagline: "For the rest of us."
+                    const isStory2 = cd.format === 'story';
+                    const captionPrompt2 = isStory2
+                        ? `You are a social media manager for DUBIS — Israeli clothing brand. Tagline: "For the rest of us."
+IMPORTANT: caption_he must be in Hebrew ONLY. Use "קפוצון" NOT "הודי" for hoodie.
 Task: "${task.title}"
 Description: "${task.description || ''}"
 Notes: "${task.notes || ''}"
+Format: STORY — Instagram Story. Caption must be SHORT: 1-2 punchy sentences max.
+Return ONLY valid JSON:
+{"caption_he":"טקסט קצר לסטורי בעברית — 1-2 משפטים","caption_en":"Short story text 1-2 lines","hashtags":"#DUBIS #ForTheRestOfUs","image_prompt":"DUBIS brand story background: minimal dark urban aesthetic, no people, no text, moody lighting"}`
+                        : `You are a social media manager for DUBIS — Israeli clothing brand. Tagline: "For the rest of us."
+IMPORTANT: caption_he must be in Hebrew ONLY. CRITICAL RULE: use "קפוצון" NOT "הודי" for hoodie. Use "חולצה" for t-shirt.
+Task: "${task.title}"
+Description: "${task.description || ''}"
+Notes: "${task.notes || ''}"
+Format: ${cd.format || 'feed_post'}
 Generate a social media post. Return ONLY valid JSON:
-{"caption_he":"כיתוב עברית 3-4 משפטים אותנטי","caption_en":"English caption 3-4 sentences","hashtags":"#DUBIS #ForTheRestOfUs ...5-10 tags","image_prompt":"Detailed scene description: mood lighting setting DUBIS clothing no text no logos"}`
-                          }] }] }) }
+{"caption_he":"כיתוב עברית 3-4 משפטים אותנטי, קצר, ישיר","caption_en":"English caption 3-4 sentences","hashtags":"#DUBIS #ForTheRestOfUs ...5-10 tags","image_prompt":"Specific DUBIS photo scene: people in DUBIS streetwear, authentic urban lifestyle, describe exact setting and mood. No text. No logos. Square format."}`;
+                    const cRes = await fetch(
+                        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+                        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ contents: [{ parts: [{ text: captionPrompt2 }] }] }) }
                     );
                     const cData = await cRes.json();
                     const raw = cData.candidates?.[0]?.content?.parts?.[0]?.text || '';
                     try { gen = JSON.parse(raw.replace(/```json|```/g,'').trim()); } catch(e) { gen = { caption_en: raw.substring(0,200) }; }
+                    // Safety: normalize Hebrew terminology
+                    if (gen.caption_he) gen.caption_he = fixHebrew(gen.caption_he);
                 } else {
                     gen = { caption_he: cd.caption_he, caption_en: cd.caption_en, hashtags: cd.hashtags };
                 }
@@ -654,10 +687,27 @@ Generate a social media post. Return ONLY valid JSON:
                 let imageUrl = hasPermImg ? cd.generated_image_url : '';
                 let imgError = '';
                 if (!imageUrl) {
-                    const imgPromptText = gen.image_prompt ||
-                        (cd.format === 'quote_card'
-                            ? 'Minimalist dark textured background, urban concrete wall with subtle grain. Moody low-key lighting. No people. No text. No logos. Abstract dark aesthetic.'
-                            : `${task.title}, authentic urban lifestyle, DUBIS Israeli streetwear brand. Real diverse people, dark minimal aesthetic, natural lighting. No text. No logos.`);
+                    // Build contextual image prompt based on post format and content
+                    // RULE: phrases on clothing are ALWAYS in English (as on dubis.net)
+                    // RULE: all images with people must show them wearing DUBIS clothing with English phrase
+                    const titleLower = task.title.toLowerCase();
+                    const dubisRule = 'DUBIS Israeli streetwear brand. Real diverse body types, authentic look. No additional text overlays. No watermarks.';
+                    const defaultImgPrompt = cd.format === 'quote_card'
+                        ? 'Minimalist dark charcoal textured background. Moody low-key lighting. No people. No text. No logos. Suitable for text overlay. Square 1:1 format.'
+                        : cd.format === 'story'
+                        ? 'Clean minimal dark urban background, charcoal tones. No people. No text. No logos. Suitable for Instagram Story text overlay.'
+                        : titleLower.includes('nap') || titleLower.includes('cardio') || titleLower.includes('sleep')
+                        ? `Person relaxing on couch wearing oversized dark DUBIS hoodie with "NAPPING IS MY CARDIO" printed in white on front. Cozy apartment, soft warm lighting, peaceful expression. ${dubisRule}`
+                        : titleLower.includes('limited') || titleLower.includes('edition')
+                        ? `Confident person wearing DUBIS t-shirt with "I'M NOT FAT, I'M A LIMITED EDITION" printed on it. Urban rooftop, golden hour lighting. ${dubisRule}`
+                        : titleLower.includes('more of me') || titleLower.includes('love')
+                        ? `Person smiling wearing DUBIS oversized t-shirt with "MORE OF ME TO LOVE" printed on front. City street, natural light. ${dubisRule}`
+                        : titleLower.includes('shipping') || titleLower.includes('free')
+                        ? `Group of real people wearing DUBIS hoodies and t-shirts with English phrases, shopping bags, happy mood, urban setting. ${dubisRule}`
+                        : titleLower.includes('behind') || titleLower.includes('scenes')
+                        ? `Clothing workshop/studio with workers creating DUBIS garments, dark industrial space, authentic production atmosphere. ${dubisRule}`
+                        : `Authentic people wearing DUBIS streetwear with English brand phrases on clothing, urban minimal setting, dark aesthetic, natural lighting, square 1:1. ${dubisRule}`;
+                    const imgPromptText = gen.image_prompt || defaultImgPrompt;
                     const fullPrompt = imgPromptText + '. Fashion photography. Square 1:1. No text overlay. No watermark. Photorealistic.';
 
                     // ── Primary: Gemini 2.0 Flash Image Generation ──────────────
@@ -775,8 +825,8 @@ Generate a social media post. Return ONLY valid JSON:
 
         if (fetchErr) return res.status(500).json({ error: fetchErr.message });
 
-        // Only tasks with supabase image + content_approved
-        const batch = parseInt(req.query.batch || '3', 10);
+        // Only tasks with supabase image + content_approved — default 1 post per call
+        const batch = parseInt(req.query.batch || '1', 10);
         const readyTasks = (candidates || [])
             .filter(t => {
                 const img = t.content_data?.generated_image_url || '';
