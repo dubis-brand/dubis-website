@@ -636,6 +636,7 @@ Generate a social media post. Return ONLY valid JSON:
                 }
 
                 let imageUrl = hasPermImg ? cd.generated_image_url : '';
+                let imgError = '';
                 if (!imageUrl) {
                     const imgPromptText = gen.image_prompt ||
                         (cd.format === 'quote_card'
@@ -644,7 +645,6 @@ Generate a social media post. Return ONLY valid JSON:
                     const prompt = encodeURIComponent(imgPromptText + '. Fashion photography. No text overlay. No watermark. Photorealistic.');
                     const imgSeed = parseInt(task.id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1;
                     const polUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&nologo=true&model=flux-schnell&seed=${imgSeed}`;
-                    let imgError = '';
                     try {
                         const imgRes = await fetch(polUrl, { signal: AbortSignal.timeout(55000) });
                         if (imgRes.ok) {
