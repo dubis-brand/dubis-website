@@ -1744,3 +1744,245 @@ body {
     text-transform: uppercase;
     margin-bottom: 4px;
 }
+
+/* ===== CART SHIPPING NOTE ===== */
+.cart-shipping-note {
+    font-size: 11px;
+    color: #999;
+    text-align: center;
+    margin-bottom: 0.75rem;
+    line-height: 1.5;
+}
+.cart-shipping-note span {
+    color: #bbb;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NEWSLETTER POPUP
+   ═══════════════════════════════════════════════════════════ */
+.dubis-popup-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+}
+.dubis-popup-overlay.visible {
+    opacity: 1;
+    pointer-events: all;
+}
+.dubis-popup {
+    background: var(--charcoal);
+    border-radius: 16px;
+    padding: 2.5rem 2rem;
+    max-width: 420px;
+    width: 90%;
+    position: relative;
+    text-align: center;
+    border-top: 4px solid var(--honey);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    transform: translateY(20px);
+    transition: transform 0.35s ease;
+}
+.dubis-popup-overlay.visible .dubis-popup {
+    transform: translateY(0);
+}
+.dubis-popup-close {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 1.6rem;
+    cursor: pointer;
+    line-height: 1;
+}
+.dubis-popup-close:hover { color: #fff; }
+.dubis-popup-title {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    color: var(--honey);
+    margin-bottom: 0.5rem;
+    letter-spacing: 1px;
+}
+.dubis-popup-sub {
+    color: #bbb;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-bottom: 1.5rem;
+}
+.dubis-popup-form {
+    display: flex;
+    gap: 8px;
+}
+.dubis-popup-input {
+    flex: 1;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: 2px solid #444;
+    background: #1a1a1a;
+    color: #fff;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.dubis-popup-input:focus {
+    border-color: var(--honey);
+}
+.dubis-popup-btn {
+    padding: 12px 20px;
+    background: var(--honey);
+    color: #fff;
+    font-weight: 700;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    transition: background 0.2s;
+}
+.dubis-popup-btn:hover { background: #d4913f; }
+.dubis-popup-btn:disabled { opacity: 0.6; cursor: default; }
+.dubis-popup-dismiss {
+    display: block;
+    margin: 1rem auto 0;
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-decoration: underline;
+}
+.dubis-popup-dismiss:hover { color: #999; }
+.dubis-popup-success {
+    color: #2ecc71;
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding: 1rem 0;
+}
+.dubis-popup-overlay .hidden { display: none !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   CART RECOVERY BANNER
+   ═══════════════════════════════════════════════════════════ */
+.dubis-cart-recovery {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--charcoal);
+    border-top: 3px solid var(--honey);
+    z-index: 9998;
+    transform: translateY(100%);
+    transition: transform 0.4s ease;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+}
+.dubis-cart-recovery.visible {
+    transform: translateY(0);
+}
+.cart-recovery-inner {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.cart-recovery-msg {
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+.cart-recovery-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+.cart-recovery-btn {
+    padding: 8px 20px;
+    background: var(--honey);
+    color: #fff;
+    font-weight: 700;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background 0.2s;
+}
+.cart-recovery-btn:hover { background: #d4913f; }
+.cart-recovery-dismiss {
+    background: none;
+    border: 1px solid #555;
+    color: #888;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+.cart-recovery-dismiss:hover { color: #bbb; border-color: #777; }
+
+/* ═══════════════════════════════════════════════════════════
+   EXIT-INTENT BAR
+   ═══════════════════════════════════════════════════════════ */
+.dubis-exit-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #2C2C2C 0%, #1a1a1a 100%);
+    border-bottom: 3px solid var(--honey);
+    z-index: 10001;
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    transform: translateY(-100%);
+    transition: transform 0.4s ease;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.dubis-exit-bar.visible {
+    transform: translateY(0);
+}
+.dubis-exit-bar span {
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+.dubis-exit-bar button {
+    padding: 8px 18px;
+    background: var(--honey);
+    color: #fff;
+    font-weight: 700;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+.dubis-exit-bar button:hover { background: #d4913f; }
+.exit-bar-close {
+    background: none !important;
+    color: #888 !important;
+    font-size: 1.3rem !important;
+    padding: 4px 8px !important;
+}
+.exit-bar-close:hover { color: #fff !important; }
+
+@media (max-width: 600px) {
+    .dubis-popup { padding: 1.8rem 1.2rem; }
+    .dubis-popup-form { flex-direction: column; }
+    .dubis-popup-title { font-size: 1.3rem; }
+    .cart-recovery-inner { flex-direction: column; text-align: center; }
+    .dubis-exit-bar { flex-direction: column; gap: 8px; padding: 12px 16px; }
+    .dubis-exit-bar span { font-size: 0.85rem; }
+}
