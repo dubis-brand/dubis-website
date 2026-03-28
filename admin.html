@@ -839,6 +839,7 @@
       <button class="nav-tab" id="nav-tasks"     onclick="showSection('tasks',this)">🤖 משימות</button>
       <button class="nav-tab" id="nav-agents"    onclick="showSection('agents',this)">🧠 סוכנים</button>
       <button class="nav-tab" id="nav-campaigns" onclick="showSection('campaigns',this)">📣 קמפיינים</button>
+      <button class="nav-tab" id="nav-gallery"   onclick="showSection('gallery',this)">🖼 גלריה</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -1800,6 +1801,79 @@
     </div>
   </div><!-- /section-campaigns -->
 
+  <!-- ══ GALLERY SECTION ══════════════════════════════════════ -->
+  <div id="section-gallery" style="display:none;padding:1.5rem" dir="rtl">
+    <h2 style="font-size:1.1rem;color:#e8e0d5;margin:0 0 1rem">🖼 גלריית תמונות DUBIS</h2>
+
+    <!-- Controls Bar -->
+    <div class="gal-controls">
+      <select id="gal-filter-product" onchange="loadGallery()" style="background:#1a1a1a;border:1px solid #333;color:#e8e0d5;padding:.4rem .6rem;border-radius:6px;font-size:.82rem">
+        <option value="">כל המוצרים</option>
+      </select>
+      <select id="gal-filter-status" onchange="loadGallery()" style="background:#1a1a1a;border:1px solid #333;color:#e8e0d5;padding:.4rem .6rem;border-radius:6px;font-size:.82rem">
+        <option value="">הכל</option>
+        <option value="approved">✅ מאושרות</option>
+        <option value="pending">⏳ ממתינות</option>
+      </select>
+      <button class="btn-gold" style="padding:.4rem 1rem;font-size:.82rem" onclick="openGenerateModal()">🎨 ייצור תמונה חדשה</button>
+      <button style="background:#1a2a1a;border:1px solid #2a5a2a;color:#4caf50;padding:.4rem 1rem;border-radius:6px;font-size:.82rem;cursor:pointer" onclick="batchGenerate()">🚀 ייצור אצווה</button>
+      <span id="gal-count" style="color:#666;font-size:.78rem;margin-right:auto"></span>
+    </div>
+
+    <!-- Gallery Grid -->
+    <div class="gal-grid" id="gal-grid">
+      <div style="grid-column:1/-1;text-align:center;padding:3rem;color:#555">טוען גלריה...</div>
+    </div>
+
+    <!-- Generate Single Image Modal -->
+    <div id="gen-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:none;align-items:center;justify-content:center">
+      <div style="background:#1e1e1e;border-radius:12px;padding:2rem;width:min(520px,92vw);max-height:90vh;overflow-y:auto" dir="rtl">
+        <h3 style="color:#e8e0d5;margin:0 0 1.2rem">🎨 ייצור תמונה חדשה</h3>
+        <div style="display:grid;gap:1rem">
+          <label style="color:#aaa;font-size:.85rem">
+            מוצר *
+            <select id="gen-product" style="display:block;width:100%;margin-top:.3rem;padding:.6rem;background:#111;border:1px solid #333;border-radius:6px;color:#e8e0d5;font-size:.9rem"></select>
+          </label>
+          <label style="color:#aaa;font-size:.85rem">
+            סצנה
+            <select id="gen-scene" style="display:block;width:100%;margin-top:.3rem;padding:.6rem;background:#111;border:1px solid #333;border-radius:6px;color:#e8e0d5;font-size:.9rem">
+              <option value="street">🏙 רחוב אירופאי</option>
+              <option value="home">🏠 בית נעים</option>
+              <option value="studio">📸 סטודיו</option>
+              <option value="nature">🌿 טבע</option>
+              <option value="cafe">☕ בית קפה</option>
+              <option value="urban">🌆 אורבני</option>
+            </select>
+          </label>
+          <label style="color:#aaa;font-size:.85rem">
+            דמות
+            <select id="gen-model" style="display:block;width:100%;margin-top:.3rem;padding:.6rem;background:#111;border:1px solid #333;border-radius:6px;color:#e8e0d5;font-size:.9rem">
+              <option value="man">👨 גבר</option>
+              <option value="large_man">👨‍🦰 גבר גדול</option>
+              <option value="woman">👩 אישה</option>
+              <option value="curvy_woman">👩‍🦱 אישה בגוף מלא</option>
+              <option value="couple">👫 זוג</option>
+              <option value="older_man">🧔 גבר מבוגר</option>
+            </select>
+          </label>
+          <label style="color:#aaa;font-size:.85rem">
+            צבע
+            <select id="gen-color" style="display:block;width:100%;margin-top:.3rem;padding:.6rem;background:#111;border:1px solid #333;border-radius:6px;color:#e8e0d5;font-size:.9rem">
+            </select>
+          </label>
+        </div>
+        <div id="gen-preview" style="margin-top:1rem;text-align:center;display:none">
+          <img id="gen-preview-img" style="max-width:100%;max-height:300px;border-radius:8px;border:1px solid #333">
+        </div>
+        <div id="gen-status" style="margin-top:.8rem;font-size:.82rem;color:#888;text-align:center"></div>
+        <div style="display:flex;gap:.8rem;margin-top:1.2rem">
+          <button class="btn-gold" style="flex:1" id="gen-submit-btn" onclick="submitGenerate()">🎨 ייצור</button>
+          <button style="flex:0 0 auto;background:#333;color:#aaa;border:none;padding:.5rem 1rem;border-radius:6px;cursor:pointer" onclick="closeGenerateModal()">ביטול</button>
+        </div>
+      </div>
+    </div>
+  </div><!-- /section-gallery -->
+
   <!-- Coupon Modal -->
   <div id="coupon-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
     <div style="background:#1e1e1e;border-radius:12px;padding:2rem;width:min(480px,90vw);max-height:90vh;overflow-y:auto">
@@ -2127,6 +2201,7 @@
 
   let _reviewsLoaded   = false;
   let _campaignsLoaded = false;
+  let _galleryLoaded   = false;
 
   function showSection(name, btn) {
     document.getElementById('section-orders').style.display    = name === 'orders'    ? '' : 'none';
@@ -2138,9 +2213,11 @@
     document.getElementById('section-tasks').style.display     = name === 'tasks'     ? '' : 'none';
     document.getElementById('section-agents').style.display    = name === 'agents'    ? '' : 'none';
     document.getElementById('section-campaigns').style.display = name === 'campaigns' ? '' : 'none';
+    document.getElementById('section-gallery').style.display   = name === 'gallery'   ? '' : 'none';
     if (name === 'tasks') loadTasks();
     if (name === 'agents') loadAgentsSection();
     if (name === 'campaigns' && !_campaignsLoaded) { _campaignsLoaded = true; loadCampaigns(); }
+    if (name === 'gallery' && !_galleryLoaded) { _galleryLoaded = true; loadGalleryInit(); }
     document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     if (name === 'coupons') loadCoupons();
@@ -3499,6 +3576,10 @@
     btn.disabled = false;
     btn.textContent = '✅ אשר ופרסם';
     document.getElementById('pp-overlay').classList.add('open');
+
+    // Trigger Smart Match for image recommendations
+    const captionText = [cd.caption_he, cd.caption_en].filter(Boolean).join(' ');
+    loadSmartMatch(captionText);
   }
 
   function closePP() {
@@ -3908,6 +3989,289 @@
     loadCampaigns();
   }
 
+  // ── Gallery Functions ─────────────────────────────────────
+  let _galProducts = [];
+  let _galImages = [];
+
+  async function loadGalleryInit() {
+    // Load products for filters
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    try {
+      const res = await fetch('/api/agents?type=products-catalog', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      _galProducts = await res.json();
+    } catch(e) { _galProducts = []; }
+
+    // Fill product filter dropdown
+    const sel = document.getElementById('gal-filter-product');
+    sel.innerHTML = '<option value="">כל המוצרים</option>';
+    _galProducts.forEach(p => {
+      sel.innerHTML += `<option value="${p.id}">${p.slogan}</option>`;
+    });
+
+    // Fill generate modal product dropdown
+    const genSel = document.getElementById('gen-product');
+    genSel.innerHTML = '';
+    _galProducts.forEach(p => {
+      genSel.innerHTML += `<option value="${p.id}" data-colors='${JSON.stringify(p.colors||[])}'>${p.slogan} (${p.clothing_type})</option>`;
+    });
+    updateGenColors();
+    genSel.addEventListener('change', updateGenColors);
+
+    loadGallery();
+  }
+
+  function updateGenColors() {
+    const sel = document.getElementById('gen-product');
+    const opt = sel.options[sel.selectedIndex];
+    const colors = JSON.parse(opt?.getAttribute('data-colors') || '[]');
+    const cSel = document.getElementById('gen-color');
+    cSel.innerHTML = '';
+    if (colors.length === 0) {
+      cSel.innerHTML = '<option value="black">שחור</option><option value="white">לבן</option>';
+    } else {
+      colors.forEach(c => {
+        const heb = { black:'שחור', white:'לבן', navy:'כחול כהה', gray:'אפור', olive:'זית', beige:'בז\'', charcoal:'פחם', sand:'חולי', forest_green:'ירוק יער', burgundy:'בורדו', cream:'קרם', khaki:'חאקי', light_gray:'אפור בהיר', dark_gray:'אפור כהה' };
+        cSel.innerHTML += `<option value="${c}">${heb[c] || c}</option>`;
+      });
+    }
+  }
+
+  async function loadGallery() {
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    const productId = document.getElementById('gal-filter-product').value;
+    const status = document.getElementById('gal-filter-status').value;
+
+    let url = '/api/agents?type=product-images';
+    if (productId) url += '&product_id=' + productId;
+    if (status === 'approved') url += '&approved=true';
+    if (status === 'pending') url += '&approved=false';
+
+    const grid = document.getElementById('gal-grid');
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:2rem;color:#555">⏳ טוען...</div>';
+
+    try {
+      const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+      const data = await res.json();
+      _galImages = Array.isArray(data) ? data : (data.images || []);
+
+      document.getElementById('gal-count').textContent = `${_galImages.length} תמונות`;
+
+      if (_galImages.length === 0) {
+        grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:3rem;color:#555">אין תמונות עדיין. לחץ "ייצור תמונה חדשה" להתחלה! 🎨</div>';
+        return;
+      }
+
+      grid.innerHTML = _galImages.map(img => {
+        const product = img.dubis_products || img.product || {};
+        const isApproved = img.approved;
+        const stars = Array.from({length:5}, (_, i) =>
+          `<span class="gal-star ${i < (img.quality_score||0) ? 'active' : ''}" onclick="rateImage('${img.id}',${i+1})">★</span>`
+        ).join('');
+
+        return `<div class="gal-card ${isApproved ? 'approved' : 'pending-img'}">
+          <span class="gal-badge ${isApproved ? 'approved' : 'pending-badge'}">${isApproved ? '✅ מאושר' : '⏳ ממתין'}</span>
+          <img class="gal-thumb" src="${img.image_url}" alt="${product.slogan||''}" onclick="window.open('${img.image_url}','_blank')" loading="lazy">
+          <div class="gal-card-info">
+            <div class="gal-card-slogan">${escHtml(product.slogan || 'לא ידוע')}</div>
+            <div class="gal-card-meta">
+              <span>${img.scene_type || '—'}</span>
+              <span>${img.model_type || '—'}</span>
+              <span>${img.color_variant || '—'}</span>
+              <span>שימושים: ${img.times_used || 0}</span>
+            </div>
+            <div class="gal-quality">${stars}</div>
+          </div>
+          <div class="gal-card-actions">
+            ${!isApproved ? `<button class="gal-btn gal-btn-approve" onclick="approveImage('${img.id}')">✅ אשר</button>` : ''}
+            ${isApproved ? `<button class="gal-btn gal-btn-reject" onclick="rejectImage('${img.id}')">↩ בטל אישור</button>` : ''}
+            <button class="gal-btn gal-btn-use" onclick="useGalleryImage('${img.image_url}')">📋 העתק URL</button>
+            <button class="gal-btn gal-btn-del" onclick="deleteImage('${img.id}')">🗑</button>
+          </div>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:2rem;color:#e74c3c">שגיאה בטעינה: ${e.message}</div>`;
+    }
+  }
+
+  async function approveImage(id) {
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    await fetch('/api/agents?type=product-images&id=' + id, {
+      method: 'PATCH',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved: true })
+    });
+    loadGallery();
+  }
+
+  async function rejectImage(id) {
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    await fetch('/api/agents?type=product-images&id=' + id, {
+      method: 'PATCH',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved: false })
+    });
+    loadGallery();
+  }
+
+  async function rateImage(id, score) {
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    await fetch('/api/agents?type=product-images&id=' + id, {
+      method: 'PATCH',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quality_score: score })
+    });
+    loadGallery();
+  }
+
+  async function deleteImage(id) {
+    if (!confirm('למחוק את התמונה? לא ניתן לשחזר.')) return;
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    await fetch('/api/agents?type=product-images&id=' + id, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    loadGallery();
+  }
+
+  function useGalleryImage(url) {
+    navigator.clipboard.writeText(url).then(() => {
+      alert('✅ URL הועתק ללוח!');
+    }).catch(() => {
+      prompt('העתק URL:', url);
+    });
+  }
+
+  function openGenerateModal() {
+    const modal = document.getElementById('gen-modal');
+    modal.style.display = 'flex';
+    document.getElementById('gen-preview').style.display = 'none';
+    document.getElementById('gen-status').textContent = '';
+    document.getElementById('gen-submit-btn').disabled = false;
+    document.getElementById('gen-submit-btn').textContent = '🎨 ייצור';
+  }
+
+  function closeGenerateModal() {
+    document.getElementById('gen-modal').style.display = 'none';
+  }
+
+  async function submitGenerate() {
+    const btn = document.getElementById('gen-submit-btn');
+    const statusEl = document.getElementById('gen-status');
+    btn.disabled = true;
+    btn.textContent = '⏳ מייצר... (עד 90 שניות)';
+    statusEl.textContent = '🎨 Gemini מייצר את התמונה, אנא המתן...';
+
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+
+    try {
+      const res = await fetch('/api/agents?type=generate-product-image', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id: document.getElementById('gen-product').value,
+          scene: document.getElementById('gen-scene').value,
+          model: document.getElementById('gen-model').value,
+          color: document.getElementById('gen-color').value
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'שגיאה ביצירה');
+
+      // Show preview
+      document.getElementById('gen-preview').style.display = 'block';
+      document.getElementById('gen-preview-img').src = data.image_url;
+      statusEl.innerHTML = `✅ תמונה נוצרה בהצלחה! <a href="${data.image_url}" target="_blank" style="color:#c8a96e">פתח</a>`;
+      btn.textContent = '🎨 ייצור נוספת';
+      btn.disabled = false;
+
+      // Refresh gallery
+      loadGallery();
+    } catch(e) {
+      statusEl.textContent = '❌ ' + e.message;
+      btn.textContent = '🎨 נסה שוב';
+      btn.disabled = false;
+    }
+  }
+
+  async function batchGenerate() {
+    if (!confirm('להתחיל ייצור אצווה? ייווצרו 3 תמונות לכל מוצר (42 תמונות סה"כ).\nזה יקח זמן — להמשיך?')) return;
+
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    const scenes = ['street','home','studio','nature','cafe','urban'];
+    const models = ['man','large_man','woman','curvy_woman','couple','older_man'];
+
+    let success = 0, fail = 0, total = _galProducts.length * 3;
+    const statusEl = document.getElementById('gal-count');
+
+    for (const product of _galProducts) {
+      const colors = product.colors || ['black'];
+      for (let i = 0; i < 3; i++) {
+        statusEl.textContent = `⏳ מייצר ${success+fail+1}/${total}... (✅${success} ❌${fail})`;
+        try {
+          const res = await fetch('/api/agents?type=generate-product-image', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              product_id: product.id,
+              scene: scenes[Math.floor(Math.random() * scenes.length)],
+              model: models[Math.floor(Math.random() * models.length)],
+              color: colors[Math.floor(Math.random() * colors.length)]
+            })
+          });
+          if (res.ok) success++;
+          else fail++;
+        } catch(e) { fail++; }
+      }
+    }
+    statusEl.textContent = `✅ ייצור אצווה הסתיים: ${success} הצליחו, ${fail} נכשלו`;
+    loadGallery();
+  }
+
+  // ── Smart Match for Post Preview ────────────────────────────
+  async function loadSmartMatch(caption) {
+    if (!caption || caption.length < 5) return;
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+
+    try {
+      const res = await fetch('/api/agents?type=smart-match', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caption })
+      });
+      const matches = await res.json();
+      if (!Array.isArray(matches) || matches.length === 0) return;
+
+      // Update the real photo dropdown in post preview
+      const sel = document.getElementById('pp-real-photo');
+      // Keep first default option, then add matches
+      sel.innerHTML = '<option value="">🤖 Smart Match — תמונות מומלצות...</option>';
+      matches.forEach((m, i) => {
+        const label = `${m.dubis_products?.slogan || 'תמונה'} (${m.scene_type||''}) — ציון: ${m.relevance_score?.toFixed(1)||'?'}`;
+        sel.innerHTML += `<option value="${m.image_url}">${i+1}. ${label}</option>`;
+      });
+
+      // Also update publish modal dropdown if exists
+      const pmUrl = document.getElementById('pm-image-url');
+      if (pmUrl && !pmUrl.value) {
+        // Auto-suggest first match
+        pmUrl.value = matches[0].image_url;
+        updateImagePreview(matches[0].image_url);
+      }
+    } catch(e) { console.log('Smart match error:', e); }
+  }
+
   async function runAllAgents() {
     const { data: { session } } = await _sb.auth.getSession();
     const token = session?.access_token;
@@ -3932,6 +4296,42 @@
   .agent-run-btn { background:#2a2a2a;color:#e8c97a;border:1px solid #e8c97a;padding:.3rem .7rem;border-radius:5px;cursor:pointer;font-size:.8rem;transition:all .2s;white-space:nowrap; }
   .agent-run-btn:hover { background:#e8c97a;color:#0a0a0a; }
   .agent-run-btn:disabled { opacity:.5;cursor:not-allowed; }
+
+  /* ── Gallery Section ── */
+  .gal-controls { display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-bottom:1.2rem; }
+  .gal-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem; }
+  .gal-card { background:#141414;border:1px solid #1e1e1e;border-radius:10px;overflow:hidden;transition:border-color .2s;position:relative; }
+  .gal-card:hover { border-color:#333; }
+  .gal-card.approved { border-color:#2a5a2a; }
+  .gal-card.pending-img { border-color:#5a4a1a; }
+  .gal-card img.gal-thumb { width:100%;height:200px;object-fit:contain;background:#0a0a0a;cursor:pointer; }
+  .gal-card-info { padding:.6rem .8rem; }
+  .gal-card-slogan { font-size:.72rem;color:#c8a96e;font-weight:600;margin-bottom:.2rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+  .gal-card-meta { font-size:.68rem;color:#666;display:flex;gap:.4rem;flex-wrap:wrap; }
+  .gal-card-meta span { background:#1a1a1a;padding:.1rem .4rem;border-radius:3px; }
+  .gal-card-actions { display:flex;gap:.4rem;padding:.4rem .8rem .6rem;flex-wrap:wrap; }
+  .gal-btn { padding:.2rem .5rem;border-radius:4px;font-size:.72rem;cursor:pointer;border:1px solid;transition:all .2s; }
+  .gal-btn-approve { background:#1a2a1a;color:#4caf50;border-color:#2a5a2a; }
+  .gal-btn-approve:hover { background:#2a5a2a; }
+  .gal-btn-reject { background:#2a1a1a;color:#e74c3c;border-color:#5a2a2a; }
+  .gal-btn-reject:hover { background:#5a2a2a; }
+  .gal-btn-use { background:#1a1a2a;color:#6b8aed;border-color:#2a2a5a; }
+  .gal-btn-use:hover { background:#2a2a5a; }
+  .gal-btn-del { background:#1a1a1a;color:#888;border-color:#333; }
+  .gal-btn-del:hover { background:#333;color:#e74c3c; }
+  .gal-badge { position:absolute;top:.5rem;left:.5rem;font-size:.65rem;padding:.15rem .5rem;border-radius:10px;font-weight:600; }
+  .gal-badge.approved { background:#1a3a1a;color:#4caf50; }
+  .gal-badge.pending-badge { background:#3a3a1a;color:#ff9800; }
+  .gal-quality { display:flex;gap:2px;margin-top:.3rem; }
+  .gal-star { cursor:pointer;font-size:.85rem;color:#333;transition:color .15s; }
+  .gal-star.active { color:#c8a96e; }
+  .gal-star:hover { color:#e8c97a; }
+  .smart-match-strip { display:flex;gap:.6rem;overflow-x:auto;padding:.6rem 0; }
+  .smart-match-card { flex:0 0 110px;cursor:pointer;border-radius:8px;overflow:hidden;border:2px solid transparent;transition:all .2s;position:relative; }
+  .smart-match-card:hover { border-color:#c8a96e; }
+  .smart-match-card.selected { border-color:#4caf50;box-shadow:0 0 8px rgba(76,175,80,.3); }
+  .smart-match-card img { width:110px;height:110px;object-fit:contain;background:#0a0a0a; }
+  .smart-match-score { position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.8);font-size:.62rem;color:#c8a96e;text-align:center;padding:2px; }
 </style>
 <script src="js/products.js"></script>
 </body>

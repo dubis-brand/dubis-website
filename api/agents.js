@@ -500,6 +500,219 @@ Return ONLY valid JSON (no markdown):
         return res.status(200).json({ image_url: publicUrl, prompt_used: imagePrompt });
     }
 
+    // ── PRODUCT IMAGE GENERATION ── generate branded product photos ─────
+    if (type === 'generate-product-image') {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser) return res.status(401).json({ error: 'Unauthorized' });
+
+        const geminiKey = process.env.GEMINI_API_KEY;
+        if (!geminiKey) return res.status(503).json({ error: 'GEMINI_API_KEY not configured' });
+
+        const { product_id, scene_type, model_type, color_variant } = req.body || {};
+        if (!product_id) return res.status(400).json({ error: 'product_id required' });
+
+        // Fetch product
+        const { data: product } = await sb.from('dubis_products').select('*').eq('id', product_id).single();
+        if (!product) return res.status(404).json({ error: 'Product not found' });
+
+        // Scene descriptions
+        const scenes = {
+            street: 'Cobblestone European city street with cafes, old stone buildings, pedestrians in background, warm golden hour sunset light',
+            home: 'Cozy modern living room, person on sofa or leaning on doorframe, soft natural window light, warm interior',
+            studio: 'Clean minimal photo studio, light gray background, soft even professional lighting',
+            nature: 'Forest trail with dappled sunlight through trees, earthy natural atmosphere, green foliage',
+            cafe: 'Outdoor cafe seating area, wooden tables, urban background, warm morning light, coffee cups on table',
+            urban: 'Concrete walls with subtle graffiti, industrial urban area, dramatic directional lighting, moody atmosphere'
+        };
+
+        // Model descriptions
+        const models = {
+            man: 'an average build male in his early 30s, light stubble, relaxed casual posture, friendly expression',
+            large_man: 'a larger build confident male in his 30s-40s, full beard, comfortable in his body, warm smile',
+            woman: 'an average build woman in her early 30s, natural minimal makeup, genuine warm smile, relaxed body language',
+            curvy_woman: 'a curvy confident woman in her 30s, body-positive energy, natural look, radiant smile',
+            couple: 'a couple walking together side by side, both wearing matching DUBIS clothing, shot from behind at slight angle',
+            older_man: 'a distinguished man in his late 50s, gray hair, weathered face, dignified authentic expression'
+        };
+
+        // Pick scene, model, color (use provided or random from preferences)
+        const scene = scene_type || (product.scene_preferences || ['street'])[Math.floor(Math.random() * (product.scene_preferences || ['street']).length)];
+        const model = model_type || (product.model_preferences || ['man'])[Math.floor(Math.random() * (product.model_preferences || ['man']).length)];
+        const colors = product.colors || ['Black'];
+        const color = color_variant || colors[Math.floor(Math.random() * colors.length)];
+
+        // Build prompt from template
+        let prompt = product.prompt_template || '';
+        prompt = prompt.replace(/{model}/g, models[model] || models.man);
+        prompt = prompt.replace(/{color}/g, color);
+        prompt = prompt.replace(/{scene}/g, scenes[scene] || scenes.street);
+
+        // Add format instructions
+        prompt += ' High resolution, photorealistic, landscape 16:9 aspect ratio.';
+
+        console.log(`🖼 Generating product image: "${product.slogan}" | ${color} ${product.clothing_type} | ${scene} | ${model}`);
+
+        // Generate via Gemini
+        const gRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { responseModalities: ['IMAGE', 'TEXT'] }
+                }),
+                signal: AbortSignal.timeout(90000)
+            }
+        );
+        if (!gRes.ok) {
+            const errBody = await gRes.text().catch(() => '');
+            return res.status(500).json({ error: `Gemini error ${gRes.status}: ${errBody.substring(0, 200)}` });
+        }
+        const gData = await gRes.json();
+        const imgPart = gData.candidates?.[0]?.content?.parts?.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+        if (!imgPart?.inlineData) {
+            return res.status(500).json({ error: 'Gemini did not return an image. Try again.' });
+        }
+        const imgBuffer = Buffer.from(imgPart.inlineData.data, 'base64');
+
+        // Upload to Supabase Storage
+        await sb.storage.createBucket('product-images', { public: true }).catch(() => {});
+        const slug = product.slogan.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 30);
+        const fileName = `${slug}-${scene}-${model}-${Date.now()}.jpg`;
+        const { error: uploadError } = await sb.storage
+            .from('product-images')
+            .upload(fileName, imgBuffer, { contentType: 'image/jpeg', upsert: true });
+        if (uploadError) return res.status(500).json({ error: uploadError.message });
+
+        const { data: { publicUrl } } = sb.storage.from('product-images').getPublicUrl(fileName);
+
+        // Save to dubis_images table
+        const { data: imgRecord, error: dbError } = await sb.from('dubis_images').insert({
+            product_id: product.id,
+            image_url: publicUrl,
+            storage_path: fileName,
+            scene_type: scene,
+            model_type: model,
+            color_variant: color,
+            prompt_used: prompt,
+            tags: [product.category, product.clothing_type, scene, model]
+        }).select().single();
+
+        console.log(`✅ Product image saved | ${fileName} | ID: ${imgRecord?.id}`);
+        return res.status(200).json({
+            image_url: publicUrl,
+            image_id: imgRecord?.id,
+            product: product.slogan,
+            scene: scene,
+            model: model,
+            color: color
+        });
+    }
+
+    // ── PRODUCT IMAGES LIST ── get images for gallery / smart match ──────
+    if (type === 'product-images') {
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser) return res.status(401).json({ error: 'Unauthorized' });
+
+        if (req.method === 'GET') {
+            const productId = url.searchParams.get('product_id');
+            const approvedParam = url.searchParams.get('approved');
+            let query = sb.from('dubis_images').select('*, dubis_products(slogan, clothing_type, category)').order('created_at', { ascending: false });
+            if (productId) query = query.eq('product_id', productId);
+            if (approvedParam === 'true') query = query.eq('approved', true);
+            if (approvedParam === 'false') query = query.eq('approved', false);
+            const { data, error } = await query.limit(100);
+            return res.status(200).json(data || []);
+        }
+
+        if (req.method === 'PATCH') {
+            // Update image: approve, rate, etc.
+            const imageId = url.searchParams.get('id');
+            if (!imageId) return res.status(400).json({ error: 'id required' });
+            const updates = {};
+            const body = req.body || {};
+            if (body.approved !== undefined) updates.approved = body.approved;
+            if (body.quality_score !== undefined) updates.quality_score = body.quality_score;
+            if (body.tags) updates.tags = body.tags;
+            const { data, error } = await sb.from('dubis_images').update(updates).eq('id', imageId).select().single();
+            return res.status(200).json(data || { error: error?.message });
+        }
+
+        if (req.method === 'DELETE') {
+            const imageId = url.searchParams.get('id');
+            if (!imageId) return res.status(400).json({ error: 'id required' });
+            // Get storage path first
+            const { data: img } = await sb.from('dubis_images').select('storage_path').eq('id', imageId).single();
+            if (img?.storage_path) {
+                await sb.storage.from('product-images').remove([img.storage_path]);
+            }
+            await sb.from('dubis_images').delete().eq('id', imageId);
+            return res.status(200).json({ deleted: true });
+        }
+
+        return res.status(200).json([]);
+    }
+
+    // ── PRODUCTS CATALOG ── list products for gallery UI ─────────────────
+    if (type === 'products-catalog') {
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser) return res.status(401).json({ error: 'Unauthorized' });
+        const { data } = await sb.from('dubis_products').select('*').eq('active', true).order('category');
+        return res.status(200).json(data || []);
+    }
+
+    // ── SMART MATCH ── recommend images for a post ──────────────────────
+    if (type === 'smart-match') {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser) return res.status(401).json({ error: 'Unauthorized' });
+
+        const { caption, task_id } = req.body || {};
+        const searchText = caption || '';
+
+        // Get all approved images with product info
+        const { data: images } = await sb.from('dubis_images')
+            .select('*, dubis_products(slogan, clothing_type, category)')
+            .eq('approved', true)
+            .order('quality_score', { ascending: false });
+
+        if (!images?.length) {
+            return res.status(200).json({ matches: [], message: 'אין תמונות מאושרות בבנק. יש ליצור ולאשר תמונות קודם.' });
+        }
+
+        // Score each image by relevance to caption
+        const scored = images.map(img => {
+            let score = img.quality_score || 1;
+            const slogan = img.dubis_products?.slogan?.toLowerCase() || '';
+            const captionLower = searchText.toLowerCase();
+
+            // Exact slogan match = huge boost
+            if (captionLower.includes(slogan) || slogan.includes(captionLower.substring(0, 20))) score += 10;
+
+            // Keyword matches
+            const keywords = slogan.split(/\s+/);
+            keywords.forEach(kw => {
+                if (kw.length > 3 && captionLower.includes(kw)) score += 2;
+            });
+
+            // Penalize overused images
+            score -= (img.times_used || 0) * 0.5;
+
+            // Category match (humor, lazy, etc.)
+            const tags = img.tags || [];
+            if (captionLower.includes('nap') && tags.includes('home')) score += 3;
+            if (captionLower.includes('coffee') && tags.includes('cafe')) score += 3;
+            if (captionLower.includes('model') && tags.includes('urban')) score += 2;
+
+            return { ...img, relevance_score: Math.max(0, score) };
+        });
+
+        scored.sort((a, b) => b.relevance_score - a.relevance_score);
+        return res.status(200).json({ matches: scored.slice(0, 5) });
+    }
+
     // ── PUBLISH ── multi-platform post (Instagram + Facebook + TikTok) ─
     if (type === 'publish') {
         if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
