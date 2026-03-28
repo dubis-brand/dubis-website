@@ -1,6 +1,12 @@
 // DUBIS — Agents API
 // Vercel Serverless Function  /api/agents
 // =====================================================
+// ⚠️ CRITICAL: Vercel Hobby plan = MAX 12 Serverless Functions per deploy.
+// DO NOT create new .js files in /api/ — always add routes HERE via ?type= param.
+// Current API files (12/12): agents, track, checkout, gelato-hook, gelato-products,
+// admin/analytics, admin/coupons, admin/gelato-sync, admin/orders, admin/users,
+// _rateLimit (helper), _printful (helper).
+// =====================================================
 // Single endpoint for the entire agent system.
 // Handles: agent_tasks CRUD + agent_runs logging
 //
@@ -897,62 +903,5 @@ Generate a social media post. Return ONLY valid JSON:
         });
     }
 
-    // ── QUICK-PUBLISH ── one-time GET-based Instagram post (no external auth needed) ─
-    if (type === 'quick-publish') {
-        const key = req.query.key;
-        if (key !== 'dubis_quick_publish_2026_x9k') {
-            return res.status(401).json({ error: 'Invalid key' });
-        }
-
-        const igToken   = process.env.INSTAGRAM_ACCESS_TOKEN;
-        const igAccount = process.env.INSTAGRAM_ACCOUNT_ID;
-
-        if (!igToken || !igAccount) {
-            return res.status(500).json({ error: 'Missing Instagram env vars', has_token: !!igToken, has_account: !!igAccount });
-        }
-
-        const image_url = 'https://www.dubis.net/images/product-1-White-front.jpg';
-        const caption = `לא שמנים. מהדורה מוגבלת. 🐾
-
-הבסטסלר שלנו — "I'm not fat, I'm a limited edition"
-זמין ב-T-shirt, Hoodie ו-Long-sleeve. 6 צבעים. S–3XL.
-משלוח חינם לכל העולם 🚚
-
-👕 dubis.net | קוד DUBIS15 = 15% הנחה
-
-#dubis #limitededition #bodypositivity #funnytshirt #israelifashion #בגדים #חולצות #מתנהלגבר #הומור #ישראל #ForTheRestOfUs #streetwear #tshirt`;
-
-        try {
-            const igBase = `https://graph.facebook.com/v19.0/${igAccount}`;
-
-            const cRes = await fetch(`${igBase}/media`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image_url, caption, access_token: igToken }),
-            });
-            const container = await cRes.json();
-            if (!cRes.ok || container.error) {
-                return res.status(500).json({ error: 'Container: ' + (container.error?.message || JSON.stringify(container)) });
-            }
-
-            // Wait for processing
-            await new Promise(r => setTimeout(r, 7000));
-
-            const pRes = await fetch(`${igBase}/media_publish`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ creation_id: container.id, access_token: igToken }),
-            });
-            const published = await pRes.json();
-            if (!pRes.ok || published.error) {
-                return res.status(500).json({ error: 'Publish: ' + (published.error?.message || JSON.stringify(published)) });
-            }
-
-            return res.status(200).json({ success: true, instagram_post_id: published.id });
-        } catch (e) {
-            return res.status(500).json({ error: 'Exception: ' + e.message });
-        }
-    }
-
-    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish, content-run, publish-ready, quick-publish' });
+    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish, content-run, publish-ready' });
 };

@@ -396,6 +396,7 @@ function openProductModal(productId) {
         <button class="prod-tab active" onclick="switchTab(this,'tab-details-${product.id}')">${t.tab_details}</button>
         <button class="prod-tab" onclick="switchTab(this,'tab-size-${product.id}')">${t.tab_size}</button>
         <button class="prod-tab" onclick="switchTab(this,'tab-care-${product.id}')">${t.tab_care}</button>
+        <button class="prod-tab" onclick="switchTab(this,'tab-reviews-${product.id}');loadModalReviews(${product.id},'${product.phrase.replace(/'/g, "\\'")}')">⭐ ${currentLang === 'he' ? 'ביקורות' : 'Reviews'}</button>
       </div>
       <div class="prod-tab-content" id="tab-details-${product.id}">
         ${product.fabric ? `<p>🧵 <strong>${t.modal_fabric}:</strong> ${product.fabric}</p>` : ''}
@@ -416,6 +417,9 @@ function openProductModal(productId) {
       <div class="prod-tab-content hidden" id="tab-care-${product.id}">
         <ul class="care-list">${(currentLang === 'he' && product.care_he ? product.care_he : (product.care || [])).map(c => `<li>${c}</li>`).join('')}</ul>
       </div>
+      <div class="prod-tab-content hidden" id="tab-reviews-${product.id}">
+        <div id="reviews-container-${product.id}" style="text-align:center;color:#555;padding:1rem">Loading reviews…</div>
+      </div>
       <div class="modal-quality">
         <span>${t.modal_made}</span>
         <span>${t.modal_material}</span>
@@ -433,6 +437,21 @@ function closeProductModal() {
   document.getElementById('product-modal').classList.remove('open');
   document.getElementById('product-modal-overlay').classList.remove('open');
   document.body.style.overflow = '';
+}
+
+// Reviews tab loader
+const _reviewsTabLoaded = {};
+async function loadModalReviews(productId, productName) {
+  if (_reviewsTabLoaded[productId]) return;
+  _reviewsTabLoaded[productId] = true;
+  const container = document.getElementById(`reviews-container-${productId}`);
+  if (!container) return;
+  if (window.dubisReviews) {
+    container.innerHTML = await window.dubisReviews.injectTab(productId, productName);
+    window.dubisReviews.initInteractions(productId, productName);
+  } else {
+    container.innerHTML = '<div style="color:#555;padding:1rem;text-align:center">Reviews not available</div>';
+  }
 }
 
 function switchTab(btn, tabId) {

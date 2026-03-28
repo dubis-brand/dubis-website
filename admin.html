@@ -485,14 +485,33 @@
     .items-report td { padding: .6rem .9rem; border-bottom: 1px solid #141414; }
     .items-report .qty { color: #c8a96e; font-weight: 600; }
 
-    /* ── Analytics Section ── */
-    .analytics-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    /* ── Analytics Section (Enhanced) ── */
+    .analytics-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    .analytics-stats-6 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
     .analytics-chart { background: #141414; border: 1px solid #1e1e1e; border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1.5rem; }
     .analytics-chart canvas { max-height: 200px; }
+    .analytics-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+    .analytics-section-title { font-size: .85rem; color: #c8a96e; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin: 1.5rem 0 .8rem; border-bottom: 1px solid #1e1e1e; padding-bottom: .5rem; }
     .top-pages-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
     .top-pages-table th { padding: .5rem .9rem; text-align: left; color: #555; font-size: .68rem; letter-spacing: 1px; text-transform: uppercase; border-bottom: 1px solid #1e1e1e; }
     .top-pages-table td { padding: .6rem .9rem; border-bottom: 1px solid #141414; }
     .page-bar { height: 4px; background: #c8a96e; border-radius: 2px; margin-top: 3px; }
+    .trend-up { color: #4caf50; font-size: .72rem; }
+    .trend-down { color: #e74c3c; font-size: .72rem; }
+    .trend-neutral { color: #666; font-size: .72rem; }
+    .stat-value-sm { font-size: 1.2rem; font-weight: 700; color: #c8a96e; }
+    .review-card { background: #141414; border: 1px solid #1e1e1e; border-radius: 8px; padding: 1rem; margin-bottom: .8rem; }
+    .review-card.pending { border-left: 3px solid #ff9800; }
+    .review-card.approved-review { border-left: 3px solid #4caf50; }
+    .review-stars { color: #c8a96e; font-size: .9rem; letter-spacing: 1px; }
+    .review-meta { font-size: .72rem; color: #555; margin-top: .3rem; }
+    .review-body { font-size: .85rem; color: #aaa; margin-top: .5rem; line-height: 1.4; }
+    .review-actions { margin-top: .6rem; display: flex; gap: .5rem; }
+    .review-actions button { font-size: .72rem; padding: .3rem .7rem; border-radius: 4px; cursor: pointer; border: none; }
+    .btn-approve-review { background: #2e7d32; color: #fff; }
+    .btn-reject-review { background: #c62828; color: #fff; }
+    .btn-feature-review { background: #1565c0; color: #fff; }
+    .referrer-bar { height: 18px; background: linear-gradient(90deg, #c8a96e, #a0803a); border-radius: 3px; min-width: 4px; display: inline-block; vertical-align: middle; }
 
     /* ── Products Section ── */
     .products-grid {
@@ -694,6 +713,8 @@
       .nav-tab { padding: .4rem .6rem; font-size: .72rem; }
       .charts-row { grid-template-columns: 1fr; }
       .analytics-stats { grid-template-columns: 1fr 1fr; }
+      .analytics-stats-6 { grid-template-columns: 1fr 1fr; }
+      .analytics-row { grid-template-columns: 1fr; }
     }
 
     /* ── Product profit grid ────────────────────────────────────── */
@@ -783,13 +804,14 @@
   <div class="topbar">
     <div class="topbar-logo">DUBIS<span class="logo-tm">™</span></div>
     <nav class="topbar-nav">
-      <button class="nav-tab active" id="nav-orders"    onclick="showSection('orders',this)">📋 Orders</button>
-      <button class="nav-tab" id="nav-analytics" onclick="showSection('analytics',this)">📊 Analytics</button>
-      <button class="nav-tab" id="nav-users"     onclick="showSection('users',this)">👥 Users</button>
-      <button class="nav-tab" id="nav-coupons"   onclick="showSection('coupons',this)">🏷️ Coupons</button>
-      <button class="nav-tab" id="nav-products"  onclick="showSection('products',this)">🛍️ Products</button>
-      <button class="nav-tab" id="nav-tasks"     onclick="showSection('tasks',this)">🤖 Tasks</button>
-      <button class="nav-tab" id="nav-agents"    onclick="showSection('agents',this)">🧠 Agents</button>
+      <button class="nav-tab active" id="nav-orders"    onclick="showSection('orders',this)">📋 הזמנות</button>
+      <button class="nav-tab" id="nav-analytics" onclick="showSection('analytics',this)">📊 אנליטיקס</button>
+      <button class="nav-tab" id="nav-users"     onclick="showSection('users',this)">👥 משתמשים</button>
+      <button class="nav-tab" id="nav-coupons"   onclick="showSection('coupons',this)">🏷️ קופונים</button>
+      <button class="nav-tab" id="nav-products"  onclick="showSection('products',this)">🛍️ מוצרים</button>
+      <button class="nav-tab" id="nav-reviews"   onclick="showSection('reviews',this)">⭐ ביקורות</button>
+      <button class="nav-tab" id="nav-tasks"     onclick="showSection('tasks',this)">🤖 משימות</button>
+      <button class="nav-tab" id="nav-agents"    onclick="showSection('agents',this)">🧠 סוכנים</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -884,34 +906,141 @@
     </div>
   </div><!-- /section-orders -->
 
-  <!-- ══ ANALYTICS SECTION ════════════════════════════════ -->
-  <div id="section-analytics" style="display:none">
+  <!-- ══ ANALYTICS SECTION (Enhanced) ════════════════════ -->
+  <div id="section-analytics" style="display:none" dir="rtl">
+
+    <!-- ── סקירת תנועה ── -->
+    <div class="analytics-section-title">📊 סקירת תנועה באתר</div>
     <div class="analytics-stats">
       <div class="stat-card">
-        <div class="stat-label">Total Page Views</div>
+        <div class="stat-label">סה״כ צפיות</div>
         <div class="stat-value" id="av-total">—</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Views Today</div>
+        <div class="stat-label">צפיות היום</div>
         <div class="stat-value" id="av-today">—</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Last 30 Days</div>
+        <div class="stat-label">30 ימים אחרונים</div>
         <div class="stat-value" id="av-month">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">מגמת 7 ימים</div>
+        <div class="stat-value" id="av-trend">—</div>
+        <div class="stat-sub" id="av-trend-pct"></div>
       </div>
     </div>
     <div class="analytics-chart">
-      <div class="chart-title">Page Views — Last 30 Days</div>
+      <div class="chart-title">צפיות בעמודים — 30 ימים אחרונים</div>
       <canvas id="chart-pageviews"></canvas>
     </div>
-    <div class="chart-card">
-      <div class="chart-title">Top Pages (Last 30 Days)</div>
-      <table class="top-pages-table" id="top-pages-table">
-        <thead><tr><th>Page</th><th>Views</th><th style="width:120px">Share</th></tr></thead>
-        <tbody id="top-pages-body"></tbody>
-      </table>
+    <div class="analytics-row">
+      <div class="chart-card">
+        <div class="chart-title">העמודים הפופולריים (30 ימים)</div>
+        <table class="top-pages-table" id="top-pages-table">
+          <thead><tr><th>עמוד</th><th>צפיות</th><th style="width:120px">נתח</th></tr></thead>
+          <tbody id="top-pages-body"></tbody>
+        </table>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">מקורות תנועה</div>
+        <table class="top-pages-table" id="referrers-table">
+          <thead><tr><th>מקור</th><th>ביקורים</th><th style="width:120px">נתח</th></tr></thead>
+          <tbody id="referrers-body"></tbody>
+        </table>
+      </div>
     </div>
+
+    <!-- ── מכירות והכנסות ── -->
+    <div class="analytics-section-title">💰 מכירות והכנסות</div>
+    <div class="analytics-stats">
+      <div class="stat-card">
+        <div class="stat-label">סה״כ הזמנות</div>
+        <div class="stat-value" id="av-orders">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">סה״כ הכנסות</div>
+        <div class="stat-value" id="av-revenue">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">ממוצע להזמנה</div>
+        <div class="stat-value" id="av-aov">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">אחוז המרה</div>
+        <div class="stat-value" id="av-conversion">—</div>
+      </div>
+    </div>
+    <div class="analytics-chart">
+      <div class="chart-title">הכנסות — 30 ימים אחרונים</div>
+      <canvas id="chart-revenue-30"></canvas>
+    </div>
+    <div class="analytics-row">
+      <div class="chart-card">
+        <div class="chart-title">המוצרים הנמכרים ביותר</div>
+        <table class="top-pages-table" id="bestsellers-table">
+          <thead><tr><th>מוצר</th><th>כמות</th><th>הכנסה</th></tr></thead>
+          <tbody id="bestsellers-body"></tbody>
+        </table>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">הזמנות לפי סטטוס</div>
+        <canvas id="chart-order-status" style="max-height:160px"></canvas>
+      </div>
+    </div>
+
+    <!-- ── שיווק ומעורבות ── -->
+    <div class="analytics-section-title">📢 שיווק ומעורבות</div>
+    <div class="analytics-stats-6">
+      <div class="stat-card">
+        <div class="stat-label">מנויי ניוזלטר</div>
+        <div class="stat-value" id="av-subs">—</div>
+        <div class="stat-sub" id="av-subs-recent"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">ביקורות לקוחות</div>
+        <div class="stat-value" id="av-reviews">—</div>
+        <div class="stat-sub" id="av-reviews-pending"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">דירוג ממוצע</div>
+        <div class="stat-value" id="av-avg-rating">—</div>
+      </div>
+    </div>
+    <div class="analytics-row">
+      <div class="chart-card">
+        <div class="chart-title">צמיחת מנויים — 30 ימים אחרונים</div>
+        <canvas id="chart-subs-30"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">ביצועי קופונים</div>
+        <table class="top-pages-table" id="coupon-stats-table">
+          <thead><tr><th>קוד</th><th>שימושים</th><th>הנחות שניתנו</th><th>סטטוס</th></tr></thead>
+          <tbody id="coupon-stats-body"></tbody>
+        </table>
+      </div>
+    </div>
+
   </div><!-- /section-analytics -->
+
+  <!-- ══ REVIEWS SECTION ═══════════════════════════════════ -->
+  <div id="section-reviews" style="display:none" dir="rtl">
+    <div class="filters" style="justify-content:space-between;align-items:center">
+      <h2 style="margin:0;font-size:1.1rem;color:#e8e0d5">⭐ ביקורות לקוחות</h2>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <select id="reviews-filter" onchange="filterReviews()" style="background:#1a1a1a;border:1px solid #2a2a2a;color:#e8e0d5;padding:.4rem .8rem;border-radius:6px;font-size:.8rem">
+          <option value="all">כל הביקורות</option>
+          <option value="pending">ממתינות לאישור</option>
+          <option value="approved">מאושרות</option>
+          <option value="featured">מומלצות</option>
+        </select>
+        <span class="users-count" id="reviews-count"></span>
+      </div>
+    </div>
+    <div id="reviews-list" style="margin-top:1rem">
+      <div class="loading" id="reviews-loading">טוען ביקורות… ⭐</div>
+    </div>
+  </div><!-- /section-reviews -->
 
   <!-- ══ USERS SECTION ═══════════════════════════════════ -->
   <div id="section-users" style="display:none">
@@ -1814,12 +1943,15 @@
   let _analyticsLoaded = false;
   let _productsLoaded = false;
 
+  let _reviewsLoaded = false;
+
   function showSection(name, btn) {
     document.getElementById('section-orders').style.display    = name === 'orders'    ? '' : 'none';
     document.getElementById('section-users').style.display     = name === 'users'     ? '' : 'none';
     document.getElementById('section-coupons').style.display   = name === 'coupons'   ? '' : 'none';
     document.getElementById('section-analytics').style.display = name === 'analytics' ? '' : 'none';
     document.getElementById('section-products').style.display  = name === 'products'  ? '' : 'none';
+    document.getElementById('section-reviews').style.display   = name === 'reviews'   ? '' : 'none';
     document.getElementById('section-tasks').style.display     = name === 'tasks'     ? '' : 'none';
     document.getElementById('section-agents').style.display    = name === 'agents'    ? '' : 'none';
     if (name === 'tasks') loadTasks();
@@ -1830,6 +1962,7 @@
     if (name === 'users' && !_usersLoaded) { _usersLoaded = true; loadUsers(); }
     if (name === 'analytics' && !_analyticsLoaded) { _analyticsLoaded = true; loadAnalytics(); }
     if (name === 'products' && !_productsLoaded) { _productsLoaded = true; loadProducts(); }
+    if (name === 'reviews' && !_reviewsLoaded) { _reviewsLoaded = true; loadReviews(); }
   }
 
   // ── Users: Load ───────────────────────────────────────
@@ -2444,8 +2577,22 @@
     } catch (e) {}
   }
 
-  // ── Analytics ─────────────────────────────────────────
+  // ── Analytics (Enhanced) ──────────────────────────────
   let _pageviewsChart = null;
+  let _revenueChart = null;
+  let _orderStatusChart = null;
+  let _subsChart = null;
+  let _analyticsData = null;
+
+  const chartDefaults = {
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#555', maxTicksLimit: 10, font: { size: 10 } }, grid: { color: '#1a1a1a' } },
+      y: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: '#1a1a1a' } }
+    }
+  };
+
+  function fmtDate(d) { const p = d.split('-'); return `${p[1]}/${p[2]}`; }
 
   async function loadAnalytics() {
     const { data: { session } } = await _sb.auth.getSession();
@@ -2458,33 +2605,36 @@
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      _analyticsData = data;
 
-      document.getElementById('av-total').textContent = data.totalViews.toLocaleString();
-      document.getElementById('av-today').textContent = data.todayViews.toLocaleString();
+      // ── TRAFFIC ──
+      document.getElementById('av-total').textContent = (data.totalViews || 0).toLocaleString();
+      document.getElementById('av-today').textContent = (data.todayViews || 0).toLocaleString();
       const monthTotal = (data.viewsPerDay || []).reduce((s,d) => s + d.views, 0);
       document.getElementById('av-month').textContent = monthTotal.toLocaleString();
 
+      // 7-day trend
+      const trend = data.viewsTrend || {};
+      document.getElementById('av-trend').textContent = (trend.current || 0).toLocaleString();
+      if (trend.previous > 0) {
+        const pct = Math.round(((trend.current - trend.previous) / trend.previous) * 100);
+        const el = document.getElementById('av-trend-pct');
+        el.className = pct >= 0 ? 'trend-up' : 'trend-down';
+        el.textContent = `${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}% מול שבוע קודם`;
+      }
+
       // Page views chart
       if (_pageviewsChart) _pageviewsChart.destroy();
-      const labels = (data.viewsPerDay || []).map(d => { const p = d.date.split('-'); return `${p[1]}/${p[2]}`; });
+      const labels = (data.viewsPerDay || []).map(d => fmtDate(d.date));
       const values = (data.viewsPerDay || []).map(d => d.views);
       _pageviewsChart = new Chart(document.getElementById('chart-pageviews'), {
         type: 'bar',
-        data: {
-          labels,
-          datasets: [{ label: 'Page Views', data: values, backgroundColor: 'rgba(200,169,110,.6)', borderRadius: 3 }]
-        },
-        options: {
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { ticks: { color: '#555', maxTicksLimit: 10, font: { size: 10 } }, grid: { color: '#1a1a1a' } },
-            y: { ticks: { color: '#888', font: { size: 10 } }, grid: { color: '#1a1a1a' } }
-          }
-        }
+        data: { labels, datasets: [{ label: 'Page Views', data: values, backgroundColor: 'rgba(200,169,110,.6)', borderRadius: 3 }] },
+        options: chartDefaults
       });
 
-      // Top pages table
-      const maxViews = (data.topPages[0]?.views || 1);
+      // Top pages
+      const maxViews = (data.topPages?.[0]?.views || 1);
       document.getElementById('top-pages-body').innerHTML = (data.topPages || []).map(p => `
         <tr>
           <td style="font-family:monospace;font-size:.8rem;color:#aaa">${p.path}</td>
@@ -2492,8 +2642,194 @@
           <td><div class="page-bar" style="width:${Math.round(p.views/maxViews*100)}%"></div></td>
         </tr>`).join('');
 
+      // Referrers
+      const maxRef = (data.topReferrers?.[0]?.count || 1);
+      document.getElementById('referrers-body').innerHTML = (data.topReferrers || []).map(r => `
+        <tr>
+          <td style="font-size:.82rem;color:#aaa">${r.source}</td>
+          <td style="color:#c8a96e;font-weight:600">${r.count}</td>
+          <td><div class="page-bar" style="width:${Math.round(r.count/maxRef*100)}%"></div></td>
+        </tr>`).join('');
+
+      // ── SALES ──
+      document.getElementById('av-orders').textContent = (data.totalOrders || 0).toLocaleString();
+      document.getElementById('av-revenue').textContent = '$' + (data.totalRevenue || 0).toLocaleString();
+      document.getElementById('av-aov').textContent = '$' + (data.avgOrderValue || 0).toFixed(2);
+      document.getElementById('av-conversion').textContent = (data.conversionRate || 0) + '%';
+
+      // Revenue chart
+      if (_revenueChart) _revenueChart.destroy();
+      const revLabels = (data.revenuePerDay || []).map(d => fmtDate(d.date));
+      const revValues = (data.revenuePerDay || []).map(d => d.revenue);
+      _revenueChart = new Chart(document.getElementById('chart-revenue-30'), {
+        type: 'line',
+        data: {
+          labels: revLabels,
+          datasets: [{
+            label: 'Revenue ($)',
+            data: revValues,
+            borderColor: '#c8a96e',
+            backgroundColor: 'rgba(200,169,110,.15)',
+            fill: true,
+            tension: .3,
+            pointRadius: 2
+          }]
+        },
+        options: chartDefaults
+      });
+
+      // Best sellers
+      document.getElementById('bestsellers-body').innerHTML = (data.bestSellers || []).map(p => `
+        <tr>
+          <td style="font-size:.82rem;color:#aaa">${p.name}</td>
+          <td style="color:#c8a96e;font-weight:600">${p.qty}</td>
+          <td style="color:#4caf50;font-weight:600">$${p.revenue}</td>
+        </tr>`).join('') || '<tr><td colspan="3" style="color:#555;text-align:center;padding:1rem">אין הזמנות עדיין</td></tr>';
+
+      // Order status doughnut
+      if (_orderStatusChart) _orderStatusChart.destroy();
+      const statusMap = data.ordersByStatus || {};
+      const statusLabels = Object.keys(statusMap);
+      const statusValues = Object.values(statusMap);
+      const statusColors = { pending: '#ff9800', in_production: '#2196f3', shipped: '#9c27b0', delivered: '#4caf50', cancelled: '#e74c3c' };
+      const statusHebrew = { pending: 'ממתין', in_production: 'בייצור', shipped: 'נשלח', delivered: 'נמסר', cancelled: 'בוטל' };
+      _orderStatusChart = new Chart(document.getElementById('chart-order-status'), {
+        type: 'doughnut',
+        data: {
+          labels: statusLabels.map(s => statusHebrew[s] || s.replace('_', ' ')),
+          datasets: [{ data: statusValues, backgroundColor: statusLabels.map(s => statusColors[s] || '#666'), borderWidth: 0 }]
+        },
+        options: {
+          plugins: { legend: { display: true, position: 'right', labels: { color: '#888', font: { size: 11 } } } },
+          cutout: '60%'
+        }
+      });
+
+      // ── MARKETING ──
+      document.getElementById('av-subs').textContent = (data.totalSubscribers || 0).toLocaleString();
+      document.getElementById('av-subs-recent').textContent = `+${data.recentSubscribers || 0} החודש`;
+      document.getElementById('av-reviews').textContent = (data.totalReviews || 0).toLocaleString();
+      document.getElementById('av-reviews-pending').textContent = `${data.pendingReviews || 0} ממתינות`;
+      document.getElementById('av-avg-rating').textContent = data.avgRating > 0 ? `${'★'.repeat(Math.round(data.avgRating))} ${data.avgRating}` : 'אין ביקורות';
+
+      // Subscribers chart
+      if (_subsChart) _subsChart.destroy();
+      const subLabels = (data.subscribersPerDay || []).map(d => fmtDate(d.date));
+      const subValues = (data.subscribersPerDay || []).map(d => d.count);
+      _subsChart = new Chart(document.getElementById('chart-subs-30'), {
+        type: 'bar',
+        data: { labels: subLabels, datasets: [{ label: 'New Subscribers', data: subValues, backgroundColor: 'rgba(76,175,80,.6)', borderRadius: 3 }] },
+        options: chartDefaults
+      });
+
+      // Coupon stats
+      document.getElementById('coupon-stats-body').innerHTML = (data.couponStats || []).map(c => `
+        <tr>
+          <td style="font-family:monospace;font-size:.82rem;color:#c8a96e;font-weight:600">${c.code}</td>
+          <td style="color:#aaa">${c.orderUses || c.uses || 0}</td>
+          <td style="color:#e74c3c">${c.discountTotal > 0 ? '-$' + c.discountTotal : '—'}</td>
+          <td><span style="color:${c.enabled ? '#4caf50' : '#e74c3c'};font-size:.75rem">${c.enabled ? 'פעיל' : 'כבוי'}</span></td>
+        </tr>`).join('') || '<tr><td colspan="4" style="color:#555;text-align:center;padding:1rem">אין קופונים</td></tr>';
+
     } catch(e) {
       console.error('Analytics error:', e);
+    }
+  }
+
+  // ── Reviews Management ──────────────────────────────
+  let _allReviews = [];
+
+  async function loadReviews() {
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return;
+
+    try {
+      const res = await fetch('/api/admin/analytics', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      _allReviews = data.reviews || [];
+      renderReviews(_allReviews);
+      document.getElementById('reviews-loading').style.display = 'none';
+    } catch(e) {
+      console.error('Reviews load error:', e);
+      document.getElementById('reviews-loading').textContent = 'Error loading reviews.';
+    }
+  }
+
+  function filterReviews() {
+    const filter = document.getElementById('reviews-filter').value;
+    let filtered = _allReviews;
+    if (filter === 'pending') filtered = _allReviews.filter(r => !r.approved);
+    else if (filter === 'approved') filtered = _allReviews.filter(r => r.approved);
+    else if (filter === 'featured') filtered = _allReviews.filter(r => r.featured);
+    renderReviews(filtered);
+  }
+
+  function renderReviews(reviews) {
+    const list = document.getElementById('reviews-list');
+    document.getElementById('reviews-count').textContent = `${reviews.length} ביקורות`;
+
+    if (reviews.length === 0) {
+      list.innerHTML = '<div style="text-align:center;color:#555;padding:2rem">אין ביקורות עדיין. ביקורות מלקוחות יופיעו כאן לאישור.</div>';
+      return;
+    }
+
+    list.innerHTML = reviews.map(r => {
+      const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
+      const date = new Date(r.created_at).toLocaleDateString('en-GB');
+      const statusClass = r.approved ? 'approved-review' : 'pending';
+      const statusBadge = r.approved
+        ? '<span style="color:#4caf50;font-size:.7rem">✓ מאושר</span>'
+        : '<span style="color:#ff9800;font-size:.7rem">⏳ ממתין</span>';
+      const featuredBadge = r.featured ? ' <span style="color:#1565c0;font-size:.7rem">⭐ מומלץ</span>' : '';
+      const verifiedBadge = r.verified_purchase ? ' <span style="color:#9c27b0;font-size:.7rem">✓ רכישה מאומתת</span>' : '';
+
+      return `
+        <div class="review-card ${statusClass}">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <span class="review-stars">${stars}</span>
+              ${r.title ? `<strong style="color:#e8e0d5;margin-left:.5rem">${r.title}</strong>` : ''}
+            </div>
+            <div>${statusBadge}${featuredBadge}${verifiedBadge}</div>
+          </div>
+          <div class="review-meta">${r.reviewer_name} · ${r.product_name} · ${date}${r.reviewer_email ? ` · ${r.reviewer_email}` : ''}</div>
+          ${r.body ? `<div class="review-body">${r.body}</div>` : ''}
+          <div class="review-actions">
+            ${!r.approved ? `<button class="btn-approve-review" onclick="updateReview('${r.id}', {approved:true})">✓ אשר</button>` : `<button class="btn-reject-review" onclick="updateReview('${r.id}', {approved:false})">✕ בטל אישור</button>`}
+            ${!r.featured ? `<button class="btn-feature-review" onclick="updateReview('${r.id}', {featured:true})">⭐ הדגש</button>` : `<button style="background:#555;color:#fff;font-size:.72rem;padding:.3rem .7rem;border-radius:4px;cursor:pointer;border:none" onclick="updateReview('${r.id}', {featured:false})">בטל הדגשה</button>`}
+            <button style="background:#c62828;color:#fff;font-size:.72rem;padding:.3rem .7rem;border-radius:4px;cursor:pointer;border:none" onclick="deleteReview('${r.id}')">🗑 מחק</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  async function updateReview(id, updates) {
+    try {
+      updates.updated_at = new Date().toISOString();
+      const { error } = await _sb.from('product_reviews').update(updates).eq('id', id);
+      if (error) throw error;
+      // Refresh
+      const idx = _allReviews.findIndex(r => r.id === id);
+      if (idx >= 0) Object.assign(_allReviews[idx], updates);
+      filterReviews();
+    } catch(e) {
+      alert('שגיאה בעדכון ביקורת: ' + e.message);
+    }
+  }
+
+  async function deleteReview(id) {
+    if (!confirm('למחוק את הביקורת הזו לצמיתות?')) return;
+    try {
+      const { error } = await _sb.from('product_reviews').delete().eq('id', id);
+      if (error) throw error;
+      _allReviews = _allReviews.filter(r => r.id !== id);
+      filterReviews();
+    } catch(e) {
+      alert('שגיאה במחיקת ביקורת: ' + e.message);
     }
   }
 </script>
