@@ -3022,9 +3022,10 @@
 
     // Social media stats from agent_tasks
     try {
-      const { data: tasks } = await window._supabase.from('agent_tasks').select('id,status,title,content_data,scheduled_date,created_at').order('created_at', { ascending: false });
+      const { data: tasks, error: tasksErr } = await window._supabase.from('agent_tasks').select('id,status,title,content_data,due_date,created_at').order('created_at', { ascending: false });
+      if (tasksErr) console.error('agent_tasks query error:', tasksErr);
       if (tasks) {
-        const published = tasks.filter(t => t.status === 'done' && t.content_data?.instagram_post_id);
+        const published = tasks.filter(t => t.status === 'done');
         const pending = tasks.filter(t => t.status === 'pending_approval');
         const approved = tasks.filter(t => t.status === 'approved');
         const backlog = tasks.filter(t => t.status === 'backlog');
@@ -3033,10 +3034,16 @@
         document.getElementById('ig-posts-pending').textContent = pending.length;
         document.getElementById('ig-posts-approved').textContent = approved.length;
 
-        // Next post to publish
-        if (approved.length > 0) {
-          const next = approved[0];
-          document.getElementById('ig-next-post').textContent = (next.title || '').substring(0, 25) + '…';
+        // Next post to publish — find earliest due_date among approved/pending
+        const upcoming = [...approved, ...pending].filter(t => t.due_date).sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+        if (upcoming.length > 0) {
+          const nextDate = new Date(upcoming[0].due_date);
+          const localStr = nextDate.toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+          document.getElementById('ig-next-post').textContent = localStr;
+          document.getElementById('ig-next-post').style.color = '#4caf50';
+        } else if (approved.length > 0) {
+          document.getElementById('ig-next-post').textContent = approved.length + ' מוכנים לפרסום';
+          document.getElementById('ig-next-post').style.color = '#4caf50';
         } else if (pending.length > 0) {
           document.getElementById('ig-next-post').textContent = pending.length + ' ממתינים לאישור';
           document.getElementById('ig-next-post').style.color = '#ff9800';
@@ -3074,7 +3081,7 @@
 
       // Find tasks scheduled for this day
       const dayTasks = tasks.filter(t => {
-        if (t.scheduled_date) return t.scheduled_date === dateStr;
+        if (t.due_date) return t.due_date.substring(0, 10) === dateStr;
         // Also show tasks by title pattern (e.g. "Week 8 — Tuesday")
         const dayOfWeek = d.toLocaleDateString('en', { weekday: 'long' });
         return t.title && t.title.includes(dayOfWeek) && (t.status === 'approved' || t.status === 'pending_approval');
