@@ -3160,11 +3160,22 @@
       const data = await res.json();
       if (data.success) {
         const parts = [];
-        if (data.instagram_post_id) parts.push('Instagram ✅ ' + data.instagram_post_id);
-        if (data.facebook_post_id)  parts.push('Facebook ✅ '  + data.facebook_post_id);
+        if (data.instagram_post_id) parts.push('Instagram ✅');
+        if (data.facebook_post_id)  parts.push('Facebook ✅');
         if (data.tiktok_note)       parts.push('TikTok ⚠️ '    + data.tiktok_note);
-        if (data.errors?.length)    parts.push('שגיאות: '       + data.errors.join(', '));
-        alert('פורסם!\n' + parts.join('\n'));
+        if (data.errors?.length)    parts.push('⚠️ ' + data.errors.join(', '));
+        // If Facebook failed but Instagram worked — show manual FB option
+        if (data.facebook_manual_needed && data.instagram_post_id) {
+          const fbCaption = encodeURIComponent(caption);
+          const fbUrl = `https://www.facebook.com/dubis.100k/?sk=publish`;
+          parts.push('\n📘 פייסבוק נכשל — לחץ אישור ואז שתף ידנית בעמוד הפייסבוק');
+          alert('תוצאות פרסום:\n' + parts.join('\n'));
+          window.open(fbUrl, '_blank');
+          // Copy caption to clipboard for easy paste
+          navigator.clipboard.writeText(caption).catch(()=>{});
+        } else {
+          alert('פורסם!\n' + parts.join('\n'));
+        }
         closePublishModal();
         closeTaskDetail();
         loadTasks();

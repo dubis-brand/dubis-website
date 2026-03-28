@@ -554,27 +554,31 @@ Return ONLY valid JSON (no markdown):
 
         // ── Facebook Page (requires pages_manage_posts + pages_read_engagement) ──
         if (doFacebook) {
-            const fbToken = process.env.FACEBOOK_PAGE_TOKEN || process.env.INSTAGRAM_ACCESS_TOKEN;
-            if (!fbToken) {
+            // Try multiple token sources: dedicated FB token, IG token
+            const allTokens = [process.env.FACEBOOK_PAGE_TOKEN, process.env.INSTAGRAM_ACCESS_TOKEN].filter(Boolean);
+            if (!allTokens.length) {
                 result.errors.push('Facebook: חסר FACEBOOK_PAGE_TOKEN ב-Vercel env vars');
             } else {
-                try {
-                    // Auto-detect Page ID: use env var, or discover from token via /me/accounts
-                    let fbPageId = process.env.FACEBOOK_PAGE_ID;
-                    let pageToken = fbToken;
-                    if (!fbPageId) {
-                        // Try to get page list from user token
-                        const acctRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?access_token=${fbToken}`);
+                let fbPublished = false;
+                for (const tryToken of allTokens) {
+                    if (fbPublished) break;
+                    try {
+                        // ALWAYS try /me/accounts to get page-specific token (often has more permissions)
+                        let fbPageId = process.env.FACEBOOK_PAGE_ID;
+                        let pageToken = tryToken;
+                        const acctRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?access_token=${tryToken}`);
                         const acctData = await acctRes.json();
                         if (acctData.data?.length) {
-                            fbPageId = acctData.data[0].id;
-                            pageToken = acctData.data[0].access_token || fbToken;
-                            console.log(`📘 Auto-detected FB Page: ${acctData.data[0].name} (${fbPageId})`);
+                            const targetPage = fbPageId
+                                ? acctData.data.find(p => p.id === fbPageId) || acctData.data[0]
+                                : acctData.data[0];
+                            fbPageId = targetPage.id;
+                            pageToken = targetPage.access_token || tryToken;
+                            console.log(`📘 FB Page from /me/accounts: ${targetPage.name} (${fbPageId})`);
                         }
-                    }
-                    if (!fbPageId) {
-                        result.errors.push('Facebook: לא נמצא דף פייסבוק. הוסף FACEBOOK_PAGE_ID ב-Vercel.');
-                    } else {
+                        if (!fbPageId) continue; // try next token
+
+                        // Try /photos endpoint first (image post)
                         const fbRes = await fetch(`https://graph.facebook.com/v21.0/${fbPageId}/photos`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -582,18 +586,39 @@ Return ONLY valid JSON (no markdown):
                         });
                         const fbData = await fbRes.json();
                         if (!fbRes.ok || fbData.error) {
-                            const errMsg = fbData.error?.message || 'publish failed';
-                            if (errMsg.includes('permission') || fbData.error?.code === 200 || fbData.error?.code === 240) {
-                                result.errors.push('Facebook: הטוקן חסר הרשאת pages_manage_posts. יש להיכנס ל-Meta Business Suite → הגדרות → אפליקציות → ולהוסיף את ההרשאה.');
+                            // If /photos fails, try /feed endpoint as fallback
+                            console.log(`📘 FB /photos failed: ${fbData.error?.message}, trying /feed...`);
+                            const feedRes = await fetch(`https://graph.facebook.com/v21.0/${fbPageId}/feed`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ message: caption, link: image_url, published: true, access_token: pageToken }),
+                            });
+                            const feedData = await feedRes.json();
+                            if (!feedRes.ok || feedData.error) {
+                                const errMsg = feedData.error?.message || fbData.error?.message || 'publish failed';
+                                console.log(`📘 FB /feed also failed: ${errMsg}`);
+                                // Only add error if this is the last token to try
+                                if (tryToken === allTokens[allTokens.length - 1]) {
+                                    result.errors.push('Facebook: ' + errMsg);
+                                    result.facebook_manual_needed = true;
+                                }
                             } else {
-                                result.errors.push('Facebook: ' + errMsg);
+                                result.facebook_post_id = feedData.id;
+                                fbPublished = true;
+                                console.log(`✅ Facebook published via /feed | ID: ${feedData.id}`);
                             }
                         } else {
                             result.facebook_post_id = fbData.post_id || fbData.id;
-                            console.log(`✅ Facebook published | ID: ${result.facebook_post_id}`);
+                            fbPublished = true;
+                            console.log(`✅ Facebook published via /photos | ID: ${result.facebook_post_id}`);
+                        }
+                    } catch(e) {
+                        if (tryToken === allTokens[allTokens.length - 1]) {
+                            result.errors.push('Facebook: ' + e.message);
+                            result.facebook_manual_needed = true;
                         }
                     }
-                } catch(e) { result.errors.push('Facebook: ' + e.message); }
+                }
             }
         }
 
