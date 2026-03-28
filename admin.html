@@ -513,6 +513,32 @@
     .btn-feature-review { background: #1565c0; color: #fff; }
     .referrer-bar { height: 18px; background: linear-gradient(90deg, #c8a96e, #a0803a); border-radius: 3px; min-width: 4px; display: inline-block; vertical-align: middle; }
 
+    /* ── Goals & Growth Dashboard ── */
+    .goal-banner { background: linear-gradient(135deg, #1a1200, #0d1a00); border: 1px solid #2a2200; border-radius: 12px; padding: 1.2rem 1.5rem; margin-bottom: 1.5rem; }
+    .goal-title { font-size: .9rem; color: #c8a96e; font-weight: 700; margin-bottom: .8rem; }
+    .goal-progress-wrap { display: flex; align-items: center; gap: 1rem; }
+    .goal-progress-bar { flex: 1; height: 22px; background: #1a1a1a; border-radius: 11px; overflow: hidden; position: relative; }
+    .goal-progress-fill { height: 100%; border-radius: 11px; background: linear-gradient(90deg, #c8a96e, #4caf50); transition: width .5s; }
+    .goal-progress-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: .7rem; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+    .goal-amt { font-size: 1.1rem; font-weight: 700; color: #c8a96e; min-width: 100px; text-align: left; }
+    .budget-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .8rem; margin-top: .8rem; }
+    .budget-item { background: #141414; border-radius: 8px; padding: .8rem; text-align: center; }
+    .budget-label { font-size: .65rem; color: #555; letter-spacing: 1px; text-transform: uppercase; }
+    .budget-val { font-size: 1.2rem; font-weight: 700; margin-top: .3rem; }
+    .content-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: .4rem; margin-top: .8rem; }
+    .cal-day { background: #141414; border: 1px solid #1e1e1e; border-radius: 6px; padding: .4rem; min-height: 60px; font-size: .65rem; }
+    .cal-day-name { color: #555; font-size: .6rem; text-align: center; font-weight: 700; margin-bottom: .3rem; }
+    .cal-day.today { border-color: #c8a96e; }
+    .cal-post { background: #1a2a1a; border-radius: 3px; padding: .2rem .3rem; margin-top: .2rem; font-size: .58rem; color: #4caf50; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
+    .cal-post.pending-post { background: #2a2a1a; color: #ff9800; }
+    .social-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+    .social-card { background: #141414; border: 1px solid #1e1e1e; border-radius: 10px; padding: 1rem 1.2rem; }
+    .social-card h4 { font-size: .8rem; color: #c8a96e; margin-bottom: .6rem; }
+    .social-metric { display: flex; justify-content: space-between; padding: .3rem 0; font-size: .78rem; border-bottom: 1px solid #1a1a1a; }
+    .social-metric:last-child { border-bottom: none; }
+    .social-metric span:first-child { color: #888; }
+    .social-metric span:last-child { color: #c8a96e; font-weight: 600; }
+
     /* ── Products Section ── */
     .products-grid {
       display: grid;
@@ -815,7 +841,7 @@
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
-      <button class="btn-sm" onclick="adminLogout()">Sign out</button>
+      <button class="btn-sm" onclick="adminLogout()">התנתק</button>
     </div>
   </div>
 
@@ -825,27 +851,27 @@
   <div id="section-orders">
     <div class="stats-grid" id="stats-grid">
       <div class="stat-card">
-        <div class="stat-label">Active Orders</div>
+        <div class="stat-label">הזמנות פעילות</div>
         <div class="stat-value" id="stat-total">—</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Total Revenue</div>
+        <div class="stat-label">סה״כ הכנסות</div>
         <div class="stat-value" id="stat-revenue">—</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Today's Revenue</div>
+        <div class="stat-label">הכנסות היום</div>
         <div class="stat-value" id="stat-today">—</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Pending</div>
+        <div class="stat-label">ממתינות</div>
         <div class="stat-value" id="stat-pending">—</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">In Production</div>
+        <div class="stat-label">בייצור</div>
         <div class="stat-value" id="stat-production">—</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Shipped</div>
+        <div class="stat-label">נשלחו</div>
         <div class="stat-value" id="stat-shipped">—</div>
       </div>
     </div>
@@ -853,47 +879,47 @@
     <!-- Charts -->
     <div class="charts-row">
       <div class="chart-card">
-        <div class="chart-title">Revenue — Last 30 Days</div>
+        <div class="chart-title">הכנסות — 30 ימים אחרונים</div>
         <canvas id="chart-revenue"></canvas>
       </div>
       <div class="chart-card">
-        <div class="chart-title">By Status</div>
+        <div class="chart-title">לפי סטטוס</div>
         <canvas id="chart-status"></canvas>
       </div>
       <div class="chart-card">
-        <div class="chart-title">Items Sold</div>
+        <div class="chart-title">מוצרים שנמכרו</div>
         <canvas id="chart-items"></canvas>
       </div>
     </div>
 
     <div class="filters">
-      <button class="filter-btn active" data-filter="all"    onclick="setFilter('all',this)">All</button>
-      <button class="filter-btn" data-filter="pending"       onclick="setFilter('pending',this)">Pending</button>
-      <button class="filter-btn" data-filter="in_production" onclick="setFilter('in_production',this)">In Production</button>
-      <button class="filter-btn" data-filter="shipped"       onclick="setFilter('shipped',this)">Shipped</button>
-      <button class="filter-btn" data-filter="delivered"     onclick="setFilter('delivered',this)">Delivered</button>
-      <button class="filter-btn" data-filter="cancelled"     onclick="setFilter('cancelled',this)">Cancelled</button>
+      <button class="filter-btn active" data-filter="all"    onclick="setFilter('all',this)">הכל</button>
+      <button class="filter-btn" data-filter="pending"       onclick="setFilter('pending',this)">ממתינות</button>
+      <button class="filter-btn" data-filter="in_production" onclick="setFilter('in_production',this)">בייצור</button>
+      <button class="filter-btn" data-filter="shipped"       onclick="setFilter('shipped',this)">נשלחו</button>
+      <button class="filter-btn" data-filter="delivered"     onclick="setFilter('delivered',this)">נמסרו</button>
+      <button class="filter-btn" data-filter="cancelled"     onclick="setFilter('cancelled',this)">בוטלו</button>
       <input class="search-input" type="text" id="search-input"
-             placeholder="Search email or order ID…" oninput="renderTable()">
+             placeholder="חיפוש לפי אימייל או מספר הזמנה…" oninput="renderTable()" dir="rtl">
     </div>
 
     <div class="table-wrap">
-      <div class="loading" id="table-loading">Loading orders… 🐾</div>
+      <div class="loading" id="table-loading">טוען הזמנות… 🐾</div>
       <table id="orders-table" style="display:none">
         <thead>
           <tr>
-            <th>Date</th>
-            <th>Order ID</th>
-            <th class="hide-mobile">Email</th>
-            <th>Items</th>
-            <th>Status</th>
-            <th>Amount</th>
-            <th class="hide-mobile">Tracking</th>
+            <th>תאריך</th>
+            <th>מס׳ הזמנה</th>
+            <th class="hide-mobile">אימייל</th>
+            <th>פריטים</th>
+            <th>סטטוס</th>
+            <th>סכום</th>
+            <th class="hide-mobile">מעקב</th>
           </tr>
         </thead>
         <tbody id="orders-tbody"></tbody>
       </table>
-      <div class="empty" id="table-empty" style="display:none">No orders found.</div>
+      <div class="empty" id="table-empty" style="display:none">לא נמצאו הזמנות.</div>
     </div>
 
     <!-- Items sold report -->
@@ -908,6 +934,69 @@
 
   <!-- ══ ANALYTICS SECTION (Enhanced) ════════════════════ -->
   <div id="section-analytics" style="display:none" dir="rtl">
+
+    <!-- ── יעדים ותקציב ── -->
+    <div class="analytics-section-title">🎯 יעדי צמיחה ותקציב</div>
+    <div class="goal-banner">
+      <div class="goal-title">יעד: $1,000 רווח חודשי תוך 60 יום</div>
+      <div class="goal-progress-wrap">
+        <div class="goal-progress-bar">
+          <div class="goal-progress-fill" id="goal-fill" style="width:0%"></div>
+          <div class="goal-progress-text" id="goal-pct-text">0%</div>
+        </div>
+        <div class="goal-amt" id="goal-amt">$0 / $1,000</div>
+      </div>
+      <div class="budget-grid">
+        <div class="budget-item">
+          <div class="budget-label">תקציב כולל</div>
+          <div class="budget-val" style="color:#c8a96e">$500</div>
+        </div>
+        <div class="budget-item">
+          <div class="budget-label">הוצאות עד כה</div>
+          <div class="budget-val" style="color:#e74c3c" id="budget-spent">$0</div>
+        </div>
+        <div class="budget-item">
+          <div class="budget-label">נותר</div>
+          <div class="budget-val" style="color:#4caf50" id="budget-remaining">$500</div>
+        </div>
+        <div class="budget-item">
+          <div class="budget-label">ROI</div>
+          <div class="budget-val" style="color:#64b5f6" id="budget-roi">0%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── רשתות חברתיות ── -->
+    <div class="analytics-section-title">📱 רשתות חברתיות</div>
+    <div class="social-stats">
+      <div class="social-card">
+        <h4>📸 אינסטגרם</h4>
+        <div class="social-metric"><span>פוסטים שפורסמו</span><span id="ig-posts-count">—</span></div>
+        <div class="social-metric"><span>פוסטים ממתינים</span><span id="ig-posts-pending">—</span></div>
+        <div class="social-metric"><span>פוסטים מאושרים</span><span id="ig-posts-approved">—</span></div>
+        <div class="social-metric"><span>פרסום הבא</span><span id="ig-next-post" style="color:#4caf50">—</span></div>
+      </div>
+      <div class="social-card">
+        <h4>📘 פייסבוק</h4>
+        <div class="social-metric"><span>סטטוס חיבור</span><span id="fb-status" style="color:#ff9800">בהגדרה</span></div>
+        <div class="social-metric"><span>קמפיין פעיל</span><span id="fb-campaign" style="color:#4caf50">109.97 ₪ / 7 ימים</span></div>
+        <div class="social-metric"><span>יעד הקמפיין</span><span>Post Engagement</span></div>
+        <div class="social-metric"><span>סטטוס מודעה</span><span id="fb-ad-status" style="color:#64b5f6">בסקירה</span></div>
+      </div>
+      <div class="social-card">
+        <h4>📅 לוח תוכן שבועי</h4>
+        <div class="social-metric"><span>אסטרטגיה</span><span>60% EN / 40% HE</span></div>
+        <div class="social-metric"><span>Backlog</span><span id="cal-backlog">—</span></div>
+        <div class="social-metric"><span>ממתינים לאישור</span><span id="cal-pending">—</span></div>
+        <div class="social-metric"><span>מאושרים לפרסום</span><span id="cal-approved" style="color:#4caf50">—</span></div>
+      </div>
+    </div>
+
+    <!-- ── לוח תוכן 7 ימים ── -->
+    <div class="analytics-chart" id="content-cal-wrap">
+      <div class="chart-title">לוח תוכן — 7 ימים הקרובים</div>
+      <div class="content-cal" id="content-calendar"></div>
+    </div>
 
     <!-- ── סקירת תנועה ── -->
     <div class="analytics-section-title">📊 סקירת תנועה באתר</div>
@@ -2744,9 +2833,111 @@
           <td><span style="color:${c.enabled ? '#4caf50' : '#e74c3c'};font-size:.75rem">${c.enabled ? 'פעיל' : 'כבוי'}</span></td>
         </tr>`).join('') || '<tr><td colspan="4" style="color:#555;text-align:center;padding:1rem">אין קופונים</td></tr>';
 
+      // ── GOALS & GROWTH ──
+      loadGoalsAndSocial(data);
+
     } catch(e) {
       console.error('Analytics error:', e);
     }
+  }
+
+  async function loadGoalsAndSocial(analyticsData) {
+    // Revenue goal tracking
+    const monthlyRevenue = analyticsData.totalRevenue || 0;
+    const goalTarget = 1000;
+    const goalPct = Math.min(100, Math.round((monthlyRevenue / goalTarget) * 100));
+    document.getElementById('goal-fill').style.width = goalPct + '%';
+    document.getElementById('goal-pct-text').textContent = goalPct + '%';
+    document.getElementById('goal-amt').textContent = `$${monthlyRevenue.toLocaleString()} / $${goalTarget.toLocaleString()}`;
+
+    // Budget tracking — FB ad spend so far
+    const fbAdSpent = 30; // 109.97 ILS ≈ $30
+    const totalBudget = 500;
+    const spent = fbAdSpent;
+    const remaining = totalBudget - spent;
+    const roi = monthlyRevenue > 0 ? Math.round((monthlyRevenue / spent) * 100) : 0;
+    document.getElementById('budget-spent').textContent = '$' + spent;
+    document.getElementById('budget-remaining').textContent = '$' + remaining;
+    document.getElementById('budget-roi').textContent = roi > 0 ? roi + '%' : '—';
+
+    // Social media stats from agent_tasks
+    try {
+      const { data: tasks } = await window._supabase.from('agent_tasks').select('id,status,title,content_data,scheduled_date,created_at').order('created_at', { ascending: false });
+      if (tasks) {
+        const published = tasks.filter(t => t.status === 'done' && t.content_data?.instagram_post_id);
+        const pending = tasks.filter(t => t.status === 'pending_approval');
+        const approved = tasks.filter(t => t.status === 'approved');
+        const backlog = tasks.filter(t => t.status === 'backlog');
+
+        document.getElementById('ig-posts-count').textContent = published.length;
+        document.getElementById('ig-posts-pending').textContent = pending.length;
+        document.getElementById('ig-posts-approved').textContent = approved.length;
+
+        // Next post to publish
+        if (approved.length > 0) {
+          const next = approved[0];
+          document.getElementById('ig-next-post').textContent = (next.title || '').substring(0, 25) + '…';
+        } else if (pending.length > 0) {
+          document.getElementById('ig-next-post').textContent = pending.length + ' ממתינים לאישור';
+          document.getElementById('ig-next-post').style.color = '#ff9800';
+        } else {
+          document.getElementById('ig-next-post').textContent = 'אין פוסטים מוכנים';
+          document.getElementById('ig-next-post').style.color = '#e74c3c';
+        }
+
+        // Content calendar counts
+        document.getElementById('cal-backlog').textContent = backlog.length;
+        document.getElementById('cal-pending').textContent = pending.length;
+        document.getElementById('cal-approved').textContent = approved.length;
+
+        // Build 7-day calendar
+        buildContentCalendar(tasks);
+      }
+    } catch(e) {
+      console.error('Social stats error:', e);
+    }
+  }
+
+  function buildContentCalendar(tasks) {
+    const cal = document.getElementById('content-calendar');
+    const dayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+    const today = new Date();
+    let html = '';
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      const dateStr = d.toISOString().split('T')[0];
+      const isToday = i === 0;
+      const dayName = dayNames[d.getDay()];
+      const dayNum = d.getDate();
+
+      // Find tasks scheduled for this day
+      const dayTasks = tasks.filter(t => {
+        if (t.scheduled_date) return t.scheduled_date === dateStr;
+        // Also show tasks by title pattern (e.g. "Week 8 — Tuesday")
+        const dayOfWeek = d.toLocaleDateString('en', { weekday: 'long' });
+        return t.title && t.title.includes(dayOfWeek) && (t.status === 'approved' || t.status === 'pending_approval');
+      });
+
+      html += `<div class="cal-day${isToday ? ' today' : ''}">
+        <div class="cal-day-name">${dayName} ${dayNum}</div>`;
+
+      if (dayTasks.length === 0) {
+        html += `<div style="color:#333;font-size:.55rem;text-align:center;margin-top:.5rem">—</div>`;
+      } else {
+        dayTasks.slice(0, 2).forEach(t => {
+          const cls = t.status === 'approved' ? 'cal-post' : 'cal-post pending-post';
+          const label = (t.title || '').replace(/Instagram Week \d+ — \w+:\s*/, '').substring(0, 20);
+          html += `<div class="${cls}" title="${t.title || ''}">${label || 'פוסט'}</div>`;
+        });
+        if (dayTasks.length > 2) {
+          html += `<div style="color:#555;font-size:.5rem;text-align:center">+${dayTasks.length - 2} נוספים</div>`;
+        }
+      }
+      html += '</div>';
+    }
+    cal.innerHTML = html;
   }
 
   // ── Reviews Management ──────────────────────────────
