@@ -3014,8 +3014,11 @@
     // Budget tracking — ad spend from active campaigns
     let adSpendILS = 0;
     try {
-      const { data: activeCampaigns } = await window._supabase.from('ad_campaigns').select('budget').eq('status', 'active');
-      adSpendILS = activeCampaigns ? activeCampaigns.reduce((s, c) => s + Number(c.budget || 0), 0) : 0;
+      const { data: activeCampaigns } = await window._supabase.from('ad_campaigns').select('budget_ils,spend_to_date').eq('status', 'active');
+      adSpendILS = activeCampaigns ? activeCampaigns.reduce((s, c) => {
+        const spent = (c.spend_to_date && c.spend_to_date > 0) ? c.spend_to_date : c.budget_ils;
+        return s + Number(spent || 0);
+      }, 0) : 0;
     } catch(e) { console.error('Campaigns spend error:', e); }
     const adSpendUSD = Math.round((adSpendILS / 3.7) * 100) / 100;
     const totalBudget = 500;
@@ -3028,13 +3031,14 @@
     // Instagram+Facebook active campaign
     try {
       const { data: igCampaigns } = await window._supabase.from('ad_campaigns')
-        .select('budget,duration_days,goal')
+        .select('budget_ils,start_date,end_date')
         .eq('platform', 'instagram_facebook')
         .eq('status', 'active')
         .limit(1);
       if (igCampaigns && igCampaigns.length > 0) {
         const c = igCampaigns[0];
-        document.getElementById('ig-campaign').textContent = `₪${c.budget} / ${c.duration_days} ימים — ${c.goal || 'Boost'}`;
+        const days = (c.start_date && c.end_date) ? Math.round((new Date(c.end_date) - new Date(c.start_date)) / 86400000) : '?';
+        document.getElementById('ig-campaign').textContent = `₪${c.budget_ils} / ${days} ימים`;
       } else {
         document.getElementById('ig-campaign').textContent = '—';
       }
@@ -3042,7 +3046,7 @@
 
     // Social media stats from agent_tasks
     try {
-      const { data: tasks } = await window._supabase.from('agent_tasks').select('id,status,title,content_data,scheduled_date,created_at').order('created_at', { ascending: false });
+      const { data: tasks } = await window._supabase.from('agent_tasks').select('id,status,title,content_data,due_date,created_at').order('created_at', { ascending: false });
       if (tasks) {
         const published = tasks.filter(t => t.status === 'done' && t.content_data?.instagram_post_id);
         const pending = tasks.filter(t => t.status === 'pending_approval');
@@ -3094,7 +3098,7 @@
 
       // Find tasks scheduled for this day
       const dayTasks = tasks.filter(t => {
-        if (t.scheduled_date) return t.scheduled_date === dateStr;
+        if (t.due_date) return t.due_date === dateStr;
         // Also show tasks by title pattern (e.g. "Week 8 — Tuesday")
         const dayOfWeek = d.toLocaleDateString('en', { weekday: 'long' });
         return t.title && t.title.includes(dayOfWeek) && (t.status === 'approved' || t.status === 'pending_approval');
