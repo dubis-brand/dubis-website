@@ -434,7 +434,7 @@ Return ONLY valid JSON (no markdown):
             if (task) {
                 const cd = task.content_data || {};
                 const format = cd.format || 'feed_post';
-                const baseStyle = 'DUBIS Israeli clothing brand for real people, not fashion models. Urban lifestyle photography, authentic diverse people, dark minimal aesthetic, natural lighting, square 1:1 format. No text in image.';
+                const baseStyle = 'Israeli streetwear brand aesthetic. Real authentic diverse people (NOT professional models). Dark minimal urban photography, muted tones with gold/beige accents, concrete and city textures. Plain black/dark oversized clothing WITHOUT any visible text, logos, or brand names on the garments. Natural lighting, candid feel. Square 1:1 format. IMPORTANT: Do NOT render any text, words, letters, or logos anywhere in the image.';
                 if (cd.image_prompt) {
                     // Use the AI-generated visual prompt (created by Gemini for this task)
                     imagePrompt = `${cd.image_prompt}. ${baseStyle}`;
@@ -449,16 +449,32 @@ Return ONLY valid JSON (no markdown):
         }
         if (!imagePrompt) return res.status(400).json({ error: 'prompt or task_id required' });
 
-        // Generate image via Pollinations.ai → download → upload to Supabase Storage
+        // Generate image via Gemini 2.5 Flash Image Generation → upload to Supabase Storage
         // (Supabase URL is permanent & served with correct Content-Type for Instagram API)
-        const encodedPrompt = encodeURIComponent(imagePrompt + '. Fashion photography. No text overlay. No watermark. Photorealistic.');
-        const seed = task_id ? parseInt(task_id.replace(/-/g,'').substring(0,8), 16) % 999999 + 1 : Math.floor(Math.random()*999999);
-        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1080&height=1080&model=flux&seed=${seed}`;
+        const fullPrompt = imagePrompt + '. Fashion photography. Square 1:1 format. No text overlay. No watermark. Photorealistic.';
 
-        // Download image from Pollinations (can take up to 60s to generate)
-        const imgRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(65000) });
-        if (!imgRes.ok) return res.status(500).json({ error: `Pollinations error: ${imgRes.status}` });
-        const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+        const gRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: fullPrompt }] }],
+                    generationConfig: { responseModalities: ['IMAGE', 'TEXT'] }
+                }),
+                signal: AbortSignal.timeout(60000)
+            }
+        );
+        if (!gRes.ok) {
+            const errBody = await gRes.text().catch(() => '');
+            return res.status(500).json({ error: `Gemini error ${gRes.status}: ${errBody.substring(0, 200)}` });
+        }
+        const gData = await gRes.json();
+        const imgPart = gData.candidates?.[0]?.content?.parts?.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+        if (!imgPart?.inlineData) {
+            return res.status(500).json({ error: 'Gemini did not return an image. Try a different prompt.' });
+        }
+        const imgBuffer = Buffer.from(imgPart.inlineData.data, 'base64');
 
         // Upload to Supabase Storage (public bucket ig-images)
         await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
@@ -480,7 +496,7 @@ Return ONLY valid JSON (no markdown):
             }).eq('id', task_id);
         }
 
-        console.log(`🎨 Image generated via Pollinations → uploaded to Supabase | ${fileName}`);
+        console.log(`🎨 Image generated via Gemini → uploaded to Supabase | ${fileName}`);
         return res.status(200).json({ image_url: publicUrl, prompt_used: imagePrompt });
     }
 
@@ -697,7 +713,7 @@ Generate a social media post. Return ONLY valid JSON:
                     // RULE: phrases on clothing are ALWAYS in English (as on dubis.net)
                     // RULE: all images with people must show them wearing DUBIS clothing with English phrase
                     const titleLower = task.title.toLowerCase();
-                    const dubisRule = 'DUBIS Israeli streetwear brand. Real diverse body types, authentic look. No additional text overlays. No watermarks.';
+                    const dubisRule = 'Israeli streetwear brand aesthetic. Real diverse body types, authentic candid look. Plain black/dark oversized clothing WITHOUT any visible text, logos, or brand names on the garments. Dark minimal urban tones with gold/beige accents. IMPORTANT: Do NOT render any text, words, letters, or logos anywhere in the image.';
                     const defaultImgPrompt = cd.format === 'quote_card'
                         ? 'Minimalist dark charcoal textured background. Moody low-key lighting. No people. No text. No logos. Suitable for text overlay. Square 1:1 format.'
                         : cd.format === 'story'

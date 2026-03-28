@@ -1447,8 +1447,21 @@
         <span id="pp-img-ph" style="font-size:2rem;color:#333">🖼</span>
       </div>
       <div style="text-align:center;margin-bottom:.6rem">
-        <button id="pp-gen-img-btn" onclick="generatePostImage()" style="background:#1e2a1e;border:1px solid #3a6a3a;color:#6fcf6f;padding:.35rem .8rem;border-radius:6px;font-size:.75rem;cursor:pointer">🎨 יצור תמונה</button>
-        <span id="pp-gen-img-status" style="font-size:.72rem;color:#888;margin-left:.5rem"></span>
+        <button id="pp-gen-img-btn" onclick="generatePostImage()" style="background:#1e2a1e;border:1px solid #3a6a3a;color:#6fcf6f;padding:.35rem .8rem;border-radius:6px;font-size:.75rem;cursor:pointer">🎨 יצור תמונה AI</button>
+        <select id="pp-real-photo" onchange="useRealPhoto(this.value)" style="background:#1a1a2e;border:1px solid #2a2a4a;color:#c8a96e;padding:.35rem .5rem;border-radius:6px;font-size:.75rem;cursor:pointer;margin-right:.5rem">
+          <option value="">📷 תמונה אמיתית של DUBIS...</option>
+          <option value="images/dubis_photo_01.jpg">תמונה 1</option>
+          <option value="images/dubis_photo_02.jpg">תמונה 2</option>
+          <option value="images/dubis_photo_03.jpg">תמונה 3</option>
+          <option value="images/dubis_photo_04.jpg">תמונה 4</option>
+          <option value="images/dubis_photo_05.jpg">תמונה 5</option>
+          <option value="images/dubis_photo_06.jpg">תמונה 6</option>
+          <option value="images/dubis_photo_07.jpg">תמונה 7</option>
+          <option value="images/dubis_photo_08.jpg">תמונה 8</option>
+          <option value="images/dubis_photo_09.jpg">תמונה 9</option>
+          <option value="images/dubis_photo_10.jpg">תמונה 10</option>
+        </select>
+        <span id="pp-gen-img-status" style="font-size:.72rem;color:#888;margin-right:.5rem"></span>
       </div>
       <div class="pp-caption" id="pp-caption-text"></div>
       <div class="pp-hashtags" id="pp-hashtags-text"></div>
@@ -3291,6 +3304,28 @@
       status.textContent = `❌ ${e.message}`;
       btn.disabled = false;
     }
+  }
+
+  function useRealPhoto(path) {
+    if (!path) return;
+    const fullUrl = 'https://www.dubis.net/' + path;
+    _ppState.imageUrl = fullUrl;
+    const img = document.getElementById('pp-img');
+    const ph  = document.getElementById('pp-img-ph');
+    img.src = fullUrl;
+    img.style.display = 'block';
+    ph.style.display  = 'none';
+    document.getElementById('pp-gen-img-status').textContent = '✅ תמונה אמיתית של DUBIS';
+    // Also update task content_data
+    if (_ppState.taskId) {
+      window._supabase.from('agent_tasks').select('content_data').eq('id', _ppState.taskId).single().then(({ data }) => {
+        const cd = data?.content_data || {};
+        cd.generated_image_url = fullUrl;
+        window._supabase.from('agent_tasks').update({ content_data: cd, updated_at: new Date().toISOString() }).eq('id', _ppState.taskId);
+      });
+    }
+    // Reset dropdown
+    document.getElementById('pp-real-photo').selectedIndex = 0;
   }
 
   function openAddTaskModal() {
