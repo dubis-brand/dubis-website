@@ -617,8 +617,8 @@ Return ONLY valid JSON (no markdown):
         if (!adminUser) return res.status(401).json({ error: 'Unauthorized' });
 
         if (req.method === 'GET') {
-            const productId = url.searchParams.get('product_id');
-            const approvedParam = url.searchParams.get('approved');
+            const productId = req.query.product_id;
+            const approvedParam = req.query.approved;
             let query = sb.from('dubis_images').select('*, dubis_products(slogan, clothing_type, category)').order('created_at', { ascending: false });
             if (productId) query = query.eq('product_id', productId);
             if (approvedParam === 'true') query = query.eq('approved', true);
@@ -629,7 +629,7 @@ Return ONLY valid JSON (no markdown):
 
         if (req.method === 'PATCH') {
             // Update image: approve, rate, etc.
-            const imageId = url.searchParams.get('id');
+            const imageId = req.query.id;
             if (!imageId) return res.status(400).json({ error: 'id required' });
             const updates = {};
             const body = req.body || {};
@@ -641,7 +641,7 @@ Return ONLY valid JSON (no markdown):
         }
 
         if (req.method === 'DELETE') {
-            const imageId = url.searchParams.get('id');
+            const imageId = req.query.id;
             if (!imageId) return res.status(400).json({ error: 'id required' });
             // Get storage path first
             const { data: img } = await sb.from('dubis_images').select('storage_path').eq('id', imageId).single();
