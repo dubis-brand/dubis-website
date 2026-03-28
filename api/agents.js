@@ -552,22 +552,29 @@ Return ONLY valid JSON (no markdown):
             }
         }
 
-        // ── Facebook Page ──────────────────────────────────────────
+        // ── Facebook Page (requires pages_manage_posts + pages_read_engagement) ──
         if (doFacebook) {
-            const fbToken  = process.env.INSTAGRAM_ACCESS_TOKEN; // same long-lived page token
             const fbPageId = process.env.FACEBOOK_PAGE_ID;
+            const fbToken  = process.env.FACEBOOK_PAGE_TOKEN || process.env.INSTAGRAM_ACCESS_TOKEN;
             if (!fbToken || !fbPageId) {
-                result.errors.push('Facebook: חסר FACEBOOK_PAGE_ID ב-Vercel env vars');
+                result.errors.push('Facebook: חסר FACEBOOK_PAGE_ID או FACEBOOK_PAGE_TOKEN ב-Vercel env vars');
             } else {
                 try {
-                    const fbRes = await fetch(`https://graph.facebook.com/v19.0/${fbPageId}/photos`, {
+                    // Use /photos endpoint with Page Access Token that has pages_manage_posts permission
+                    const fbRes = await fetch(`https://graph.facebook.com/v21.0/${fbPageId}/photos`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ url: image_url, caption, access_token: fbToken }),
+                        body: JSON.stringify({ url: image_url, message: caption, published: true, access_token: fbToken }),
                     });
                     const fbData = await fbRes.json();
                     if (!fbRes.ok || fbData.error) {
-                        result.errors.push('Facebook: ' + (fbData.error?.message || 'publish failed'));
+                        const errMsg = fbData.error?.message || 'publish failed';
+                        // Provide clear Hebrew guidance for common permission errors
+                        if (errMsg.includes('publish_actions') || errMsg.includes('permission') || fbData.error?.code === 200) {
+                            result.errors.push('Facebook: הטוקן חסר הרשאת pages_manage_posts. יש להיכנס ל-Meta Business Suite → הגדרות → אפליקציות → ולהוסיף את ההרשאה.');
+                        } else {
+                            result.errors.push('Facebook: ' + errMsg);
+                        }
                     } else {
                         result.facebook_post_id = fbData.post_id || fbData.id;
                         console.log(`✅ Facebook published | ID: ${result.facebook_post_id}`);
