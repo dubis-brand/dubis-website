@@ -331,6 +331,66 @@ module.exports = async function handler(req, res) {
 </body>
 </html>`;
 
+    // ── Daily snapshot → daily_snapshots table ───────────────────────
+    try {
+        const snapshotDate = new Date().toISOString().slice(0, 10);
+        const since24h     = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+        // Fetch parallel data for snapshot
+        const [
+            ordersAllRes,
+            orders24hRes,
+            campaignsRes,
+            agentRunsRes,
+            pageViewsRes,
+            subscribersRes,
+        ] = await Promise.all([
+            supabase.from('orders').select('id, status, total_amount').neq('status', 'cancelled'),
+            supabase.from('orders').select('id').gte('created_at', since24h).neq('status', 'cancelled'),
+            supabase.from('ad_campaigns').select('id, status, spend_to_date').eq('status', 'active'),
+            supabase.from('agent_runs').select('id, status').gte('created_at', since24h),
+            supabase.from('page_views').select('id', { count: 'exact', head: true }).gte('created_at', snapshotDate),
+            supabase.from('newsletter_subscribers').select('id', { count: 'exact', head: true }),
+        ]);
+
+        const allOrders     = ordersAllRes.data  || [];
+        const totalRevenue  = allOrders.reduce((s, o) => s + (parseFloat(o.total_amount) || 0), 0);
+        const activeOrders_ = allOrders.filter(o => ['pending', 'in_production'].includes(o.status)).length;
+        const shippedOrders = allOrders.filter(o => o.status === 'shipped').length;
+        const campaigns_    = campaignsRes.data || [];
+        const agentRuns_    = agentRunsRes.data  || [];
+        const campaignSpend = campaigns_.reduce((s, c) => s + (parseFloat(c.spend_to_date) || 0), 0);
+
+        const snapshotData = {
+            snapshot_date:         snapshotDate,
+            revenue_usd:           Math.round(totalRevenue * 100) / 100,
+            orders_count:          allOrders.length,
+            orders_today:          (orders24hRes.data || []).length,
+            active_campaigns:      campaigns_.length,
+            campaigns_spend_total: Math.round(campaignSpend * 100) / 100,
+            agent_runs_yesterday:  agentRuns_.length,
+            agent_runs_errors:     agentRuns_.filter(r => r.status === 'error' || r.status === 'completed_with_errors').length,
+            page_views_today:      pageViewsRes.count || 0,
+            subscribers_total:     subscribersRes.count || 0,
+            active_orders:         activeOrders_,
+            shipped_orders:        shippedOrders,
+            raw_data: {
+                pendingTasks:   (pendingTasks || []).length,
+                todayRevenue,
+                weekRevenue,
+            },
+        };
+
+        await supabase
+            .from('daily_snapshots')
+            .upsert(snapshotData, { onConflict: 'snapshot_date' });
+
+        console.log(`✅ Daily snapshot saved for ${snapshotDate}`);
+    } catch (snapErr) {
+        // Non-fatal — continue to send the email
+        console.warn('Snapshot write error (non-fatal):', snapErr.message);
+    }
+
     // ── Send via Resend ──────────────────────────────────────────────
     try {
         const response = await fetch('https://api.resend.com/emails', {

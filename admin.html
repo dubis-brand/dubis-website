@@ -838,6 +838,7 @@
       <button class="nav-tab" id="nav-reviews"   onclick="showSection('reviews',this)">⭐ ביקורות</button>
       <button class="nav-tab" id="nav-tasks"     onclick="showSection('tasks',this)">🤖 משימות</button>
       <button class="nav-tab" id="nav-agents"    onclick="showSection('agents',this)">🧠 סוכנים</button>
+      <button class="nav-tab" id="nav-campaigns" onclick="showSection('campaigns',this)">📣 קמפיינים</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -1720,6 +1721,85 @@
     </div>
   </div><!-- /section-agents -->
 
+  <!-- ══ CAMPAIGNS SECTION ════════════════════════════════ -->
+  <div id="section-campaigns" style="display:none;padding:1.5rem" dir="rtl">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem">
+      <h2 style="font-size:1rem;color:#c8a96e;letter-spacing:2px;text-transform:uppercase;font-weight:700">📣 קמפיינים פרסומיים</h2>
+      <button class="btn-sm" style="color:#c8a96e;border-color:rgba(200,169,110,.4)" onclick="openAddCampaignModal()">+ הוסף קמפיין</button>
+    </div>
+
+    <!-- Summary stats -->
+    <div id="campaigns-stats" class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:1.5rem">
+      <div class="stat-card"><div class="stat-label">פעילים</div><div class="stat-value" id="cstat-active">—</div></div>
+      <div class="stat-card"><div class="stat-label">הושלמו</div><div class="stat-value" id="cstat-done">—</div></div>
+      <div class="stat-card"><div class="stat-label">סה״כ תקציב (₪)</div><div class="stat-value" id="cstat-budget">—</div></div>
+      <div class="stat-card"><div class="stat-label">הוצא עד היום (₪)</div><div class="stat-value" id="cstat-spend">—</div></div>
+    </div>
+
+    <!-- Campaigns table -->
+    <div class="table-wrap" id="campaigns-table-wrap">
+      <div class="loading">טוען קמפיינים...</div>
+    </div>
+
+    <!-- Add/Edit campaign modal -->
+    <div id="campaign-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center">
+      <div style="background:#1a1a1a;border-radius:12px;padding:2rem;width:100%;max-width:500px;margin:1rem;max-height:90vh;overflow-y:auto" dir="rtl">
+        <h3 style="color:#c8a96e;margin-bottom:1.25rem;font-size:.95rem;letter-spacing:1px">הוספת קמפיין חדש</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+          <div class="form-group" style="grid-column:1/-1">
+            <label>פלטפורמה</label>
+            <select id="c-platform" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none">
+              <option value="instagram+facebook">Instagram + Facebook</option>
+              <option value="instagram">Instagram בלבד</option>
+              <option value="facebook">Facebook בלבד</option>
+              <option value="google">Google Ads</option>
+              <option value="tiktok">TikTok</option>
+            </select>
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>מטרה</label>
+            <select id="c-goal" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none">
+              <option value="website_visits">Website visits</option>
+              <option value="reach">Reach / מודעות</option>
+              <option value="engagement">Engagement</option>
+              <option value="sales">Sales / המרות</option>
+              <option value="page_likes">Page likes</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>תקציב (₪)</label>
+            <input type="number" id="c-budget" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none" placeholder="78">
+          </div>
+          <div class="form-group">
+            <label>משך (ימים)</label>
+            <input type="number" id="c-duration" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none" placeholder="6">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>קהל יעד</label>
+            <input type="text" id="c-audience" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none" placeholder="People similar to followers">
+          </div>
+          <div class="form-group">
+            <label>תאריך התחלה</label>
+            <input type="date" id="c-start" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none">
+          </div>
+          <div class="form-group">
+            <label>אמצעי תשלום</label>
+            <input type="text" id="c-payment" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none" placeholder="MasterCard 9830">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>הערות</label>
+            <input type="text" id="c-notes" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none">
+          </div>
+        </div>
+        <div style="display:flex;gap:.75rem;margin-top:1.25rem">
+          <button class="btn-gold" style="flex:1" onclick="saveCampaign()">שמור קמפיין</button>
+          <button class="btn-sm" style="flex:0 0 auto" onclick="closeCampaignModal()">ביטול</button>
+        </div>
+        <div id="campaign-modal-error" class="error-msg"></div>
+      </div>
+    </div>
+  </div><!-- /section-campaigns -->
+
   <!-- Coupon Modal -->
   <div id="coupon-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
     <div style="background:#1e1e1e;border-radius:12px;padding:2rem;width:min(480px,90vw);max-height:90vh;overflow-y:auto">
@@ -2045,7 +2125,8 @@
   let _analyticsLoaded = false;
   let _productsLoaded = false;
 
-  let _reviewsLoaded = false;
+  let _reviewsLoaded   = false;
+  let _campaignsLoaded = false;
 
   function showSection(name, btn) {
     document.getElementById('section-orders').style.display    = name === 'orders'    ? '' : 'none';
@@ -2056,8 +2137,10 @@
     document.getElementById('section-reviews').style.display   = name === 'reviews'   ? '' : 'none';
     document.getElementById('section-tasks').style.display     = name === 'tasks'     ? '' : 'none';
     document.getElementById('section-agents').style.display    = name === 'agents'    ? '' : 'none';
+    document.getElementById('section-campaigns').style.display = name === 'campaigns' ? '' : 'none';
     if (name === 'tasks') loadTasks();
     if (name === 'agents') loadAgentsSection();
+    if (name === 'campaigns' && !_campaignsLoaded) { _campaignsLoaded = true; loadCampaigns(); }
     document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     if (name === 'coupons') loadCoupons();
@@ -3689,6 +3772,140 @@
       loadAgentsSection();
     } catch(e) { alert('שגיאה: '+e.message); }
     finally { if (btn) { btn.disabled=false; btn.textContent='▶ הרץ'; } }
+  }
+
+  // ══ CAMPAIGNS SECTION ═══════════════════════════════════
+  async function loadCampaigns() {
+    const wrap = document.getElementById('campaigns-table-wrap');
+    try {
+      const { data: campaigns, error } = await _sb
+        .from('ad_campaigns')
+        .select('*')
+        .order('start_date', { ascending: false });
+
+      if (error) throw error;
+      if (!campaigns || !campaigns.length) {
+        wrap.innerHTML = '<div class="empty">אין קמפיינים עדיין</div>';
+        return;
+      }
+
+      // Update stats
+      const active   = campaigns.filter(c => c.status === 'active').length;
+      const done     = campaigns.filter(c => c.status === 'completed').length;
+      const budgetIL = campaigns.reduce((s, c) => s + Number(c.budget || 0), 0);
+      const spendIL  = campaigns.reduce((s, c) => s + Number(c.spend_to_date || 0), 0);
+      document.getElementById('cstat-active').textContent  = active;
+      document.getElementById('cstat-done').textContent    = done;
+      document.getElementById('cstat-budget').textContent  = '₪' + budgetIL.toFixed(0);
+      document.getElementById('cstat-spend').textContent   = '₪' + spendIL.toFixed(2);
+
+      // Build table
+      const goalLabel = { website_visits:'Website visits', reach:'Reach', engagement:'Engagement', sales:'Sales', page_likes:'Page likes' };
+      const rows = campaigns.map(c => {
+        const statusCls = c.status === 'active' ? 'status-in_production' : c.status === 'completed' ? 'status-delivered' : 'status-pending';
+        const statusLbl = c.status === 'active' ? '🟢 פעיל' : c.status === 'completed' ? '✅ הסתיים' : '⏸ מושהה';
+        const endDate   = c.end_date ? new Date(c.end_date).toLocaleDateString('he-IL') : '—';
+        const startDate = c.start_date ? new Date(c.start_date).toLocaleDateString('he-IL') : '—';
+        const pct       = c.budget > 0 ? Math.round((Number(c.spend_to_date || 0) / Number(c.budget)) * 100) : 0;
+        return `<tr>
+          <td><span class="status-badge ${statusCls}">${statusLbl}</span></td>
+          <td style="color:#c8a96e;font-weight:600">${c.platform}</td>
+          <td>${goalLabel[c.goal] || c.goal}</td>
+          <td style="color:#e8e0d5">₪${Number(c.budget).toFixed(0)} / ${c.duration_days} ימים</td>
+          <td style="font-size:.8rem;color:#888;max-width:180px">${c.audience || '—'}</td>
+          <td style="font-size:.8rem">${startDate} → ${endDate}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <div style="flex:1;height:6px;background:#2a2a2a;border-radius:3px;min-width:60px">
+                <div style="height:6px;background:#c8a96e;border-radius:3px;width:${Math.min(pct,100)}%"></div>
+              </div>
+              <span style="color:#c8a96e;font-size:.78rem;font-weight:600">₪${Number(c.spend_to_date||0).toFixed(0)}</span>
+            </div>
+          </td>
+          <td style="font-size:.78rem;color:#666">${c.payment_method || '—'}</td>
+          <td>
+            <button class="btn-sm" onclick="openUpdateSpend('${c.id}',${c.spend_to_date||0})">עדכן</button>
+            <button class="btn-sm" style="margin-top:2px" onclick="toggleCampaignStatus('${c.id}','${c.status}')">
+              ${c.status === 'active' ? 'סיים' : 'הפעל'}
+            </button>
+          </td>
+        </tr>`;
+      }).join('');
+
+      wrap.innerHTML = `<table>
+        <thead><tr>
+          <th>סטטוס</th>
+          <th>פלטפורמה</th>
+          <th>מטרה</th>
+          <th>תקציב / משך</th>
+          <th>קהל</th>
+          <th>תאריכים</th>
+          <th>עלות עד היום</th>
+          <th>תשלום</th>
+          <th>פעולות</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    } catch(e) {
+      wrap.innerHTML = `<div class="empty" style="color:#ef4444">שגיאה: ${e.message}</div>`;
+    }
+  }
+
+  function openAddCampaignModal() {
+    document.getElementById('c-start').value = new Date().toISOString().slice(0,10);
+    document.getElementById('campaign-modal-error').textContent = '';
+    document.getElementById('campaign-modal').style.display = 'flex';
+  }
+
+  function closeCampaignModal() {
+    document.getElementById('campaign-modal').style.display = 'none';
+  }
+
+  async function saveCampaign() {
+    const platform = document.getElementById('c-platform').value;
+    const goal     = document.getElementById('c-goal').value;
+    const budget   = parseFloat(document.getElementById('c-budget').value);
+    const duration = parseInt(document.getElementById('c-duration').value);
+    const audience = document.getElementById('c-audience').value.trim();
+    const start    = document.getElementById('c-start').value;
+    const payment  = document.getElementById('c-payment').value.trim();
+    const notes    = document.getElementById('c-notes').value.trim();
+    const errEl    = document.getElementById('campaign-modal-error');
+
+    if (!budget || !duration || !start) { errEl.textContent = 'נא למלא תקציב, משך ותאריך'; return; }
+
+    const endDate = new Date(start);
+    endDate.setDate(endDate.getDate() + duration);
+
+    const { error } = await _sb.from('ad_campaigns').insert({
+      platform, goal, budget, duration_days: duration, audience, status: 'active',
+      start_date: start, end_date: endDate.toISOString().slice(0,10),
+      payment_method: payment, notes
+    });
+
+    if (error) { errEl.textContent = 'שגיאה: ' + error.message; return; }
+    closeCampaignModal();
+    _campaignsLoaded = false;
+    loadCampaigns();
+  }
+
+  async function openUpdateSpend(id, current) {
+    const spend = prompt(`עלות עד היום (₪) — נוכחי: ₪${current}:`, current);
+    if (spend === null) return;
+    const val = parseFloat(spend);
+    if (isNaN(val)) return alert('ערך לא תקין');
+    const { error } = await _sb.from('ad_campaigns').update({ spend_to_date: val }).eq('id', id);
+    if (error) return alert('שגיאה: ' + error.message);
+    _campaignsLoaded = false;
+    loadCampaigns();
+  }
+
+  async function toggleCampaignStatus(id, currentStatus) {
+    const newStatus = currentStatus === 'active' ? 'completed' : 'active';
+    const { error } = await _sb.from('ad_campaigns').update({ status: newStatus }).eq('id', id);
+    if (error) return alert('שגיאה: ' + error.message);
+    _campaignsLoaded = false;
+    loadCampaigns();
   }
 
   async function runAllAgents() {
