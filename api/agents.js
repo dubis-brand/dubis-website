@@ -554,30 +554,44 @@ Return ONLY valid JSON (no markdown):
 
         // ── Facebook Page (requires pages_manage_posts + pages_read_engagement) ──
         if (doFacebook) {
-            const fbPageId = process.env.FACEBOOK_PAGE_ID;
-            const fbToken  = process.env.FACEBOOK_PAGE_TOKEN || process.env.INSTAGRAM_ACCESS_TOKEN;
-            if (!fbToken || !fbPageId) {
-                result.errors.push('Facebook: חסר FACEBOOK_PAGE_ID או FACEBOOK_PAGE_TOKEN ב-Vercel env vars');
+            const fbToken = process.env.FACEBOOK_PAGE_TOKEN || process.env.INSTAGRAM_ACCESS_TOKEN;
+            if (!fbToken) {
+                result.errors.push('Facebook: חסר FACEBOOK_PAGE_TOKEN ב-Vercel env vars');
             } else {
                 try {
-                    // Use /photos endpoint with Page Access Token that has pages_manage_posts permission
-                    const fbRes = await fetch(`https://graph.facebook.com/v21.0/${fbPageId}/photos`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ url: image_url, message: caption, published: true, access_token: fbToken }),
-                    });
-                    const fbData = await fbRes.json();
-                    if (!fbRes.ok || fbData.error) {
-                        const errMsg = fbData.error?.message || 'publish failed';
-                        // Provide clear Hebrew guidance for common permission errors
-                        if (errMsg.includes('publish_actions') || errMsg.includes('permission') || fbData.error?.code === 200) {
-                            result.errors.push('Facebook: הטוקן חסר הרשאת pages_manage_posts. יש להיכנס ל-Meta Business Suite → הגדרות → אפליקציות → ולהוסיף את ההרשאה.');
-                        } else {
-                            result.errors.push('Facebook: ' + errMsg);
+                    // Auto-detect Page ID: use env var, or discover from token via /me/accounts
+                    let fbPageId = process.env.FACEBOOK_PAGE_ID;
+                    let pageToken = fbToken;
+                    if (!fbPageId) {
+                        // Try to get page list from user token
+                        const acctRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?access_token=${fbToken}`);
+                        const acctData = await acctRes.json();
+                        if (acctData.data?.length) {
+                            fbPageId = acctData.data[0].id;
+                            pageToken = acctData.data[0].access_token || fbToken;
+                            console.log(`📘 Auto-detected FB Page: ${acctData.data[0].name} (${fbPageId})`);
                         }
+                    }
+                    if (!fbPageId) {
+                        result.errors.push('Facebook: לא נמצא דף פייסבוק. הוסף FACEBOOK_PAGE_ID ב-Vercel.');
                     } else {
-                        result.facebook_post_id = fbData.post_id || fbData.id;
-                        console.log(`✅ Facebook published | ID: ${result.facebook_post_id}`);
+                        const fbRes = await fetch(`https://graph.facebook.com/v21.0/${fbPageId}/photos`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url: image_url, message: caption, published: true, access_token: pageToken }),
+                        });
+                        const fbData = await fbRes.json();
+                        if (!fbRes.ok || fbData.error) {
+                            const errMsg = fbData.error?.message || 'publish failed';
+                            if (errMsg.includes('permission') || fbData.error?.code === 200 || fbData.error?.code === 240) {
+                                result.errors.push('Facebook: הטוקן חסר הרשאת pages_manage_posts. יש להיכנס ל-Meta Business Suite → הגדרות → אפליקציות → ולהוסיף את ההרשאה.');
+                            } else {
+                                result.errors.push('Facebook: ' + errMsg);
+                            }
+                        } else {
+                            result.facebook_post_id = fbData.post_id || fbData.id;
+                            console.log(`✅ Facebook published | ID: ${result.facebook_post_id}`);
+                        }
                     }
                 } catch(e) { result.errors.push('Facebook: ' + e.message); }
             }
