@@ -977,6 +977,7 @@
         <div class="social-metric"><span>פוסטים ממתינים</span><span id="ig-posts-pending">—</span></div>
         <div class="social-metric"><span>פוסטים מאושרים</span><span id="ig-posts-approved">—</span></div>
         <div class="social-metric"><span>פרסום הבא</span><span id="ig-next-post" style="color:#4caf50">—</span></div>
+        <div class="social-metric"><span>קמפיין פעיל</span><span id="ig-campaign" style="color:#4caf50">—</span></div>
       </div>
       <div class="social-card">
         <h4>📘 פייסבוק</h4>
@@ -3010,15 +3011,34 @@
     document.getElementById('goal-pct-text').textContent = goalPct + '%';
     document.getElementById('goal-amt').textContent = `$${monthlyRevenue.toLocaleString()} / $${goalTarget.toLocaleString()}`;
 
-    // Budget tracking — FB ad spend so far
-    const fbAdSpent = 30; // 109.97 ILS ≈ $30
+    // Budget tracking — ad spend from active campaigns
+    let adSpendILS = 0;
+    try {
+      const { data: activeCampaigns } = await window._supabase.from('ad_campaigns').select('budget').eq('status', 'active');
+      adSpendILS = activeCampaigns ? activeCampaigns.reduce((s, c) => s + Number(c.budget || 0), 0) : 0;
+    } catch(e) { console.error('Campaigns spend error:', e); }
+    const adSpendUSD = Math.round((adSpendILS / 3.7) * 100) / 100;
     const totalBudget = 500;
-    const spent = fbAdSpent;
-    const remaining = totalBudget - spent;
-    const roi = monthlyRevenue > 0 ? Math.round((monthlyRevenue / spent) * 100) : 0;
-    document.getElementById('budget-spent').textContent = '$' + spent;
-    document.getElementById('budget-remaining').textContent = '$' + remaining;
-    document.getElementById('budget-roi').textContent = roi > 0 ? roi + '%' : '—';
+    const remaining = totalBudget - adSpendUSD;
+    const roi = adSpendUSD > 0 ? ((monthlyRevenue - adSpendUSD) / adSpendUSD * 100).toFixed(0) + '%' : 'N/A';
+    document.getElementById('budget-spent').textContent = '$' + adSpendUSD.toFixed(2);
+    document.getElementById('budget-remaining').textContent = '$' + remaining.toFixed(2);
+    document.getElementById('budget-roi').textContent = roi;
+
+    // Instagram+Facebook active campaign
+    try {
+      const { data: igCampaigns } = await window._supabase.from('ad_campaigns')
+        .select('budget,duration_days,goal')
+        .eq('platform', 'instagram_facebook')
+        .eq('status', 'active')
+        .limit(1);
+      if (igCampaigns && igCampaigns.length > 0) {
+        const c = igCampaigns[0];
+        document.getElementById('ig-campaign').textContent = `₪${c.budget} / ${c.duration_days} ימים — ${c.goal || 'Boost'}`;
+      } else {
+        document.getElementById('ig-campaign').textContent = '—';
+      }
+    } catch(e) { console.error('IG campaign error:', e); }
 
     // Social media stats from agent_tasks
     try {

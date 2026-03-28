@@ -117,9 +117,13 @@ module.exports = async function handler(req, res) {
     // ── ORDERS ──
     const allOrders = allOrdersRes.data || [];
     const totalOrders = allOrders.length;
-    const totalRevenue = allOrders.reduce((s, o) => s + (parseFloat(o.total_amount) || 0), 0);
+    const totalRevenue = allOrders
+        .filter(o => o.status !== 'cancelled' && o.status !== 'refunded' && (parseFloat(o.total_amount) || 0) > 0)
+        .reduce((s, o) => s + (parseFloat(o.total_amount) || 0), 0);
     const todayOrders = allOrders.filter(o => o.created_at?.startsWith(today));
-    const todayRevenue = todayOrders.reduce((s, o) => s + (parseFloat(o.total_amount) || 0), 0);
+    const todayRevenue = todayOrders
+        .filter(o => o.status !== 'cancelled' && o.status !== 'refunded')
+        .reduce((s, o) => s + (parseFloat(o.total_amount) || 0), 0);
 
     const ordersByStatus = {};
     allOrders.forEach(o => { ordersByStatus[o.status] = (ordersByStatus[o.status] || 0) + 1; });
