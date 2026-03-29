@@ -941,6 +941,7 @@
     <div class="analytics-section-title">🎯 יעדי צמיחה ותקציב</div>
     <div class="goal-banner">
       <div class="goal-title">יעד: $1,000 רווח חודשי תוך 60 יום</div>
+      <div id="goal-timeline" style="text-align:center;color:#aaa;font-size:.82rem;margin-bottom:6px"></div>
       <div class="goal-progress-wrap">
         <div class="goal-progress-bar">
           <div class="goal-progress-fill" id="goal-fill" style="width:0%"></div>
@@ -3016,6 +3017,21 @@
     document.getElementById('goal-pct-text').textContent = goalPct + '%';
     document.getElementById('goal-amt').textContent = `$${monthlyRevenue.toLocaleString()} / $${goalTarget.toLocaleString()}`;
 
+    // Goal timeline — show start date, days elapsed, days remaining
+    const GOAL_START = new Date('2025-03-23'); // Date goal was set
+    const GOAL_DAYS = 60;
+    const now = new Date();
+    const daysElapsed = Math.floor((now - GOAL_START) / 86400000);
+    const daysRemaining = Math.max(0, GOAL_DAYS - daysElapsed);
+    const goalEndDate = new Date(GOAL_START.getTime() + GOAL_DAYS * 86400000);
+    const startStr = GOAL_START.toLocaleDateString('he-IL', {day:'2-digit', month:'2-digit', year:'numeric'});
+    const endStr = goalEndDate.toLocaleDateString('he-IL', {day:'2-digit', month:'2-digit', year:'numeric'});
+    const timelineEl = document.getElementById('goal-timeline');
+    if (timelineEl) {
+      const barColor = daysRemaining > 20 ? '#4caf50' : daysRemaining > 7 ? '#ff9800' : '#e74c3c';
+      timelineEl.innerHTML = `התחלה: ${startStr} &nbsp;|&nbsp; סיום: ${endStr} &nbsp;|&nbsp; <span style="color:${barColor};font-weight:600">${daysElapsed} ימים עברו, ${daysRemaining} ימים נותרו</span>`;
+    }
+
     // Budget tracking — ALL campaigns (budget allocated + actual spend)
     let totalBudgetILS = 0;
     let totalSpentILS = 0;
@@ -3044,8 +3060,12 @@
     const masterBudget = 500; // Total budget cap in USD
     const remainingUSD = masterBudget - spentUSD;
 
-    // ROI = (Revenue - Ad Spend) / Ad Spend * 100
-    const roi = spentUSD > 0 ? ((monthlyRevenue - spentUSD) / spentUSD * 100).toFixed(0) + '%' : (monthlyRevenue > 0 ? '∞' : 'N/A');
+    // ROI = (Gross Profit - Ad Spend) / Ad Spend * 100
+    // COGS ~60% for print-on-demand (Gelato production + shipping)
+    const COGS_RATE = 0.60;
+    const grossProfit = monthlyRevenue * (1 - COGS_RATE);
+    const netProfit = grossProfit - spentUSD;
+    const roi = spentUSD > 0 ? (netProfit / spentUSD * 100).toFixed(0) + '%' : (monthlyRevenue > 0 ? '∞' : 'N/A');
 
     document.getElementById('budget-spent').textContent = `$${spentUSD.toFixed(0)} (₪${Math.round(totalSpentILS)})`;
     document.getElementById('budget-remaining').textContent = '$' + remainingUSD.toFixed(0);
@@ -3081,7 +3101,7 @@
 
     // Social media stats from agent_tasks
     try {
-      const { data: tasks } = await window._supabase.from('agent_tasks').select('id,status,title,content_data,due_date,created_at').order('created_at', { ascending: false });
+      const { data: tasks } = await _sb.from('agent_tasks').select('id,status,title,content_data,due_date,created_at').order('created_at', { ascending: false });
       if (tasks) {
         const published = tasks.filter(t => t.status === 'done');
         const igPublished = tasks.filter(t => t.status === 'done' && t.content_data?.instagram_post_id);
@@ -4354,4 +4374,93 @@
     const token = session?.access_token;
 
     try {
-     
+      const res = await fetch('/api/agents?type=smart-match', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caption })
+      });
+      const matches = await res.json();
+      if (!Array.isArray(matches) || matches.length === 0) return;
+
+      // Update the real photo dropdown in post preview
+      const sel = document.getElementById('pp-real-photo');
+      // Keep first default option, then add matches
+      sel.innerHTML = '<option value="">🤖 Smart Match — תמונות מומלצות...</option>';
+      matches.forEach((m, i) => {
+        const label = `${m.dubis_products?.slogan || 'תמונה'} (${m.scene_type||''}) — ציון: ${m.relevance_score?.toFixed(1)||'?'}`;
+        sel.innerHTML += `<option value="${m.image_url}">${i+1}. ${label}</option>`;
+      });
+
+      // Also update publish modal dropdown if exists
+      const pmUrl = document.getElementById('pm-image-url');
+      if (pmUrl && !pmUrl.value) {
+        pmUrl.value = matches[0].image_url;
+        updateImagePreview(matches[0].image_url);
+      }
+    } catch(e) { console.log('Smart match error:', e); }
+  }
+
+  async function runAllAgents() {
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) return alert('לא מחובר');
+    if (!confirm('להריץ את כל הסוכנים?')) return;
+    const btn = document.querySelector('[onclick="runAllAgents()"]');
+    if (btn) { btn.disabled=true; btn.textContent='⏳ מריץ...'; }
+    try {
+      const res = await fetch('/api/agents?type=run', {
+        method:'POST', headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'}
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error||'שגיאה');
+      alert('✅ הסוכנים סיימו!\n'+(data.summary||data.queued+' משימות'));
+      loadAgentsSection();
+    } catch(e) { alert('שגיאה: '+e.message); }
+    finally { if (btn) { btn.disabled=false; btn.textContent='▶ הרץ כל הסוכנים'; } }
+  }
+
+</script>
+<style>
+  .agent-run-btn { background:#2a2a2a;color:#e8c97a;border:1px solid #e8c97a;padding:.3rem .7rem;border-radius:5px;cursor:pointer;font-size:.8rem;transition:all .2s;white-space:nowrap; }
+  .agent-run-btn:hover { background:#e8c97a;color:#0a0a0a; }
+  .agent-run-btn:disabled { opacity:.5;cursor:not-allowed; }
+
+  /* ── Gallery Section ── */
+  .gal-controls { display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin-bottom:1.2rem; }
+  .gal-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem; }
+  .gal-card { background:#141414;border:1px solid #1e1e1e;border-radius:10px;overflow:hidden;transition:border-color .2s;position:relative; }
+  .gal-card:hover { border-color:#333; }
+  .gal-card.approved { border-color:#2a5a2a; }
+  .gal-card.pending-img { border-color:#5a4a1a; }
+  .gal-card img.gal-thumb { width:100%;height:200px;object-fit:contain;background:#0a0a0a;cursor:pointer; }
+  .gal-card-info { padding:.6rem .8rem; }
+  .gal-card-slogan { font-size:.72rem;color:#c8a96e;font-weight:600;margin-bottom:.2rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+  .gal-card-meta { font-size:.68rem;color:#666;display:flex;gap:.4rem;flex-wrap:wrap; }
+  .gal-card-meta span { background:#1a1a1a;padding:.1rem .4rem;border-radius:3px; }
+  .gal-card-actions { display:flex;gap:.4rem;padding:.4rem .8rem .6rem;flex-wrap:wrap; }
+  .gal-btn { padding:.2rem .5rem;border-radius:4px;font-size:.72rem;cursor:pointer;border:1px solid;transition:all .2s; }
+  .gal-btn-approve { background:#1a2a1a;color:#4caf50;border-color:#2a5a2a; }
+  .gal-btn-approve:hover { background:#2a5a2a; }
+  .gal-btn-reject { background:#2a1a1a;color:#e74c3c;border-color:#5a2a2a; }
+  .gal-btn-reject:hover { background:#5a2a2a; }
+  .gal-btn-use { background:#1a1a2a;color:#6b8aed;border-color:#2a2a5a; }
+  .gal-btn-use:hover { background:#2a2a5a; }
+  .gal-btn-del { background:#1a1a1a;color:#888;border-color:#333; }
+  .gal-btn-del:hover { background:#333;color:#e74c3c; }
+  .gal-badge { position:absolute;top:.5rem;left:.5rem;font-size:.65rem;padding:.15rem .5rem;border-radius:10px;font-weight:600; }
+  .gal-badge.approved { background:#1a3a1a;color:#4caf50; }
+  .gal-badge.pending-badge { background:#3a3a1a;color:#ff9800; }
+  .gal-quality { display:flex;gap:2px;margin-top:.3rem; }
+  .gal-star { cursor:pointer;font-size:.85rem;color:#333;transition:color .15s; }
+  .gal-star.active { color:#c8a96e; }
+  .gal-star:hover { color:#e8c97a; }
+  .smart-match-strip { display:flex;gap:.6rem;overflow-x:auto;padding:.6rem 0; }
+  .smart-match-card { flex:0 0 110px;cursor:pointer;border-radius:8px;overflow:hidden;border:2px solid transparent;transition:all .2s;position:relative; }
+  .smart-match-card:hover { border-color:#c8a96e; }
+  .smart-match-card.selected { border-color:#4caf50;box-shadow:0 0 8px rgba(76,175,80,.3); }
+  .smart-match-card img { width:110px;height:110px;object-fit:contain;background:#0a0a0a; }
+  .smart-match-score { position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.8);font-size:.62rem;color:#c8a96e;text-align:center;padding:2px; }
+</style>
+<script src="js/products.js"></script>
+</body>
+</html> 
