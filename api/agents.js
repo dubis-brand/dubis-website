@@ -509,7 +509,11 @@ Return ONLY valid JSON (no markdown):
         const geminiKey = process.env.GEMINI_API_KEY;
         if (!geminiKey) return res.status(503).json({ error: 'GEMINI_API_KEY not configured' });
 
-        const { product_id, scene_type, model_type, color_variant } = req.body || {};
+        const body = req.body || {};
+        const product_id = body.product_id;
+        const scene_type = body.scene_type || body.scene;
+        const model_type = body.model_type || body.model;
+        const color_variant = body.color_variant || body.color;
         if (!product_id) return res.status(400).json({ error: 'product_id required' });
 
         // Fetch product
@@ -542,14 +546,28 @@ Return ONLY valid JSON (no markdown):
         const colors = product.colors || ['Black'];
         const color = color_variant || colors[Math.floor(Math.random() * colors.length)];
 
-        // Build prompt from template
-        let prompt = product.prompt_template || '';
-        prompt = prompt.replace(/{model}/g, models[model] || models.man);
-        prompt = prompt.replace(/{color}/g, color);
-        prompt = prompt.replace(/{scene}/g, scenes[scene] || scenes.street);
+        // Build DUBIS-style prompt with strict brand rules
+        const sloganUpper = product.slogan.toUpperCase();
+        const clothingHeb = { 't-shirt': 't-shirt', 'hoodie': 'hoodie', 'zip-hoodie': 'zip-up hoodie', 'long-sleeve': 'long sleeve shirt', 'cap': 'baseball cap' };
+        const clothingName = clothingHeb[product.clothing_type] || product.clothing_type;
 
-        // Add format instructions
-        prompt += ' High resolution, photorealistic, landscape 16:9 aspect ratio.';
+        // Split image: diptych (front view left, back view right)
+        const prompt = `Create a photorealistic DSLR-quality diptych photograph split into two halves side by side:
+
+LEFT HALF — FRONT VIEW: ${models[model] || models.man} wearing a ${color} ${clothingName}. On the LEFT CHEST area (heart position), there is a small text "DUBIS" in clean white sans-serif font, with a tiny superscript "™" symbol ONLY after the S (like DUBIS™). The ™ is NOT inside a circle — only the two letters ™ in superscript. No other text or design on the front. The person is facing the camera.
+
+RIGHT HALF — BACK VIEW: The SAME person from behind, showing the BACK of the ${color} ${clothingName}. On the UPPER BACK, printed in LARGE bold white sans-serif capital letters: "${sloganUpper}". The text is centered horizontally on the back, clearly readable.
+
+SETTING: ${scenes[scene] || scenes.street}
+
+CRITICAL RULES:
+- The ${clothingName} MUST be ${color} color — NOT red, NOT any other color
+- The slogan "${sloganUpper}" appears ONLY on the BACK, never on the front
+- The front has ONLY the small "DUBIS™" logo on the left chest
+- Real diverse person, NOT a fashion model, body-positive natural look
+- No distorted text, all text must be spelled correctly letter by letter
+- DSLR realism, 50mm lens, natural shadows, warm golden light
+- Photorealistic image, not illustration or cartoon`;
 
         console.log(`🖼 Generating product image: "${product.slogan}" | ${color} ${product.clothing_type} | ${scene} | ${model}`);
 
