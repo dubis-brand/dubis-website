@@ -810,19 +810,26 @@ CRITICAL RULES:
                 for (const tryToken of allTokens) {
                     if (fbPublished) break;
                     try {
-                        // ALWAYS try /me/accounts to get page-specific token (often has more permissions)
-                        let fbPageId = process.env.FACEBOOK_PAGE_ID;
+                        // Auto-detect page from /me/accounts (most reliable method)
+                        let fbPageId = null;
                         let pageToken = tryToken;
-                        const acctRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?access_token=${tryToken}`);
-                        const acctData = await acctRes.json();
-                        if (acctData.data?.length) {
-                            const targetPage = fbPageId
-                                ? acctData.data.find(p => p.id === fbPageId) || acctData.data[0]
-                                : acctData.data[0];
-                            fbPageId = targetPage.id;
-                            pageToken = targetPage.access_token || tryToken;
-                            console.log(`📘 FB Page from /me/accounts: ${targetPage.name} (${fbPageId})`);
+                        try {
+                            const acctRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?access_token=${tryToken}`);
+                            const acctData = await acctRes.json();
+                            console.log(`📘 FB /me/accounts response: ${JSON.stringify(acctData.data?.map(p => ({ id: p.id, name: p.name })) || acctData.error || 'no data')}`);
+                            if (acctData.data?.length) {
+                                // Prefer env-specified page if it exists in the list, otherwise use first
+                                const envId = process.env.FACEBOOK_PAGE_ID;
+                                const targetPage = (envId && acctData.data.find(p => p.id === envId)) || acctData.data[0];
+                                fbPageId = targetPage.id;
+                                pageToken = targetPage.access_token || tryToken;
+                                console.log(`📘 FB Page selected: ${targetPage.name} (${fbPageId})`);
+                            }
+                        } catch(acctErr) {
+                            console.log(`📘 FB /me/accounts error: ${acctErr.message}`);
                         }
+                        // Fallback to env var only if /me/accounts failed entirely
+                        if (!fbPageId) fbPageId = process.env.FACEBOOK_PAGE_ID;
                         if (!fbPageId) continue; // try next token
 
                         // Try /photos endpoint first (image post)
