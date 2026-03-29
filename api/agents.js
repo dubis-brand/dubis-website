@@ -1197,6 +1197,58 @@ Generate a social media post. Return ONLY valid JSON:
         return res.status(200).json({ queued: taskResults.length, remaining: tasks.length - batch.length, results: taskResults });
     }
 
+    // ── FB-DEBUG ── diagnose Facebook token & page issues ──
+    if (type === 'fb-debug') {
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser && !isAgentSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+        const diag = {
+            has_fb_page_token: !!process.env.FACEBOOK_PAGE_TOKEN,
+            has_ig_token: !!process.env.INSTAGRAM_ACCESS_TOKEN,
+            fb_page_id_env: process.env.FACEBOOK_PAGE_ID || '(not set)',
+            tokens_checked: []
+        };
+
+        const allTokens = [
+            { name: 'FACEBOOK_PAGE_TOKEN', val: process.env.FACEBOOK_PAGE_TOKEN },
+            { name: 'INSTAGRAM_ACCESS_TOKEN', val: process.env.INSTAGRAM_ACCESS_TOKEN }
+        ].filter(t => t.val);
+
+        for (const t of allTokens) {
+            const info = { token_name: t.name, results: {} };
+            try {
+                // Check /me — who is this token?
+                const meRes = await fetch(`https://graph.facebook.com/v21.0/me?fields=id,name&access_token=${t.val}`);
+                info.results.me = await meRes.json();
+            } catch(e) { info.results.me = { error: e.message }; }
+            try {
+                // Check /me/accounts — what pages does this token manage?
+                const acctRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token&access_token=${t.val}`);
+                const acctData = await acctRes.json();
+                info.results.pages = acctData.data?.map(p => ({ id: p.id, name: p.name, has_page_token: !!p.access_token })) || acctData.error || 'no data';
+            } catch(e) { info.results.pages = { error: e.message }; }
+            try {
+                // Check token debug info
+                const debugRes = await fetch(`https://graph.facebook.com/v21.0/debug_token?input_token=${t.val}&access_token=${t.val}`);
+                const debugData = await debugRes.json();
+                if (debugData.data) {
+                    info.results.token_info = {
+                        app_id: debugData.data.app_id,
+                        type: debugData.data.type,
+                        is_valid: debugData.data.is_valid,
+                        expires_at: debugData.data.expires_at ? new Date(debugData.data.expires_at * 1000).toISOString() : 'never',
+                        scopes: debugData.data.scopes
+                    };
+                } else {
+                    info.results.token_info = debugData.error || debugData;
+                }
+            } catch(e) { info.results.token_info = { error: e.message }; }
+            diag.tokens_checked.push(info);
+        }
+
+        return res.json(diag);
+    }
+
     // ── PUBLISH-READY ── auto-publish all content_approved tasks with Supabase image ──
     if (type === 'publish-ready') {
         // Auth: svcKey OR AGENT_SECRET, via query param, x-agent-secret header, or Authorization Bearer
