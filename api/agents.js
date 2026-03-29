@@ -436,61 +436,85 @@ Return ONLY valid JSON (no markdown):
                 const format = cd.format || 'feed_post';
 
                 // ── DUBIS Brand Photography Rules ──
-                // Target audience: men & women 35-55, real bodies, real confidence
-                // Colors: Charcoal #2C2C2C, Honey Brown #C17E3A, Cream #F5F0E8
-                // Style: warm, candid, NOT professional models, NOT studio-perfect
-                // DUBIS clothing has English phrases on them (e.g. "More of me to love", "I'm not fat, I'm a limited edition")
-                const brandStyle = [
-                    'Photorealistic lifestyle photo, square 1:1 format.',
-                    'DUBIS Israeli streetwear brand. Real diverse people aged 35-55 with natural body types (NOT professional models, NOT fitness models).',
-                    'Warm natural lighting, golden hour feel. Muted earth tones with charcoal and honey-brown accents.',
-                    'Candid authentic pose, genuine smile, confident body language.',
-                    'CRITICAL: Do NOT render any text, words, letters, watermarks or logos anywhere in the image.'
-                ].join(' ');
+                // DUBIS clothing ALWAYS has English phrases printed on them.
+                // The phrase IS the product identity — it MUST appear on the garment in the image.
+                // Known slogans: "More of me to love", "I'm not fat, I'm a limited edition",
+                //   "Certified Overthinker", "Napping is my cardio", "I survived... That's enough",
+                //   "Not a model. Never wanted to be.", "Built different. That's the point."
+                // Brand: small DUBIS bear logo on chest area
 
-                // Detect product/theme from title and caption
-                const titleLower = (task.title + ' ' + (cd.caption_en || '') + ' ' + (cd.caption_he || '')).toLowerCase();
-                let productDesc = 'oversized casual clothing';
-                let settingDesc = 'urban street setting, city background';
+                // Extract product slogan — this MUST appear on the clothing
+                const slogan = cd.product_slogan || '';
+                const productType = cd.product_type || '';
 
-                // Product detection
-                if (titleLower.includes('hoodie') || titleLower.includes('קפוצון') || titleLower.includes('nap') || titleLower.includes('cardio')) {
-                    productDesc = 'oversized dark hoodie, cozy and relaxed';
-                } else if (titleLower.includes('zip') || titleLower.includes('זיפ')) {
-                    productDesc = 'zip-up hoodie, casual sporty';
-                } else if (titleLower.includes('t-shirt') || titleLower.includes('tee') || titleLower.includes('חולצ') || titleLower.includes('limited edition') || titleLower.includes('more of me')) {
-                    productDesc = 'oversized casual t-shirt, relaxed fit';
-                } else if (titleLower.includes('long sleeve') || titleLower.includes('שרוול')) {
-                    productDesc = 'long sleeve casual shirt';
-                } else if (titleLower.includes('cap') || titleLower.includes('כובע')) {
-                    productDesc = 'casual cap/hat';
+                // Build search text for context detection
+                const searchText = (task.title + ' ' + (cd.caption || '') + ' ' + (cd.caption_en || '') + ' ' + (cd.caption_he || '') + ' ' + slogan).toLowerCase();
+
+                // Determine the exact garment and phrase
+                let garmentDesc = 'oversized casual black t-shirt';
+                if (productType.includes('zip') || searchText.includes('zip') || searchText.includes('זיפ')) {
+                    garmentDesc = 'dark charcoal zip-up hoodie';
+                } else if (productType.includes('hoodie') || searchText.includes('hoodie') || searchText.includes('קפוצון')) {
+                    garmentDesc = 'oversized dark hoodie (pullover)';
+                } else if (productType.includes('long') || searchText.includes('long sleeve') || searchText.includes('שרוול')) {
+                    garmentDesc = 'casual long sleeve shirt';
+                } else if (productType.includes('cap') || searchText.includes('cap') || searchText.includes('כובע')) {
+                    garmentDesc = 'casual dark cap/hat';
+                } else {
+                    garmentDesc = 'oversized casual t-shirt';
+                }
+
+                // The phrase/slogan on the clothing — CRITICAL for brand identity
+                let phraseOnClothing = '';
+                if (slogan) {
+                    phraseOnClothing = slogan;
+                } else if (searchText.includes('overthinker')) {
+                    phraseOnClothing = 'Certified Overthinker';
+                } else if (searchText.includes('nap') || searchText.includes('cardio')) {
+                    phraseOnClothing = 'Napping is my cardio';
+                } else if (searchText.includes('limited edition') || searchText.includes('not fat')) {
+                    phraseOnClothing = "I'm not fat, I'm a limited edition";
+                } else if (searchText.includes('more of me') || searchText.includes('love')) {
+                    phraseOnClothing = 'More of me to love';
+                } else if (searchText.includes('survived') || searchText.includes('enough')) {
+                    phraseOnClothing = "I survived... That's enough";
+                } else if (searchText.includes('not a model')) {
+                    phraseOnClothing = 'Not a model. Never wanted to be.';
+                } else if (searchText.includes('built different')) {
+                    phraseOnClothing = "Built different. That's the point.";
                 }
 
                 // Setting/mood detection
-                if (titleLower.includes('behind') || titleLower.includes('scenes') || titleLower.includes('מאחורי')) {
+                let settingDesc = 'urban street setting, warm city background, golden hour';
+                if (searchText.includes('behind') || searchText.includes('scenes') || searchText.includes('מאחורי')) {
                     settingDesc = 'clothing workshop or design studio, industrial space, authentic production atmosphere';
-                } else if (titleLower.includes('shipping') || titleLower.includes('free') || titleLower.includes('collection') || titleLower.includes('קולקציה')) {
-                    settingDesc = 'group of friends hanging out, urban cafe or street, shopping bags visible';
-                } else if (titleLower.includes('relax') || titleLower.includes('couch') || titleLower.includes('home') || titleLower.includes('nap') || titleLower.includes('sleep')) {
+                } else if (searchText.includes('shipping') || searchText.includes('free') || searchText.includes('collection') || searchText.includes('קולקציה')) {
+                    settingDesc = 'group of friends hanging out, urban cafe, shopping vibes';
+                } else if (searchText.includes('relax') || searchText.includes('couch') || searchText.includes('home') || searchText.includes('nap') || searchText.includes('sleep')) {
                     settingDesc = 'cozy home interior, relaxing on sofa, warm ambient lighting';
-                } else if (titleLower.includes('weekend') || titleLower.includes('שבת') || titleLower.includes('friday') || titleLower.includes('שישי')) {
+                } else if (searchText.includes('weekend') || searchText.includes('שבת') || searchText.includes('friday')) {
                     settingDesc = 'relaxed weekend vibes, outdoor cafe terrace, morning light';
-                } else if (titleLower.includes('morning') || titleLower.includes('בוקר') || titleLower.includes('coffee') || titleLower.includes('קפה')) {
-                    settingDesc = 'morning coffee scene, kitchen or cafe, warm sunlight through window';
+                } else if (searchText.includes('morning') || searchText.includes('בוקר') || searchText.includes('coffee')) {
+                    settingDesc = 'morning coffee scene, kitchen or cafe, warm sunlight';
                 }
 
-                // Language-based model preference
-                const isHebrew = cd.language === 'he' || titleLower.includes('עברית') || titleLower.includes(' he ');
+                // Person description based on language
+                const isHebrew = cd.language === 'he';
                 const modelDesc = isHebrew
-                    ? 'Israeli person, Middle Eastern appearance, olive skin tone'
-                    : 'diverse person, any ethnicity';
+                    ? 'Israeli man or woman aged 40-50, olive skin, natural body, genuine smile'
+                    : 'diverse person aged 35-55, natural body type, authentic confidence';
+
+                const brandRules = 'Photorealistic lifestyle photo, square 1:1 format. DUBIS Israeli streetwear brand. Warm natural lighting, golden hour. NOT a professional model, NOT fitness body. Candid authentic pose.';
 
                 if (cd.image_prompt) {
-                    imagePrompt = `${cd.image_prompt}. ${brandStyle}`;
+                    imagePrompt = `${cd.image_prompt}. ${brandRules}`;
                 } else if (format === 'quote_card') {
-                    imagePrompt = `Minimalist dark charcoal textured background, concrete wall, moody warm lighting, no people. ${brandStyle}`;
+                    imagePrompt = `Minimalist dark charcoal textured background, concrete wall, moody warm lighting, no people. ${brandRules}`;
+                } else if (phraseOnClothing) {
+                    // KEY: Include the actual phrase that should appear on the garment
+                    imagePrompt = `${modelDesc} wearing a ${garmentDesc} with the text "${phraseOnClothing}" clearly printed in white on the front of the garment. Small bear logo on chest. ${settingDesc}. ${brandRules}`;
                 } else {
-                    imagePrompt = `${modelDesc} wearing ${productDesc}, ${settingDesc}. ${brandStyle}`;
+                    imagePrompt = `${modelDesc} wearing a ${garmentDesc} with "DUBIS" small logo on chest, ${settingDesc}. ${brandRules}`;
                 }
             }
         }
@@ -498,7 +522,7 @@ Return ONLY valid JSON (no markdown):
 
         // Generate image via Gemini 2.5 Flash Image Generation → upload to Supabase Storage
         // (Supabase URL is permanent & served with correct Content-Type for Instagram API)
-        const fullPrompt = imagePrompt + '. Fashion photography. Square 1:1 format. No text overlay. No watermark. Photorealistic.';
+        const fullPrompt = imagePrompt + '. Fashion photography. Square 1:1 format. No watermark. Photorealistic.';
 
         const gRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiKey}`,
@@ -1077,7 +1101,7 @@ Generate a social media post. Return ONLY valid JSON:
                         ? `Clothing workshop/studio with workers creating DUBIS garments, dark industrial space, authentic production atmosphere. ${dubisRule}`
                         : `Authentic people wearing DUBIS streetwear with English brand phrases on clothing, urban minimal setting, dark aesthetic, natural lighting, square 1:1. ${dubisRule}`;
                     const imgPromptText = gen.image_prompt || defaultImgPrompt;
-                    const fullPrompt = imgPromptText + '. Fashion photography. Square 1:1. No text overlay. No watermark. Photorealistic.';
+                    const fullPrompt = imgPromptText + '. Fashion photography. Square 1:1. No watermark. Photorealistic.';
 
                     // ── Primary: Gemini 2.0 Flash Image Generation ──────────────
                     const geminiImgKey = process.env.GEMINI_API_KEY;

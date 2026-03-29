@@ -41,3 +41,8 @@ We are currently AT the limit (12/12).
 - GELATO_API_KEY — Print-on-demand
 - RESEND_API_KEY — Email sending
 - PAYPAL_CLIENT_ID, PAYPAL_SECRET — Payments
+
+## User Preferences (oren)
+- **Plans & proposals**: ALWAYS deliver as HTML file with RTL Hebrew alignment (direction:rtl, text-align:right). Never as inline text in chat.
+- **Language**: Respond in Hebrew when input is Hebrew.
+- **Style**: Be direct, professional, opinionated. Say the hard truth.

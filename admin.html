@@ -1530,7 +1530,7 @@
 
       <div class="at-group" style="margin-top:0">
         <label>📷 בחר תמונה מהגלריה</label>
-        <div id="pm-gallery-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:6px;max-height:200px;overflow-y:auto;padding:4px">
+        <div id="pm-gallery-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin-top:6px;max-height:280px;overflow-y:auto;padding:4px;scrollbar-width:thin;scrollbar-color:#c8a96e #111">
         </div>
         <input type="hidden" id="pm-gallery-select" value="">
       </div>
@@ -1570,7 +1570,7 @@
         <button onclick="document.getElementById('pp-gallery-grid').style.display=document.getElementById('pp-gallery-grid').style.display==='none'?'grid':'none'" style="background:#1a1a2e;border:1px solid #2a2a4a;color:#c8a96e;padding:.35rem .5rem;border-radius:6px;font-size:.75rem;cursor:pointer;margin-right:.5rem">📷 בחר מגלריה ▾</button>
         <span id="pp-gen-img-status" style="font-size:.72rem;color:#888;margin-right:.5rem"></span>
       </div>
-      <div id="pp-gallery-grid" style="display:none;grid-template-columns:repeat(5,1fr);gap:4px;margin:6px 0;max-height:140px;overflow-y:auto;padding:2px"></div>
+      <div id="pp-gallery-grid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(56px,1fr));gap:4px;margin:6px 0;max-height:220px;overflow-y:auto;padding:2px;scrollbar-width:thin;scrollbar-color:#c8a96e #111"></div>
       <div class="pp-edit-actions">
         <span class="pp-lang-tab active" id="pp-tab-he" onclick="ppSwitchLang('he')">עברית</span>
         <span class="pp-lang-tab" id="pp-tab-en" onclick="ppSwitchLang('en')">English</span>
@@ -3719,18 +3719,22 @@
         const cd = data.content_data;
         const lang = cd.language || 'he';
 
-        // Build caption: use the correct language caption based on task language
+        // Build caption: check multiple possible field names
+        // Tasks use either 'caption' (unified) or 'caption_he'/'caption_en' (split by language)
         const parts = [];
-        if (lang === 'he' && cd.caption_he) {
+        if (cd.caption) {
+          // Unified caption field — used by manually created tasks
+          parts.push(cd.caption);
+        } else if (lang === 'he' && cd.caption_he) {
           parts.push(cd.caption_he);
         } else if (lang === 'en' && cd.caption_en) {
           parts.push(cd.caption_en);
         } else {
-          // Fallback: show both if language not specified
           if (cd.caption_he) parts.push(cd.caption_he);
           if (cd.caption_en) parts.push(cd.caption_en);
         }
-        if (cd.hashtags) parts.push(cd.hashtags);
+        // Add hashtags only if not already in caption text
+        if (cd.hashtags && !parts.some(p => p.includes('#'))) parts.push(cd.hashtags);
 
         if (parts.length) {
           document.getElementById('pm-caption').value = parts.join('\n\n');
