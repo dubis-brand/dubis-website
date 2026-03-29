@@ -1373,5 +1373,312 @@ Generate a social media post. Return ONLY valid JSON:
         });
     }
 
-    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish, content-run, publish-ready' });
+    // ══════════════════════════════════════════════════════════════════
+    // ── HEYGEN REELS ── AI video generation via HeyGen API
+    // ══════════════════════════════════════════════════════════════════
+
+    const HEYGEN_BASE = 'https://api.heygen.com';
+    const heygenKey = process.env.HEYGEN_API_KEY;
+
+    // ── AVATARS ── list available HeyGen avatars ──
+    if (type === 'avatars') {
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser && !isAgentSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
+        if (!heygenKey) return res.status(500).json({ error: 'HEYGEN_API_KEY not configured' });
+
+        try {
+            const r = await fetch(`${HEYGEN_BASE}/v2/avatars`, {
+                headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
+            });
+            const data = await r.json();
+            if (!r.ok || data.error) return res.status(r.status).json({ error: data.error?.message || 'Failed to list avatars' });
+
+            // Return simplified list for the frontend
+            const avatars = (data.data?.avatars || []).map(a => ({
+                avatar_id: a.avatar_id,
+                avatar_name: a.avatar_name,
+                gender: a.gender,
+                preview_image_url: a.preview_image_url,
+                preview_video_url: a.preview_video_url
+            }));
+            return res.json({ avatars, total: avatars.length });
+        } catch(e) {
+            return res.status(500).json({ error: 'HeyGen avatars: ' + e.message });
+        }
+    }
+
+    // ── VOICES ── list available HeyGen voices ──
+    if (type === 'voices') {
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser && !isAgentSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
+        if (!heygenKey) return res.status(500).json({ error: 'HEYGEN_API_KEY not configured' });
+
+        const lang = req.query.lang || ''; // optional filter: 'Hebrew', 'English'
+        try {
+            const r = await fetch(`${HEYGEN_BASE}/v2/voices`, {
+                headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
+            });
+            const data = await r.json();
+            if (!r.ok || data.error) return res.status(r.status).json({ error: data.error?.message || 'Failed to list voices' });
+
+            let voices = data.data?.voices || [];
+            if (lang) {
+                const langLower = lang.toLowerCase();
+                voices = voices.filter(v => (v.language || '').toLowerCase().includes(langLower));
+            }
+            const simplified = voices.map(v => ({
+                voice_id: v.voice_id,
+                name: v.name || v.display_name,
+                language: v.language,
+                gender: v.gender,
+                preview_audio: v.preview_audio
+            }));
+            return res.json({ voices: simplified, total: simplified.length });
+        } catch(e) {
+            return res.status(500).json({ error: 'HeyGen voices: ' + e.message });
+        }
+    }
+
+    // ── GENERATE-REEL ── create AI video via HeyGen ──
+    if (type === 'generate-reel') {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser && !isAgentSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
+        if (!heygenKey) return res.status(500).json({ error: 'HEYGEN_API_KEY not configured' });
+
+        const { task_id, script, avatar_id, voice_id, language, title } = req.body || {};
+        if (!script) return res.status(400).json({ error: 'script is required' });
+
+        // Defaults for DUBIS reels
+        const chosenAvatar = avatar_id || 'default'; // will be updated once we pick favorites
+        const chosenVoice = voice_id || 'default';
+
+        try {
+            // Build HeyGen video request
+            const videoPayload = {
+                video_inputs: [{
+                    character: {
+                        type: 'avatar',
+                        avatar_id: chosenAvatar,
+                        avatar_style: 'normal'
+                    },
+                    voice: {
+                        type: 'text',
+                        input_text: script,
+                        voice_id: chosenVoice,
+                        speed: 1.0
+                    },
+                    background: {
+                        type: 'color',
+                        value: '#1a1a1a' // DUBIS dark aesthetic
+                    }
+                }],
+                dimension: {
+                    width: 1080,
+                    height: 1920 // 9:16 vertical for Reels
+                },
+                callback_id: task_id || `reel_${Date.now()}`
+            };
+
+            console.log(`🎬 HeyGen generate-reel | avatar: ${chosenAvatar} | voice: ${chosenVoice} | script: ${script.substring(0, 80)}...`);
+
+            const r = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
+                method: 'POST',
+                headers: {
+                    'X-Api-Key': heygenKey,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(videoPayload)
+            });
+            const data = await r.json();
+
+            if (!r.ok || data.error) {
+                const errMsg = data.error?.message || data.message || JSON.stringify(data.error) || 'Video generation failed';
+                console.log(`🎬 HeyGen error: ${errMsg}`);
+                return res.status(r.status || 500).json({ error: errMsg });
+            }
+
+            const videoId = data.data?.video_id;
+            console.log(`🎬 HeyGen video created | video_id: ${videoId}`);
+
+            // If task_id provided, update the task with reel info
+            if (task_id) {
+                try {
+                    // Get current task
+                    const { data: task } = await sb.from('agent_tasks').select('content_data').eq('id', task_id).single();
+                    const cd = task?.content_data || {};
+                    const updated = {
+                        ...cd,
+                        post_type: 'reel',
+                        reel_script: script,
+                        reel_avatar_id: chosenAvatar,
+                        reel_voice_id: chosenVoice,
+                        heygen_video_id: videoId,
+                        reel_status: 'processing'
+                    };
+                    await sb.from('agent_tasks').update({ content_data: updated }).eq('id', task_id);
+                    console.log(`🎬 Task ${task_id} updated with reel info`);
+                } catch(dbErr) {
+                    console.log(`🎬 DB update error: ${dbErr.message}`);
+                }
+            }
+
+            return res.json({
+                success: true,
+                video_id: videoId,
+                status: 'processing',
+                message: 'הסרטון בתהליך יצירה. זה לוקח 2-5 דקות.'
+            });
+        } catch(e) {
+            console.log(`🎬 HeyGen generate error: ${e.message}`);
+            return res.status(500).json({ error: 'HeyGen: ' + e.message });
+        }
+    }
+
+    // ── REEL-STATUS ── check video generation status ──
+    if (type === 'reel-status') {
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser && !isAgentSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
+        if (!heygenKey) return res.status(500).json({ error: 'HEYGEN_API_KEY not configured' });
+
+        const videoId = req.query.video_id;
+        if (!videoId) return res.status(400).json({ error: 'video_id required' });
+
+        try {
+            const r = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${videoId}`, {
+                headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
+            });
+            const data = await r.json();
+            if (!r.ok || data.error) return res.status(r.status).json({ error: data.error?.message || 'Status check failed' });
+
+            const vd = data.data || {};
+            const result = {
+                video_id: vd.video_id || videoId,
+                status: vd.status, // pending, processing, completed, failed
+                video_url: vd.video_url || null,
+                thumbnail_url: vd.thumbnail_url || null,
+                duration: vd.duration || null,
+                gif_url: vd.gif_url || null,
+                callback_id: vd.callback_id || null
+            };
+
+            // If completed and has a task callback_id → update task
+            if (result.status === 'completed' && result.video_url && result.callback_id) {
+                try {
+                    const taskId = result.callback_id;
+                    if (taskId.match(/^[0-9a-f-]{36}$/)) { // valid UUID
+                        const { data: task } = await sb.from('agent_tasks').select('content_data').eq('id', taskId).single();
+                        if (task) {
+                            const cd = task.content_data || {};
+                            await sb.from('agent_tasks').update({
+                                content_data: {
+                                    ...cd,
+                                    reel_status: 'ready',
+                                    video_url: result.video_url,
+                                    video_thumbnail: result.thumbnail_url
+                                }
+                            }).eq('id', taskId);
+                            console.log(`🎬 Task ${taskId} updated: reel ready`);
+                        }
+                    }
+                } catch(dbErr) {
+                    console.log(`🎬 Status DB update error: ${dbErr.message}`);
+                }
+            }
+
+            return res.json(result);
+        } catch(e) {
+            return res.status(500).json({ error: 'HeyGen status: ' + e.message });
+        }
+    }
+
+    // ── REEL-WEBHOOK ── receive HeyGen callback when video is done ──
+    if (type === 'reel-webhook') {
+        // HeyGen sends OPTIONS for validation, then POST with event data
+        if (req.method === 'OPTIONS') return res.status(200).end();
+        if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+
+        const event = req.body || {};
+        console.log(`🎬 HeyGen webhook received: ${JSON.stringify(event).substring(0, 500)}`);
+
+        const eventType = event.event_type || event.event;
+        const eventData = event.data || event;
+
+        if (eventType === 'avatar_video.success' || eventData.status === 'completed') {
+            const videoId = eventData.video_id;
+            const videoUrl = eventData.url || eventData.video_url;
+            const callbackId = eventData.callback_id;
+            const thumbnailUrl = eventData.thumbnail_url;
+
+            console.log(`🎬 Webhook: video ${videoId} completed | url: ${videoUrl} | callback: ${callbackId}`);
+
+            // Upload video to Supabase Storage for permanent URL
+            if (videoUrl && callbackId && callbackId.match(/^[0-9a-f-]{36}$/)) {
+                try {
+                    // Download video from HeyGen
+                    const vidRes = await fetch(videoUrl);
+                    if (vidRes.ok) {
+                        const vidBuffer = Buffer.from(await vidRes.arrayBuffer());
+                        const fname = `reel_${callbackId}_${Date.now()}.mp4`;
+
+                        // Upload to Supabase Storage (reuse ig-images bucket or create reels bucket)
+                        const { error: upErr } = await sb.storage.from('ig-images').upload(fname, vidBuffer, {
+                            contentType: 'video/mp4',
+                            upsert: false
+                        });
+
+                        let permanentUrl = videoUrl;
+                        if (!upErr) {
+                            const { data: { publicUrl } } = sb.storage.from('ig-images').getPublicUrl(fname);
+                            permanentUrl = publicUrl;
+                            console.log(`🎬 Video uploaded to Supabase: ${permanentUrl}`);
+                        } else {
+                            console.log(`🎬 Supabase upload error: ${upErr.message}, using HeyGen URL`);
+                        }
+
+                        // Update task
+                        const { data: task } = await sb.from('agent_tasks').select('content_data').eq('id', callbackId).single();
+                        if (task) {
+                            await sb.from('agent_tasks').update({
+                                content_data: {
+                                    ...task.content_data,
+                                    reel_status: 'ready',
+                                    video_url: permanentUrl,
+                                    heygen_video_url: videoUrl,
+                                    video_thumbnail: thumbnailUrl
+                                }
+                            }).eq('id', callbackId);
+                            console.log(`🎬 Task ${callbackId} updated via webhook: reel ready`);
+                        }
+                    }
+                } catch(wbErr) {
+                    console.log(`🎬 Webhook processing error: ${wbErr.message}`);
+                }
+            }
+
+            return res.json({ received: true });
+        }
+
+        if (eventType === 'avatar_video.fail' || eventData.status === 'failed') {
+            const callbackId = eventData.callback_id;
+            console.log(`🎬 Webhook: video failed | callback: ${callbackId} | error: ${eventData.error || 'unknown'}`);
+
+            if (callbackId && callbackId.match(/^[0-9a-f-]{36}$/)) {
+                try {
+                    const { data: task } = await sb.from('agent_tasks').select('content_data').eq('id', callbackId).single();
+                    if (task) {
+                        await sb.from('agent_tasks').update({
+                            content_data: { ...task.content_data, reel_status: 'failed', reel_error: eventData.error || 'Video generation failed' }
+                        }).eq('id', callbackId);
+                    }
+                } catch(e) { console.log(`🎬 Webhook fail update error: ${e.message}`); }
+            }
+
+            return res.json({ received: true });
+        }
+
+        return res.json({ received: true, note: 'unhandled event type' });
+    }
+
+    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish, content-run, publish-ready, avatars, voices, generate-reel, reel-status, reel-webhook' });
 };
