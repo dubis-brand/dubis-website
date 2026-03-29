@@ -1247,7 +1247,21 @@
         margin-bottom:.8rem; display:flex; align-items:center; justify-content:center; }
       .pp-img-wrap img { width:100%; height:100%; object-fit:contain; max-height:400px; }
       .pp-caption { font-size:.8rem; color:#e8e0d5; line-height:1.65; white-space:pre-wrap;
-        background:#111; border-radius:6px; padding:.75rem; margin-bottom:.5rem; }
+        background:#111; border-radius:6px; padding:.75rem; margin-bottom:.5rem; direction:rtl; text-align:right; unicode-bidi:plaintext; }
+      .pp-caption-edit { width:100%; min-height:180px; background:#111; color:#e8e0d5; border:1px solid #c8a96e;
+        border-radius:6px; padding:.75rem; font-size:.8rem; line-height:1.65; white-space:pre-wrap;
+        resize:vertical; font-family:inherit; direction:rtl; text-align:right; unicode-bidi:plaintext; margin-bottom:.5rem; }
+      .pp-edit-actions { display:flex; gap:.5rem; margin-bottom:.6rem; }
+      .pp-edit-btn { background:#2a2a2a; border:1px solid #444; color:#c8a96e; padding:.3rem .7rem;
+        border-radius:5px; font-size:.72rem; cursor:pointer; }
+      .pp-edit-btn:hover { background:#333; }
+      .pp-save-btn { background:#1e3a1e; border:1px solid #3a6a3a; color:#6fcf6f; padding:.3rem .7rem;
+        border-radius:5px; font-size:.72rem; cursor:pointer; }
+      .pp-save-btn:hover { background:#2a4a2a; }
+      .pp-lang-tab { display:inline-block; padding:.25rem .6rem; font-size:.7rem; cursor:pointer;
+        border-radius:4px 4px 0 0; margin-left:2px; }
+      .pp-lang-tab.active { background:#111; color:#c8a96e; border:1px solid #333; border-bottom:none; }
+      .pp-lang-tab:not(.active) { background:#0a0a0a; color:#555; border:1px solid #222; }
       .pp-hashtags { font-size:.73rem; color:#c8a96e; margin-bottom:.9rem; }
       .pp-actions { display:flex; gap:.5rem; }
       .pp-platforms { display:flex; gap:1rem; margin-bottom:.8rem; font-size:.8rem; color:#aaa; }
@@ -1556,7 +1570,15 @@
         </select>
         <span id="pp-gen-img-status" style="font-size:.72rem;color:#888;margin-right:.5rem"></span>
       </div>
+      <div class="pp-edit-actions">
+        <span class="pp-lang-tab active" id="pp-tab-he" onclick="ppSwitchLang('he')">עברית</span>
+        <span class="pp-lang-tab" id="pp-tab-en" onclick="ppSwitchLang('en')">English</span>
+        <button class="pp-edit-btn" id="pp-edit-btn" onclick="ppStartEdit()">✏️ ערוך</button>
+        <button class="pp-save-btn" id="pp-save-btn" onclick="ppSaveEdit()" style="display:none">💾 שמור</button>
+        <button class="pp-edit-btn" id="pp-cancel-btn" onclick="ppCancelEdit()" style="display:none">✕ בטל</button>
+      </div>
       <div class="pp-caption" id="pp-caption-text"></div>
+      <textarea class="pp-caption-edit" id="pp-caption-edit" style="display:none"></textarea>
       <div class="pp-hashtags" id="pp-hashtags-text"></div>
       <div class="pp-platforms">
         <label><input type="checkbox" id="pp-instagram" checked> 📸 Instagram</label>
@@ -3149,7 +3171,7 @@
     // Only show content tasks (Instagram posts), not backlog/site/email tasks
     const contentTasks = tasks.filter(t =>
       (t.status === 'approved' || t.status === 'pending_approval') &&
-      t.title && t.title.startsWith('Instagram')
+      t.category === 'content' && t.due_date
     );
 
     for (let i = 0; i < 7; i++) {
@@ -3184,7 +3206,7 @@
       } else {
         dayTasks.slice(0, 2).forEach(t => {
           const cls = t.status === 'approved' ? 'cal-post' : 'cal-post pending-post';
-          const label = (t.title || '').replace(/Instagram Week \d+ — \w+:\s*/, '').substring(0, 18);
+          const label = (t.title || '').replace(/^IG שבוע \d+ \| [^:]+:\s*/, '').replace(/^Instagram Week \d+ — \w+:\s*/, '').substring(0, 18);
           const time = t.due_date ? new Date(t.due_date).toLocaleTimeString('he-IL', {hour:'2-digit',minute:'2-digit'}) : '';
           html += `<div class="${cls}" title="${t.title || ''}\n${t.status === 'approved' ? 'מאושר' : 'ממתין לאישור'}">${statusBadge(t.status)} ${label || 'פוסט'}${time ? ' <span style="color:#888;font-size:.45rem">'+time+'</span>' : ''}</div>`;
         });
@@ -3655,21 +3677,27 @@
   }
 
   // ── Post Preview Modal ──────────────────────────────────────
-  let _ppState = { taskId: null, token: null };
+  let _ppState = { taskId: null, token: null, captionHe: '', captionEn: '', currentLang: 'he' };
 
   async function openPostPreview(taskId) {
-    const { data } = await window._supabase.from('agent_tasks').select('*').eq('id', taskId).single();
+    const { data } = await _sb.from('agent_tasks').select('*').eq('id', taskId).single();
     if (!data) return;
     const cd = data.content_data || {};
-    const { data: { session } } = await window._supabase.auth.getSession();
-    _ppState = { taskId, token: session?.access_token, imageUrl: cd.generated_image_url || '' };
+    const { data: { session } } = await _sb.auth.getSession();
+    _ppState = {
+      taskId, token: session?.access_token,
+      imageUrl: cd.generated_image_url || cd.image_url || '',
+      captionHe: cd.caption_he || '', captionEn: cd.caption_en || '',
+      currentLang: 'he', contentData: cd
+    };
 
     document.getElementById('pp-title').textContent = data.title;
 
     const imgEl = document.getElementById('pp-img');
     const phEl  = document.getElementById('pp-img-ph');
-    if (cd.generated_image_url) {
-      imgEl.src = cd.generated_image_url;
+    const displayUrl = cd.generated_image_url || cd.image_url || '';
+    if (displayUrl) {
+      imgEl.src = displayUrl;
       imgEl.style.display = 'block';
       phEl.style.display  = 'none';
     } else {
@@ -3677,11 +3705,19 @@
       phEl.style.display  = 'block';
     }
 
-    document.getElementById('pp-caption-text').textContent = [cd.caption_he, cd.caption_en].filter(Boolean).join('\n\n');
+    // Show Hebrew by default
+    ppSwitchLang('he');
     document.getElementById('pp-hashtags-text').textContent = cd.hashtags || '';
     document.getElementById('pp-error').style.display = 'none';
     document.getElementById('pp-gen-img-status').textContent = '';
     document.getElementById('pp-gen-img-btn').disabled = false;
+    // Reset edit mode
+    document.getElementById('pp-caption-text').style.display = '';
+    document.getElementById('pp-caption-edit').style.display = 'none';
+    document.getElementById('pp-edit-btn').style.display = '';
+    document.getElementById('pp-save-btn').style.display = 'none';
+    document.getElementById('pp-cancel-btn').style.display = 'none';
+
     const btn = document.getElementById('pp-approve-btn');
     btn.disabled = false;
     btn.textContent = '✅ אשר ופרסם';
@@ -3690,6 +3726,60 @@
     // Trigger Smart Match for image recommendations
     const captionText = [cd.caption_he, cd.caption_en].filter(Boolean).join(' ');
     loadSmartMatch(captionText);
+  }
+
+  function ppSwitchLang(lang) {
+    _ppState.currentLang = lang;
+    const txt = lang === 'he' ? _ppState.captionHe : _ppState.captionEn;
+    const dir = lang === 'he' ? 'rtl' : 'ltr';
+    const align = lang === 'he' ? 'right' : 'left';
+    document.getElementById('pp-caption-text').textContent = txt;
+    document.getElementById('pp-caption-text').style.direction = dir;
+    document.getElementById('pp-caption-text').style.textAlign = align;
+    document.getElementById('pp-caption-edit').style.direction = dir;
+    document.getElementById('pp-caption-edit').style.textAlign = align;
+    document.getElementById('pp-tab-he').className = 'pp-lang-tab' + (lang === 'he' ? ' active' : '');
+    document.getElementById('pp-tab-en').className = 'pp-lang-tab' + (lang === 'en' ? ' active' : '');
+    // If in edit mode, update textarea too
+    if (document.getElementById('pp-caption-edit').style.display !== 'none') {
+      document.getElementById('pp-caption-edit').value = txt;
+    }
+  }
+
+  function ppStartEdit() {
+    const txt = _ppState.currentLang === 'he' ? _ppState.captionHe : _ppState.captionEn;
+    document.getElementById('pp-caption-edit').value = txt;
+    document.getElementById('pp-caption-text').style.display = 'none';
+    document.getElementById('pp-caption-edit').style.display = '';
+    document.getElementById('pp-edit-btn').style.display = 'none';
+    document.getElementById('pp-save-btn').style.display = '';
+    document.getElementById('pp-cancel-btn').style.display = '';
+    document.getElementById('pp-caption-edit').focus();
+  }
+
+  function ppCancelEdit() {
+    document.getElementById('pp-caption-text').style.display = '';
+    document.getElementById('pp-caption-edit').style.display = 'none';
+    document.getElementById('pp-edit-btn').style.display = '';
+    document.getElementById('pp-save-btn').style.display = 'none';
+    document.getElementById('pp-cancel-btn').style.display = 'none';
+  }
+
+  async function ppSaveEdit() {
+    const newText = document.getElementById('pp-caption-edit').value;
+    if (_ppState.currentLang === 'he') _ppState.captionHe = newText;
+    else _ppState.captionEn = newText;
+
+    // Update in DB
+    const updated = { ..._ppState.contentData, caption_he: _ppState.captionHe, caption_en: _ppState.captionEn };
+    await _sb.from('agent_tasks').update({ content_data: updated }).eq('id', _ppState.taskId);
+    _ppState.contentData = updated;
+
+    // Update display
+    document.getElementById('pp-caption-text').textContent = newText;
+    ppCancelEdit();
+    document.getElementById('pp-gen-img-status').textContent = '✅ נשמר!';
+    setTimeout(() => { document.getElementById('pp-gen-img-status').textContent = ''; }, 2000);
   }
 
   function closePP() {

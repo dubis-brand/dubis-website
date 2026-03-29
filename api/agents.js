@@ -551,14 +551,30 @@ Return ONLY valid JSON (no markdown):
         const clothingHeb = { 't-shirt': 't-shirt', 'hoodie': 'hoodie', 'zip-hoodie': 'zip-up hoodie', 'long-sleeve': 'long sleeve shirt', 'cap': 'baseball cap' };
         const clothingName = clothingHeb[product.clothing_type] || product.clothing_type;
 
-        // Split image: diptych (front view left, back view right)
-        const prompt = `Create a photorealistic DSLR-quality diptych photograph split into two halves side by side:
+        // Rotate between different composition styles for variety
+        const compositions = [
+          { name: 'diptych', prompt: `Create a photorealistic DSLR-quality diptych photograph split into two halves side by side:
+LEFT HALF — FRONT VIEW: ${models[model] || models.man} wearing a ${color} ${clothingName}. On the LEFT CHEST area (heart position), there is a small text "DUBIS" in clean white sans-serif font with a tiny superscript "™". No other text on the front.
+RIGHT HALF — BACK VIEW: The SAME person from behind, showing the BACK of the ${color} ${clothingName}. On the UPPER BACK, printed in LARGE bold white capital letters: "${sloganUpper}".
+SETTING: ${scenes[scene] || scenes.street}` },
 
-LEFT HALF — FRONT VIEW: ${models[model] || models.man} wearing a ${color} ${clothingName}. On the LEFT CHEST area (heart position), there is a small text "DUBIS" in clean white sans-serif font, with a tiny superscript "™" symbol ONLY after the S (like DUBIS™). The ™ is NOT inside a circle — only the two letters ™ in superscript. No other text or design on the front. The person is facing the camera.
+          { name: 'back_hero', prompt: `Create a photorealistic DSLR-quality single photograph showing ${models[model] || models.man} from behind at a slight angle (3/4 back view), wearing a ${color} ${clothingName}. On the UPPER BACK, printed in LARGE bold white sans-serif capital letters: "${sloganUpper}". The person is looking slightly over their shoulder with a confident expression. Small "DUBIS™" logo visible on the left chest from the angle.
+SETTING: ${scenes[scene] || scenes.street}. Shallow depth of field, the text is the hero of the image.` },
 
-RIGHT HALF — BACK VIEW: The SAME person from behind, showing the BACK of the ${color} ${clothingName}. On the UPPER BACK, printed in LARGE bold white sans-serif capital letters: "${sloganUpper}". The text is centered horizontally on the back, clearly readable.
+          { name: 'lifestyle', prompt: `Create a photorealistic DSLR-quality lifestyle photograph of ${models[model] || models.man} wearing a ${color} ${clothingName} in a natural candid moment. The person is ${['sitting on a bench laughing', 'walking confidently down the street', 'leaning against a wall with arms crossed', 'holding a coffee cup looking relaxed', 'standing with hands in pockets, genuine smile'][Math.floor(Math.random() * 5)]}. On the BACK of the ${clothingName}, the text "${sloganUpper}" is partially visible. Small "DUBIS™" on the left chest.
+SETTING: ${scenes[scene] || scenes.street}. Shot feels authentic and unposed, like a street photography moment.` },
 
-SETTING: ${scenes[scene] || scenes.street}
+          { name: 'flat_lay', prompt: `Create a photorealistic DSLR-quality flat lay photograph of a ${color} ${clothingName} neatly laid out on a ${['dark wood table', 'concrete surface', 'cream linen fabric', 'rustic wooden floor'][Math.floor(Math.random() * 4)]}. The ${clothingName} is displayed showing the BACK with the text "${sloganUpper}" in LARGE bold white capital letters clearly readable. Next to it: ${['a coffee mug and sunglasses', 'sneakers and a phone', 'a book and earbuds', 'keys and a wallet'][Math.floor(Math.random() * 4)]}. Top-down camera angle. Clean minimalist styling.` },
+
+          { name: 'close_up_text', prompt: `Create a photorealistic DSLR-quality close-up photograph focusing on the BACK of a ${color} ${clothingName} being worn by ${models[model] || models.man}. The camera is focused tightly on the upper back area showing the text "${sloganUpper}" in LARGE bold white sans-serif capital letters. The background and person are slightly blurred (bokeh). The text is sharp and the hero of the shot.
+SETTING: ${scenes[scene] || scenes.street}. Shot at 85mm lens, f/2.0 shallow depth of field.` }
+        ];
+
+        // Pick composition based on a hash of product+model+scene for consistent variety
+        const compIdx = (product.slogan.length + model.length + scene.length + color.length) % compositions.length;
+        const comp = compositions[compIdx];
+
+        const prompt = comp.prompt + `
 
 CRITICAL RULES:
 - The ${clothingName} MUST be ${color} color — NOT red, NOT any other color
@@ -566,7 +582,7 @@ CRITICAL RULES:
 - The front has ONLY the small "DUBIS™" logo on the left chest
 - Real diverse person, NOT a fashion model, body-positive natural look
 - No distorted text, all text must be spelled correctly letter by letter
-- DSLR realism, 50mm lens, natural shadows, warm golden light
+- DSLR realism, natural shadows, warm golden light
 - Photorealistic image, not illustration or cartoon`;
 
         console.log(`🖼 Generating product image: "${product.slogan}" | ${color} ${product.clothing_type} | ${scene} | ${model}`);
