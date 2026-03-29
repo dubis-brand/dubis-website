@@ -1529,20 +1529,10 @@
       </div>
 
       <div class="at-group" style="margin-top:0">
-        <label>📷 בחר תמונה מאושרת מהגלריה</label>
-        <select id="pm-gallery-select" onchange="pmSelectGalleryPhoto(this.value)" style="width:100%;padding:.4rem;background:#111;color:#c8a96e;border:1px solid #333;border-radius:6px;font-size:.8rem">
-          <option value="">— בחר תמונה —</option>
-          <option value="https://dubis.net/images/dubis_photo_01.jpg">תמונה 1 — גבר ברחוב, קפוצ׳ון שחור</option>
-          <option value="https://dubis.net/images/dubis_photo_02.jpg">תמונה 2 — אישה אורבנית, קפוצ׳ון שחור</option>
-          <option value="https://dubis.net/images/dubis_photo_03.jpg">תמונה 3 — גבר גדול בסטודיו, חולצה לבנה</option>
-          <option value="https://dubis.net/images/dubis_photo_04.jpg">תמונה 4 — אישה בטבע, חולצה שחורה</option>
-          <option value="https://dubis.net/images/dubis_photo_05.jpg">תמונה 5 — גבר בבית קפה, חולצה כחולה</option>
-          <option value="https://dubis.net/images/dubis_photo_06.jpg">תמונה 6 — זוג ברחוב, קפוצ׳ון שחור</option>
-          <option value="https://dubis.net/images/dubis_photo_07.jpg">תמונה 7 — אישה אורבנית, חולצה לבנה</option>
-          <option value="https://dubis.net/images/dubis_photo_08.jpg">תמונה 8 — גבר מבוגר בבית, חולצה אפורה</option>
-          <option value="https://dubis.net/images/dubis_photo_09.jpg">תמונה 9 — גבר בסטודיו, זיפ-הודי</option>
-          <option value="https://dubis.net/images/dubis_photo_10.jpg">תמונה 10 — אישה בטבע, חולצה לבנה</option>
-        </select>
+        <label>📷 בחר תמונה מהגלריה</label>
+        <div id="pm-gallery-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:6px;max-height:200px;overflow-y:auto;padding:4px">
+        </div>
+        <input type="hidden" id="pm-gallery-select" value="">
       </div>
 
       <div class="at-group" style="margin-top:.5rem">
@@ -1577,21 +1567,10 @@
       </div>
       <div style="text-align:center;margin-bottom:.6rem">
         <button id="pp-gen-img-btn" onclick="generatePostImage()" style="background:#1e2a1e;border:1px solid #3a6a3a;color:#6fcf6f;padding:.35rem .8rem;border-radius:6px;font-size:.75rem;cursor:pointer">🎨 יצור תמונה AI</button>
-        <select id="pp-real-photo" onchange="useRealPhoto(this.value)" style="background:#1a1a2e;border:1px solid #2a2a4a;color:#c8a96e;padding:.35rem .5rem;border-radius:6px;font-size:.75rem;cursor:pointer;margin-right:.5rem">
-          <option value="">📷 תמונה אמיתית של DUBIS...</option>
-          <option value="images/dubis_photo_01.jpg">תמונה 1</option>
-          <option value="images/dubis_photo_02.jpg">תמונה 2</option>
-          <option value="images/dubis_photo_03.jpg">תמונה 3</option>
-          <option value="images/dubis_photo_04.jpg">תמונה 4</option>
-          <option value="images/dubis_photo_05.jpg">תמונה 5</option>
-          <option value="images/dubis_photo_06.jpg">תמונה 6</option>
-          <option value="images/dubis_photo_07.jpg">תמונה 7</option>
-          <option value="images/dubis_photo_08.jpg">תמונה 8</option>
-          <option value="images/dubis_photo_09.jpg">תמונה 9</option>
-          <option value="images/dubis_photo_10.jpg">תמונה 10</option>
-        </select>
+        <button onclick="document.getElementById('pp-gallery-grid').style.display=document.getElementById('pp-gallery-grid').style.display==='none'?'grid':'none'" style="background:#1a1a2e;border:1px solid #2a2a4a;color:#c8a96e;padding:.35rem .5rem;border-radius:6px;font-size:.75rem;cursor:pointer;margin-right:.5rem">📷 בחר מגלריה ▾</button>
         <span id="pp-gen-img-status" style="font-size:.72rem;color:#888;margin-right:.5rem"></span>
       </div>
+      <div id="pp-gallery-grid" style="display:none;grid-template-columns:repeat(5,1fr);gap:4px;margin:6px 0;max-height:140px;overflow-y:auto;padding:2px"></div>
       <div class="pp-edit-actions">
         <span class="pp-lang-tab active" id="pp-tab-he" onclick="ppSwitchLang('he')">עברית</span>
         <span class="pp-lang-tab" id="pp-tab-en" onclick="ppSwitchLang('en')">English</span>
@@ -3728,36 +3707,54 @@
     updateImagePreview('');
     updateCharCount();
 
-    // Pre-fill from task content_data
+    // Load gallery thumbnails
+    loadGalleryThumbnails();
+
+    // Pre-fill from task content_data — this is the PRIMARY source for caption
+    let captionFilled = false;
     try {
       const { data } = await _sb.from('agent_tasks')
-        .select('content_data').eq('id', taskId).single();
+        .select('content_data, title').eq('id', taskId).single();
       if (data?.content_data) {
         const cd = data.content_data;
+        const lang = cd.language || 'he';
+
+        // Build caption: use the correct language caption based on task language
         const parts = [];
-        if (cd.caption_he) parts.push(cd.caption_he);
-        if (cd.caption_en) parts.push(cd.caption_en);
-        if (cd.hashtags)   parts.push(cd.hashtags);
+        if (lang === 'he' && cd.caption_he) {
+          parts.push(cd.caption_he);
+        } else if (lang === 'en' && cd.caption_en) {
+          parts.push(cd.caption_en);
+        } else {
+          // Fallback: show both if language not specified
+          if (cd.caption_he) parts.push(cd.caption_he);
+          if (cd.caption_en) parts.push(cd.caption_en);
+        }
+        if (cd.hashtags) parts.push(cd.hashtags);
+
         if (parts.length) {
           document.getElementById('pm-caption').value = parts.join('\n\n');
           updateCharCount();
+          captionFilled = true;
         }
+
         // Show image: prefer generated, fallback to assigned image_url
         const imgUrl = cd.generated_image_url || cd.image_url || '';
         if (imgUrl) {
           document.getElementById('pm-image-url').value = imgUrl;
           updateImagePreview(imgUrl);
-          // Auto-select gallery if it's a DUBIS photo
-          const gallerySelect = document.getElementById('pm-gallery-select');
-          if (gallerySelect) {
-            const match = Array.from(gallerySelect.options).find(o => o.value === imgUrl);
-            if (match) gallerySelect.value = imgUrl;
-          }
+          // Highlight matching gallery thumbnail after gallery loads
+          setTimeout(() => {
+            document.querySelectorAll('#pm-gallery-grid .pm-thumb').forEach(el => {
+              el.style.outline = el.dataset.url === imgUrl ? '3px solid #c8a96e' : '2px solid transparent';
+            });
+          }, 1500);
         }
       }
-    } catch(e) {}
+    } catch(e) { console.warn('publish modal prefill err', e); }
 
-    if (!document.getElementById('pm-caption').value && captionHint) {
+    // Only use captionHint as last resort if content_data had no caption
+    if (!captionFilled && captionHint) {
       document.getElementById('pm-caption').value = captionHint;
       updateCharCount();
     }
@@ -3805,7 +3802,55 @@
   function pmSelectGalleryPhoto(url) {
     if (!url) return;
     document.getElementById('pm-image-url').value = url;
+    document.getElementById('pm-gallery-select').value = url;
     updateImagePreview(url);
+    // Highlight selected thumbnail
+    document.querySelectorAll('#pm-gallery-grid .pm-thumb').forEach(el => {
+      el.style.outline = el.dataset.url === url ? '3px solid #c8a96e' : '2px solid transparent';
+    });
+  }
+
+  async function loadGalleryThumbnails() {
+    const grid = document.getElementById('pm-gallery-grid');
+    if (!grid) return;
+    grid.innerHTML = '<div style="color:#666;font-size:.75rem;grid-column:1/-1">טוען גלריה...</div>';
+
+    // 1. Load static DUBIS photos
+    const staticPhotos = [];
+    for (let i = 1; i <= 10; i++) {
+      staticPhotos.push({ url: `https://dubis.net/images/dubis_photo_${String(i).padStart(2,'0')}.jpg`, label: `DUBIS ${i}` });
+    }
+
+    // 2. Load AI-generated images from Supabase storage
+    let storagePhotos = [];
+    try {
+      const { data: files } = await _sb.storage.from('ig-images').list('', { limit: 50, sortBy: { column: 'created_at', order: 'desc' } });
+      if (files && files.length) {
+        storagePhotos = files.filter(f => f.name.endsWith('.jpg') || f.name.endsWith('.png')).map(f => {
+          const { data: { publicUrl } } = _sb.storage.from('ig-images').getPublicUrl(f.name);
+          return { url: publicUrl, label: 'AI: ' + f.name.replace(/^ig-/,'').replace(/\.(jpg|png)$/,'').substring(0,12) };
+        });
+      }
+    } catch(e) { console.warn('gallery storage err', e); }
+
+    const allPhotos = [...storagePhotos, ...staticPhotos];
+    grid.innerHTML = '';
+
+    if (!allPhotos.length) {
+      grid.innerHTML = '<div style="color:#666;font-size:.75rem;grid-column:1/-1">אין תמונות זמינות</div>';
+      return;
+    }
+
+    allPhotos.forEach(p => {
+      const div = document.createElement('div');
+      div.className = 'pm-thumb';
+      div.dataset.url = p.url;
+      div.title = p.label;
+      div.style.cssText = 'cursor:pointer;border-radius:6px;overflow:hidden;aspect-ratio:1;outline:2px solid transparent;transition:outline .15s;position:relative;background:#111';
+      div.innerHTML = `<img src="${p.url}" alt="${p.label}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentElement.style.display='none'">`;
+      div.onclick = () => pmSelectGalleryPhoto(p.url);
+      grid.appendChild(div);
+    });
   }
 
   async function pmGenerateImage() {
@@ -3969,6 +4014,9 @@
     document.getElementById('pp-error').style.display = 'none';
     document.getElementById('pp-gen-img-status').textContent = '';
     document.getElementById('pp-gen-img-btn').disabled = false;
+    document.getElementById('pp-gallery-grid').style.display = 'none';
+    // Load preview gallery thumbnails
+    loadPreviewGallery();
     // Reset edit mode
     document.getElementById('pp-caption-text').style.display = '';
     document.getElementById('pp-caption-edit').style.display = 'none';
@@ -4130,26 +4178,54 @@
     }
   }
 
-  function useRealPhoto(path) {
-    if (!path) return;
-    const fullUrl = 'https://www.dubis.net/' + path;
+  function useRealPhoto(url) {
+    if (!url) return;
+    const fullUrl = url.startsWith('http') ? url : 'https://www.dubis.net/' + url;
     _ppState.imageUrl = fullUrl;
     const img = document.getElementById('pp-img');
     const ph  = document.getElementById('pp-img-ph');
     img.src = fullUrl;
     img.style.display = 'block';
     ph.style.display  = 'none';
-    document.getElementById('pp-gen-img-status').textContent = '✅ תמונה אמיתית של DUBIS';
+    document.getElementById('pp-gen-img-status').textContent = '✅ תמונה נבחרה';
+    document.getElementById('pp-gallery-grid').style.display = 'none';
     // Also update task content_data
     if (_ppState.taskId) {
-      window._supabase.from('agent_tasks').select('content_data').eq('id', _ppState.taskId).single().then(({ data }) => {
+      _sb.from('agent_tasks').select('content_data').eq('id', _ppState.taskId).single().then(({ data }) => {
         const cd = data?.content_data || {};
         cd.generated_image_url = fullUrl;
-        window._supabase.from('agent_tasks').update({ content_data: cd, updated_at: new Date().toISOString() }).eq('id', _ppState.taskId);
+        _sb.from('agent_tasks').update({ content_data: cd, updated_at: new Date().toISOString() }).eq('id', _ppState.taskId);
       });
     }
-    // Reset dropdown
-    document.getElementById('pp-real-photo').selectedIndex = 0;
+  }
+
+  async function loadPreviewGallery() {
+    const grid = document.getElementById('pp-gallery-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    // Static photos
+    for (let i = 1; i <= 10; i++) {
+      const url = `https://dubis.net/images/dubis_photo_${String(i).padStart(2,'0')}.jpg`;
+      const div = document.createElement('div');
+      div.style.cssText = 'cursor:pointer;border-radius:4px;overflow:hidden;aspect-ratio:1;outline:2px solid transparent;transition:outline .15s;background:#111';
+      div.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover" loading="lazy">`;
+      div.onclick = () => useRealPhoto(url);
+      grid.appendChild(div);
+    }
+    // AI-generated photos from storage
+    try {
+      const { data: files } = await _sb.storage.from('ig-images').list('', { limit: 30, sortBy: { column: 'created_at', order: 'desc' } });
+      if (files && files.length) {
+        files.filter(f => f.name.endsWith('.jpg') || f.name.endsWith('.png')).forEach(f => {
+          const { data: { publicUrl } } = _sb.storage.from('ig-images').getPublicUrl(f.name);
+          const div = document.createElement('div');
+          div.style.cssText = 'cursor:pointer;border-radius:4px;overflow:hidden;aspect-ratio:1;outline:2px solid transparent;transition:outline .15s;background:#111';
+          div.innerHTML = `<img src="${publicUrl}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentElement.style.display='none'">`;
+          div.onclick = () => useRealPhoto(publicUrl);
+          grid.appendChild(div);
+        });
+      }
+    } catch(e) {}
   }
 
   function openAddTaskModal() {

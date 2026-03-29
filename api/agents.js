@@ -434,16 +434,63 @@ Return ONLY valid JSON (no markdown):
             if (task) {
                 const cd = task.content_data || {};
                 const format = cd.format || 'feed_post';
-                const baseStyle = 'Israeli streetwear brand aesthetic. Real authentic diverse people (NOT professional models). Dark minimal urban photography, muted tones with gold/beige accents, concrete and city textures. Plain black/dark oversized clothing WITHOUT any visible text, logos, or brand names on the garments. Natural lighting, candid feel. Square 1:1 format. IMPORTANT: Do NOT render any text, words, letters, or logos anywhere in the image.';
+
+                // ── DUBIS Brand Photography Rules ──
+                // Target audience: men & women 35-55, real bodies, real confidence
+                // Colors: Charcoal #2C2C2C, Honey Brown #C17E3A, Cream #F5F0E8
+                // Style: warm, candid, NOT professional models, NOT studio-perfect
+                // DUBIS clothing has English phrases on them (e.g. "More of me to love", "I'm not fat, I'm a limited edition")
+                const brandStyle = [
+                    'Photorealistic lifestyle photo, square 1:1 format.',
+                    'DUBIS Israeli streetwear brand. Real diverse people aged 35-55 with natural body types (NOT professional models, NOT fitness models).',
+                    'Warm natural lighting, golden hour feel. Muted earth tones with charcoal and honey-brown accents.',
+                    'Candid authentic pose, genuine smile, confident body language.',
+                    'CRITICAL: Do NOT render any text, words, letters, watermarks or logos anywhere in the image.'
+                ].join(' ');
+
+                // Detect product/theme from title and caption
+                const titleLower = (task.title + ' ' + (cd.caption_en || '') + ' ' + (cd.caption_he || '')).toLowerCase();
+                let productDesc = 'oversized casual clothing';
+                let settingDesc = 'urban street setting, city background';
+
+                // Product detection
+                if (titleLower.includes('hoodie') || titleLower.includes('קפוצון') || titleLower.includes('nap') || titleLower.includes('cardio')) {
+                    productDesc = 'oversized dark hoodie, cozy and relaxed';
+                } else if (titleLower.includes('zip') || titleLower.includes('זיפ')) {
+                    productDesc = 'zip-up hoodie, casual sporty';
+                } else if (titleLower.includes('t-shirt') || titleLower.includes('tee') || titleLower.includes('חולצ') || titleLower.includes('limited edition') || titleLower.includes('more of me')) {
+                    productDesc = 'oversized casual t-shirt, relaxed fit';
+                } else if (titleLower.includes('long sleeve') || titleLower.includes('שרוול')) {
+                    productDesc = 'long sleeve casual shirt';
+                } else if (titleLower.includes('cap') || titleLower.includes('כובע')) {
+                    productDesc = 'casual cap/hat';
+                }
+
+                // Setting/mood detection
+                if (titleLower.includes('behind') || titleLower.includes('scenes') || titleLower.includes('מאחורי')) {
+                    settingDesc = 'clothing workshop or design studio, industrial space, authentic production atmosphere';
+                } else if (titleLower.includes('shipping') || titleLower.includes('free') || titleLower.includes('collection') || titleLower.includes('קולקציה')) {
+                    settingDesc = 'group of friends hanging out, urban cafe or street, shopping bags visible';
+                } else if (titleLower.includes('relax') || titleLower.includes('couch') || titleLower.includes('home') || titleLower.includes('nap') || titleLower.includes('sleep')) {
+                    settingDesc = 'cozy home interior, relaxing on sofa, warm ambient lighting';
+                } else if (titleLower.includes('weekend') || titleLower.includes('שבת') || titleLower.includes('friday') || titleLower.includes('שישי')) {
+                    settingDesc = 'relaxed weekend vibes, outdoor cafe terrace, morning light';
+                } else if (titleLower.includes('morning') || titleLower.includes('בוקר') || titleLower.includes('coffee') || titleLower.includes('קפה')) {
+                    settingDesc = 'morning coffee scene, kitchen or cafe, warm sunlight through window';
+                }
+
+                // Language-based model preference
+                const isHebrew = cd.language === 'he' || titleLower.includes('עברית') || titleLower.includes(' he ');
+                const modelDesc = isHebrew
+                    ? 'Israeli person, Middle Eastern appearance, olive skin tone'
+                    : 'diverse person, any ethnicity';
+
                 if (cd.image_prompt) {
-                    // Use the AI-generated visual prompt (created by Gemini for this task)
-                    imagePrompt = `${cd.image_prompt}. ${baseStyle}`;
+                    imagePrompt = `${cd.image_prompt}. ${brandStyle}`;
                 } else if (format === 'quote_card') {
-                    imagePrompt = `Minimalist dark textured background, urban concrete wall, suitable for text overlay. ${baseStyle}`;
-                } else if (format === 'product_post') {
-                    imagePrompt = `Real person wearing DUBIS casual streetwear, urban street setting, ${task.title.substring(0,60)}. ${baseStyle}`;
+                    imagePrompt = `Minimalist dark charcoal textured background, concrete wall, moody warm lighting, no people. ${brandStyle}`;
                 } else {
-                    imagePrompt = `${task.title.substring(0,80)}, authentic urban lifestyle moment, DUBIS clothing. ${baseStyle}`;
+                    imagePrompt = `${modelDesc} wearing ${productDesc}, ${settingDesc}. ${brandStyle}`;
                 }
             }
         }
