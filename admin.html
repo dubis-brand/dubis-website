@@ -1657,24 +1657,46 @@
     </div>
 
     <!-- Agent cards -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.2rem">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.2rem" id="agent-cards-grid">
+
+      <!-- Boss Agent -->
+      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #e8c97a">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem">
+          <div>
+            <div style="font-size:1.4rem">👑</div>
+            <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Boss Agent</div>
+            <div style="color:#999;font-size:.8rem">ניהול צוות + דוח יומי</div>
+          </div>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.3rem .6rem;font-size:.75rem;color:#e8c97a">AUTO</span>
+        </div>
+        <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
+          מנהל הצוות. מתאם בין כל הסוכנים, מרכז תוצאות ושולח מייל סיכום יומי ב-07:00.
+        </div>
+        <div id="agent-tasks-boss" style="margin-bottom:.6rem"></div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#e8c97a">Resend Email</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#999">cron 05:00 UTC</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-boss">—</span>
+        </div>
+      </div>
 
       <!-- Content Agent -->
-      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #e8c97a">
+      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #4caf50">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem">
           <div>
             <div style="font-size:1.4rem">✍️</div>
             <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Content Agent</div>
-            <div style="color:#999;font-size:.8rem">יצירת תוכן לאינסטגרם</div>
+            <div style="color:#999;font-size:.8rem">יצירת תוכן לרשתות</div>
           </div>
           <button onclick="runAgent('content')" class="agent-run-btn">▶ הרץ</button>
         </div>
         <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
           מייצר כיתוב בעברית + אנגלית, האשטאגים ותמונה AI לכל משימת content מאושרת. משימות עוברות ל-<em>pending_approval</em> לבדיקתך לפני פרסום.
         </div>
+        <div id="agent-tasks-content" style="margin-bottom:.6rem"></div>
         <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#e8c97a">Gemini 2.0 Flash</span>
-          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#e8c97a">Imagen 3</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50">Gemini 2.5 Flash</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50">Imagen 3</span>
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-content">—</span>
         </div>
       </div>
@@ -1692,8 +1714,9 @@
         <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
           מנתח משימות טכניות ובאגים, מייצר תוכנית יישום מפורטת בעברית (קבצים לשינוי, שלבי פיתוח, בדיקות). שומר כ-notes במשימה.
         </div>
+        <div id="agent-tasks-cto" style="margin-bottom:.6rem"></div>
         <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#2196f3">Gemini 2.0 Flash</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#2196f3">Gemini 2.5 Flash</span>
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-cto">—</span>
         </div>
       </div>
@@ -1711,9 +1734,31 @@
         <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
           מושך נתוני מכירות 7 ימים אחרונים, מנתח ביצועים ומייצר 3-5 המלצות שיווק מעשיות וספציפיות לפעולה.
         </div>
+        <div id="agent-tasks-marketing" style="margin-bottom:.6rem"></div>
         <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#e91e63">Gemini 2.0 Flash</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#e91e63">Gemini 2.5 Flash</span>
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-marketing">—</span>
+        </div>
+      </div>
+
+      <!-- Design Agent -->
+      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #ff5722">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem">
+          <div>
+            <div style="font-size:1.4rem">🎨</div>
+            <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Design Agent</div>
+            <div style="color:#999;font-size:.8rem">תמונות AI ועיצוב</div>
+          </div>
+          <button onclick="runAgent('design')" class="agent-run-btn">▶ הרץ</button>
+        </div>
+        <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
+          יוצר תמונות מוצר ושיווק ב-Reve.ai ו-Gemini Imagen. סגנון: אנשים אמיתיים, תאורה חמה, לא דוגמנים. עיצובי הדפסה 3000×3000px.
+        </div>
+        <div id="agent-tasks-design" style="margin-bottom:.6rem"></div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#ff5722">Reve.ai</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#ff5722">Gemini Imagen</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-design">—</span>
         </div>
       </div>
 
@@ -1728,8 +1773,9 @@
           <button onclick="runAgent('supply')" class="agent-run-btn">▶ הרץ</button>
         </div>
         <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
-          מסנכרן סטטוס הזמנות מ-Gelato (ייצור, משלוח, מסירה). רץ אוטומטית כל יום בחצות. עדכון עמנואלי אפשרי.
+          מסנכרן סטטוס הזמנות מ-Gelato (ייצור, משלוח, מסירה). רץ אוטומטית כל יום בחצות. עדכון ידני אפשרי.
         </div>
+        <div id="agent-tasks-supply" style="margin-bottom:.6rem"></div>
         <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#ff9800">Gelato API</span>
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#999">cron 00:00 UTC</span>
@@ -1737,23 +1783,45 @@
         </div>
       </div>
 
-      <!-- Morning Report -->
-      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #9c27b0">
+      <!-- Email Monitor Agent -->
+      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #f44336">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem">
           <div>
             <div style="font-size:1.4rem">📧</div>
-            <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Morning Report</div>
-            <div style="color:#999;font-size:.8rem">דוח בוקר יומי</div>
+            <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Email Monitor</div>
+            <div style="color:#999;font-size:.8rem">סריקת Gmail יומית</div>
           </div>
-          <span style="background:#2a2a2a;border-radius:4px;padding:.3rem .6rem;font-size:.75rem;color:#9c27b0">AUTO</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.3rem .6rem;font-size:.75rem;color:#f44336">AUTO 06:45</span>
         </div>
         <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
-          נשלח אוטומטית ל-dubis.brand@gmail.com כל יום ב-07:00. מכיל: סטטיסטיקות יומיות, הזמנות פעילות, תובנות Gmail ומשימות ממתינות.
+          סורק dubis.brand@gmail.com כל בוקר. מסווג מיילים לפי עדיפות (critical/high/medium), מזהה בעיות הזמנות וספקים, יוצר tasks ב-DB.
         </div>
+        <div id="agent-tasks-email_monitor" style="margin-bottom:.6rem"></div>
         <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#9c27b0">Resend Email</span>
-          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#9c27b0">Gmail API</span>
-          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#999">cron 05:00 UTC</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#f44336">Gmail MCP</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#f44336">Supabase SQL</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-email_monitor">—</span>
+        </div>
+      </div>
+
+      <!-- Site Audit Agent -->
+      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #00bcd4">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem">
+          <div>
+            <div style="font-size:1.4rem">🔍</div>
+            <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Site Audit</div>
+            <div style="color:#999;font-size:.8rem">סריקת SEO/UX יומית</div>
+          </div>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.3rem .6rem;font-size:.75rem;color:#00bcd4">AUTO 06:50</span>
+        </div>
+        <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
+          סורק את dubis.net כל בוקר. בודק SEO (title, meta, OG, H1), UX (lazy loading, viewport), ומזהה הזדמנויות עסקיות חדשות.
+        </div>
+        <div id="agent-tasks-site_audit" style="margin-bottom:.6rem"></div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#00bcd4">WebFetch</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#00bcd4">Supabase SQL</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-site_audit">—</span>
         </div>
       </div>
 
@@ -4195,19 +4263,41 @@
       document.getElementById('stat-done').textContent       = (tasks||[]).filter(t=>t.status==='done'&&new Date(t.created_at)>weekAgo).length;
       document.getElementById('stat-inprogress').textContent = (tasks||[]).filter(t=>t.status==='in_progress').length;
       document.getElementById('stat-pending').textContent    = (tasks||[]).filter(t=>t.status==='pending_approval').length;
-      ['content','cto','marketing','supply'].forEach(ag => {
+      const allAgentIds = ['boss','content','cto','marketing','design','supply','email_monitor','site_audit'];
+      allAgentIds.forEach(ag => {
         const el = document.getElementById('agent-status-'+ag);
         if (!el) return;
-        const count = (tasks||[]).filter(t=>t.agent_id===ag&&['approved','in_progress'].includes(t.status)).length;
-        el.textContent = count > 0 ? count+' פעיל' : 'אין משימות';
-        el.style.color = count > 0 ? '#ff9800' : '#4caf50';
+        const agTasks = (tasks||[]).filter(t=>t.agent_id===ag);
+        const activeCount = agTasks.filter(t=>['approved','in_progress'].includes(t.status)).length;
+        el.textContent = activeCount > 0 ? activeCount+' פעיל' : 'אין משימות';
+        el.style.color = activeCount > 0 ? '#ff9800' : '#4caf50';
+
+        // Render task breakdown per agent
+        const tasksDiv = document.getElementById('agent-tasks-'+ag);
+        if (!tasksDiv) return;
+        const backlog = agTasks.filter(t=>t.status==='backlog').length;
+        const pending = agTasks.filter(t=>t.status==='pending_approval').length;
+        const approved = agTasks.filter(t=>t.status==='approved').length;
+        const inProg = agTasks.filter(t=>t.status==='in_progress').length;
+        const done = agTasks.filter(t=>t.status==='done').length;
+        const total = agTasks.length;
+        if (total === 0) { tasksDiv.innerHTML = '<div style="font-size:.75rem;color:#555">אין משימות משויכות</div>'; return; }
+        const parts = [];
+        if (backlog)  parts.push(`<span style="color:#999">${backlog} backlog</span>`);
+        if (pending)  parts.push(`<span style="color:#e8c97a">${pending} לאישור</span>`);
+        if (approved) parts.push(`<span style="color:#4caf50">${approved} מאושר</span>`);
+        if (inProg)   parts.push(`<span style="color:#2196f3">${inProg} בתהליך</span>`);
+        if (done)     parts.push(`<span style="color:#666">${done} בוצע</span>`);
+        tasksDiv.innerHTML = `<div style="font-size:.75rem;display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
+          <span style="color:#e8e0d5;font-weight:600">${total} משימות:</span> ${parts.join(' · ')}
+        </div>`;
       });
     } catch(e) { console.error('agents stats',e); }
     try {
       const { data: runs } = await _sb.from('agent_runs').select('*').order('created_at',{ascending:false}).limit(20);
       const list = document.getElementById('agents-runs-list');
       if (!runs||!runs.length) { list.innerHTML='<div style="color:#666;font-size:.85rem">עדיין לא רצו סוכנים</div>'; return; }
-      const emoji = {content:'✍️',cto:'🔧',marketing:'📣',supply:'📦'};
+      const emoji = {boss:'👑',content:'✍️',cto:'🔧',marketing:'📣',design:'🎨',supply:'📦',email_monitor:'📧',site_audit:'🔍'};
       list.innerHTML = runs.map(r=>{
         const sc = r.status==='completed'?'#4caf50':r.status==='completed_with_errors'?'#ff9800':'#2196f3';
         return `<div style="background:#1a1a1a;border-radius:6px;padding:.7rem 1rem;display:flex;justify-content:space-between;align-items:center;gap:1rem">
@@ -4228,18 +4318,23 @@
   }
 
   async function runAgent(agentId) {
+    const agentNames = {boss:'Boss',content:'Content',cto:'CTO',marketing:'Marketing',design:'Design',supply:'Supply',email_monitor:'Email Monitor',site_audit:'Site Audit'};
+    const name = agentNames[agentId] || agentId;
+    if (!confirm(`להריץ את ${name} Agent?\n\nהסוכן ירוץ על כל המשימות המאושרות שלו.`)) return;
     const { data: { session } } = await _sb.auth.getSession();
     const token = session?.access_token;
     if (!token) return alert('לא מחובר');
     const btn = document.querySelector(`[onclick="runAgent('${agentId}')"]`);
-    if (btn) { btn.disabled=true; btn.textContent='⏳...'; }
+    if (btn) { btn.disabled=true; btn.textContent='⏳ רץ...'; }
     try {
       const res = await fetch('/api/agents?type=run', {
-        method:'POST', headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'}
+        method:'POST',
+        headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+        body: JSON.stringify({ agent_id: agentId })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error||'שגיאה');
-      alert('✅ '+agentId+' הסתיים\n'+(data.summary||data.queued+' משימות'));
+      alert('✅ '+name+' הסתיים!\n'+(data.summary || (data.queued ? data.queued+' משימות עובדו' : 'הושלם')));
       loadAgentsSection();
     } catch(e) { alert('שגיאה: '+e.message); }
     finally { if (btn) { btn.disabled=false; btn.textContent='▶ הרץ'; } }
