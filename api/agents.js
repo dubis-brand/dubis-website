@@ -872,38 +872,70 @@ CRITICAL RULES:
 
         // ── Facebook Page (requires pages_manage_posts + pages_read_engagement) ──
         if (doFacebook) {
-            // Try multiple token sources: dedicated FB token, IG token
-            const allTokens = [process.env.FACEBOOK_PAGE_TOKEN, process.env.INSTAGRAM_ACCESS_TOKEN].filter(Boolean);
+            const fbPageToken = process.env.FACEBOOK_PAGE_TOKEN;
+            const igToken = process.env.INSTAGRAM_ACCESS_TOKEN;
+            // Build ordered list: dedicated FB token first, then IG token
+            const allTokens = [
+                fbPageToken ? { name: 'FACEBOOK_PAGE_TOKEN', val: fbPageToken } : null,
+                igToken     ? { name: 'INSTAGRAM_ACCESS_TOKEN', val: igToken }  : null,
+            ].filter(Boolean);
+
             if (!allTokens.length) {
                 result.errors.push('Facebook: חסר FACEBOOK_PAGE_TOKEN ב-Vercel env vars');
             } else {
                 let fbPublished = false;
-                for (const tryToken of allTokens) {
+                for (const tokenObj of allTokens) {
                     if (fbPublished) break;
+                    const tryToken = tokenObj.val;
                     try {
-                        // Auto-detect page from /me/accounts (most reliable method)
+                        // 1) Quick token validity check
+                        const meRes = await fetch(`https://graph.facebook.com/v21.0/me?access_token=${tryToken}`);
+                        const meData = await meRes.json();
+                        if (meData.error) {
+                            const msg = meData.error.message || '';
+                            if (msg.includes('expired')) {
+                                console.log(`📘 FB token ${tokenObj.name} expired`);
+                                if (tokenObj === allTokens[allTokens.length - 1]) {
+                                    result.errors.push(`Facebook: הטוקן ${tokenObj.name} פג תוקף. יש לחדש אותו ב-Meta Business Suite → Settings → System Users`);
+                                    result.facebook_manual_needed = true;
+                                }
+                                continue; // try next token
+                            }
+                        }
+
+                        // 2) Auto-detect page from /me/accounts
                         let fbPageId = null;
                         let pageToken = tryToken;
                         try {
                             const acctRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?access_token=${tryToken}`);
                             const acctData = await acctRes.json();
-                            console.log(`📘 FB /me/accounts response: ${JSON.stringify(acctData.data?.map(p => ({ id: p.id, name: p.name })) || acctData.error || 'no data')}`);
+                            console.log(`📘 FB /me/accounts (${tokenObj.name}): ${JSON.stringify(acctData.data?.map(p => ({ id: p.id, name: p.name })) || acctData.error || 'no data')}`);
                             if (acctData.data?.length) {
-                                // Prefer env-specified page if it exists in the list, otherwise use first
                                 const envId = process.env.FACEBOOK_PAGE_ID;
                                 const targetPage = (envId && acctData.data.find(p => p.id === envId)) || acctData.data[0];
                                 fbPageId = targetPage.id;
                                 pageToken = targetPage.access_token || tryToken;
                                 console.log(`📘 FB Page selected: ${targetPage.name} (${fbPageId})`);
+                            } else if (acctData.error) {
+                                console.log(`📘 FB /me/accounts error: ${acctData.error.message}`);
+                            } else {
+                                console.log(`📘 FB /me/accounts returned 0 pages — token ${tokenObj.name} lacks pages_manage_posts scope`);
                             }
                         } catch(acctErr) {
-                            console.log(`📘 FB /me/accounts error: ${acctErr.message}`);
+                            console.log(`📘 FB /me/accounts fetch error: ${acctErr.message}`);
                         }
-                        // Fallback to env var only if /me/accounts failed entirely
-                        if (!fbPageId) fbPageId = process.env.FACEBOOK_PAGE_ID;
-                        if (!fbPageId) continue; // try next token
 
-                        // Try /photos endpoint first (image post)
+                        // 3) Fallback to env var
+                        if (!fbPageId) fbPageId = process.env.FACEBOOK_PAGE_ID;
+                        if (!fbPageId) {
+                            if (tokenObj === allTokens[allTokens.length - 1]) {
+                                result.errors.push('Facebook: לא נמצא דף פייסבוק. בדוק שה-FACEBOOK_PAGE_TOKEN כולל הרשאת pages_manage_posts או הגדר FACEBOOK_PAGE_ID');
+                                result.facebook_manual_needed = true;
+                            }
+                            continue;
+                        }
+
+                        // 4) Try /photos endpoint (image post)
                         const fbRes = await fetch(`https://graph.facebook.com/v21.0/${fbPageId}/photos`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -911,8 +943,8 @@ CRITICAL RULES:
                         });
                         const fbData = await fbRes.json();
                         if (!fbRes.ok || fbData.error) {
-                            // If /photos fails, try /feed endpoint as fallback
                             console.log(`📘 FB /photos failed: ${fbData.error?.message}, trying /feed...`);
+                            // 5) Fallback to /feed
                             const feedRes = await fetch(`https://graph.facebook.com/v21.0/${fbPageId}/feed`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -922,8 +954,7 @@ CRITICAL RULES:
                             if (!feedRes.ok || feedData.error) {
                                 const errMsg = feedData.error?.message || fbData.error?.message || 'publish failed';
                                 console.log(`📘 FB /feed also failed: ${errMsg}`);
-                                // Only add error if this is the last token to try
-                                if (tryToken === allTokens[allTokens.length - 1]) {
+                                if (tokenObj === allTokens[allTokens.length - 1]) {
                                     result.errors.push('Facebook: ' + errMsg);
                                     result.facebook_manual_needed = true;
                                 }
@@ -938,7 +969,7 @@ CRITICAL RULES:
                             console.log(`✅ Facebook published via /photos | ID: ${result.facebook_post_id}`);
                         }
                     } catch(e) {
-                        if (tryToken === allTokens[allTokens.length - 1]) {
+                        if (tokenObj === allTokens[allTokens.length - 1]) {
                             result.errors.push('Facebook: ' + e.message);
                             result.facebook_manual_needed = true;
                         }
@@ -1197,8 +1228,10 @@ Generate a social media post. Return ONLY valid JSON:
         return res.status(200).json({ queued: taskResults.length, remaining: tasks.length - batch.length, results: taskResults });
     }
 
-    // ── FB-DEBUG ── diagnose Facebook token & page issues (temporary, no auth) ──
+    // ── FB-DEBUG ── diagnose Facebook token & page issues ──
     if (type === 'fb-debug') {
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser && !isAgentSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
 
         const diag = {
             has_fb_page_token: !!process.env.FACEBOOK_PAGE_TOKEN,
