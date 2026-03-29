@@ -54,10 +54,10 @@ module.exports = async function handler(req, res) {
         supabase.from('page_views').select('*', { count: 'exact', head: true }).gte('created_at', today),
         // Page views — last 30 days raw
         supabase.from('page_views').select('path, referrer, created_at').gte('created_at', since30).order('created_at', { ascending: true }),
-        // All orders
-        supabase.from('orders').select('id, status, total_amount, currency, coupon_code, discount_amount, items, created_at'),
+        // All orders (include buyer_email for sandbox filtering)
+        supabase.from('orders').select('id, status, total_amount, currency, coupon_code, discount_amount, items, buyer_email, created_at'),
         // Recent orders (30 days)
-        supabase.from('orders').select('id, total_amount, items, created_at').gte('created_at', since30),
+        supabase.from('orders').select('id, status, total_amount, items, buyer_email, coupon_code, created_at').gte('created_at', since30),
         // Newsletter — total subscribers
         supabase.from('newsletter_subscribers').select('*', { count: 'exact', head: true }),
         // Newsletter — recent (30 days)
@@ -115,21 +115,31 @@ module.exports = async function handler(req, res) {
     const views7prev = rows.filter(r => r.created_at >= prev7Start && r.created_at < since7).length;
 
     // ── ORDERS ──
-    const allOrders = allOrdersRes.data || [];
-    const totalOrders = allOrders.length;
-    const totalRevenue = allOrders
-        .filter(o => o.status !== 'cancelled' && o.status !== 'refunded' && (parseFloat(o.total_amount) || 0) > 0)
+    // Helper: filter out test/sandbox orders, reprints, and cancelled
+    const isRealOrder = (o) => {
+        if (o.status === 'cancelled' || o.status === 'refunded') return false;
+        if (o.buyer_email && o.buyer_email.includes('example.com')) return false; // PayPal Sandbox
+        if (o.coupon_code === 'GELATO-REPRINT') return false; // Reprints (not a new sale)
+        return true;
+    };
+
+    const allOrdersRaw = allOrdersRes.data || [];
+    const realOrders = allOrdersRaw.filter(isRealOrder);
+    const totalOrders = realOrders.length;
+    const totalRevenue = realOrders
+        .filter(o => (parseFloat(o.total_amount) || 0) > 0)
         .reduce((s, o) => s + (parseFloat(o.total_amount) || 0), 0);
-    const todayOrders = allOrders.filter(o => o.created_at?.startsWith(today));
+    const todayOrders = realOrders.filter(o => o.created_at?.startsWith(today));
     const todayRevenue = todayOrders
-        .filter(o => o.status !== 'cancelled' && o.status !== 'refunded')
         .reduce((s, o) => s + (parseFloat(o.total_amount) || 0), 0);
 
+    // Status breakdown (show ALL orders including cancelled for transparency)
     const ordersByStatus = {};
-    allOrders.forEach(o => { ordersByStatus[o.status] = (ordersByStatus[o.status] || 0) + 1; });
+    allOrdersRaw.forEach(o => { ordersByStatus[o.status] = (ordersByStatus[o.status] || 0) + 1; });
 
-    // Revenue per day (last 30 days)
-    const recentOrds = recentOrdersRes.data || [];
+    // Revenue per day (last 30 days) — only real orders
+    const recentOrdsRaw = recentOrdersRes.data || [];
+    const recentOrds = recentOrdsRaw.filter(isRealOrder);
     const revByDay = {};
     recentOrds.forEach(o => {
         const day = o.created_at?.slice(0, 10);
@@ -141,15 +151,18 @@ module.exports = async function handler(req, res) {
         revenuePerDay.push({ date: d, revenue: Math.round((revByDay[d] || 0) * 100) / 100 });
     }
 
-    // Average order value
+    // Average order value (only real orders with revenue)
     const avgOrderValue = totalOrders > 0 ? Math.round((totalRevenue / totalOrders) * 100) / 100 : 0;
 
-    // Best-selling products (from order items)
+    // Best-selling products (from REAL order items only)
     const productSales = {};
-    allOrders.forEach(o => {
+    realOrders.forEach(o => {
         const items = o.items || [];
         items.forEach(item => {
-            const name = item.name || item.product_name || 'Unknown';
+            // Build readable name from item fields: typeLabel + phrase
+            const typeName = item.typeLabel || item.type || '';
+            const phrase = item.phrase || '';
+            const name = phrase ? `${typeName} — ${phrase.substring(0, 30)}` : (typeName || item.name || item.product_name || 'Unknown');
             if (!productSales[name]) productSales[name] = { qty: 0, revenue: 0 };
             productSales[name].qty += (item.quantity || item.qty || 1);
             productSales[name].revenue += (parseFloat(item.price) || 0) * (item.quantity || item.qty || 1);
@@ -160,9 +173,9 @@ module.exports = async function handler(req, res) {
         .slice(0, 10)
         .map(([name, d]) => ({ name, qty: d.qty, revenue: Math.round(d.revenue * 100) / 100 }));
 
-    // Coupon usage in orders
+    // Coupon usage in orders (count all orders for coupon tracking)
     const couponUsage = {};
-    allOrders.forEach(o => {
+    allOrdersRaw.forEach(o => {
         if (o.coupon_code) {
             if (!couponUsage[o.coupon_code]) couponUsage[o.coupon_code] = { uses: 0, discount_total: 0 };
             couponUsage[o.coupon_code].uses++;
@@ -170,11 +183,9 @@ module.exports = async function handler(req, res) {
         }
     });
 
-    // Conversion rate (orders / unique visitor days, rough estimate)
-    const uniqueDays = Object.keys(byDay).length || 1;
-    const monthViews = rows.length;
-    const monthOrders = recentOrds.length;
-    const conversionRate = monthViews > 0 ? Math.round((monthOrders / monthViews) * 10000) / 100 : 0;
+    // Unique visitors (approximate from page views)
+    const uniqueVisitors = rows.length;
+    const conversionRate = uniqueVisitors > 0 ? Math.round((totalOrders / uniqueVisitors) * 10000) / 100 : 0;
 
     // ── NEWSLETTER ──
     const totalSubscribers = subscribersRes.count || 0;
@@ -219,9 +230,10 @@ module.exports = async function handler(req, res) {
         topReferrers,
         viewsTrend: { current: views7, previous: views7prev },
 
-        // Orders
+        // Orders (real orders only — excludes sandbox, cancelled, reprints)
         totalOrders,
         totalRevenue: Math.round(totalRevenue * 100) / 100,
+        uniqueVisitors,
         todayOrders: todayOrders.length,
         todayRevenue: Math.round(todayRevenue * 100) / 100,
         avgOrderValue,

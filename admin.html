@@ -1059,7 +1059,7 @@
         <div class="stat-value" id="av-aov">—</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">אחוז המרה</div>
+        <div class="stat-label">ROAS (החזר על פרסום)</div>
         <div class="stat-value" id="av-conversion">—</div>
       </div>
     </div>
@@ -2918,12 +2918,11 @@
       const orders = data.totalOrders || 0;
       const revenue = data.totalRevenue || 0;
       const aov = orders > 0 ? revenue / orders : 0;
-      const uniqueVisitors = data.uniqueVisitors || data.totalViews || 0;
-      const convRate = uniqueVisitors > 0 ? ((orders / uniqueVisitors) * 100).toFixed(2) : '0';
       document.getElementById('av-orders').textContent = orders.toLocaleString();
       document.getElementById('av-revenue').textContent = '$' + revenue.toLocaleString();
       document.getElementById('av-aov').textContent = '$' + aov.toFixed(2);
-      document.getElementById('av-conversion').textContent = convRate + '%';
+      // ROAS will be updated in loadGoalsAndSocial after we know ad spend
+      document.getElementById('av-conversion').textContent = '—';
 
       // Revenue chart
       if (_revenueChart) _revenueChart.destroy();
@@ -3022,7 +3021,7 @@
     let totalSpentILS = 0;
     let allCampaigns = [];
     try {
-      const { data: campaigns } = await window._supabase.from('ad_campaigns').select('*');
+      const { data: campaigns } = await _sb.from('ad_campaigns').select('*');
       allCampaigns = campaigns || [];
       // Total budget = sum of all active campaign budgets
       const activeCamps = allCampaigns.filter(c => c.status === 'active');
@@ -3051,6 +3050,10 @@
     document.getElementById('budget-spent').textContent = `$${spentUSD.toFixed(0)} (₪${Math.round(totalSpentILS)})`;
     document.getElementById('budget-remaining').textContent = '$' + remainingUSD.toFixed(0);
     document.getElementById('budget-roi').textContent = roi;
+
+    // Update ROAS card in sales section: Revenue / Ad Spend
+    const roas = spentUSD > 0 ? ((monthlyRevenue / spentUSD) * 100).toFixed(0) + '%' : (monthlyRevenue > 0 ? 'אין הוצאה' : 'אין נתונים');
+    document.getElementById('av-conversion').textContent = roas;
 
     // Active campaigns display — show ALL active ones
     try {
@@ -3120,7 +3123,14 @@
     const cal = document.getElementById('content-calendar');
     const dayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
     const today = new Date();
+    today.setHours(0,0,0,0);
     let html = '';
+
+    // Only show content tasks (Instagram posts), not backlog/site/email tasks
+    const contentTasks = tasks.filter(t =>
+      (t.status === 'approved' || t.status === 'pending_approval') &&
+      t.title && t.title.startsWith('Instagram')
+    );
 
     for (let i = 0; i < 7; i++) {
       const d = new Date(today);
@@ -3130,15 +3140,23 @@
       const dayName = dayNames[d.getDay()];
       const dayNum = d.getDate();
 
-      // Find tasks scheduled for this day
-      const dayTasks = tasks.filter(t => {
-        if (t.due_date) return t.due_date === dateStr;
-        // Also show tasks by title pattern (e.g. "Week 8 — Tuesday")
+      // Find tasks scheduled for this day by due_date
+      const dayTasks = contentTasks.filter(t => {
+        if (t.due_date) {
+          const taskDate = t.due_date.slice(0, 10);
+          return taskDate === dateStr;
+        }
+        // Fallback: match English day name in title
         const dayOfWeek = d.toLocaleDateString('en', { weekday: 'long' });
-        return t.title && t.title.includes(dayOfWeek) && (t.status === 'approved' || t.status === 'pending_approval');
+        return t.title && t.title.includes(dayOfWeek);
       });
 
-      html += `<div class="cal-day${isToday ? ' today' : ''}">
+      const statusBadge = (status) => {
+        if (status === 'approved') return '<span style="color:#4caf50;font-size:.5rem">✅</span>';
+        return '<span style="color:#ff9800;font-size:.5rem">⏳</span>';
+      };
+
+      html += `<div class="cal-day${isToday ? ' today' : ''}" onclick="showCalDayDetail('${dateStr}')" style="cursor:pointer">
         <div class="cal-day-name">${dayName} ${dayNum}</div>`;
 
       if (dayTasks.length === 0) {
@@ -3146,8 +3164,9 @@
       } else {
         dayTasks.slice(0, 2).forEach(t => {
           const cls = t.status === 'approved' ? 'cal-post' : 'cal-post pending-post';
-          const label = (t.title || '').replace(/Instagram Week \d+ — \w+:\s*/, '').substring(0, 20);
-          html += `<div class="${cls}" title="${t.title || ''}">${label || 'פוסט'}</div>`;
+          const label = (t.title || '').replace(/Instagram Week \d+ — \w+:\s*/, '').substring(0, 18);
+          const time = t.due_date ? new Date(t.due_date).toLocaleTimeString('he-IL', {hour:'2-digit',minute:'2-digit'}) : '';
+          html += `<div class="${cls}" title="${t.title || ''}\n${t.status === 'approved' ? 'מאושר' : 'ממתין לאישור'}">${statusBadge(t.status)} ${label || 'פוסט'}${time ? ' <span style="color:#888;font-size:.45rem">'+time+'</span>' : ''}</div>`;
         });
         if (dayTasks.length > 2) {
           html += `<div style="color:#555;font-size:.5rem;text-align:center">+${dayTasks.length - 2} נוספים</div>`;
@@ -3156,6 +3175,19 @@
       html += '</div>';
     }
     cal.innerHTML = html;
+  }
+
+  function showCalDayDetail(dateStr) {
+    // Navigate to tasks tab filtered by this date
+    const navBtn = document.getElementById('nav-tasks');
+    if (navBtn) {
+      showSection('tasks', navBtn);
+      // Set date filter if available
+      setTimeout(() => {
+        const filterEl = document.getElementById('task-filter-status');
+        if (filterEl) { filterEl.value = 'pending_approval'; filterEl.dispatchEvent(new Event('change')); }
+      }, 300);
+    }
   }
 
   // ── Reviews Management ──────────────────────────────
@@ -3932,11 +3964,20 @@
       const active   = campaigns.filter(c => c.status === 'active').length;
       const done     = campaigns.filter(c => c.status === 'completed').length;
       const budgetIL = campaigns.reduce((s, c) => s + Number(c.budget || 0), 0);
-      const spendIL  = campaigns.reduce((s, c) => s + Number(c.spend_to_date || 0), 0);
+      // Estimated spend: spend_to_date if > 0, else (budget/days)*daysElapsed
+      const spendIL  = campaigns.reduce((s, c) => {
+        const tracked = Number(c.spend_to_date || 0);
+        if (tracked > 0) return s + tracked;
+        if (c.status !== 'active') return s;
+        const start = c.start_date ? new Date(c.start_date) : new Date(c.created_at);
+        const elapsed = Math.max(0, Math.floor((Date.now() - start.getTime()) / 86400000));
+        const daily = Number(c.budget || 0) / Math.max(1, c.duration_days || 7);
+        return s + Math.min(Number(c.budget || 0), daily * elapsed);
+      }, 0);
       document.getElementById('cstat-active').textContent  = active;
       document.getElementById('cstat-done').textContent    = done;
       document.getElementById('cstat-budget').textContent  = '₪' + budgetIL.toFixed(0);
-      document.getElementById('cstat-spend').textContent   = '₪' + spendIL.toFixed(2);
+      document.getElementById('cstat-spend').textContent   = '₪' + spendIL.toFixed(0) + (spendIL > 0 && campaigns.every(c => !Number(c.spend_to_date)) ? ' (מוערך)' : '');
 
       // Build table
       const goalLabel = { website_visits:'Website visits', reach:'Reach', engagement:'Engagement', sales:'Sales', page_likes:'Page likes' };
@@ -3945,7 +3986,17 @@
         const statusLbl = c.status === 'active' ? '🟢 פעיל' : c.status === 'completed' ? '✅ הסתיים' : '⏸ מושהה';
         const endDate   = c.end_date ? new Date(c.end_date).toLocaleDateString('he-IL') : '—';
         const startDate = c.start_date ? new Date(c.start_date).toLocaleDateString('he-IL') : '—';
-        const pct       = c.budget > 0 ? Math.round((Number(c.spend_to_date || 0) / Number(c.budget)) * 100) : 0;
+        // Estimated spend for display
+        let rowSpend = Number(c.spend_to_date || 0);
+        let isEstimated = false;
+        if (rowSpend === 0 && c.status === 'active') {
+          const st = c.start_date ? new Date(c.start_date) : new Date(c.created_at);
+          const el = Math.max(0, Math.floor((Date.now() - st.getTime()) / 86400000));
+          const daily = Number(c.budget || 0) / Math.max(1, c.duration_days || 7);
+          rowSpend = Math.min(Number(c.budget || 0), daily * el);
+          isEstimated = rowSpend > 0;
+        }
+        const pct = c.budget > 0 ? Math.round((rowSpend / Number(c.budget)) * 100) : 0;
         return `<tr>
           <td><span class="status-badge ${statusCls}">${statusLbl}</span></td>
           <td style="color:#c8a96e;font-weight:600">${c.platform}</td>
@@ -3958,7 +4009,7 @@
               <div style="flex:1;height:6px;background:#2a2a2a;border-radius:3px;min-width:60px">
                 <div style="height:6px;background:#c8a96e;border-radius:3px;width:${Math.min(pct,100)}%"></div>
               </div>
-              <span style="color:#c8a96e;font-size:.78rem;font-weight:600">₪${Number(c.spend_to_date||0).toFixed(0)}</span>
+              <span style="color:#c8a96e;font-size:.78rem;font-weight:600">₪${rowSpend.toFixed(0)}${isEstimated ? '*' : ''}</span>
             </div>
           </td>
           <td style="font-size:.78rem;color:#666">${c.payment_method || '—'}</td>
