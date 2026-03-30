@@ -1535,7 +1535,7 @@ Generate a social media post. Return ONLY valid JSON:
             const storagePath = `reel-photos/${Date.now()}_${(filename || 'photo').replace(/[^a-zA-Z0-9._-]/g, '')}.${ext}`;
 
             console.log(`📸 Uploading reel photo to Supabase: ${storagePath} (${buffer.length} bytes)`);
-            const sb = getServiceSupabase();
+            const sb = sbAdmin();
             const { data, error } = await sb.storage.from('ig-images').upload(storagePath, buffer, {
                 contentType,
                 upsert: true
