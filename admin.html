@@ -1554,11 +1554,15 @@
           <span id="reel-script-duration">~0 שניות</span>
         </div>
 
-        <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
-          <select id="reel-language" style="background:#0a0a0a;border:1px solid #333;color:#e0e0e0;padding:4px 8px;border-radius:6px;font-size:.8rem">
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+          <select id="reel-language" onchange="loadReelVoices()" style="background:#0a0a0a;border:1px solid #333;color:#e0e0e0;padding:4px 8px;border-radius:6px;font-size:.8rem">
             <option value="he">🇮🇱 עברית</option>
             <option value="en">🇺🇸 אנגלית</option>
           </select>
+          <select id="reel-voice" style="background:#0a0a0a;border:1px solid #333;color:#e0e0e0;padding:4px 8px;border-radius:6px;font-size:.8rem;flex:1;min-width:120px">
+            <option value="">🎤 קול אוטומטי</option>
+          </select>
+          <span id="reel-voice-status" style="font-size:.65rem;color:#666"></span>
         </div>
 
         <button id="reel-generate-btn" onclick="generateReel()" style="width:100%;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:white;border:none;padding:10px;border-radius:8px;font-size:.9rem;font-weight:700;cursor:pointer">🎬 ייצר רילס</button>
@@ -3944,6 +3948,7 @@
     const isVisible = panel.style.display !== 'none';
     panel.style.display = isVisible ? 'none' : 'block';
     if (!isVisible && !_reelAvatarsLoaded) loadReelAvatars();
+    if (!isVisible) loadReelVoices();
     if (!isVisible) {
       const caption = document.getElementById('pm-caption').value;
       if (caption && !document.getElementById('reel-script').value) {
@@ -3976,6 +3981,33 @@
       if (withPreviews.length) selectReelAvatar(withPreviews[0].avatar_id, withPreviews[0].avatar_name, grid.firstElementChild);
     } catch(e) {
       grid.innerHTML = `<div style="color:#f87171;font-size:.75rem;padding:10px">שגיאה: ${e.message}</div>`;
+    }
+  }
+
+  async function loadReelVoices() {
+    const sel = document.getElementById('reel-voice');
+    const statusEl = document.getElementById('reel-voice-status');
+    const lang = document.getElementById('reel-language').value;
+    const langName = lang === 'he' ? 'Hebrew' : 'English';
+    sel.innerHTML = '<option value="">⏳ טוען קולות...</option>';
+    statusEl.textContent = '';
+    try {
+      const r = await fetch(`/api/agents?type=voices&lang=${langName}`, {
+        headers: { 'Authorization': `Bearer ${_publishState.token}` }
+      });
+      const data = await r.json();
+      const voices = data.voices || [];
+      sel.innerHTML = '<option value="">🎤 קול אוטומטי</option>';
+      voices.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.voice_id;
+        opt.textContent = `${v.gender === 'female' ? '👩' : '👨'} ${v.name} (${v.language || langName})`;
+        sel.appendChild(opt);
+      });
+      statusEl.textContent = `${voices.length} קולות`;
+    } catch(e) {
+      sel.innerHTML = '<option value="">🎤 קול אוטומטי</option>';
+      statusEl.textContent = '⚠️ שגיאה בטעינת קולות';
     }
   }
 
@@ -4034,6 +4066,7 @@
           task_id: _publishState.taskId,
           script,
           avatar_id: avatarId,
+          voice_id: document.getElementById('reel-voice').value || undefined,
           language: document.getElementById('reel-language').value
         })
       });

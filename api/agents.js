@@ -1449,9 +1449,41 @@ Generate a social media post. Return ONLY valid JSON:
         const { task_id, script, avatar_id, voice_id, language, title } = req.body || {};
         if (!script) return res.status(400).json({ error: 'script is required' });
 
-        // Defaults for DUBIS reels
-        const chosenAvatar = avatar_id || 'default'; // will be updated once we pick favorites
-        const chosenVoice = voice_id || 'default';
+        const chosenAvatar = avatar_id || 'Daisy-inskirt-20220818';
+
+        // Auto-resolve voice_id if not provided — MUST be a real HeyGen voice_id
+        let chosenVoice = voice_id;
+        if (!chosenVoice || chosenVoice === 'default') {
+            try {
+                const lang = language === 'he' ? 'Hebrew' : (language || 'English');
+                console.log(`🎬 Auto-resolving voice for language: ${lang}`);
+                const vr = await fetch(`${HEYGEN_BASE}/v2/voices`, {
+                    headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
+                });
+                const vdata = await vr.json();
+                const allVoices = vdata.data?.voices || [];
+                // Filter by language
+                const langVoices = allVoices.filter(v =>
+                    (v.language || '').toLowerCase().includes(lang.toLowerCase())
+                );
+                if (langVoices.length > 0) {
+                    // Prefer female voice for brand consistency, else first match
+                    const femaleVoice = langVoices.find(v => (v.gender || '').toLowerCase() === 'female');
+                    chosenVoice = (femaleVoice || langVoices[0]).voice_id;
+                    console.log(`🎬 Auto-selected voice: ${chosenVoice} (${(femaleVoice || langVoices[0]).name || 'unnamed'})`);
+                } else if (allVoices.length > 0) {
+                    // Fallback to any English voice
+                    const enVoices = allVoices.filter(v => (v.language || '').toLowerCase().includes('english'));
+                    chosenVoice = (enVoices[0] || allVoices[0]).voice_id;
+                    console.log(`🎬 No ${lang} voices found, fallback to: ${chosenVoice}`);
+                } else {
+                    return res.status(500).json({ error: 'No voices available from HeyGen' });
+                }
+            } catch(voiceErr) {
+                console.log(`🎬 Voice auto-resolve error: ${voiceErr.message}`);
+                return res.status(500).json({ error: 'Failed to resolve voice: ' + voiceErr.message });
+            }
+        }
 
         try {
             // Build HeyGen video request
@@ -1493,8 +1525,9 @@ Generate a social media post. Return ONLY valid JSON:
             const data = await r.json();
 
             if (!r.ok || data.error) {
-                const errMsg = data.error?.message || data.message || JSON.stringify(data.error) || 'Video generation failed';
-                console.log(`🎬 HeyGen error: ${errMsg}`);
+                const errMsg = data.error?.message || data.message || JSON.stringify(data.error) || JSON.stringify(data) || 'Video generation failed';
+                console.log(`🎬 HeyGen error (${r.status}): ${errMsg}`);
+                console.log(`🎬 HeyGen full response: ${JSON.stringify(data).substring(0, 500)}`);
                 return res.status(r.status || 500).json({ error: errMsg });
             }
 
