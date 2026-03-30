@@ -1551,6 +1551,8 @@
             </div>
             <div style="flex:1">
               <button onclick="useGalleryPhotoForReel()" style="width:100%;background:#0a2e1a;border:1px solid #10b981;color:#6fcf6f;padding:6px 10px;border-radius:6px;font-size:.78rem;cursor:pointer;margin-bottom:4px">📷 השתמש בתמונה מהגלריה</button>
+              <button onclick="document.getElementById('reel-photo-upload-input').click()" style="width:100%;background:#1a1a2e;border:1px solid #7c3aed;color:#c084fc;padding:6px 10px;border-radius:6px;font-size:.78rem;cursor:pointer;margin-bottom:4px">📁 העלה תמונה מהמחשב</button>
+              <input type="file" id="reel-photo-upload-input" accept="image/*" style="display:none" onchange="uploadLocalPhotoForReel(this)">
               <div id="reel-photo-status" style="font-size:.68rem;color:#666"></div>
             </div>
           </div>
@@ -1583,7 +1585,7 @@
             <option value="he">🇮🇱 עברית</option>
             <option value="en">🇺🇸 אנגלית</option>
           </select>
-          <select id="reel-voice-gender" style="background:#0a0a0a;border:1px solid #333;color:#e0e0e0;padding:4px 8px;border-radius:6px;font-size:.8rem">
+          <select id="reel-voice-gender" onchange="filterReelVoicesByGender()" style="background:#0a0a0a;border:1px solid #333;color:#e0e0e0;padding:4px 8px;border-radius:6px;font-size:.8rem">
             <option value="female">👩 אישה</option>
             <option value="male">👨 גבר</option>
           </select>
@@ -4016,6 +4018,57 @@
       status.style.color = '#f87171';
     }
   }
+
+  async function uploadLocalPhotoForReel(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const preview = document.getElementById('reel-photo-preview');
+    const status = document.getElementById('reel-photo-status');
+
+    // Convert to base64 and show preview
+    status.textContent = '⏳ מכין תמונה...';
+    status.style.color = '#999';
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64Data = e.target.result; // data:image/...;base64,...
+      preview.innerHTML = `<img src="${base64Data}" style="width:100%;height:100%;object-fit:cover">`;
+
+      try {
+        // Upload base64 to Supabase storage via API
+        status.textContent = '⏳ מעלה תמונה לאחסון...';
+        const upRes = await fetch('/api/agents?type=upload-reel-photo', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_base64: base64Data, filename: file.name })
+        });
+        const upData = await upRes.json();
+        if (!upData.url) throw new Error(upData.error || 'Upload to storage failed');
+
+        status.textContent = '⏳ מעלה ל-HeyGen...';
+        // Now upload the public URL to HeyGen as Talking Photo
+        const r = await fetch('/api/agents?type=upload-talking-photo', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_url: upData.url })
+        });
+        const data = await r.json();
+        if (data.talking_photo_id) {
+          document.getElementById('reel-talking-photo-id').value = data.talking_photo_id;
+          status.textContent = '✅ תמונה הועלתה! מוכן ליצירת רילס';
+          status.style.color = '#6fcf6f';
+        } else {
+          throw new Error(data.error || 'HeyGen upload failed');
+        }
+      } catch(e) {
+        status.textContent = '❌ שגיאה: ' + e.message;
+        status.style.color = '#f87171';
+      }
+    };
+    reader.readAsDataURL(file);
+    input.value = ''; // reset input
+  }
+
   let _reelPollTimer = null;
 
   function toggleReelPanel() {
@@ -4058,6 +4111,8 @@
     }
   }
 
+  let _allReelVoices = []; // cache all voices for filtering
+
   async function loadReelVoices() {
     const sel = document.getElementById('reel-voice');
     const statusEl = document.getElementById('reel-voice-status');
@@ -4070,19 +4125,35 @@
         headers: { 'Authorization': `Bearer ${_publishState.token}` }
       });
       const data = await r.json();
-      const voices = data.voices || [];
-      sel.innerHTML = '<option value="">🎤 קול אוטומטי</option>';
-      voices.forEach(v => {
-        const opt = document.createElement('option');
-        opt.value = v.voice_id;
-        opt.textContent = `${v.gender === 'female' ? '👩' : '👨'} ${v.name} (${v.language || langName})`;
-        sel.appendChild(opt);
-      });
-      statusEl.textContent = `${voices.length} קולות`;
+      _allReelVoices = (data.voices || []).map(v => ({...v, _langName: v.language || langName}));
+      filterReelVoicesByGender();
     } catch(e) {
       sel.innerHTML = '<option value="">🎤 קול אוטומטי</option>';
       statusEl.textContent = '⚠️ שגיאה בטעינת קולות';
     }
+  }
+
+  function filterReelVoicesByGender() {
+    const sel = document.getElementById('reel-voice');
+    const statusEl = document.getElementById('reel-voice-status');
+    const gender = document.getElementById('reel-voice-gender').value; // 'male' or 'female'
+    const filtered = _allReelVoices.filter(v => {
+      const g = (v.gender || '').toLowerCase();
+      return g === gender;
+    });
+    // If no gender match found, show all voices
+    const voicesToShow = filtered.length > 0 ? filtered : _allReelVoices;
+    sel.innerHTML = '<option value="">🎤 קול אוטומטי</option>';
+    voicesToShow.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.voice_id;
+      const icon = (v.gender || '').toLowerCase() === 'female' ? '👩' : '👨';
+      opt.textContent = `${icon} ${v.name} (${v._langName})`;
+      sel.appendChild(opt);
+    });
+    statusEl.textContent = filtered.length > 0
+      ? `${filtered.length} קולות ${gender === 'male' ? '👨' : '👩'}`
+      : `${_allReelVoices.length} קולות (כולם)`;
   }
 
   function selectReelAvatar(avatarId, name, el) {

@@ -1516,6 +1516,44 @@ Generate a social media post. Return ONLY valid JSON:
         return res.json({ heygen_key_prefix: heygenKey.substring(0, 12) + '...', results });
     }
 
+    // ── UPLOAD-REEL-PHOTO ── upload base64 image to Supabase storage, return public URL ──
+    if (type === 'upload-reel-photo') {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser && !isAgentSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+        const { image_base64, filename } = req.body || {};
+        if (!image_base64) return res.status(400).json({ error: 'image_base64 is required' });
+
+        try {
+            // Parse base64 data URL
+            const matches = image_base64.match(/^data:(.+?);base64,(.+)$/);
+            if (!matches) return res.status(400).json({ error: 'Invalid base64 data URL' });
+            const contentType = matches[1];
+            const buffer = Buffer.from(matches[2], 'base64');
+            const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
+            const storagePath = `reel-photos/${Date.now()}_${(filename || 'photo').replace(/[^a-zA-Z0-9._-]/g, '')}.${ext}`;
+
+            console.log(`📸 Uploading reel photo to Supabase: ${storagePath} (${buffer.length} bytes)`);
+            const sb = getServiceSupabase();
+            const { data, error } = await sb.storage.from('ig-images').upload(storagePath, buffer, {
+                contentType,
+                upsert: true
+            });
+            if (error) throw new Error(error.message);
+
+            const { data: urlData } = sb.storage.from('ig-images').getPublicUrl(storagePath);
+            const publicUrl = urlData?.publicUrl;
+            if (!publicUrl) throw new Error('Failed to get public URL');
+
+            console.log(`📸 Reel photo uploaded: ${publicUrl}`);
+            return res.json({ success: true, url: publicUrl, path: storagePath });
+        } catch(e) {
+            console.log(`📸 Reel photo upload error: ${e.message}`);
+            return res.status(500).json({ error: 'Upload failed: ' + e.message });
+        }
+    }
+
     // ── UPLOAD-TALKING-PHOTO ── upload image to HeyGen for Talking Photo avatar ──
     if (type === 'upload-talking-photo') {
         if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
@@ -1876,5 +1914,5 @@ Generate a social media post. Return ONLY valid JSON:
         return res.json({ received: true, note: 'unhandled event type' });
     }
 
-    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish, content-run, publish-ready, avatars, voices, upload-talking-photo, generate-reel, reel-status, reel-webhook' });
+    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish, content-run, publish-ready, avatars, voices, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook' });
 };
