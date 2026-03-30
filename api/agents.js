@@ -1439,6 +1439,36 @@ Generate a social media post. Return ONLY valid JSON:
         }
     }
 
+    // ── HEYGEN-STATUS ── check API key, quota, plan info ──
+    if (type === 'heygen-status') {
+        if (!heygenKey) return res.json({ error: 'HEYGEN_API_KEY not configured' });
+        const results = {};
+        // Check remaining quota
+        try {
+            const r1 = await fetch(`${HEYGEN_BASE}/v2/user/remaining_quota`, {
+                headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
+            });
+            results.quota = { status: r1.status, data: await r1.json() };
+        } catch(e) { results.quota = { error: e.message }; }
+        // Check video generate with minimal test (dry run)
+        try {
+            const r2 = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
+                method: 'POST',
+                headers: { 'X-Api-Key': heygenKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ test: true, video_inputs: [], dimension: { width: 100, height: 100 } })
+            });
+            results.video_generate = { status: r2.status, data: await r2.json() };
+        } catch(e) { results.video_generate = { error: e.message }; }
+        // Check token info
+        try {
+            const r3 = await fetch(`${HEYGEN_BASE}/v1/video_list.get?limit=1`, {
+                headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
+            });
+            results.video_list = { status: r3.status, data: await r3.json() };
+        } catch(e) { results.video_list = { error: e.message }; }
+        return res.json({ heygen_key_prefix: heygenKey.substring(0, 12) + '...', results });
+    }
+
     // ── UPLOAD-TALKING-PHOTO ── upload image to HeyGen for Talking Photo avatar ──
     if (type === 'upload-talking-photo') {
         if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
