@@ -1439,6 +1439,53 @@ Generate a social media post. Return ONLY valid JSON:
         }
     }
 
+    // ── UPLOAD-TALKING-PHOTO ── upload image to HeyGen for Talking Photo avatar ──
+    if (type === 'upload-talking-photo') {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser && !isAgentSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
+        if (!heygenKey) return res.status(500).json({ error: 'HEYGEN_API_KEY not configured' });
+
+        const { image_url } = req.body || {};
+        if (!image_url) return res.status(400).json({ error: 'image_url is required' });
+
+        try {
+            // Download image from URL
+            console.log(`🎬 Downloading image for talking photo: ${image_url.substring(0, 80)}...`);
+            const imgResponse = await fetch(image_url);
+            if (!imgResponse.ok) return res.status(400).json({ error: 'Failed to download image from URL' });
+            const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
+            const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
+
+            // Upload to HeyGen
+            console.log(`🎬 Uploading talking photo to HeyGen (${imgBuffer.length} bytes)...`);
+            const r = await fetch('https://upload.heygen.com/v1/talking_photo', {
+                method: 'POST',
+                headers: {
+                    'X-Api-Key': heygenKey,
+                    'Content-Type': contentType
+                },
+                body: imgBuffer
+            });
+            const data = await r.json();
+            console.log(`🎬 HeyGen upload response: ${JSON.stringify(data).substring(0, 300)}`);
+
+            if (data.error || !data.data?.talking_photo_id) {
+                const errMsg = data.error?.message || data.message || 'Upload failed';
+                return res.status(400).json({ error: errMsg });
+            }
+
+            return res.json({
+                success: true,
+                talking_photo_id: data.data.talking_photo_id,
+                talking_photo_url: data.data.talking_photo_url || null
+            });
+        } catch(e) {
+            console.log(`🎬 Talking photo upload error: ${e.message}`);
+            return res.status(500).json({ error: 'Upload failed: ' + e.message });
+        }
+    }
+
     // ── GENERATE-REEL ── create AI video via HeyGen ──
     if (type === 'generate-reel') {
         if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
@@ -1446,9 +1493,10 @@ Generate a social media post. Return ONLY valid JSON:
         if (!adminUser && !isAgentSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
         if (!heygenKey) return res.status(500).json({ error: 'HEYGEN_API_KEY not configured' });
 
-        const { task_id, script, avatar_id, voice_id, language, title } = req.body || {};
+        const { task_id, script, avatar_id, talking_photo_id, voice_id, language, title } = req.body || {};
         if (!script) return res.status(400).json({ error: 'script is required' });
 
+        const useTalkingPhoto = !!talking_photo_id;
         const chosenAvatar = avatar_id || 'Daisy-inskirt-20220818';
 
         // Auto-resolve voice_id if not provided — MUST be a real HeyGen voice_id
@@ -1486,14 +1534,16 @@ Generate a social media post. Return ONLY valid JSON:
         }
 
         try {
+            // Build character object — Talking Photo or Avatar
+            const character = useTalkingPhoto
+                ? { type: 'talking_photo', talking_photo_id: talking_photo_id, talking_photo_style: 'normal', expression: 'default' }
+                : { type: 'avatar', avatar_id: chosenAvatar, avatar_style: 'normal' };
+            console.log(`🎬 Mode: ${useTalkingPhoto ? 'Talking Photo' : 'Avatar'} | ID: ${useTalkingPhoto ? talking_photo_id : chosenAvatar}`);
+
             // Build HeyGen video request
             const videoPayload = {
                 video_inputs: [{
-                    character: {
-                        type: 'avatar',
-                        avatar_id: chosenAvatar,
-                        avatar_style: 'normal'
-                    },
+                    character,
                     voice: {
                         type: 'text',
                         input_text: script,
@@ -1713,5 +1763,5 @@ Generate a social media post. Return ONLY valid JSON:
         return res.json({ received: true, note: 'unhandled event type' });
     }
 
-    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish, content-run, publish-ready, avatars, voices, generate-reel, reel-status, reel-webhook' });
+    return res.status(400).json({ error: 'Invalid type parameter. Use: tasks, runs, run, publish, content-run, publish-ready, avatars, voices, upload-talking-photo, generate-reel, reel-status, reel-webhook' });
 };

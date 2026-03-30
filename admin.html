@@ -1536,9 +1536,33 @@
           <button onclick="toggleReelPanel()" style="background:none;border:none;color:#666;cursor:pointer;font-size:1rem">✕</button>
         </div>
 
-        <label style="font-size:.75rem;color:#999">בחר אווטאר:</label>
-        <div id="reel-avatar-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(56px,1fr));gap:5px;max-height:180px;overflow-y:auto;margin:4px 0 8px;scrollbar-width:thin;scrollbar-color:#7c3aed #111">
-          <div style="color:#555;font-size:.75rem;text-align:center;padding:20px">טוען אווטארים...</div>
+        <!-- Mode Toggle: Talking Photo vs Avatar -->
+        <div style="display:flex;gap:4px;margin-bottom:8px">
+          <button id="reel-mode-photo" onclick="setReelMode('photo')" style="flex:1;padding:6px;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;border:2px solid #10b981;background:#0a2e1a;color:#6fcf6f">📸 Talking Photo (מומלץ!)</button>
+          <button id="reel-mode-avatar" onclick="setReelMode('avatar')" style="flex:1;padding:6px;border-radius:6px;font-size:.78rem;cursor:pointer;border:2px solid #333;background:#1a1a2e;color:#888">🤖 אווטאר HeyGen</button>
+        </div>
+
+        <!-- Talking Photo Section -->
+        <div id="reel-photo-section">
+          <label style="font-size:.75rem;color:#999">📸 תמונה עם מוצר DUBIS — הפנים ינועו ויגידו את הסקריפט:</label>
+          <div style="display:flex;gap:6px;align-items:center;margin:4px 0 8px">
+            <div id="reel-photo-preview" style="width:64px;height:64px;border-radius:8px;background:#222;border:2px dashed #333;display:flex;align-items:center;justify-content:center;overflow:hidden">
+              <span style="color:#555;font-size:1.5rem">📷</span>
+            </div>
+            <div style="flex:1">
+              <button onclick="useGalleryPhotoForReel()" style="width:100%;background:#0a2e1a;border:1px solid #10b981;color:#6fcf6f;padding:6px 10px;border-radius:6px;font-size:.78rem;cursor:pointer;margin-bottom:4px">📷 השתמש בתמונה מהגלריה</button>
+              <div id="reel-photo-status" style="font-size:.68rem;color:#666"></div>
+            </div>
+          </div>
+          <input type="hidden" id="reel-talking-photo-id" value="">
+        </div>
+
+        <!-- Avatar Section (hidden by default) -->
+        <div id="reel-avatar-section" style="display:none">
+          <label style="font-size:.75rem;color:#999">בחר אווטאר:</label>
+          <div id="reel-avatar-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(56px,1fr));gap:5px;max-height:180px;overflow-y:auto;margin:4px 0 8px;scrollbar-width:thin;scrollbar-color:#7c3aed #111">
+            <div style="color:#555;font-size:.75rem;text-align:center;padding:20px">טוען אווטארים...</div>
+          </div>
         </div>
         <input type="hidden" id="reel-avatar-id" value="">
         <div id="reel-avatar-name" style="font-size:.72rem;color:#c084fc;text-align:center;margin-bottom:6px"></div>
@@ -3941,13 +3965,57 @@
   let _reelAvatarsLoaded = false;
   let _reelAvatarsCache = [];
   let _reelVideoId = null;
+  let _reelMode = 'photo'; // 'photo' (Talking Photo) or 'avatar'
+
+  function setReelMode(mode) {
+    _reelMode = mode;
+    document.getElementById('reel-photo-section').style.display = mode === 'photo' ? 'block' : 'none';
+    document.getElementById('reel-avatar-section').style.display = mode === 'avatar' ? 'block' : 'none';
+    document.getElementById('reel-mode-photo').style.borderColor = mode === 'photo' ? '#10b981' : '#333';
+    document.getElementById('reel-mode-photo').style.color = mode === 'photo' ? '#6fcf6f' : '#888';
+    document.getElementById('reel-mode-avatar').style.borderColor = mode === 'avatar' ? '#7c3aed' : '#333';
+    document.getElementById('reel-mode-avatar').style.color = mode === 'avatar' ? '#c084fc' : '#888';
+    if (mode === 'avatar' && !_reelAvatarsLoaded) loadReelAvatars();
+  }
+
+  async function useGalleryPhotoForReel() {
+    // Get the currently selected image in the publish modal
+    const imgEl = document.getElementById('pm-img');
+    const imgUrl = imgEl ? imgEl.src : '';
+    if (!imgUrl || imgUrl.includes('placeholder') || imgUrl.includes('data:')) {
+      alert('בחר קודם תמונה מהגלריה למעלה');
+      return;
+    }
+    const preview = document.getElementById('reel-photo-preview');
+    const status = document.getElementById('reel-photo-status');
+    preview.innerHTML = `<img src="${imgUrl}" style="width:100%;height:100%;object-fit:cover">`;
+    status.textContent = '⏳ מעלה תמונה ל-HeyGen...';
+
+    try {
+      const r = await fetch('/api/agents?type=upload-talking-photo', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_url: imgUrl })
+      });
+      const data = await r.json();
+      if (data.talking_photo_id) {
+        document.getElementById('reel-talking-photo-id').value = data.talking_photo_id;
+        status.textContent = '✅ תמונה הועלתה! מוכן ליצירת רילס';
+        status.style.color = '#6fcf6f';
+      } else {
+        throw new Error(data.error || 'Upload failed');
+      }
+    } catch(e) {
+      status.textContent = '❌ שגיאה: ' + e.message;
+      status.style.color = '#f87171';
+    }
+  }
   let _reelPollTimer = null;
 
   function toggleReelPanel() {
     const panel = document.getElementById('pm-reel-panel');
     const isVisible = panel.style.display !== 'none';
     panel.style.display = isVisible ? 'none' : 'block';
-    if (!isVisible && !_reelAvatarsLoaded) loadReelAvatars();
     if (!isVisible) loadReelVoices();
     if (!isVisible) {
       const caption = document.getElementById('pm-caption').value;
@@ -4048,7 +4116,9 @@
     if (!script) return alert('חובה לכתוב סקריפט');
     if (script.length > 5000) return alert('הסקריפט ארוך מדי (מקסימום 5000 תווים)');
     const avatarId = document.getElementById('reel-avatar-id').value;
-    if (!avatarId) return alert('בחר אווטאר');
+    const talkingPhotoId = document.getElementById('reel-talking-photo-id').value;
+    if (_reelMode === 'photo' && !talkingPhotoId) return alert('העלה קודם תמונה מהגלריה');
+    if (_reelMode === 'avatar' && !avatarId) return alert('בחר אווטאר');
 
     const btn = document.getElementById('reel-generate-btn');
     const progress = document.getElementById('reel-progress');
@@ -4065,7 +4135,8 @@
         body: JSON.stringify({
           task_id: _publishState.taskId,
           script,
-          avatar_id: avatarId,
+          avatar_id: _reelMode === 'avatar' ? avatarId : undefined,
+          talking_photo_id: _reelMode === 'photo' ? talkingPhotoId : undefined,
           voice_id: document.getElementById('reel-voice').value || undefined,
           language: document.getElementById('reel-language').value
         })
