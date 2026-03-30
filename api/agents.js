@@ -1536,7 +1536,7 @@ Generate a social media post. Return ONLY valid JSON:
         try {
             // Build character object — Talking Photo or Avatar
             const character = useTalkingPhoto
-                ? { type: 'talking_photo', talking_photo_id: talking_photo_id, talking_photo_style: 'normal', expression: 'default' }
+                ? { type: 'talking_photo', talking_photo_id: talking_photo_id }
                 : { type: 'avatar', avatar_id: chosenAvatar, avatar_style: 'normal' };
             console.log(`🎬 Mode: ${useTalkingPhoto ? 'Talking Photo' : 'Avatar'} | ID: ${useTalkingPhoto ? talking_photo_id : chosenAvatar}`);
 
