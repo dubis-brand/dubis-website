@@ -1554,55 +1554,7 @@ Generate a social media post. Return ONLY valid JSON:
         }
     }
 
-    // ── CLEANUP-TALKING-PHOTOS ── delete all existing talking photos to free slots ──
-    if (type === 'cleanup-talking-photos') {
-        if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-        const adminUser = await verifyAdmin(req);
-        if (!adminUser && !isAgentSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
-        if (!heygenKey) return res.status(500).json({ error: 'HEYGEN_API_KEY not configured' });
-
-        const results = { list_response: null, photos_found: 0, delete_results: [] };
-        try {
-            // List talking photos via v1 API
-            const listRes = await fetch(`${HEYGEN_BASE}/v1/talking_photo.list`, {
-                headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
-            });
-            const listData = await listRes.json();
-            results.list_response = JSON.stringify(listData).substring(0, 500);
-            console.log(`🧹 List talking photos raw: ${results.list_response}`);
-
-            // Extract photo list — handle multiple response structures
-            let photos = [];
-            if (Array.isArray(listData.data?.talking_photos)) photos = listData.data.talking_photos;
-            else if (Array.isArray(listData.data)) photos = listData.data;
-            else if (Array.isArray(listData.list)) photos = listData.list;
-            results.photos_found = photos.length;
-            console.log(`🧹 Found ${photos.length} talking photos`);
-
-            // Delete each photo — try 3 different endpoints in parallel
-            for (const photo of photos) {
-                const photoId = photo.talking_photo_id || photo.id;
-                if (!photoId) continue;
-                const delResult = { id: photoId, responses: {} };
-
-                // Try all 3 known delete endpoints in parallel
-                const [r1, r2, r3] = await Promise.all([
-                    fetch(`${HEYGEN_BASE}/v1/talking_photo/${photoId}`, { method: 'DELETE', headers: { 'X-Api-Key': heygenKey } }).then(r => r.json()).catch(e => ({ err: e.message })),
-                    fetch(`${HEYGEN_BASE}/v2/photo_avatar/${photoId}`, { method: 'DELETE', headers: { 'X-Api-Key': heygenKey } }).then(r => r.json()).catch(e => ({ err: e.message })),
-                    fetch(`${HEYGEN_BASE}/v1/asset/${photoId}/delete`, { method: 'DELETE', headers: { 'X-Api-Key': heygenKey } }).then(r => r.json()).catch(e => ({ err: e.message }))
-                ]);
-                delResult.responses = { v1_talking: r1, v2_avatar: r2, v1_asset: r3 };
-                console.log(`🧹 Delete ${photoId}: v1=${JSON.stringify(r1).substring(0,80)} v2=${JSON.stringify(r2).substring(0,80)} asset=${JSON.stringify(r3).substring(0,80)}`);
-                results.delete_results.push(delResult);
-            }
-            return res.json({ success: true, ...results });
-        } catch(e) {
-            console.log(`🧹 Cleanup error: ${e.message}`);
-            return res.status(500).json({ error: 'Cleanup failed: ' + e.message, ...results });
-        }
-    }
-
-    // ── UPLOAD-TALKING-PHOTO ── upload image to HeyGen for Talking Photo avatar ──
+    // ── UPLOAD-TALKING-PHOTO ── upload image to HeyGen, or fallback to existing photo ──
     if (type === 'upload-talking-photo') {
         if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
         const adminUser = await verifyAdmin(req);
@@ -1620,7 +1572,7 @@ Generate a social media post. Return ONLY valid JSON:
             const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
             const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
 
-            // Upload to HeyGen
+            // Try to upload to HeyGen
             console.log(`🎬 Uploading talking photo to HeyGen (${imgBuffer.length} bytes)...`);
             const r = await fetch('https://upload.heygen.com/v1/talking_photo', {
                 method: 'POST',
@@ -1630,16 +1582,41 @@ Generate a social media post. Return ONLY valid JSON:
             const data = await r.json();
             console.log(`🎬 HeyGen upload response: ${JSON.stringify(data).substring(0, 300)}`);
 
-            if (data.error || !data.data?.talking_photo_id) {
-                const errMsg = data.error?.message || data.message || 'Upload failed';
-                return res.status(400).json({ error: errMsg });
+            // If upload succeeded, return the new photo ID
+            if (data.data?.talking_photo_id) {
+                return res.json({
+                    success: true,
+                    talking_photo_id: data.data.talking_photo_id,
+                    talking_photo_url: data.data.talking_photo_url || null
+                });
             }
 
-            return res.json({
-                success: true,
-                talking_photo_id: data.data.talking_photo_id,
-                talking_photo_url: data.data.talking_photo_url || null
-            });
+            // If limit exceeded — fallback: list existing photos and return the last one
+            const errMsg = data.error?.message || data.message || '';
+            if (errMsg.toLowerCase().includes('exceeded') || errMsg.toLowerCase().includes('limit')) {
+                console.log(`🎬 Limit reached, fetching existing talking photos...`);
+                const listRes = await fetch(`${HEYGEN_BASE}/v1/talking_photo.list`, {
+                    headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
+                });
+                const listData = await listRes.json();
+                let photos = listData.data?.talking_photos || listData.data || [];
+                if (!Array.isArray(photos)) photos = [];
+                console.log(`🎬 Found ${photos.length} existing photos`);
+                if (photos.length > 0) {
+                    // Use the last (most recent) existing photo
+                    const latest = photos[photos.length - 1];
+                    const photoId = latest.talking_photo_id || latest.id;
+                    console.log(`🎬 Reusing existing talking photo: ${photoId}`);
+                    return res.json({
+                        success: true,
+                        talking_photo_id: photoId,
+                        reused: true,
+                        message: 'HeyGen limit reached — using existing photo avatar'
+                    });
+                }
+            }
+
+            return res.status(400).json({ error: errMsg || 'Upload failed' });
         } catch(e) {
             console.log(`🎬 Talking photo upload error: ${e.message}`);
             return res.status(500).json({ error: 'Upload failed: ' + e.message });
