@@ -4002,11 +4002,13 @@
     try {
       // Cleanup old talking photos first
       try {
-        await fetch('/api/agents?type=cleanup-talking-photos', {
+        const cleanRes = await fetch('/api/agents?type=cleanup-talking-photos', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
           body: '{}'
         });
+        const cleanData = await cleanRes.json();
+        console.log('Cleanup result:', cleanData);
       } catch(cleanErr) { console.log('Cleanup warning:', cleanErr); }
 
       status.textContent = '⏳ מעלה תמונה ל-HeyGen...';
