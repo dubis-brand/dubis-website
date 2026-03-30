@@ -804,6 +804,43 @@ CRITICAL RULES:
             return res.status(200).json({ deleted: true });
         }
 
+        // POST: Upload a local image to gallery
+        if (req.method === 'POST') {
+            const { image_base64, product_id, filename } = req.body || {};
+            if (!image_base64) return res.status(400).json({ error: 'image_base64 is required' });
+
+            try {
+                const matches = image_base64.match(/^data:(.+?);base64,(.+)$/);
+                if (!matches) return res.status(400).json({ error: 'Invalid base64 data' });
+                const contentType = matches[1];
+                const buffer = Buffer.from(matches[2], 'base64');
+                const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
+                const safeName = (filename || 'upload').replace(/[^a-zA-Z0-9._-]/g, '').substring(0, 30);
+                const storagePath = `uploads/${Date.now()}_${safeName}.${ext}`;
+
+                await sb.storage.createBucket('product-images', { public: true }).catch(() => {});
+                const { error: upErr } = await sb.storage.from('product-images').upload(storagePath, buffer, { contentType, upsert: true });
+                if (upErr) return res.status(500).json({ error: upErr.message });
+
+                const { data: { publicUrl } } = sb.storage.from('product-images').getPublicUrl(storagePath);
+
+                // Save to dubis_images table
+                const insertData = {
+                    image_url: publicUrl,
+                    storage_path: storagePath,
+                    scene_type: 'uploaded',
+                    model_type: 'uploaded',
+                    tags: ['uploaded', 'manual']
+                };
+                if (product_id) insertData.product_id = product_id;
+                const { data: imgRecord } = await sb.from('dubis_images').insert(insertData).select().single();
+                console.log(`📸 Manual upload to gallery: ${storagePath} | ID: ${imgRecord?.id}`);
+                return res.json({ success: true, image_url: publicUrl, image_id: imgRecord?.id });
+            } catch(e) {
+                return res.status(500).json({ error: 'Upload failed: ' + e.message });
+            }
+        }
+
         return res.status(200).json([]);
     }
 

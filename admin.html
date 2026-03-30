@@ -1991,6 +1991,9 @@
         <option value="pending">⏳ ממתינות</option>
       </select>
       <button class="btn-gold" style="padding:.4rem 1rem;font-size:.82rem" onclick="openGenerateModal()">🎨 ייצור תמונה חדשה</button>
+      <button onclick="document.getElementById('gal-upload-input').click()" style="background:#1a1a2e;border:1px solid #7c3aed;color:#c084fc;padding:.4rem 1rem;border-radius:6px;font-size:.82rem;cursor:pointer">📁 העלה תמונה</button>
+      <input type="file" id="gal-upload-input" accept="image/*" multiple style="display:none" onchange="uploadToProductGallery(this)">
+      <span id="gal-upload-status" style="font-size:.72rem;color:#666"></span>
       <button style="background:#1a2a1a;border:1px solid #2a5a2a;color:#4caf50;padding:.4rem 1rem;border-radius:6px;font-size:.82rem;cursor:pointer" onclick="batchGenerate()">🚀 ייצור אצווה</button>
       <span id="gal-count" style="color:#666;font-size:.78rem;margin-right:auto"></span>
     </div>
@@ -5358,6 +5361,47 @@
       btn.textContent = '🎨 נסה שוב';
       btn.disabled = false;
     }
+  }
+
+  async function uploadToProductGallery(input) {
+    const files = input.files;
+    if (!files || !files.length) return;
+    const statusEl = document.getElementById('gal-upload-status');
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    const productId = document.getElementById('gal-filter-product').value || null;
+
+    let uploaded = 0;
+    statusEl.textContent = `⏳ מעלה ${files.length} תמונות...`;
+    statusEl.style.color = '#c084fc';
+
+    for (const file of files) {
+      try {
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const res = await fetch('/api/agents?type=product-images', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_base64: base64, filename: file.name, product_id: productId })
+        });
+        const data = await res.json();
+        if (data.success || data.image_url) uploaded++;
+        statusEl.textContent = `⏳ הועלו ${uploaded}/${files.length}...`;
+      } catch(e) {
+        console.warn('Upload error:', e);
+      }
+    }
+    statusEl.textContent = `✅ ${uploaded} תמונות הועלו בהצלחה!`;
+    statusEl.style.color = '#6fcf6f';
+    input.value = '';
+    // Refresh gallery
+    loadGallery();
+    // Also refresh the post gallery thumbnails
+    if (typeof loadGalleryThumbnails === 'function') loadGalleryThumbnails();
   }
 
   async function batchGenerate() {
