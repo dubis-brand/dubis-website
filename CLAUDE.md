@@ -51,27 +51,39 @@ We are currently AT the limit (12/12).
 - **ארוכת שרוול** = long sleeve.
 - **כובע** = hat/cap.
 
-### Product Slogans (must match website exactly)
-These are the actual slogans printed on DUBIS products. Use them AS-IS, never paraphrase:
-- "Not a Model, Never Wanted to Be"
-- "More of me to love"
-- "Napping is my Cardio"
-- "I Run on Coffee and Sarcasm"
-- "I'm not fat, I'm a Limited Edition"
-- "Low Maintenance, High Value"
-- "Serial Napper"
-- "Certified Overthinker"
-- "I Survived, That's Enough"
-- "She Believed She Could, So She Didn't"
-- "DUBIS for the Rest of Us"
-- "Zero Motivation Club"
-- "Emotionally Attached to my Couch"
+### Product Slogans — Typography Map (CRITICAL)
+Each slogan uses **mixed-size typography**: a KEY POWER WORD in huge bold uppercase, with setup/connecting words in smaller text. This is the exact layout as printed on garments. **NEVER write slogans in uniform font size.**
+
+Format: `small text` → **HUGE TEXT** → `small text` | Product type
+
+1. `I am not fat, I am a` → **LIMITED** → `edition.` | T-Shirt
+2. `more of me` → **LOVE** | T-Shirt
+3. `NAPPING IS MY` → **CARDIO** | Hoodie
+4. `I survived.` (large) / `That's enough.` (medium below) | T-Shirt
+5. `low maintenance` → **VALUE** → `high` (below) | T-Shirt
+6. `Not a model.` → **NEVER.** → `wanted to be.` | Hoodie
+7. **NAP** (huge top) → `Born to nap, forced to work` (small below) | T-Shirt
+8. `certified` → **OVER** → `thinker.` | Zip Hoodie
+9. `serial` → **NAPPER** | Long-Sleeve
+10. `She believed she could, so she took a` → **NAP.** | T-Shirt (Women)
+11. **COFFEE** (huge top) → `I run on coffee and sarcasm.` (small below) | T-Shirt (Women)
+12. `Zero Motivation` → **CLUB** | Hoodie (Women)
+13. `emotionally attached to my` → **COUCH** | Long-Sleeve (Women)
+14. `Success` (large italic) `has` (small) `no` (large bold) → **SIZE** → `limit.` + ⭕XL graphic | Brand slogan
+
+**Rules for image generation / content creation:**
+- The POWER WORD must be 3-5x larger than the surrounding text
+- All text is white on dark garments, dark on light garments
+- Bold sans-serif font (condensed/impact style)
+- Small "DUBIS" text at bottom of back print
+- Front: small "DUBIS™" on left chest only
+- NEVER write the full slogan in same-size letters — always use the hierarchy above
 
 ### Logo & Branding
 - Small "DUBIS™" text on front chest (left side)
-- Large slogan text on BACK of garment
-- Logo font: bold, clean, sans-serif
-- Brand colors: dark navy, gold/tan, black, white
+- Large slogan text on BACK of garment with mixed-size typography (see Typography Map above)
+- Logo font: bold, clean, condensed sans-serif (Impact/Helvetica Condensed style)
+- Brand colors: dark navy, gold/tan, black, white, charcoal
 - DUBIS bear logo appears on some items
 
 ### Content Guidelines

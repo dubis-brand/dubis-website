@@ -80,6 +80,40 @@ function fixHebrew(text) {
         .replace(/הודי/g, 'קפוצון');
 }
 
+// ── Slogan Typography Map — DUBIS mixed-size print style ──
+// Each slogan has a KEY POWER WORD in huge bold + smaller setup text
+// Format: { small: 'setup text', big: 'POWER WORD', after: 'trailing text', layout: 'top-bottom'|'inline' }
+const SLOGAN_TYPOGRAPHY = {
+    "I'm not fat, I'm a limited edition":   { small: 'I am not fat, I am a', big: 'LIMITED', after: 'edition.', layout: 'top-bottom' },
+    "More of me to love":                    { small: 'more of me', big: 'LOVE', after: '', layout: 'top-bottom' },
+    "Napping is my cardio":                  { small: 'NAPPING IS MY', big: 'CARDIO', after: '', layout: 'top-bottom' },
+    "I survived. That's enough.":            { small: '', big: 'I survived.', after: "That's enough.", layout: 'top-bottom' },
+    "Low maintenance, high value":           { small: 'low maintenance', big: 'VALUE', after: 'high', layout: 'top-bottom' },
+    "Not a model. Never wanted to be.":      { small: 'Not a model.', big: 'NEVER.', after: 'wanted to be.', layout: 'top-bottom' },
+    "Born to nap, forced to work":           { small: '', big: 'NAP', after: 'Born to nap, forced to work', layout: 'big-top' },
+    "Certified overthinker":                 { small: 'certified', big: 'OVER', after: 'thinker.', layout: 'top-bottom' },
+    "Serial napper":                         { small: 'serial', big: 'NAPPER', after: '', layout: 'top-bottom' },
+    "She believed she could, so she took a nap": { small: 'She believed she could,\nso she took a', big: 'NAP.', after: '', layout: 'top-bottom' },
+    "I run on coffee and sarcasm":           { small: '', big: 'COFFEE', after: 'I run on coffee and sarcasm.', layout: 'big-top' },
+    "Zero Motivation Club":                  { small: 'Zero Motivation', big: 'CLUB', after: '', layout: 'top-bottom' },
+    "Emotionally attached to my couch":      { small: 'emotionally attached to my', big: 'COUCH', after: '', layout: 'top-bottom' },
+    "DUBIS — For the rest of us":            { small: 'DUBIS — For the rest of', big: 'US', after: '', layout: 'top-bottom' }
+};
+
+function getSloganTypographyPrompt(slogan) {
+    const key = Object.keys(SLOGAN_TYPOGRAPHY).find(k => k.toLowerCase() === (slogan || '').toLowerCase());
+    const t = key ? SLOGAN_TYPOGRAPHY[key] : null;
+    if (!t) return `the text "${(slogan || '').toUpperCase()}" in LARGE bold white sans-serif capital letters`;
+    if (t.layout === 'big-top') {
+        return `the word "${t.big}" in EXTREMELY LARGE bold white condensed sans-serif capital letters at the top, with "${t.after}" in much smaller white text underneath`;
+    }
+    const parts = [];
+    if (t.small) parts.push(`"${t.small}" in smaller white text`);
+    parts.push(`"${t.big}" in EXTREMELY LARGE bold white condensed sans-serif capital letters (3-5x bigger than the other text)`);
+    if (t.after) parts.push(`"${t.after}" in smaller white text below`);
+    return parts.join(', then ');
+}
+
 module.exports = async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', 'https://www.dubis.net');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
@@ -519,8 +553,9 @@ Return ONLY valid JSON (no markdown):
                 } else if (format === 'quote_card') {
                     imagePrompt = `Minimalist dark charcoal textured background, concrete wall, moody warm lighting, no people. ${brandRules}`;
                 } else if (phraseOnClothing) {
-                    // KEY: Include the actual phrase that should appear on the garment
-                    imagePrompt = `${modelDesc} wearing a ${garmentDesc} with the text "${phraseOnClothing}" clearly printed in white on the front of the garment. Small bear logo on chest. ${settingDesc}. ${brandRules}`;
+                    // KEY: Use mixed-size typography matching actual DUBIS product prints
+                    const typoDesc = getSloganTypographyPrompt(phraseOnClothing);
+                    imagePrompt = `${modelDesc} wearing a ${garmentDesc}. FRONT: small "DUBIS™" text on left chest only. BACK of garment shows MIXED-SIZE TYPOGRAPHY: ${typoDesc}. Small "DUBIS" at bottom hem of back. ${settingDesc}. ${brandRules}. The power word in the slogan must be 3-5x larger than surrounding text. Bold condensed sans-serif font.`;
                 } else {
                     imagePrompt = `${modelDesc} wearing a ${garmentDesc} with "DUBIS" small logo on chest, ${settingDesc}. ${brandRules}`;
                 }
@@ -627,6 +662,7 @@ Return ONLY valid JSON (no markdown):
 
         // Build DUBIS-style prompt with strict brand rules
         const sloganUpper = product.slogan.toUpperCase();
+        const sloganTypo = getSloganTypographyPrompt(product.slogan);
         const clothingHeb = { 't-shirt': 't-shirt', 'hoodie': 'hoodie', 'zip-hoodie': 'zip-up hoodie', 'long-sleeve': 'long sleeve shirt', 'cap': 'baseball cap' };
         const clothingName = clothingHeb[product.clothing_type] || product.clothing_type;
 
@@ -634,18 +670,18 @@ Return ONLY valid JSON (no markdown):
         const compositions = [
           { name: 'diptych', prompt: `Create a photorealistic DSLR-quality diptych photograph split into two halves side by side:
 LEFT HALF — FRONT VIEW: ${models[model] || models.man} wearing a ${color} ${clothingName}. On the LEFT CHEST area (heart position), there is a small text "DUBIS" in clean white sans-serif font with a tiny superscript "™". No other text on the front.
-RIGHT HALF — BACK VIEW: The SAME person from behind, showing the BACK of the ${color} ${clothingName}. On the UPPER BACK, printed in LARGE bold white capital letters: "${sloganUpper}".
+RIGHT HALF — BACK VIEW: The SAME person from behind, showing the BACK of the ${color} ${clothingName}. On the UPPER BACK, printed with MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. Small "DUBIS" text at the bottom hem of the back.
 SETTING: ${scenes[scene] || scenes.street}` },
 
-          { name: 'back_hero', prompt: `Create a photorealistic DSLR-quality single photograph showing ${models[model] || models.man} from behind at a slight angle (3/4 back view), wearing a ${color} ${clothingName}. On the UPPER BACK, printed in LARGE bold white sans-serif capital letters: "${sloganUpper}". The person is looking slightly over their shoulder with a confident expression. Small "DUBIS™" logo visible on the left chest from the angle.
+          { name: 'back_hero', prompt: `Create a photorealistic DSLR-quality single photograph showing ${models[model] || models.man} from behind at a slight angle (3/4 back view), wearing a ${color} ${clothingName}. On the UPPER BACK, printed with MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. Small "DUBIS" text at the bottom hem of the back. The person is looking slightly over their shoulder with a confident expression. Small "DUBIS™" logo visible on the left chest from the angle.
 SETTING: ${scenes[scene] || scenes.street}. Shallow depth of field, the text is the hero of the image.` },
 
-          { name: 'lifestyle', prompt: `Create a photorealistic DSLR-quality lifestyle photograph of ${models[model] || models.man} wearing a ${color} ${clothingName} in a natural candid moment. The person is ${['sitting on a bench laughing', 'walking confidently down the street', 'leaning against a wall with arms crossed', 'holding a coffee cup looking relaxed', 'standing with hands in pockets, genuine smile'][Math.floor(Math.random() * 5)]}. On the BACK of the ${clothingName}, the text "${sloganUpper}" is partially visible. Small "DUBIS™" on the left chest.
+          { name: 'lifestyle', prompt: `Create a photorealistic DSLR-quality lifestyle photograph of ${models[model] || models.man} wearing a ${color} ${clothingName} in a natural candid moment. The person is ${['sitting on a bench laughing', 'walking confidently down the street', 'leaning against a wall with arms crossed', 'holding a coffee cup looking relaxed', 'standing with hands in pockets, genuine smile'][Math.floor(Math.random() * 5)]}. On the BACK of the ${clothingName}, the mixed-size typography text is partially visible: ${sloganTypo}. Small "DUBIS™" on the left chest.
 SETTING: ${scenes[scene] || scenes.street}. Shot feels authentic and unposed, like a street photography moment.` },
 
-          { name: 'flat_lay', prompt: `Create a photorealistic DSLR-quality flat lay photograph of a ${color} ${clothingName} neatly laid out on a ${['dark wood table', 'concrete surface', 'cream linen fabric', 'rustic wooden floor'][Math.floor(Math.random() * 4)]}. The ${clothingName} is displayed showing the BACK with the text "${sloganUpper}" in LARGE bold white capital letters clearly readable. Next to it: ${['a coffee mug and sunglasses', 'sneakers and a phone', 'a book and earbuds', 'keys and a wallet'][Math.floor(Math.random() * 4)]}. Top-down camera angle. Clean minimalist styling.` },
+          { name: 'flat_lay', prompt: `Create a photorealistic DSLR-quality flat lay photograph of a ${color} ${clothingName} neatly laid out on a ${['dark wood table', 'concrete surface', 'cream linen fabric', 'rustic wooden floor'][Math.floor(Math.random() * 4)]}. The ${clothingName} is displayed showing the BACK with MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. Small "DUBIS" text at the bottom hem. Next to it: ${['a coffee mug and sunglasses', 'sneakers and a phone', 'a book and earbuds', 'keys and a wallet'][Math.floor(Math.random() * 4)]}. Top-down camera angle. Clean minimalist styling.` },
 
-          { name: 'close_up_text', prompt: `Create a photorealistic DSLR-quality close-up photograph focusing on the BACK of a ${color} ${clothingName} being worn by ${models[model] || models.man}. The camera is focused tightly on the upper back area showing the text "${sloganUpper}" in LARGE bold white sans-serif capital letters. The background and person are slightly blurred (bokeh). The text is sharp and the hero of the shot.
+          { name: 'close_up_text', prompt: `Create a photorealistic DSLR-quality close-up photograph focusing on the BACK of a ${color} ${clothingName} being worn by ${models[model] || models.man}. The camera is focused tightly on the upper back area showing MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. Small "DUBIS" text at the bottom hem. The background and person are slightly blurred (bokeh). The text is sharp and the hero of the shot.
 SETTING: ${scenes[scene] || scenes.street}. Shot at 85mm lens, f/2.0 shallow depth of field.` }
         ];
 
@@ -657,10 +693,13 @@ SETTING: ${scenes[scene] || scenes.street}. Shot at 85mm lens, f/2.0 shallow dep
 
 CRITICAL RULES:
 - The ${clothingName} MUST be ${color} color — NOT red, NOT any other color
-- The slogan "${sloganUpper}" appears ONLY on the BACK, never on the front
+- The slogan uses MIXED-SIZE TYPOGRAPHY — NOT uniform text. The power word must be 3-5x larger than surrounding text
+- The slogan text appears ONLY on the BACK, never on the front
 - The front has ONLY the small "DUBIS™" logo on the left chest
+- Small "DUBIS" text at the very bottom of the back print
 - Real diverse person, NOT a fashion model, body-positive natural look
 - No distorted text, all text must be spelled correctly letter by letter
+- Bold condensed sans-serif font (like Impact or Helvetica Condensed)
 - DSLR realism, natural shadows, warm golden light
 - Photorealistic image, not illustration or cartoon`;
 
