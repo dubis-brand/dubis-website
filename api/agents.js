@@ -1572,18 +1572,50 @@ Generate a social media post. Return ONLY valid JSON:
             const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
             const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
 
-            // Upload to HeyGen
+            // Helper: upload buffer to HeyGen
+            async function doHeygenUpload() {
+                const r = await fetch('https://upload.heygen.com/v1/talking_photo', {
+                    method: 'POST',
+                    headers: { 'X-Api-Key': heygenKey, 'Content-Type': contentType },
+                    body: imgBuffer
+                });
+                return r.json();
+            }
+
+            // First attempt
             console.log(`🎬 Uploading talking photo to HeyGen (${imgBuffer.length} bytes)...`);
-            const r = await fetch('https://upload.heygen.com/v1/talking_photo', {
-                method: 'POST',
-                headers: {
-                    'X-Api-Key': heygenKey,
-                    'Content-Type': contentType
-                },
-                body: imgBuffer
-            });
-            const data = await r.json();
+            let data = await doHeygenUpload();
             console.log(`🎬 HeyGen upload response: ${JSON.stringify(data).substring(0, 300)}`);
+
+            // If limit exceeded, delete oldest talking photo and retry
+            const errMsg1 = data.error?.message || data.message || '';
+            if (errMsg1.toLowerCase().includes('exceeded') || errMsg1.toLowerCase().includes('limit')) {
+                console.log(`🎬 Talking photo limit reached — deleting oldest to make room...`);
+                try {
+                    // List existing talking photos
+                    const listRes = await fetch(`${HEYGEN_BASE}/v2/talking_photo`, {
+                        headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
+                    });
+                    const listData = await listRes.json();
+                    const photos = listData.data?.talking_photos || listData.data || [];
+                    if (photos.length > 0) {
+                        // Delete the first (oldest) one
+                        const oldest = photos[0];
+                        const oldId = oldest.talking_photo_id || oldest.id;
+                        console.log(`🎬 Deleting oldest talking photo: ${oldId}`);
+                        await fetch(`${HEYGEN_BASE}/v2/talking_photo/${oldId}`, {
+                            method: 'DELETE',
+                            headers: { 'X-Api-Key': heygenKey }
+                        });
+                        console.log(`🎬 Deleted. Retrying upload...`);
+                        // Retry upload
+                        data = await doHeygenUpload();
+                        console.log(`🎬 Retry response: ${JSON.stringify(data).substring(0, 300)}`);
+                    }
+                } catch(delErr) {
+                    console.log(`🎬 Failed to auto-delete old talking photo: ${delErr.message}`);
+                }
+            }
 
             if (data.error || !data.data?.talking_photo_id) {
                 const errMsg = data.error?.message || data.message || 'Upload failed';
