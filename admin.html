@@ -3997,9 +3997,19 @@
     const preview = document.getElementById('reel-photo-preview');
     const status = document.getElementById('reel-photo-status');
     preview.innerHTML = `<img src="${imgUrl}" style="width:100%;height:100%;object-fit:cover">`;
-    status.textContent = '⏳ מעלה תמונה ל-HeyGen...';
+    status.textContent = '⏳ מפנה מקום ב-HeyGen...';
 
     try {
+      // Cleanup old talking photos first
+      try {
+        await fetch('/api/agents?type=cleanup-talking-photos', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
+          body: '{}'
+        });
+      } catch(cleanErr) { console.log('Cleanup warning:', cleanErr); }
+
+      status.textContent = '⏳ מעלה תמונה ל-HeyGen...';
       const r = await fetch('/api/agents?type=upload-talking-photo', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
@@ -4045,8 +4055,18 @@
         const upData = await upRes.json();
         if (!upData.url) throw new Error(upData.error || 'Upload to storage failed');
 
+        // Step 2: Cleanup old talking photos (separate call to avoid timeout)
+        status.textContent = '⏳ מפנה מקום ב-HeyGen...';
+        try {
+          await fetch('/api/agents?type=cleanup-talking-photos', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
+            body: '{}'
+          });
+        } catch(cleanErr) { console.log('Cleanup warning:', cleanErr); }
+
+        // Step 3: Upload to HeyGen as Talking Photo
         status.textContent = '⏳ מעלה ל-HeyGen...';
-        // Now upload the public URL to HeyGen as Talking Photo
         const r = await fetch('/api/agents?type=upload-talking-photo', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },

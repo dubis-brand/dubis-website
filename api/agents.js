@@ -1554,6 +1554,42 @@ Generate a social media post. Return ONLY valid JSON:
         }
     }
 
+    // ── CLEANUP-TALKING-PHOTOS ── delete all existing talking photos to free slots ──
+    if (type === 'cleanup-talking-photos') {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+        const adminUser = await verifyAdmin(req);
+        if (!adminUser && !isAgentSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
+        if (!heygenKey) return res.status(500).json({ error: 'HEYGEN_API_KEY not configured' });
+
+        try {
+            const listRes = await fetch(`${HEYGEN_BASE}/v1/talking_photo.list`, {
+                headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
+            });
+            const listData = await listRes.json();
+            console.log(`🧹 List talking photos: ${JSON.stringify(listData).substring(0, 400)}`);
+            const photos = listData.data?.talking_photos || listData.data || [];
+            console.log(`🧹 Found ${photos.length} talking photos to delete`);
+            const deleted = [];
+            // Delete all in parallel for speed
+            await Promise.all(photos.map(async (photo) => {
+                const photoId = photo.talking_photo_id || photo.id;
+                if (!photoId) return;
+                // Try v2 photo_avatar delete (newer API)
+                const r = await fetch(`${HEYGEN_BASE}/v2/photo_avatar/${photoId}`, {
+                    method: 'DELETE',
+                    headers: { 'X-Api-Key': heygenKey }
+                });
+                const d = await r.json().catch(() => ({}));
+                console.log(`🧹 Delete ${photoId}: ${JSON.stringify(d).substring(0, 150)}`);
+                deleted.push(photoId);
+            }));
+            return res.json({ success: true, deleted_count: deleted.length, deleted });
+        } catch(e) {
+            console.log(`🧹 Cleanup error: ${e.message}`);
+            return res.status(500).json({ error: 'Cleanup failed: ' + e.message });
+        }
+    }
+
     // ── UPLOAD-TALKING-PHOTO ── upload image to HeyGen for Talking Photo avatar ──
     if (type === 'upload-talking-photo') {
         if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
@@ -1565,47 +1601,14 @@ Generate a social media post. Return ONLY valid JSON:
         if (!image_url) return res.status(400).json({ error: 'image_url is required' });
 
         try {
-            // Step 1: Delete ALL existing talking photos to free up slots
-            console.log(`🎬 Cleaning up old talking photos before upload...`);
-            try {
-                const listRes = await fetch(`${HEYGEN_BASE}/v1/talking_photo.list`, {
-                    headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
-                });
-                const listData = await listRes.json();
-                console.log(`🎬 List talking photos response: ${JSON.stringify(listData).substring(0, 400)}`);
-                const photos = listData.data?.talking_photos || listData.data || [];
-                console.log(`🎬 Found ${photos.length} existing talking photos`);
-                for (const photo of photos) {
-                    const photoId = photo.talking_photo_id || photo.id;
-                    if (!photoId) continue;
-                    console.log(`🎬 Deleting talking photo: ${photoId}`);
-                    // Try multiple delete endpoints (HeyGen API has changed over time)
-                    const delRes1 = await fetch(`${HEYGEN_BASE}/v1/talking_photo/${photoId}`, {
-                        method: 'DELETE',
-                        headers: { 'X-Api-Key': heygenKey }
-                    });
-                    const delData1 = await delRes1.json().catch(() => ({}));
-                    console.log(`🎬 Delete v1 response: ${JSON.stringify(delData1).substring(0, 200)}`);
-                    // Also try v2 photo_avatar endpoint
-                    const delRes2 = await fetch(`${HEYGEN_BASE}/v2/photo_avatar/${photoId}`, {
-                        method: 'DELETE',
-                        headers: { 'X-Api-Key': heygenKey }
-                    });
-                    const delData2 = await delRes2.json().catch(() => ({}));
-                    console.log(`🎬 Delete v2 response: ${JSON.stringify(delData2).substring(0, 200)}`);
-                }
-            } catch(listErr) {
-                console.log(`🎬 Warning: could not clean up old talking photos: ${listErr.message}`);
-            }
-
-            // Step 2: Download image from URL
+            // Download image from URL
             console.log(`🎬 Downloading image for talking photo: ${image_url.substring(0, 80)}...`);
             const imgResponse = await fetch(image_url);
             if (!imgResponse.ok) return res.status(400).json({ error: 'Failed to download image from URL' });
             const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
             const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
 
-            // Step 3: Upload new talking photo to HeyGen
+            // Upload to HeyGen
             console.log(`🎬 Uploading talking photo to HeyGen (${imgBuffer.length} bytes)...`);
             const r = await fetch('https://upload.heygen.com/v1/talking_photo', {
                 method: 'POST',
