@@ -1583,6 +1583,10 @@
             <option value="he">🇮🇱 עברית</option>
             <option value="en">🇺🇸 אנגלית</option>
           </select>
+          <select id="reel-voice-gender" style="background:#0a0a0a;border:1px solid #333;color:#e0e0e0;padding:4px 8px;border-radius:6px;font-size:.8rem">
+            <option value="female">👩 אישה</option>
+            <option value="male">👨 גבר</option>
+          </select>
           <select id="reel-voice" style="background:#0a0a0a;border:1px solid #333;color:#e0e0e0;padding:4px 8px;border-radius:6px;font-size:.8rem;flex:1;min-width:120px">
             <option value="">🎤 קול אוטומטי</option>
           </select>
@@ -4192,6 +4196,7 @@
           avatar_id: _reelMode === 'avatar' ? avatarId : undefined,
           talking_photo_id: _reelMode === 'photo' ? talkingPhotoId : undefined,
           voice_id: document.getElementById('reel-voice').value || undefined,
+          voice_gender: document.getElementById('reel-voice-gender').value || undefined,
           language: document.getElementById('reel-language').value
         })
       });

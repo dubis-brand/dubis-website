@@ -1574,18 +1574,41 @@ Generate a social media post. Return ONLY valid JSON:
         }
         if (!heygenKey) return res.status(500).json({ error: 'HEYGEN_API_KEY not configured' });
 
-        const { task_id, script, avatar_id, talking_photo_id, voice_id, language, title } = req.body || {};
+        const { task_id, script, avatar_id, talking_photo_id, voice_id, voice_gender, language, title, motion_prompt } = req.body || {};
         if (!script) return res.status(400).json({ error: 'script is required' });
+
+        // ── FIX #1: Clean the script — strip hashtags, links, emojis-only lines ──
+        // Only the spoken dialogue should be sent to HeyGen, NOT captions/hashtags
+        const cleanScript = script
+            .split('\n')
+            .filter(line => {
+                const trimmed = line.trim();
+                if (!trimmed) return false;
+                if (trimmed.startsWith('#')) return false;           // hashtag lines
+                if (trimmed.startsWith('🔗')) return false;          // link lines
+                if (trimmed.match(/^https?:\/\//)) return false;     // URL lines
+                if (trimmed.match(/^[#@🔗📸🎬💛🔥✨💪👆👇]+$/)) return false; // emoji-only lines
+                return true;
+            })
+            .join('\n')
+            .replace(/#\w+/g, '')     // remove inline hashtags
+            .replace(/🔗\s*קישור\s*בביו/g, '') // remove "link in bio" in Hebrew
+            .replace(/\s+/g, ' ')     // normalize whitespace
+            .trim();
+
+        if (!cleanScript) return res.status(400).json({ error: 'Script is empty after cleanup — only hashtags/links found' });
+        console.log(`🎬 Script cleaned: "${script.substring(0, 60)}..." → "${cleanScript.substring(0, 60)}..."`);
 
         const useTalkingPhoto = !!talking_photo_id;
         const chosenAvatar = avatar_id || 'Daisy-inskirt-20220818';
 
-        // Auto-resolve voice_id if not provided — MUST be a real HeyGen voice_id
+        // ── FIX #2: Voice gender matching — match to the character, not always female ──
         let chosenVoice = voice_id;
+        const requestedGender = voice_gender || null; // 'male' | 'female' | null (auto)
         if (!chosenVoice || chosenVoice === 'default') {
             try {
                 const lang = language === 'he' ? 'Hebrew' : (language || 'English');
-                console.log(`🎬 Auto-resolving voice for language: ${lang}`);
+                console.log(`🎬 Auto-resolving voice | lang: ${lang} | gender: ${requestedGender || 'auto'}`);
                 const vr = await fetch(`${HEYGEN_BASE}/v2/voices`, {
                     headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
                 });
@@ -1596,12 +1619,14 @@ Generate a social media post. Return ONLY valid JSON:
                     (v.language || '').toLowerCase().includes(lang.toLowerCase())
                 );
                 if (langVoices.length > 0) {
-                    // Prefer female voice for brand consistency, else first match
-                    const femaleVoice = langVoices.find(v => (v.gender || '').toLowerCase() === 'female');
-                    chosenVoice = (femaleVoice || langVoices[0]).voice_id;
-                    console.log(`🎬 Auto-selected voice: ${chosenVoice} (${(femaleVoice || langVoices[0]).name || 'unnamed'})`);
+                    // Match voice gender to the character (if specified), else first match
+                    let genderMatch = null;
+                    if (requestedGender) {
+                        genderMatch = langVoices.find(v => (v.gender || '').toLowerCase() === requestedGender.toLowerCase());
+                    }
+                    chosenVoice = (genderMatch || langVoices[0]).voice_id;
+                    console.log(`🎬 Auto-selected voice: ${chosenVoice} (${(genderMatch || langVoices[0]).name || 'unnamed'} | gender: ${(genderMatch || langVoices[0]).gender || '?'})`);
                 } else if (allVoices.length > 0) {
-                    // Fallback to any English voice
                     const enVoices = allVoices.filter(v => (v.language || '').toLowerCase().includes('english'));
                     chosenVoice = (enVoices[0] || allVoices[0]).voice_id;
                     console.log(`🎬 No ${lang} voices found, fallback to: ${chosenVoice}`);
@@ -1621,13 +1646,20 @@ Generate a social media post. Return ONLY valid JSON:
                 : { type: 'avatar', avatar_id: chosenAvatar, avatar_style: 'normal' };
             console.log(`🎬 Mode: ${useTalkingPhoto ? 'Talking Photo' : 'Avatar'} | ID: ${useTalkingPhoto ? talking_photo_id : chosenAvatar}`);
 
-            // Build HeyGen video request
+            // ── FIX #3: Motion prompt for natural movement ──
+            const defaultMotion = 'The person speaks naturally with hand gestures, slight body movement, and genuine facial expressions. They occasionally look around and shift weight between feet, like a real person talking to a friend.';
+            const motionText = motion_prompt || defaultMotion;
+
+            // Build HeyGen video request — use clean script only (no hashtags/captions)
             const videoPayload = {
                 video_inputs: [{
-                    character,
+                    character: {
+                        ...character,
+                        ...(useTalkingPhoto ? {} : { motion_prompt: motionText })
+                    },
                     voice: {
                         type: 'text',
-                        input_text: script,
+                        input_text: cleanScript,
                         voice_id: chosenVoice,
                         speed: 1.0
                     },
@@ -1643,7 +1675,7 @@ Generate a social media post. Return ONLY valid JSON:
                 callback_id: task_id || `reel_${Date.now()}`
             };
 
-            console.log(`🎬 HeyGen generate-reel | avatar: ${chosenAvatar} | voice: ${chosenVoice} | script: ${script.substring(0, 80)}...`);
+            console.log(`🎬 HeyGen generate-reel | voice: ${chosenVoice} | gender: ${requestedGender || 'auto'} | cleanScript: ${cleanScript.substring(0, 80)}...`);
 
             const r = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
                 method: 'POST',
