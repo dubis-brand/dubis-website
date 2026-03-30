@@ -830,10 +830,14 @@ CRITICAL RULES:
                     storage_path: storagePath,
                     scene_type: 'uploaded',
                     model_type: 'uploaded',
-                    tags: ['uploaded', 'manual']
+                    tags: JSON.stringify(['uploaded', 'manual'])
                 };
                 if (product_id) insertData.product_id = product_id;
-                const { data: imgRecord } = await sb.from('dubis_images').insert(insertData).select().single();
+                const { data: imgRecord, error: insertErr } = await sb.from('dubis_images').insert(insertData).select().single();
+                if (insertErr) {
+                    console.error('❌ DB insert error:', insertErr.message, insertErr.details, insertErr.hint);
+                    return res.status(500).json({ error: 'DB insert failed: ' + insertErr.message, details: insertErr.details });
+                }
                 console.log(`📸 Manual upload to gallery: ${storagePath} | ID: ${imgRecord?.id}`);
                 return res.json({ success: true, image_url: publicUrl, image_id: imgRecord?.id });
             } catch(e) {

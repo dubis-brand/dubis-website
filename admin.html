@@ -5389,14 +5389,25 @@
           body: JSON.stringify({ image_base64: base64, filename: file.name, product_id: productId })
         });
         const data = await res.json();
-        if (data.success || data.image_url) uploaded++;
+        if (data.error) {
+          console.error('Upload DB error:', data.error, data.details);
+          statusEl.textContent = `❌ שגיאה: ${data.error}`;
+          statusEl.style.color = '#e74c3c';
+        } else if (data.success || data.image_url) {
+          uploaded++;
+        }
         statusEl.textContent = `⏳ הועלו ${uploaded}/${files.length}...`;
       } catch(e) {
         console.warn('Upload error:', e);
       }
     }
-    statusEl.textContent = `✅ ${uploaded} תמונות הועלו בהצלחה!`;
-    statusEl.style.color = '#6fcf6f';
+    if (uploaded > 0) {
+      statusEl.textContent = `✅ ${uploaded} תמונות הועלו בהצלחה!`;
+      statusEl.style.color = '#6fcf6f';
+    } else {
+      statusEl.textContent = `❌ לא הצליח להעלות תמונות - בדוק קונסול`;
+      statusEl.style.color = '#e74c3c';
+    }
     input.value = '';
     // Refresh gallery
     loadGallery();
