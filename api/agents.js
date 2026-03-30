@@ -64,12 +64,20 @@ function isAgentSecret(req) {
 }
 
 // ── Hebrew text normalization: brand terminology corrections ──
+// CRITICAL: DUBIS NEVER uses "הודי" — always "קפוצון"
 function fixHebrew(text) {
     if (!text) return text;
     return text
-        .replace(/ה?הודי(?:ם|ז)?/g, (m) => m.startsWith('הה') ? 'הקפוצון' : m.endsWith('ם') ? 'קפוצונים' : 'קפוצון')
-        .replace(/\bהודי\b/g, 'קפוצון')
-        .replace(/\bהודים\b/g, 'קפוצונים');
+        // "זיפ הודי" → "קפוצון זיפ"
+        .replace(/זיפ\s+הודי/g, 'קפוצון זיפ')
+        // "הודי זיפ" → "קפוצון זיפ"
+        .replace(/הודי\s+זיפ/g, 'קפוצון זיפ')
+        // "ההודי" → "הקפוצון"
+        .replace(/ההודי/g, 'הקפוצון')
+        // "הודיז" / "הודים" → "קפוצונים"
+        .replace(/הודי[זם]/g, 'קפוצונים')
+        // standalone "הודי" → "קפוצון"
+        .replace(/הודי/g, 'קפוצון');
 }
 
 module.exports = async function handler(req, res) {
