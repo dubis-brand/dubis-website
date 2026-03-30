@@ -1520,7 +1520,11 @@ Generate a social media post. Return ONLY valid JSON:
     if (type === 'generate-reel') {
         if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
         const adminUser = await verifyAdmin(req);
-        if (!adminUser && !isAgentSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
+        if (!adminUser && !isAgentSecret(req)) {
+            const hasAuth = !!(req.headers['authorization'] || '').replace('Bearer ', '').trim();
+            console.log(`🎬 generate-reel auth failed | hasAuth: ${hasAuth} | headers: ${Object.keys(req.headers).join(',')}`);
+            return res.status(401).json({ error: hasAuth ? 'Token פג תוקף — רענן את הדף ונסה שוב' : 'Unauthorized — חסר token' });
+        }
         if (!heygenKey) return res.status(500).json({ error: 'HEYGEN_API_KEY not configured' });
 
         const { task_id, script, avatar_id, talking_photo_id, voice_id, language, title } = req.body || {};
