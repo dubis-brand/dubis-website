@@ -4113,22 +4113,74 @@
     setTimeout(() => { statusEl.textContent = ''; }, 4000);
   }
 
+  // Helper: get current gallery image URL
+  function _getGalleryImageUrl() {
+    const urlInput = document.getElementById('pm-image-url');
+    if (urlInput && urlInput.value && urlInput.value.startsWith('http')) return urlInput.value.trim();
+    const imgEl = document.getElementById('pm-preview-img');
+    if (imgEl && imgEl.src && imgEl.src.startsWith('http') && imgEl.style.display !== 'none') return imgEl.src;
+    const gallerySelect = document.getElementById('pm-gallery-select');
+    if (gallerySelect && gallerySelect.value && gallerySelect.value.startsWith('http')) return gallerySelect.value;
+    return '';
+  }
+
   async function generateReel() {
     const script = document.getElementById('reel-script').value.trim();
     if (!script) return alert('חובה לכתוב סקריפט');
     if (script.length > 5000) return alert('הסקריפט ארוך מדי (מקסימום 5000 תווים)');
     const avatarId = document.getElementById('reel-avatar-id').value;
-    const talkingPhotoId = document.getElementById('reel-talking-photo-id').value;
-    if (_reelMode === 'photo' && !talkingPhotoId) return alert('העלה קודם תמונה מהגלריה');
     if (_reelMode === 'avatar' && !avatarId) return alert('בחר אווטאר');
 
     const btn = document.getElementById('reel-generate-btn');
     const progress = document.getElementById('reel-progress');
     const result = document.getElementById('reel-result');
     btn.disabled = true;
-    btn.textContent = '⏳ שולח בקשה...';
     progress.style.display = 'block';
     result.style.display = 'none';
+
+    let talkingPhotoId = document.getElementById('reel-talking-photo-id').value;
+
+    // Auto-upload gallery photo to HeyGen if in photo mode and not yet uploaded
+    if (_reelMode === 'photo' && !talkingPhotoId) {
+      const imgUrl = _getGalleryImageUrl();
+      if (!imgUrl) {
+        alert('בחר תמונה מהגלריה למטה (לחץ על תמונה ברשת) ואז לחץ ייצר רילס');
+        btn.disabled = false;
+        progress.style.display = 'none';
+        return;
+      }
+      btn.textContent = '📤 מעלה תמונה ל-HeyGen...';
+      const preview = document.getElementById('reel-photo-preview');
+      const status = document.getElementById('reel-photo-status');
+      preview.innerHTML = `<img src="${imgUrl}" style="width:100%;height:100%;object-fit:cover">`;
+      status.textContent = '⏳ מעלה תמונה...';
+      try {
+        const ur = await fetch('/api/agents?type=upload-talking-photo', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_url: imgUrl })
+        });
+        const udata = await ur.json();
+        if (udata.talking_photo_id) {
+          talkingPhotoId = udata.talking_photo_id;
+          document.getElementById('reel-talking-photo-id').value = talkingPhotoId;
+          status.textContent = '✅ תמונה הועלתה!';
+          status.style.color = '#6fcf6f';
+        } else {
+          throw new Error(udata.error || 'Upload failed');
+        }
+      } catch(e) {
+        status.textContent = '❌ ' + e.message;
+        status.style.color = '#f87171';
+        alert('שגיאה בהעלאת תמונה: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = '🎬 ייצר רילס';
+        progress.style.display = 'none';
+        return;
+      }
+    }
+
+    btn.textContent = '⏳ יוצר סרטון...';
 
     try {
       const r = await fetch('/api/agents?type=generate-reel', {
