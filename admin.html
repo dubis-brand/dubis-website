@@ -3979,11 +3979,13 @@
   }
 
   async function useGalleryPhotoForReel() {
-    // Get the currently selected image in the publish modal
-    const imgEl = document.getElementById('pm-img');
-    const imgUrl = imgEl ? imgEl.src : '';
-    if (!imgUrl || imgUrl.includes('placeholder') || imgUrl.includes('data:')) {
-      alert('בחר קודם תמונה מהגלריה למעלה');
+    // Get the currently selected image — try URL input first, then preview img
+    const urlInput = document.getElementById('pm-image-url');
+    const imgEl = document.getElementById('pm-preview-img');
+    let imgUrl = (urlInput && urlInput.value) ? urlInput.value.trim() : '';
+    if (!imgUrl && imgEl && imgEl.src && imgEl.style.display !== 'none') imgUrl = imgEl.src;
+    if (!imgUrl || imgUrl.includes('placeholder') || imgUrl.startsWith('data:')) {
+      alert('בחר קודם תמונה מהגלריה למטה (לחץ על תמונה ברשת הגלריה)');
       return;
     }
     const preview = document.getElementById('reel-photo-preview');
