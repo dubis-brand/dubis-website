@@ -1544,16 +1544,13 @@
 
         <!-- Talking Photo Section -->
         <div id="reel-photo-section">
-          <label style="font-size:.75rem;color:#999">📸 תמונה עם מוצר DUBIS — הפנים ינועו ויגידו את הסקריפט:</label>
+          <label style="font-size:.75rem;color:#999">📸 בחר תמונה לדמות — לחץ על תמונה מהגלריה למטה:</label>
           <div style="display:flex;gap:6px;align-items:center;margin:4px 0 8px">
             <div id="reel-photo-preview" style="width:64px;height:64px;border-radius:8px;background:#222;border:2px dashed #333;display:flex;align-items:center;justify-content:center;overflow:hidden">
               <span style="color:#555;font-size:1.5rem">📷</span>
             </div>
             <div style="flex:1">
-              <button onclick="useGalleryPhotoForReel()" style="width:100%;background:#0a2e1a;border:1px solid #10b981;color:#6fcf6f;padding:6px 10px;border-radius:6px;font-size:.78rem;cursor:pointer;margin-bottom:4px">📷 השתמש בתמונה מהגלריה</button>
-              <button onclick="document.getElementById('reel-photo-upload-input').click()" style="width:100%;background:#1a1a2e;border:1px solid #7c3aed;color:#c084fc;padding:6px 10px;border-radius:6px;font-size:.78rem;cursor:pointer;margin-bottom:4px">📁 העלה תמונה מהמחשב</button>
-              <input type="file" id="reel-photo-upload-input" accept="image/*" style="display:none" onchange="uploadLocalPhotoForReel(this)">
-              <div id="reel-photo-status" style="font-size:.68rem;color:#666"></div>
+              <div id="reel-photo-status" style="font-size:.68rem;color:#999">👇 בחר תמונה מהגלריה למטה, או העלה תמונה חדשה דרך כפתור "העלה תמונה" בגלריה</div>
             </div>
           </div>
           <input type="hidden" id="reel-talking-photo-id" value="">
@@ -1609,8 +1606,13 @@
       </div>
 
       <div class="at-group" style="margin-top:0">
-        <label>📷 בחר תמונה מהגלריה</label>
-        <div id="pm-gallery-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin-top:6px;max-height:280px;overflow-y:auto;padding:4px;scrollbar-width:thin;scrollbar-color:#c8a96e #111">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <label>📷 בחר תמונה מהגלריה</label>
+          <button onclick="document.getElementById('gallery-upload-input').click()" style="background:#1a1a2e;border:1px solid #7c3aed;color:#c084fc;padding:3px 10px;border-radius:6px;font-size:.72rem;cursor:pointer">📁 העלה תמונה</button>
+          <input type="file" id="gallery-upload-input" accept="image/*" style="display:none" onchange="uploadToGallery(this)">
+        </div>
+        <div id="gallery-upload-status" style="font-size:.68rem;color:#666;margin:2px 0"></div>
+        <div id="pm-gallery-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin-top:6px;max-height:400px;overflow-y:auto;padding:4px;scrollbar-width:thin;scrollbar-color:#c8a96e #111">
         </div>
         <input type="hidden" id="pm-gallery-select" value="">
       </div>
@@ -3892,6 +3894,17 @@
     document.querySelectorAll('#pm-gallery-grid .pm-thumb').forEach(el => {
       el.style.outline = el.dataset.url === url ? '3px solid #c8a96e' : '2px solid transparent';
     });
+    // Also update reel photo preview if reel panel is open
+    const reelPanel = document.getElementById('pm-reel-panel');
+    if (reelPanel && reelPanel.style.display !== 'none') {
+      const preview = document.getElementById('reel-photo-preview');
+      if (preview) preview.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover">`;
+      const status = document.getElementById('reel-photo-status');
+      if (status) { status.textContent = '✅ תמונה נבחרה — מוכן ליצירת רילס'; status.style.color = '#6fcf6f'; }
+      // Store the URL for later upload to HeyGen when generating
+      document.getElementById('reel-talking-photo-id').value = '';
+      document.getElementById('reel-talking-photo-id').dataset.pendingUrl = url;
+    }
   }
 
   async function loadGalleryThumbnails() {
@@ -3905,16 +3918,48 @@
       staticPhotos.push({ url: `https://dubis.net/images/dubis_photo_${String(i).padStart(2,'0')}.jpg`, label: `DUBIS ${i}` });
     }
 
-    // 2. Load AI-generated images from Supabase storage
+    // 2. Load ALL images from Supabase storage (root + subfolders)
     let storagePhotos = [];
     try {
-      const { data: files } = await _sb.storage.from('ig-images').list('', { limit: 50, sortBy: { column: 'created_at', order: 'desc' } });
-      if (files && files.length) {
-        storagePhotos = files.filter(f => f.name.endsWith('.jpg') || f.name.endsWith('.png')).map(f => {
+      const imgExts = ['.jpg', '.jpeg', '.png', '.webp'];
+      const isImage = (name) => imgExts.some(ext => name.toLowerCase().endsWith(ext));
+
+      // List root files
+      const { data: rootFiles } = await _sb.storage.from('ig-images').list('', { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
+      if (rootFiles) {
+        // Separate folders and files
+        const folders = rootFiles.filter(f => !f.metadata || f.id === null);
+        const files = rootFiles.filter(f => f.metadata && isImage(f.name));
+        files.forEach(f => {
           const { data: { publicUrl } } = _sb.storage.from('ig-images').getPublicUrl(f.name);
-          return { url: publicUrl, label: 'AI: ' + f.name.replace(/^ig-/,'').replace(/\.(jpg|png)$/,'').substring(0,12) };
+          storagePhotos.push({ url: publicUrl, label: f.name.substring(0, 15) });
         });
+
+        // List files in subfolders (reel-photos, product-images, etc.)
+        const folderNames = folders.map(f => f.name).filter(n => n && !n.startsWith('.'));
+        for (const folder of folderNames) {
+          try {
+            const { data: subFiles } = await _sb.storage.from('ig-images').list(folder, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+            if (subFiles) {
+              subFiles.filter(f => f.metadata && isImage(f.name)).forEach(f => {
+                const { data: { publicUrl } } = _sb.storage.from('ig-images').getPublicUrl(`${folder}/${f.name}`);
+                storagePhotos.push({ url: publicUrl, label: `${folder}/${f.name}`.substring(0, 15) });
+              });
+            }
+          } catch(e) {}
+        }
       }
+
+      // Also load from product-images bucket
+      try {
+        const { data: prodFiles } = await _sb.storage.from('product-images').list('', { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+        if (prodFiles) {
+          prodFiles.filter(f => f.metadata && isImage(f.name)).forEach(f => {
+            const { data: { publicUrl } } = _sb.storage.from('product-images').getPublicUrl(f.name);
+            storagePhotos.push({ url: publicUrl, label: 'prod: ' + f.name.substring(0, 12) });
+          });
+        }
+      } catch(e) {}
     } catch(e) { console.warn('gallery storage err', e); }
 
     const allPhotos = [...storagePhotos, ...staticPhotos];
@@ -3935,6 +3980,46 @@
       div.onclick = () => pmSelectGalleryPhoto(p.url);
       grid.appendChild(div);
     });
+  }
+
+  async function uploadToGallery(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const statusEl = document.getElementById('gallery-upload-status');
+    statusEl.textContent = '⏳ מעלה תמונה...';
+    statusEl.style.color = '#999';
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const base64Data = e.target.result;
+          const res = await fetch('/api/agents?type=upload-reel-photo', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image_base64: base64Data, filename: file.name })
+          });
+          const data = await res.json();
+          if (data.url) {
+            statusEl.textContent = '✅ תמונה הועלתה!';
+            statusEl.style.color = '#6fcf6f';
+            // Refresh gallery to show the new image
+            await loadGalleryThumbnails();
+            // Auto-select the new image
+            pmSelectGalleryPhoto(data.url);
+          } else {
+            throw new Error(data.error || 'Upload failed');
+          }
+        } catch(err) {
+          statusEl.textContent = '❌ ' + err.message;
+          statusEl.style.color = '#f87171';
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch(e) {
+      statusEl.textContent = '❌ ' + e.message;
+      statusEl.style.color = '#f87171';
+    }
+    input.value = '';
   }
 
   async function pmGenerateImage() {
@@ -4228,7 +4313,9 @@
 
     // Auto-upload gallery photo to HeyGen if in photo mode and not yet uploaded
     if (_reelMode === 'photo' && !talkingPhotoId) {
-      const imgUrl = _getGalleryImageUrl();
+      // Check for pending URL from gallery selection
+      const pendingUrl = document.getElementById('reel-talking-photo-id').dataset.pendingUrl;
+      const imgUrl = pendingUrl || _getGalleryImageUrl();
       if (!imgUrl) {
         alert('בחר תמונה מהגלריה למטה (לחץ על תמונה ברשת) ואז לחץ ייצר רילס');
         btn.disabled = false;
@@ -4250,8 +4337,8 @@
         if (udata.talking_photo_id) {
           talkingPhotoId = udata.talking_photo_id;
           document.getElementById('reel-talking-photo-id').value = talkingPhotoId;
-          status.textContent = '✅ תמונה הועלתה!';
-          status.style.color = '#6fcf6f';
+          status.textContent = udata.reused ? '⚠️ משתמש בתמונה קיימת (מגבלת HeyGen)' : '✅ תמונה הועלתה!';
+          status.style.color = udata.reused ? '#fbbf24' : '#6fcf6f';
         } else {
           throw new Error(udata.error || 'Upload failed');
         }
@@ -4667,30 +4754,55 @@
   async function loadPreviewGallery() {
     const grid = document.getElementById('pp-gallery-grid');
     if (!grid) return;
-    grid.innerHTML = '';
-    // Static photos
+    grid.innerHTML = '<div style="color:#666;font-size:.7rem;grid-column:1/-1">טוען...</div>';
+    grid.style.maxHeight = '400px';
+
+    const imgExts = ['.jpg', '.jpeg', '.png', '.webp'];
+    const isImage = (name) => imgExts.some(ext => name.toLowerCase().endsWith(ext));
+    const allUrls = [];
+
+    // AI-generated + uploaded images from storage (newest first)
+    try {
+      const { data: rootFiles } = await _sb.storage.from('ig-images').list('', { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
+      if (rootFiles) {
+        const folders = rootFiles.filter(f => !f.metadata || f.id === null);
+        rootFiles.filter(f => f.metadata && isImage(f.name)).forEach(f => {
+          const { data: { publicUrl } } = _sb.storage.from('ig-images').getPublicUrl(f.name);
+          allUrls.push(publicUrl);
+        });
+        for (const folder of folders.map(f => f.name).filter(n => n && !n.startsWith('.'))) {
+          try {
+            const { data: subFiles } = await _sb.storage.from('ig-images').list(folder, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+            if (subFiles) subFiles.filter(f => f.metadata && isImage(f.name)).forEach(f => {
+              const { data: { publicUrl } } = _sb.storage.from('ig-images').getPublicUrl(`${folder}/${f.name}`);
+              allUrls.push(publicUrl);
+            });
+          } catch(e) {}
+        }
+      }
+      // product-images bucket
+      try {
+        const { data: pf } = await _sb.storage.from('product-images').list('', { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+        if (pf) pf.filter(f => f.metadata && isImage(f.name)).forEach(f => {
+          const { data: { publicUrl } } = _sb.storage.from('product-images').getPublicUrl(f.name);
+          allUrls.push(publicUrl);
+        });
+      } catch(e) {}
+    } catch(e) {}
+
+    // Static DUBIS photos last
     for (let i = 1; i <= 10; i++) {
-      const url = `https://dubis.net/images/dubis_photo_${String(i).padStart(2,'0')}.jpg`;
+      allUrls.push(`https://dubis.net/images/dubis_photo_${String(i).padStart(2,'0')}.jpg`);
+    }
+
+    grid.innerHTML = '';
+    allUrls.forEach(url => {
       const div = document.createElement('div');
       div.style.cssText = 'cursor:pointer;border-radius:4px;overflow:hidden;aspect-ratio:1;outline:2px solid transparent;transition:outline .15s;background:#111';
-      div.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover" loading="lazy">`;
+      div.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentElement.style.display='none'">`;
       div.onclick = () => useRealPhoto(url);
       grid.appendChild(div);
-    }
-    // AI-generated photos from storage
-    try {
-      const { data: files } = await _sb.storage.from('ig-images').list('', { limit: 30, sortBy: { column: 'created_at', order: 'desc' } });
-      if (files && files.length) {
-        files.filter(f => f.name.endsWith('.jpg') || f.name.endsWith('.png')).forEach(f => {
-          const { data: { publicUrl } } = _sb.storage.from('ig-images').getPublicUrl(f.name);
-          const div = document.createElement('div');
-          div.style.cssText = 'cursor:pointer;border-radius:4px;overflow:hidden;aspect-ratio:1;outline:2px solid transparent;transition:outline .15s;background:#111';
-          div.innerHTML = `<img src="${publicUrl}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentElement.style.display='none'">`;
-          div.onclick = () => useRealPhoto(publicUrl);
-          grid.appendChild(div);
-        });
-      }
-    } catch(e) {}
+    });
   }
 
   function openAddTaskModal() {
