@@ -4,8 +4,8 @@
 (function() {
   'use strict';
 
-  const SUPABASE_URL = 'https://ntzwvqtpdmvvavbhuyeb.supabase.co';
-  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50end2cXRwZG12dmF2Ymh1eWViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2ODk1ODAsImV4cCI6MjA4NzI2NTU4MH0.EpfZAg28aU6_sOblfkVpkAwp9nDvXMTRCCNz0UJWHEc';
+  const SUPABASE_URL  = window.DUBIS_SUPABASE_URL;
+  const SUPABASE_ANON = window.DUBIS_SUPABASE_ANON;
 
   // ═══════════════════════════════════════════════════════════
   // 1. NEWSLETTER POPUP  —  "Get 15% off your first order"

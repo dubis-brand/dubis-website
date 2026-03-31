@@ -152,6 +152,12 @@ module.exports = async function handler(req, res) {
   buyerEmail = order.buyer_email;
   buyerName  = order.shipping_address?.name || '';
 
+  // Idempotency: skip if status already matches and it's not a shipping event (to avoid re-sending tracking emails)
+  if (order.status === newStatus && !isShipped) {
+    console.log(`Order ${order.id} already has status ${newStatus} — skipping`);
+    return res.status(200).json({ received: true, status: newStatus, skipped: true });
+  }
+
   // Update status
   const { error: updateErr } = await supabase
     .from('orders')
@@ -164,8 +170,8 @@ module.exports = async function handler(req, res) {
     console.log(`Order ${order.id} status → ${newStatus}`);
   }
 
-  // Send shipping email
-  if (isShipped && buyerEmail) {
+  // Send shipping email — only if transitioning to shipped (not already shipped)
+  if (isShipped && buyerEmail && order.status !== 'shipped') {
     await sendShippingEmail(buyerEmail, buyerName, trackingUrl, orderRef);
   }
 

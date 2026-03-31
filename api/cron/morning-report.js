@@ -106,6 +106,14 @@ module.exports = async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
+    // Require either Vercel cron header or CRON_SECRET
+    const isVercelCron = req.headers['x-vercel-cron'] === '1';
+    const hasCronSecret = process.env.CRON_SECRET &&
+        req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`;
+    if (!isVercelCron && !hasCronSecret) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
         return res.status(500).json({ error: 'Supabase not configured' });
     }

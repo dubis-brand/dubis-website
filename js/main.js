@@ -110,20 +110,13 @@ const translations = {
 };
 
 // ===== LANGUAGE DETECTION =====
-async function detectLanguage() {
+function detectLanguage() {
   const saved = localStorage.getItem('dubis-lang');
   if (saved) { setLanguage(saved); return; }
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch('https://ipapi.co/json/', { signal: controller.signal });
-    clearTimeout(timeout);
-    const data = await res.json();
-    setLanguage(data.country_code === 'IL' ? 'he' : 'en');
-  } catch (e) {
-    setLanguage('en');
-  }
+  // Use browser language preference — fast, free, no external request
+  const lang = navigator.language || navigator.languages?.[0] || 'en';
+  setLanguage(lang.startsWith('he') ? 'he' : 'en');
 }
 
 function setLanguage(lang) {
@@ -544,6 +537,7 @@ function addToCartFromModal(productId) {
   const selectedColor = document.querySelector(`#modal-colors-${productId} .color-btn.selected`)?.dataset.color || product.colors[0];
   const selectedSize  = document.querySelector(`#modal-sizes-${productId} .size-btn.selected`)?.dataset.size  || product.sizes[0];
   cart.push({ ...product, selectedColor, selectedSize });
+  saveCart();
   updateCartCount();
   showCartNotification(product.phrase);
   closeProductModal();
@@ -554,12 +548,24 @@ function quickAddToCart(productId, btnEl) {
   const card = document.querySelector(`.product-card[data-id="${productId}"]`);
   const selectedColor = card?.dataset.selectedColor || product.colors[0];
   cart.push({ ...product, selectedColor, selectedSize: product.sizes[2] || 'L' });
+  saveCart();
   updateCartCount();
   showCartNotification(product.phrase);
   if (btnEl) animateAddToCart(btnEl);
 }
 
 // ===== CART =====
+function saveCart() {
+  try { localStorage.setItem('dubis-cart', JSON.stringify(cart)); } catch(e) {}
+}
+
+function loadCart() {
+  try {
+    const saved = localStorage.getItem('dubis-cart');
+    if (saved) { cart = JSON.parse(saved); updateCartCount(); }
+  } catch(e) { cart = []; }
+}
+
 function updateCartCount() {
   document.getElementById('cart-count').textContent = cart.length;
 }
@@ -605,6 +611,7 @@ function renderCart() {
 
 function removeFromCart(index) {
   cart.splice(index, 1);
+  saveCart();
   updateCartCount();
   renderCart();
 }
@@ -684,8 +691,8 @@ function animateAddToCart(btn) {
 async function loadPriceOverrides() {
   try {
     const client = window.supabase.createClient(
-      'https://ntzwvqtpdmvvavbhuyeb.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50end2cXRwZG12dmF2Ymh1eWViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2ODk1ODAsImV4cCI6MjA4NzI2NTU4MH0.EpfZAg28aU6_sOblfkVpkAwp9nDvXMTRCCNz0UJWHEc',
+      window.DUBIS_SUPABASE_URL,
+      window.DUBIS_SUPABASE_ANON,
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
     const { data } = await client
@@ -719,6 +726,7 @@ document.querySelectorAll('.nav-links a').forEach(a => {
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
+  loadCart();
   checkCookieConsent();
   await loadPriceOverrides();
   detectLanguage(); // IP-based language detection → renders products after

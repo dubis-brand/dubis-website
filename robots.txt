@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+# Block admin and API routes
+Disallow: /admin
+Disallow: /admin.html
+Disallow: /api/
+
+# Sitemap
+Sitemap: https://www.dubis.net/sitemap.xml
