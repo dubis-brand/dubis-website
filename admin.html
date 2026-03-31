@@ -1620,13 +1620,13 @@
           <input type="file" id="gallery-upload-input" accept="image/*" style="display:none" onchange="uploadToGallery(this)">
         </div>
         <div id="gallery-upload-status" style="font-size:.68rem;color:#666;margin:2px 0"></div>
-        <div id="pm-gallery-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px;margin-top:6px;max-height:340px;overflow-y:auto;padding:4px;scrollbar-width:thin;scrollbar-color:#c8a96e #111;border:1px solid #333;border-radius:8px;background:#0a0a0a">
+        <div style="position:relative">
+          <button onclick="document.getElementById('pm-gallery-grid').scrollBy({left:-240,behavior:'smooth'})" style="position:absolute;left:0;top:50%;transform:translateY(-50%);z-index:2;background:rgba(26,26,46,.9);border:1px solid #7c3aed;color:#c8a96e;width:28px;height:40px;border-radius:4px;cursor:pointer;font-size:1rem">◀</button>
+          <div id="pm-gallery-grid" style="display:flex;gap:6px;margin-top:6px;overflow-x:auto;overflow-y:hidden;padding:6px 32px;scrollbar-width:thin;scrollbar-color:#c8a96e #111;border:1px solid #333;border-radius:8px;background:#0a0a0a;scroll-behavior:smooth">
+          </div>
+          <button onclick="document.getElementById('pm-gallery-grid').scrollBy({left:240,behavior:'smooth'})" style="position:absolute;right:0;top:50%;transform:translateY(-50%);z-index:2;background:rgba(26,26,46,.9);border:1px solid #7c3aed;color:#c8a96e;width:28px;height:40px;border-radius:4px;cursor:pointer;font-size:1rem">▶</button>
         </div>
-        <div style="display:flex;justify-content:center;gap:8px;margin-top:4px">
-          <button onclick="document.getElementById('pm-gallery-grid').scrollBy({top:-200,behavior:'smooth'})" style="background:#1a1a2e;border:1px solid #333;color:#c8a96e;padding:2px 12px;border-radius:4px;cursor:pointer;font-size:.85rem" title="גלול למעלה">▲</button>
-          <span id="pm-gallery-count" style="font-size:.68rem;color:#666;align-self:center"></span>
-          <button onclick="document.getElementById('pm-gallery-grid').scrollBy({top:200,behavior:'smooth'})" style="background:#1a1a2e;border:1px solid #333;color:#c8a96e;padding:2px 12px;border-radius:4px;cursor:pointer;font-size:.85rem" title="גלול למטה">▼</button>
-        </div>
+        <div style="text-align:center;margin-top:3px"><span id="pm-gallery-count" style="font-size:.68rem;color:#666"></span></div>
         <input type="hidden" id="pm-gallery-select" value="">
       </div>
 
@@ -1662,15 +1662,15 @@
       </div>
       <div style="text-align:center;margin-bottom:.6rem">
         <button id="pp-gen-img-btn" onclick="generatePostImage()" style="background:#1e2a1e;border:1px solid #3a6a3a;color:#6fcf6f;padding:.35rem .8rem;border-radius:6px;font-size:.75rem;cursor:pointer">🎨 יצור תמונה AI</button>
-        <button onclick="const g=document.getElementById('pp-gallery-grid'),n=document.getElementById('pp-gallery-nav');const show=g.style.display==='none';g.style.display=show?'grid':'none';n.style.display=show?'flex':'none'" style="background:#1a1a2e;border:1px solid #2a2a4a;color:#c8a96e;padding:.35rem .5rem;border-radius:6px;font-size:.75rem;cursor:pointer;margin-right:.5rem">📷 בחר מגלריה ▾</button>
+        <button onclick="const w=document.getElementById('pp-gallery-wrapper'),n=document.getElementById('pp-gallery-nav');const show=w.style.display==='none';w.style.display=show?'block':'none';n.style.display=show?'block':'none'" style="background:#1a1a2e;border:1px solid #2a2a4a;color:#c8a96e;padding:.35rem .5rem;border-radius:6px;font-size:.75rem;cursor:pointer;margin-right:.5rem">📷 בחר מגלריה ▾</button>
         <span id="pp-gen-img-status" style="font-size:.72rem;color:#888;margin-right:.5rem"></span>
       </div>
-      <div id="pp-gallery-grid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px;margin:6px 0;max-height:340px;overflow-y:auto;padding:4px;scrollbar-width:thin;scrollbar-color:#c8a96e #111;border:1px solid #333;border-radius:8px;background:#0a0a0a"></div>
-      <div id="pp-gallery-nav" style="display:none;justify-content:center;gap:8px;margin-top:4px">
-        <button onclick="document.getElementById('pp-gallery-grid').scrollBy({top:-200,behavior:'smooth'})" style="background:#1a1a2e;border:1px solid #333;color:#c8a96e;padding:2px 12px;border-radius:4px;cursor:pointer;font-size:.85rem">▲</button>
-        <span id="pp-gallery-count" style="font-size:.68rem;color:#666;align-self:center"></span>
-        <button onclick="document.getElementById('pp-gallery-grid').scrollBy({top:200,behavior:'smooth'})" style="background:#1a1a2e;border:1px solid #333;color:#c8a96e;padding:2px 12px;border-radius:4px;cursor:pointer;font-size:.85rem">▼</button>
+      <div id="pp-gallery-wrapper" style="display:none;position:relative;margin:6px 0">
+        <button onclick="document.getElementById('pp-gallery-grid').scrollBy({left:-240,behavior:'smooth'})" style="position:absolute;left:0;top:50%;transform:translateY(-50%);z-index:2;background:rgba(26,26,46,.9);border:1px solid #7c3aed;color:#c8a96e;width:28px;height:40px;border-radius:4px;cursor:pointer;font-size:1rem">◀</button>
+        <div id="pp-gallery-grid" style="display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;padding:6px 32px;scrollbar-width:thin;scrollbar-color:#c8a96e #111;border:1px solid #333;border-radius:8px;background:#0a0a0a;scroll-behavior:smooth"></div>
+        <button onclick="document.getElementById('pp-gallery-grid').scrollBy({left:240,behavior:'smooth'})" style="position:absolute;right:0;top:50%;transform:translateY(-50%);z-index:2;background:rgba(26,26,46,.9);border:1px solid #7c3aed;color:#c8a96e;width:28px;height:40px;border-radius:4px;cursor:pointer;font-size:1rem">▶</button>
       </div>
+      <div id="pp-gallery-nav" style="display:none;text-align:center;margin-top:2px"><span id="pp-gallery-count" style="font-size:.68rem;color:#666"></span></div>
       <div class="pp-edit-actions">
         <span class="pp-lang-tab active" id="pp-tab-he" onclick="ppSwitchLang('he')">עברית</span>
         <span class="pp-lang-tab" id="pp-tab-en" onclick="ppSwitchLang('en')">English</span>
@@ -3942,70 +3942,35 @@
   async function loadGalleryThumbnails() {
     const grid = document.getElementById('pm-gallery-grid');
     if (!grid) return;
-    grid.innerHTML = '<div style="color:#666;font-size:.75rem;grid-column:1/-1">טוען גלריה...</div>';
+    grid.innerHTML = '<div style="color:#666;font-size:.75rem;white-space:nowrap;padding:20px">טוען גלריה...</div>';
 
-    // 1. Load static DUBIS photos
-    const staticPhotos = [];
-    for (let i = 1; i <= 10; i++) {
-      staticPhotos.push({ url: `https://dubis.net/images/dubis_photo_${String(i).padStart(2,'0')}.jpg`, label: `DUBIS ${i}` });
-    }
+    const seen = new Set();
+    const allPhotos = [];
+    const addPhoto = (url, label) => {
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      allPhotos.push({ url, label });
+    };
 
-    // 2. Load ALL images from Supabase storage (root + subfolders)
-    let storagePhotos = [];
+    // 1. Load from dubis_images table via API (most reliable - has all gallery images)
     try {
-      const imgExts = ['.jpg', '.jpeg', '.png', '.webp'];
-      const isImage = (name) => imgExts.some(ext => name.toLowerCase().endsWith(ext));
-
-      // List root files
-      const { data: rootFiles } = await _sb.storage.from('ig-images').list('', { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
-      if (rootFiles) {
-        // Separate folders and files
-        const folders = rootFiles.filter(f => !f.metadata || f.id === null);
-        const files = rootFiles.filter(f => f.metadata && isImage(f.name));
-        files.forEach(f => {
-          const { data: { publicUrl } } = _sb.storage.from('ig-images').getPublicUrl(f.name);
-          storagePhotos.push({ url: publicUrl, label: f.name.substring(0, 15) });
+      const { data: { session } } = await _sb.auth.getSession();
+      const token = session?.access_token;
+      if (token) {
+        const res = await fetch('/api/agents?type=product-images', {
+          headers: { 'Authorization': 'Bearer ' + token }
         });
-
-        // List files in subfolders (reel-photos, product-images, etc.)
-        const folderNames = folders.map(f => f.name).filter(n => n && !n.startsWith('.'));
-        for (const folder of folderNames) {
-          try {
-            const { data: subFiles } = await _sb.storage.from('ig-images').list(folder, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
-            if (subFiles) {
-              subFiles.filter(f => f.metadata && isImage(f.name)).forEach(f => {
-                const { data: { publicUrl } } = _sb.storage.from('ig-images').getPublicUrl(`${folder}/${f.name}`);
-                storagePhotos.push({ url: publicUrl, label: `${folder}/${f.name}`.substring(0, 15) });
-              });
-            }
-          } catch(e) {}
+        const imgs = await res.json();
+        if (Array.isArray(imgs)) {
+          imgs.forEach(img => addPhoto(img.image_url, img.scene_type || 'gallery'));
         }
       }
+    } catch(e) { console.warn('gallery API err', e); }
 
-      // Also load from product-images bucket (root + uploads subfolder)
-      try {
-        const { data: prodRoot } = await _sb.storage.from('product-images').list('', { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
-        if (prodRoot) {
-          const prodFolders = prodRoot.filter(f => !f.metadata || f.id === null);
-          prodRoot.filter(f => f.metadata && isImage(f.name)).forEach(f => {
-            const { data: { publicUrl } } = _sb.storage.from('product-images').getPublicUrl(f.name);
-            storagePhotos.push({ url: publicUrl, label: 'prod: ' + f.name.substring(0, 12) });
-          });
-          // Load subfolders (uploads, etc.)
-          for (const folder of prodFolders.map(f => f.name).filter(n => n && !n.startsWith('.'))) {
-            try {
-              const { data: subFiles } = await _sb.storage.from('product-images').list(folder, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
-              if (subFiles) subFiles.filter(f => f.metadata && isImage(f.name)).forEach(f => {
-                const { data: { publicUrl } } = _sb.storage.from('product-images').getPublicUrl(`${folder}/${f.name}`);
-                storagePhotos.push({ url: publicUrl, label: `${folder}/${f.name}`.substring(0, 15) });
-              });
-            } catch(e) {}
-          }
-        }
-      } catch(e) {}
-    } catch(e) { console.warn('gallery storage err', e); }
-
-    const allPhotos = [...storagePhotos, ...staticPhotos];
+    // 2. Load static DUBIS photos
+    for (let i = 1; i <= 10; i++) {
+      addPhoto(`https://dubis.net/images/dubis_photo_${String(i).padStart(2,'0')}.jpg`, `DUBIS ${i}`);
+    }
     grid.innerHTML = '';
 
     if (!allPhotos.length) {
@@ -4018,14 +3983,14 @@
       div.className = 'pm-thumb';
       div.dataset.url = p.url;
       div.title = p.label;
-      div.style.cssText = 'cursor:pointer;border-radius:6px;overflow:hidden;aspect-ratio:1;outline:2px solid transparent;transition:outline .15s;position:relative;background:#111';
+      div.style.cssText = 'cursor:pointer;border-radius:6px;overflow:hidden;width:80px;min-width:80px;height:80px;outline:2px solid transparent;transition:outline .15s;position:relative;background:#111;flex-shrink:0';
       div.innerHTML = `<img src="${p.url}" alt="${p.label}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentElement.style.display='none'">`;
       div.onclick = () => pmSelectGalleryPhoto(p.url);
       grid.appendChild(div);
     });
     // Update count
     const countEl = document.getElementById('pm-gallery-count');
-    if (countEl) countEl.textContent = `${allPhotos.length} תמונות`;
+    if (countEl) countEl.textContent = `${allPhotos.length} תמונות — גלול ◀ ▶`;
   }
 
   async function uploadToGallery(input) {
@@ -4654,7 +4619,7 @@
     document.getElementById('pp-error').style.display = 'none';
     document.getElementById('pp-gen-img-status').textContent = '';
     document.getElementById('pp-gen-img-btn').disabled = false;
-    document.getElementById('pp-gallery-grid').style.display = 'none';
+    document.getElementById('pp-gallery-wrapper').style.display = 'none';
     // Load preview gallery thumbnails
     loadPreviewGallery();
     // Reset edit mode
@@ -4828,7 +4793,7 @@
     img.style.display = 'block';
     ph.style.display  = 'none';
     document.getElementById('pp-gen-img-status').textContent = '✅ תמונה נבחרה';
-    document.getElementById('pp-gallery-grid').style.display = 'none';
+    document.getElementById('pp-gallery-wrapper').style.display = 'none';
     // Also update task content_data
     if (_ppState.taskId) {
       _sb.from('agent_tasks').select('content_data').eq('id', _ppState.taskId).single().then(({ data }) => {
@@ -4842,63 +4807,34 @@
   async function loadPreviewGallery() {
     const grid = document.getElementById('pp-gallery-grid');
     if (!grid) return;
-    grid.innerHTML = '<div style="color:#666;font-size:.7rem;grid-column:1/-1">טוען...</div>';
-    grid.style.maxHeight = '400px';
+    grid.innerHTML = '<div style="color:#666;font-size:.7rem;white-space:nowrap;padding:20px">טוען...</div>';
 
-    const imgExts = ['.jpg', '.jpeg', '.png', '.webp'];
-    const isImage = (name) => imgExts.some(ext => name.toLowerCase().endsWith(ext));
+    const seen = new Set();
     const allUrls = [];
+    const addUrl = (url) => { if (url && !seen.has(url)) { seen.add(url); allUrls.push(url); } };
 
-    // AI-generated + uploaded images from storage (newest first)
+    // Load from dubis_images table via API
     try {
-      const { data: rootFiles } = await _sb.storage.from('ig-images').list('', { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
-      if (rootFiles) {
-        const folders = rootFiles.filter(f => !f.metadata || f.id === null);
-        rootFiles.filter(f => f.metadata && isImage(f.name)).forEach(f => {
-          const { data: { publicUrl } } = _sb.storage.from('ig-images').getPublicUrl(f.name);
-          allUrls.push(publicUrl);
+      const { data: { session } } = await _sb.auth.getSession();
+      const token = session?.access_token;
+      if (token) {
+        const res = await fetch('/api/agents?type=product-images', {
+          headers: { 'Authorization': 'Bearer ' + token }
         });
-        for (const folder of folders.map(f => f.name).filter(n => n && !n.startsWith('.'))) {
-          try {
-            const { data: subFiles } = await _sb.storage.from('ig-images').list(folder, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
-            if (subFiles) subFiles.filter(f => f.metadata && isImage(f.name)).forEach(f => {
-              const { data: { publicUrl } } = _sb.storage.from('ig-images').getPublicUrl(`${folder}/${f.name}`);
-              allUrls.push(publicUrl);
-            });
-          } catch(e) {}
-        }
+        const imgs = await res.json();
+        if (Array.isArray(imgs)) imgs.forEach(img => addUrl(img.image_url));
       }
-      // product-images bucket (root + subfolders)
-      try {
-        const { data: pf } = await _sb.storage.from('product-images').list('', { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
-        if (pf) {
-          const pfFolders = pf.filter(f => !f.metadata || f.id === null);
-          pf.filter(f => f.metadata && isImage(f.name)).forEach(f => {
-            const { data: { publicUrl } } = _sb.storage.from('product-images').getPublicUrl(f.name);
-            allUrls.push(publicUrl);
-          });
-          for (const folder of pfFolders.map(f => f.name).filter(n => n && !n.startsWith('.'))) {
-            try {
-              const { data: sf } = await _sb.storage.from('product-images').list(folder, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
-              if (sf) sf.filter(f => f.metadata && isImage(f.name)).forEach(f => {
-                const { data: { publicUrl } } = _sb.storage.from('product-images').getPublicUrl(`${folder}/${f.name}`);
-                allUrls.push(publicUrl);
-              });
-            } catch(e) {}
-          }
-        }
-      } catch(e) {}
     } catch(e) {}
 
     // Static DUBIS photos last
     for (let i = 1; i <= 10; i++) {
-      allUrls.push(`https://dubis.net/images/dubis_photo_${String(i).padStart(2,'0')}.jpg`);
+      addUrl(`https://dubis.net/images/dubis_photo_${String(i).padStart(2,'0')}.jpg`);
     }
 
     grid.innerHTML = '';
     allUrls.forEach(url => {
       const div = document.createElement('div');
-      div.style.cssText = 'cursor:pointer;border-radius:6px;overflow:hidden;aspect-ratio:1;outline:2px solid transparent;transition:outline .15s;background:#111';
+      div.style.cssText = 'cursor:pointer;border-radius:6px;overflow:hidden;width:80px;min-width:80px;height:80px;outline:2px solid transparent;transition:outline .15s;background:#111;flex-shrink:0';
       div.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentElement.style.display='none'">`;
       div.onclick = () => useRealPhoto(url);
       grid.appendChild(div);
