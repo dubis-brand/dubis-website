@@ -1612,7 +1612,12 @@
           <input type="file" id="gallery-upload-input" accept="image/*" style="display:none" onchange="uploadToGallery(this)">
         </div>
         <div id="gallery-upload-status" style="font-size:.68rem;color:#666;margin:2px 0"></div>
-        <div id="pm-gallery-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin-top:6px;max-height:400px;overflow-y:auto;padding:4px;scrollbar-width:thin;scrollbar-color:#c8a96e #111">
+        <div id="pm-gallery-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px;margin-top:6px;max-height:340px;overflow-y:auto;padding:4px;scrollbar-width:thin;scrollbar-color:#c8a96e #111;border:1px solid #333;border-radius:8px;background:#0a0a0a">
+        </div>
+        <div style="display:flex;justify-content:center;gap:8px;margin-top:4px">
+          <button onclick="document.getElementById('pm-gallery-grid').scrollBy({top:-200,behavior:'smooth'})" style="background:#1a1a2e;border:1px solid #333;color:#c8a96e;padding:2px 12px;border-radius:4px;cursor:pointer;font-size:.85rem" title="גלול למעלה">▲</button>
+          <span id="pm-gallery-count" style="font-size:.68rem;color:#666;align-self:center"></span>
+          <button onclick="document.getElementById('pm-gallery-grid').scrollBy({top:200,behavior:'smooth'})" style="background:#1a1a2e;border:1px solid #333;color:#c8a96e;padding:2px 12px;border-radius:4px;cursor:pointer;font-size:.85rem" title="גלול למטה">▼</button>
         </div>
         <input type="hidden" id="pm-gallery-select" value="">
       </div>
@@ -1649,10 +1654,15 @@
       </div>
       <div style="text-align:center;margin-bottom:.6rem">
         <button id="pp-gen-img-btn" onclick="generatePostImage()" style="background:#1e2a1e;border:1px solid #3a6a3a;color:#6fcf6f;padding:.35rem .8rem;border-radius:6px;font-size:.75rem;cursor:pointer">🎨 יצור תמונה AI</button>
-        <button onclick="document.getElementById('pp-gallery-grid').style.display=document.getElementById('pp-gallery-grid').style.display==='none'?'grid':'none'" style="background:#1a1a2e;border:1px solid #2a2a4a;color:#c8a96e;padding:.35rem .5rem;border-radius:6px;font-size:.75rem;cursor:pointer;margin-right:.5rem">📷 בחר מגלריה ▾</button>
+        <button onclick="const g=document.getElementById('pp-gallery-grid'),n=document.getElementById('pp-gallery-nav');const show=g.style.display==='none';g.style.display=show?'grid':'none';n.style.display=show?'flex':'none'" style="background:#1a1a2e;border:1px solid #2a2a4a;color:#c8a96e;padding:.35rem .5rem;border-radius:6px;font-size:.75rem;cursor:pointer;margin-right:.5rem">📷 בחר מגלריה ▾</button>
         <span id="pp-gen-img-status" style="font-size:.72rem;color:#888;margin-right:.5rem"></span>
       </div>
-      <div id="pp-gallery-grid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(56px,1fr));gap:4px;margin:6px 0;max-height:220px;overflow-y:auto;padding:2px;scrollbar-width:thin;scrollbar-color:#c8a96e #111"></div>
+      <div id="pp-gallery-grid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px;margin:6px 0;max-height:340px;overflow-y:auto;padding:4px;scrollbar-width:thin;scrollbar-color:#c8a96e #111;border:1px solid #333;border-radius:8px;background:#0a0a0a"></div>
+      <div id="pp-gallery-nav" style="display:none;justify-content:center;gap:8px;margin-top:4px">
+        <button onclick="document.getElementById('pp-gallery-grid').scrollBy({top:-200,behavior:'smooth'})" style="background:#1a1a2e;border:1px solid #333;color:#c8a96e;padding:2px 12px;border-radius:4px;cursor:pointer;font-size:.85rem">▲</button>
+        <span id="pp-gallery-count" style="font-size:.68rem;color:#666;align-self:center"></span>
+        <button onclick="document.getElementById('pp-gallery-grid').scrollBy({top:200,behavior:'smooth'})" style="background:#1a1a2e;border:1px solid #333;color:#c8a96e;padding:2px 12px;border-radius:4px;cursor:pointer;font-size:.85rem">▼</button>
+      </div>
       <div class="pp-edit-actions">
         <span class="pp-lang-tab active" id="pp-tab-he" onclick="ppSwitchLang('he')">עברית</span>
         <span class="pp-lang-tab" id="pp-tab-en" onclick="ppSwitchLang('en')">English</span>
@@ -3953,14 +3963,25 @@
         }
       }
 
-      // Also load from product-images bucket
+      // Also load from product-images bucket (root + uploads subfolder)
       try {
-        const { data: prodFiles } = await _sb.storage.from('product-images').list('', { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
-        if (prodFiles) {
-          prodFiles.filter(f => f.metadata && isImage(f.name)).forEach(f => {
+        const { data: prodRoot } = await _sb.storage.from('product-images').list('', { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
+        if (prodRoot) {
+          const prodFolders = prodRoot.filter(f => !f.metadata || f.id === null);
+          prodRoot.filter(f => f.metadata && isImage(f.name)).forEach(f => {
             const { data: { publicUrl } } = _sb.storage.from('product-images').getPublicUrl(f.name);
             storagePhotos.push({ url: publicUrl, label: 'prod: ' + f.name.substring(0, 12) });
           });
+          // Load subfolders (uploads, etc.)
+          for (const folder of prodFolders.map(f => f.name).filter(n => n && !n.startsWith('.'))) {
+            try {
+              const { data: subFiles } = await _sb.storage.from('product-images').list(folder, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+              if (subFiles) subFiles.filter(f => f.metadata && isImage(f.name)).forEach(f => {
+                const { data: { publicUrl } } = _sb.storage.from('product-images').getPublicUrl(`${folder}/${f.name}`);
+                storagePhotos.push({ url: publicUrl, label: `${folder}/${f.name}`.substring(0, 15) });
+              });
+            } catch(e) {}
+          }
         }
       } catch(e) {}
     } catch(e) { console.warn('gallery storage err', e); }
@@ -3983,6 +4004,9 @@
       div.onclick = () => pmSelectGalleryPhoto(p.url);
       grid.appendChild(div);
     });
+    // Update count
+    const countEl = document.getElementById('pm-gallery-count');
+    if (countEl) countEl.textContent = `${allPhotos.length} תמונות`;
   }
 
   async function uploadToGallery(input) {
@@ -4783,13 +4807,25 @@
           } catch(e) {}
         }
       }
-      // product-images bucket
+      // product-images bucket (root + subfolders)
       try {
-        const { data: pf } = await _sb.storage.from('product-images').list('', { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
-        if (pf) pf.filter(f => f.metadata && isImage(f.name)).forEach(f => {
-          const { data: { publicUrl } } = _sb.storage.from('product-images').getPublicUrl(f.name);
-          allUrls.push(publicUrl);
-        });
+        const { data: pf } = await _sb.storage.from('product-images').list('', { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
+        if (pf) {
+          const pfFolders = pf.filter(f => !f.metadata || f.id === null);
+          pf.filter(f => f.metadata && isImage(f.name)).forEach(f => {
+            const { data: { publicUrl } } = _sb.storage.from('product-images').getPublicUrl(f.name);
+            allUrls.push(publicUrl);
+          });
+          for (const folder of pfFolders.map(f => f.name).filter(n => n && !n.startsWith('.'))) {
+            try {
+              const { data: sf } = await _sb.storage.from('product-images').list(folder, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } });
+              if (sf) sf.filter(f => f.metadata && isImage(f.name)).forEach(f => {
+                const { data: { publicUrl } } = _sb.storage.from('product-images').getPublicUrl(`${folder}/${f.name}`);
+                allUrls.push(publicUrl);
+              });
+            } catch(e) {}
+          }
+        }
       } catch(e) {}
     } catch(e) {}
 
@@ -4801,11 +4837,14 @@
     grid.innerHTML = '';
     allUrls.forEach(url => {
       const div = document.createElement('div');
-      div.style.cssText = 'cursor:pointer;border-radius:4px;overflow:hidden;aspect-ratio:1;outline:2px solid transparent;transition:outline .15s;background:#111';
+      div.style.cssText = 'cursor:pointer;border-radius:6px;overflow:hidden;aspect-ratio:1;outline:2px solid transparent;transition:outline .15s;background:#111';
       div.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentElement.style.display='none'">`;
       div.onclick = () => useRealPhoto(url);
       grid.appendChild(div);
     });
+    // Update count
+    const ppCountEl = document.getElementById('pp-gallery-count');
+    if (ppCountEl) ppCountEl.textContent = `${allUrls.length} תמונות`;
   }
 
   function openAddTaskModal() {
