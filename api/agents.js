@@ -1624,7 +1624,7 @@ Generate a social media post. Return ONLY valid JSON:
         }
     }
 
-    // ── UPLOAD-TALKING-PHOTO ── upload image to HeyGen, or fallback to existing photo ──
+    // ── UPLOAD-TALKING-PHOTO ── upload image to HeyGen, storing ID in Supabase for targeted delete ──
     if (type === 'upload-talking-photo') {
         if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
         const adminUser = await verifyAdmin(req);
@@ -1634,86 +1634,66 @@ Generate a social media post. Return ONLY valid JSON:
         const { image_url } = req.body || {};
         if (!image_url) return res.status(400).json({ error: 'image_url is required' });
 
+        const sb = sbAdmin();
+
         try {
-            // Download image from URL
-            console.log(`🎬 Downloading image for talking photo: ${image_url.substring(0, 80)}...`);
+            // ── Step 1: Load stored talking_photo_id from Supabase ──
+            const { data: cfgRows } = await sb.from('app_config').select('value').eq('key', 'heygen_talking_photo_id').single();
+            const storedPhotoId = cfgRows?.value || null;
+            console.log(`🎬 Stored talking_photo_id: ${storedPhotoId || 'none'}`);
+
+            // ── Step 2: If we have a stored ID, delete it from HeyGen to free a slot ──
+            if (storedPhotoId) {
+                console.log(`🎬 Deleting stored photo from HeyGen: ${storedPhotoId}`);
+                const delRes = await fetch(`${HEYGEN_BASE}/v1/talking_photo/${storedPhotoId}`, {
+                    method: 'DELETE',
+                    headers: { 'X-Api-Key': heygenKey }
+                });
+                const delText = await delRes.text();
+                console.log(`🎬 Delete response: ${delRes.status} ${delText.substring(0, 150)}`);
+                // Clear stored ID whether delete succeeded or not
+                await sb.from('app_config').upsert({ key: 'heygen_talking_photo_id', value: null, updated_at: new Date().toISOString() });
+            }
+
+            // ── Step 3: Download image ──
+            console.log(`🎬 Downloading image: ${image_url.substring(0, 80)}...`);
             const imgResponse = await fetch(image_url);
             if (!imgResponse.ok) return res.status(400).json({ error: 'Failed to download image from URL' });
             const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
             const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
 
-            // Step 1: Try uploading directly first
-            console.log(`🎬 Uploading talking photo to HeyGen (${imgBuffer.length} bytes)...`);
-            let r = await fetch('https://upload.heygen.com/v1/talking_photo', {
+            // ── Step 4: Upload to HeyGen ──
+            console.log(`🎬 Uploading to HeyGen (${imgBuffer.length} bytes)...`);
+            const r = await fetch('https://upload.heygen.com/v1/talking_photo', {
                 method: 'POST',
                 headers: { 'X-Api-Key': heygenKey, 'Content-Type': contentType },
                 body: imgBuffer
             });
-            let data = await r.json();
+            const data = await r.json();
             console.log(`🎬 HeyGen upload response: ${JSON.stringify(data).substring(0, 300)}`);
 
-            // If upload succeeded, return the new photo ID
+            // ── Step 5: If success → save new ID to Supabase ──
             if (data.data?.talking_photo_id) {
+                const newId = data.data.talking_photo_id;
+                await sb.from('app_config').upsert({ key: 'heygen_talking_photo_id', value: newId, updated_at: new Date().toISOString() });
+                console.log(`🎬 Saved new talking_photo_id to Supabase: ${newId}`);
                 return res.json({
                     success: true,
-                    talking_photo_id: data.data.talking_photo_id,
+                    talking_photo_id: newId,
                     talking_photo_url: data.data.talking_photo_url || null
                 });
             }
 
-            // If limit exceeded — delete ALL existing photos, return for client to retry after delay
+            // ── Step 6: If still limit exceeded (delete was async) → ask client to retry ──
             const errMsg = data.error?.message || data.message || '';
+            console.log(`🎬 Upload failed: ${errMsg}`);
             if (errMsg.toLowerCase().includes('exceeded') || errMsg.toLowerCase().includes('limit')) {
-                console.log(`🎬 Limit reached, deleting ALL existing photos...`);
-                const listRes = await fetch(`${HEYGEN_BASE}/v1/talking_photo.list`, {
-                    headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
-                });
-                const listData = await listRes.json();
-                // HeyGen returns ALL talking photos (5000+ presets + your custom ones)
-                // Custom photos have is_preset=false (or 0), presets have is_preset=true (or 1)
-                // Each item has: { id, image_url, circle_image, is_preset, video_url }
-                const allPhotos = Array.isArray(listData.data) ? listData.data : [];
-                // Debug: log is_preset values of first 5 items to see actual type
-                const debugItems = allPhotos.slice(0, 5).map(p => `id=${p.id?.substring(0,8)} is_preset=${JSON.stringify(p.is_preset)}(${typeof p.is_preset})`);
-                console.log(`🎬 First 5 items is_preset: ${debugItems.join(' | ')}`);
-                // Use falsy check: handles both false (boolean) and 0 (number)
-                const photos = allPhotos.filter(p => !p.is_preset);
-                console.log(`🎬 Found ${photos.length} custom photos out of ${allPhotos.length} total`);
-                if (photos.length > 0) {
-                    console.log(`🎬 Custom photo IDs: ${photos.map(p => p.id).join(', ')}`);
-                }
-
-                // Delete all custom photos in parallel
-                let deleted = 0;
-                if (photos.length > 0) {
-                    const deletePromises = photos.map(p => {
-                        const pid = p.id;
-                        console.log(`🎬 Deleting custom photo: ${pid}`);
-                        return fetch(`${HEYGEN_BASE}/v1/talking_photo/${pid}`, {
-                            method: 'DELETE',
-                            headers: { 'X-Api-Key': heygenKey }
-                        }).then(async r => {
-                            const rt = await r.text();
-                            console.log(`🎬 Delete ${pid} response: ${r.status} ${rt.substring(0, 100)}`);
-                            deleted++;
-                            return r;
-                        }).catch(e => { console.log(`🎬 Delete ${pid} error: ${e.message}`); });
-                    });
-                    // Wait max 5 seconds for deletes
-                    await Promise.race([
-                        Promise.allSettled(deletePromises),
-                        new Promise(resolve => setTimeout(resolve, 5000))
-                    ]);
-                    console.log(`🎬 Deleted ${deleted}/${photos.length} photos (5s timeout)`);
-                }
-
-                // Tell client to wait and retry
+                // Delete was sent but HeyGen is async — client should wait and retry
                 return res.json({
                     success: false,
                     retry: true,
-                    deleted: deleted,
-                    total: photos.length,
-                    message: `Deleted ${deleted}/${photos.length} photos. Wait and retry.`
+                    deleted: storedPhotoId ? 1 : 0,
+                    message: `HeyGen delete is processing. Wait and retry.`
                 });
             }
 
