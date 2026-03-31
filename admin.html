@@ -1600,8 +1600,16 @@
           </div>
         </div>
         <div id="reel-result" style="display:none;margin-top:8px">
-          <video id="reel-video-player" controls style="width:100%;max-height:300px;border-radius:8px;background:#000"></video>
-          <button onclick="useReelForPublish()" style="width:100%;margin-top:6px;background:#1a2e1a;border:1px solid #3a6a3a;color:#6fcf6f;padding:8px;border-radius:6px;font-size:.85rem;cursor:pointer">✅ השתמש ברילס הזה לפרסום</button>
+          <div style="position:relative;background:#000;border-radius:8px;overflow:hidden;border:2px solid #7c3aed">
+            <video id="reel-video-player" controls autoplay playsinline style="width:100%;max-height:400px;display:block"></video>
+            <div id="reel-video-overlay" onclick="document.getElementById('reel-video-player').play();this.style.display='none'" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.5);cursor:pointer;display:flex;align-items:center;justify-content:center">
+              <span style="font-size:3rem">▶️</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button onclick="useReelForPublish()" style="flex:1;background:#1a2e1a;border:1px solid #3a6a3a;color:#6fcf6f;padding:8px;border-radius:6px;font-size:.85rem;cursor:pointer">✅ השתמש ברילס הזה לפרסום</button>
+            <button onclick="window.open(window._reelVideoUrl,'_blank')" style="background:#1a1a2e;border:1px solid #7c3aed;color:#c084fc;padding:8px 12px;border-radius:6px;font-size:.85rem;cursor:pointer" title="פתח בחלון חדש">🔗</button>
+          </div>
         </div>
       </div>
 
@@ -3849,6 +3857,17 @@
             });
           }, 1500);
         }
+
+        // If task has a ready reel video — show it immediately
+        if (cd.video_url && cd.reel_status === 'ready') {
+          // Pre-fill reel script if available
+          if (cd.reel_script) {
+            const scriptEl = document.getElementById('reel-script');
+            if (scriptEl) scriptEl.value = cd.reel_script;
+          }
+          // Show the video preview
+          setTimeout(() => showReelVideo(cd.video_url, cd.video_thumbnail), 500);
+        }
       }
     } catch(e) { console.warn('publish modal prefill err', e); }
 
@@ -4427,11 +4446,8 @@
         if (data.status === 'completed' && data.video_url) {
           clearInterval(_reelPollTimer);
           document.getElementById('reel-progress-bar').style.width = '100%';
-          document.getElementById('reel-progress-text').textContent = '✅ הסרטון מוכן!';
-          document.getElementById('reel-video-player').src = data.video_url;
-          document.getElementById('reel-result').style.display = 'block';
-          document.getElementById('reel-progress').style.display = 'none';
-          window._reelVideoUrl = data.video_url;
+          document.getElementById('reel-progress-text').textContent = '✅ הסרטון מוכן! ▶️ לחץ Play לצפייה';
+          showReelVideo(data.video_url, data.thumbnail_url);
           _reelVideoId = null;
           return;
         }
@@ -4451,6 +4467,27 @@
     };
     _reelPollTimer = setInterval(check, 10000);
     setTimeout(check, 5000);
+  }
+
+  function showReelVideo(videoUrl, thumbnailUrl) {
+    const player = document.getElementById('reel-video-player');
+    const result = document.getElementById('reel-result');
+    const progress = document.getElementById('reel-progress');
+    window._reelVideoUrl = videoUrl;
+    if (thumbnailUrl) player.poster = thumbnailUrl;
+    player.src = videoUrl;
+    player.load();
+    result.style.display = 'block';
+    if (progress) progress.style.display = 'none';
+    // Handle video load error
+    player.onerror = () => {
+      const overlay = document.getElementById('reel-video-overlay');
+      if (overlay) {
+        overlay.innerHTML = '<div style="text-align:center;color:#fff"><div style="font-size:2rem">⚠️</div><div style="font-size:.8rem;margin-top:4px">הסרטון לא נטען — לחץ 🔗 לצפייה בחלון חדש</div></div>';
+        overlay.style.display = 'flex';
+        overlay.onclick = () => window.open(videoUrl, '_blank');
+      }
+    };
   }
 
   function useReelForPublish() {
