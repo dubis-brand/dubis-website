@@ -4383,8 +4383,32 @@
         if (udata.talking_photo_id) {
           talkingPhotoId = udata.talking_photo_id;
           document.getElementById('reel-talking-photo-id').value = talkingPhotoId;
-          status.textContent = udata.reused ? '⚠️ משתמש בתמונה קיימת (מגבלת HeyGen)' : '✅ תמונה הועלתה!';
-          status.style.color = udata.reused ? '#fbbf24' : '#6fcf6f';
+          if (udata.replaced) {
+            status.textContent = '✅ מחקנו תמונה ישנה והעלינו את החדשה!';
+            status.style.color = '#6fcf6f';
+          } else {
+            status.textContent = '✅ תמונה הועלתה בהצלחה!';
+            status.style.color = '#6fcf6f';
+          }
+        } else if (udata.retry) {
+          // HeyGen delete is slow — wait and retry once
+          status.textContent = '⏳ ממתין ל-HeyGen... ננסה שוב בעוד 10 שניות';
+          status.style.color = '#fbbf24';
+          await new Promise(resolve => setTimeout(resolve, 10000));
+          const ur2 = await fetch('/api/agents?type=upload-talking-photo', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image_url: imgUrl })
+          });
+          const udata2 = await ur2.json();
+          if (udata2.talking_photo_id) {
+            talkingPhotoId = udata2.talking_photo_id;
+            document.getElementById('reel-talking-photo-id').value = talkingPhotoId;
+            status.textContent = '✅ תמונה הועלתה בהצלחה (ניסיון שני)!';
+            status.style.color = '#6fcf6f';
+          } else {
+            throw new Error(udata2.error || 'Upload failed after retry');
+          }
         } else {
           throw new Error(udata.error || 'Upload failed');
         }

@@ -1613,14 +1613,14 @@ Generate a social media post. Return ONLY valid JSON:
             const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
             const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
 
-            // Try to upload to HeyGen
+            // Step 1: Try uploading directly first
             console.log(`🎬 Uploading talking photo to HeyGen (${imgBuffer.length} bytes)...`);
-            const r = await fetch('https://upload.heygen.com/v1/talking_photo', {
+            let r = await fetch('https://upload.heygen.com/v1/talking_photo', {
                 method: 'POST',
                 headers: { 'X-Api-Key': heygenKey, 'Content-Type': contentType },
                 body: imgBuffer
             });
-            const data = await r.json();
+            let data = await r.json();
             console.log(`🎬 HeyGen upload response: ${JSON.stringify(data).substring(0, 300)}`);
 
             // If upload succeeded, return the new photo ID
@@ -1632,10 +1632,10 @@ Generate a social media post. Return ONLY valid JSON:
                 });
             }
 
-            // If limit exceeded — fallback: list existing photos and return the last one
+            // If limit exceeded — delete oldest, then retry upload with user's photo
             const errMsg = data.error?.message || data.message || '';
             if (errMsg.toLowerCase().includes('exceeded') || errMsg.toLowerCase().includes('limit')) {
-                console.log(`🎬 Limit reached, fetching existing talking photos...`);
+                console.log(`🎬 Limit reached, deleting oldest to make room...`);
                 const listRes = await fetch(`${HEYGEN_BASE}/v1/talking_photo.list`, {
                     headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
                 });
@@ -1643,16 +1643,44 @@ Generate a social media post. Return ONLY valid JSON:
                 let photos = listData.data?.talking_photos || listData.data || [];
                 if (!Array.isArray(photos)) photos = [];
                 console.log(`🎬 Found ${photos.length} existing photos`);
+
                 if (photos.length > 0) {
-                    // Use the last (most recent) existing photo
-                    const latest = photos[photos.length - 1];
-                    const photoId = latest.talking_photo_id || latest.id;
-                    console.log(`🎬 Reusing existing talking photo: ${photoId}`);
-                    return res.json({
-                        success: true,
-                        talking_photo_id: photoId,
-                        reused: true,
-                        message: 'HeyGen limit reached — using existing photo avatar'
+                    // Delete the OLDEST photo to make room
+                    const oldest = photos[0];
+                    const oldId = oldest.talking_photo_id || oldest.id;
+                    console.log(`🎬 Deleting oldest talking photo: ${oldId}`);
+                    try {
+                        await fetch(`${HEYGEN_BASE}/v1/talking_photo/${oldId}`, {
+                            method: 'DELETE',
+                            headers: { 'X-Api-Key': heygenKey }
+                        });
+                    } catch(delErr) { console.log(`🎬 Delete error (non-fatal): ${delErr.message}`); }
+
+                    // Retry upload with the user's actual photo
+                    console.log(`🎬 Retrying upload after delete...`);
+                    r = await fetch('https://upload.heygen.com/v1/talking_photo', {
+                        method: 'POST',
+                        headers: { 'X-Api-Key': heygenKey, 'Content-Type': contentType },
+                        body: imgBuffer
+                    });
+                    data = await r.json();
+                    console.log(`🎬 Retry upload response: ${JSON.stringify(data).substring(0, 300)}`);
+
+                    if (data.data?.talking_photo_id) {
+                        return res.json({
+                            success: true,
+                            talking_photo_id: data.data.talking_photo_id,
+                            talking_photo_url: data.data.talking_photo_url || null,
+                            replaced: true,
+                            message: 'Deleted oldest photo and uploaded new one'
+                        });
+                    }
+
+                    // If retry still fails (delete might be slow), return error with clear message
+                    console.log(`🎬 Retry failed, returning error`);
+                    return res.status(400).json({
+                        error: 'HeyGen still at limit after delete. Try again in 30 seconds.',
+                        retry: true
                     });
                 }
             }
@@ -1743,9 +1771,9 @@ Generate a social media post. Return ONLY valid JSON:
         try {
             // Build character object — Talking Photo or Avatar
             const character = useTalkingPhoto
-                ? { type: 'talking_photo', talking_photo_id: talking_photo_id }
+                ? { type: 'talking_photo', talking_photo_id: talking_photo_id, talking_style: 'expressive' }
                 : { type: 'avatar', avatar_id: chosenAvatar, avatar_style: 'normal' };
-            console.log(`🎬 Mode: ${useTalkingPhoto ? 'Talking Photo' : 'Avatar'} | ID: ${useTalkingPhoto ? talking_photo_id : chosenAvatar}`);
+            console.log(`🎬 Mode: ${useTalkingPhoto ? 'Talking Photo (expressive)' : 'Avatar'} | ID: ${useTalkingPhoto ? talking_photo_id : chosenAvatar}`);
 
             // ── FIX #3: Motion prompt for natural movement ──
             const defaultMotion = 'The person speaks naturally with hand gestures, slight body movement, and genuine facial expressions. They occasionally look around and shift weight between feet, like a real person talking to a friend.';
@@ -1756,6 +1784,7 @@ Generate a social media post. Return ONLY valid JSON:
                 video_inputs: [{
                     character: {
                         ...character,
+                        // Motion prompt for avatars; talking photos use talking_style instead
                         ...(useTalkingPhoto ? {} : { motion_prompt: motionText })
                     },
                     voice: {
