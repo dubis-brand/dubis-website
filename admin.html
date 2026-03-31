@@ -4361,9 +4361,9 @@
             status.style.color = '#6fcf6f';
           }
         } else if (udata.retry) {
-          // HeyGen delete is slow — wait 20s then retry, up to 2 retries
+          // HeyGen delete is async — wait for it to process, then retry upload
           for (let attempt = 1; attempt <= 2; attempt++) {
-            const waitSec = attempt === 1 ? 20 : 15;
+            const waitSec = attempt === 1 ? 25 : 20;
             status.textContent = `⏳ מוחק תמונות ישנות מ-HeyGen... ניסיון ${attempt}/2, ממתין ${waitSec} שניות`;
             status.style.color = '#fbbf24';
             await new Promise(resolve => setTimeout(resolve, waitSec * 1000));

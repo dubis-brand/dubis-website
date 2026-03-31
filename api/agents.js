@@ -1663,29 +1663,22 @@ Generate a social media post. Return ONLY valid JSON:
                     headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
                 });
                 const listData = await listRes.json();
-                // Debug: log the raw structure
-                const topKeys = Object.keys(listData.data || {});
-                console.log(`🎬 List response keys: ${JSON.stringify(topKeys)}, type of data: ${typeof listData.data}`);
-
-                // Only get actual talking_photos array
-                let photos = [];
-                if (listData.data?.talking_photos && Array.isArray(listData.data.talking_photos)) {
-                    photos = listData.data.talking_photos;
-                } else if (Array.isArray(listData.data)) {
-                    // Only use if items have talking_photo_id
-                    photos = listData.data.filter(p => p.talking_photo_id);
-                }
-                console.log(`🎬 Found ${photos.length} actual talking photos to delete`);
+                // HeyGen returns ALL talking photos (5000+ presets + your custom ones)
+                // Custom photos have is_preset=false, presets have is_preset=true
+                // Each item has: { id, image_url, circle_image, is_preset, video_url }
+                const allPhotos = Array.isArray(listData.data) ? listData.data : [];
+                const photos = allPhotos.filter(p => p.is_preset === false || p.is_preset === 'false');
+                console.log(`🎬 Found ${photos.length} custom photos out of ${allPhotos.length} total`);
                 if (photos.length > 0) {
-                    console.log(`🎬 Photo IDs: ${photos.map(p => p.talking_photo_id || p.id).join(', ')}`);
+                    console.log(`🎬 Custom photo IDs: ${photos.map(p => p.id).join(', ')}`);
                 }
 
-                // Delete ALL photos in parallel
+                // Delete all custom photos in parallel
                 let deleted = 0;
                 if (photos.length > 0) {
                     const deletePromises = photos.map(p => {
-                        const pid = p.talking_photo_id || p.id;
-                        console.log(`🎬 Deleting photo: ${pid}`);
+                        const pid = p.id;
+                        console.log(`🎬 Deleting custom photo: ${pid}`);
                         return fetch(`${HEYGEN_BASE}/v1/talking_photo/${pid}`, {
                             method: 'DELETE',
                             headers: { 'X-Api-Key': heygenKey }
