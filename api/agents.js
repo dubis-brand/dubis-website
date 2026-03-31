@@ -1664,10 +1664,14 @@ Generate a social media post. Return ONLY valid JSON:
                 });
                 const listData = await listRes.json();
                 // HeyGen returns ALL talking photos (5000+ presets + your custom ones)
-                // Custom photos have is_preset=false, presets have is_preset=true
+                // Custom photos have is_preset=false (or 0), presets have is_preset=true (or 1)
                 // Each item has: { id, image_url, circle_image, is_preset, video_url }
                 const allPhotos = Array.isArray(listData.data) ? listData.data : [];
-                const photos = allPhotos.filter(p => p.is_preset === false || p.is_preset === 'false');
+                // Debug: log is_preset values of first 5 items to see actual type
+                const debugItems = allPhotos.slice(0, 5).map(p => `id=${p.id?.substring(0,8)} is_preset=${JSON.stringify(p.is_preset)}(${typeof p.is_preset})`);
+                console.log(`🎬 First 5 items is_preset: ${debugItems.join(' | ')}`);
+                // Use falsy check: handles both false (boolean) and 0 (number)
+                const photos = allPhotos.filter(p => !p.is_preset);
                 console.log(`🎬 Found ${photos.length} custom photos out of ${allPhotos.length} total`);
                 if (photos.length > 0) {
                     console.log(`🎬 Custom photo IDs: ${photos.map(p => p.id).join(', ')}`);
