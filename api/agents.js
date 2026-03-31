@@ -1566,14 +1566,20 @@ Generate a social media post. Return ONLY valid JSON:
             let firstItem = null;
             if (isArr && r4data.data.length > 0) firstItem = r4data.data[0];
             else if (r4data.data?.talking_photos) firstItem = r4data.data.talking_photos[0];
+            // Show is_preset values for first 10 + last 5 items (to find custom photos)
+            const allItems = isArr ? r4data.data : [];
+            const debugSample = [
+                ...allItems.slice(0, 10),
+                ...allItems.slice(-5)
+            ].map(p => ({ id: p.id, is_preset: p.is_preset, ip_type: typeof p.is_preset, circ: !!p.circle_image }));
+            const customCount = allItems.filter(p => !p.is_preset).length;
+            const customIds = allItems.filter(p => !p.is_preset).map(p => p.id);
             results.talking_photos = {
                 status: r4.status,
-                dataType,
-                isArray: isArr,
-                topKeys,
-                totalItems: isArr ? r4data.data.length : (r4data.data?.talking_photos?.length || 'unknown'),
-                firstItem: firstItem ? JSON.stringify(firstItem).substring(0, 500) : null,
-                hasField_talking_photos: !!r4data.data?.talking_photos,
+                totalItems: allItems.length,
+                customCount,
+                customIds,
+                debugSample,
                 rawKeys: firstItem ? Object.keys(firstItem) : []
             };
         } catch(e) { results.talking_photos = { error: e.message }; }
