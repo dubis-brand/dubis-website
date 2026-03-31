@@ -1554,6 +1554,29 @@ Generate a social media post. Return ONLY valid JSON:
             });
             results.video_list = { status: r3.status, data: await r3.json() };
         } catch(e) { results.video_list = { error: e.message }; }
+        // Check talking photos
+        try {
+            const r4 = await fetch(`${HEYGEN_BASE}/v1/talking_photo.list`, {
+                headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
+            });
+            const r4data = await r4.json();
+            const dataType = typeof r4data.data;
+            const isArr = Array.isArray(r4data.data);
+            const topKeys = r4data.data ? Object.keys(r4data.data).slice(0, 10) : [];
+            let firstItem = null;
+            if (isArr && r4data.data.length > 0) firstItem = r4data.data[0];
+            else if (r4data.data?.talking_photos) firstItem = r4data.data.talking_photos[0];
+            results.talking_photos = {
+                status: r4.status,
+                dataType,
+                isArray: isArr,
+                topKeys,
+                totalItems: isArr ? r4data.data.length : (r4data.data?.talking_photos?.length || 'unknown'),
+                firstItem: firstItem ? JSON.stringify(firstItem).substring(0, 500) : null,
+                hasField_talking_photos: !!r4data.data?.talking_photos,
+                rawKeys: firstItem ? Object.keys(firstItem) : []
+            };
+        } catch(e) { results.talking_photos = { error: e.message }; }
         return res.json({ heygen_key_prefix: heygenKey.substring(0, 12) + '...', results });
     }
 
