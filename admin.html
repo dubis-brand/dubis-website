@@ -4344,7 +4344,12 @@
           headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ image_url: imgUrl })
         });
-        const udata = await ur.json();
+        const utext = await ur.text();
+        let udata;
+        try { udata = JSON.parse(utext); } catch(je) {
+          console.error('Non-JSON response from upload:', utext.substring(0, 300));
+          throw new Error('השרת לא הגיב בזמן (timeout). נסה שוב.');
+        }
         if (udata.talking_photo_id) {
           talkingPhotoId = udata.talking_photo_id;
           document.getElementById('reel-talking-photo-id').value = talkingPhotoId;
@@ -4363,12 +4368,23 @@
             status.style.color = '#fbbf24';
             await new Promise(resolve => setTimeout(resolve, waitSec * 1000));
             status.textContent = `⏳ מנסה להעלות שוב (ניסיון ${attempt}/2)...`;
-            const ur2 = await fetch('/api/agents?type=upload-talking-photo', {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ image_url: imgUrl })
-            });
-            const udata2 = await ur2.json();
+            let ur2, udata2;
+            try {
+              ur2 = await fetch('/api/agents?type=upload-talking-photo', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image_url: imgUrl })
+              });
+              const text = await ur2.text();
+              try { udata2 = JSON.parse(text); } catch(je) {
+                console.warn('Non-JSON response:', text.substring(0, 200));
+                if (attempt === 2) throw new Error('השרת לא הגיב בזמן. נסה שוב בעוד 30 שניות.');
+                continue; // try next attempt
+              }
+            } catch(fe) {
+              if (attempt === 2) throw fe;
+              continue;
+            }
             if (udata2.talking_photo_id) {
               talkingPhotoId = udata2.talking_photo_id;
               document.getElementById('reel-talking-photo-id').value = talkingPhotoId;
