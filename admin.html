@@ -4356,23 +4356,30 @@
             status.style.color = '#6fcf6f';
           }
         } else if (udata.retry) {
-          // HeyGen delete is slow — wait and retry once
-          status.textContent = '⏳ ממתין ל-HeyGen... ננסה שוב בעוד 10 שניות';
-          status.style.color = '#fbbf24';
-          await new Promise(resolve => setTimeout(resolve, 10000));
-          const ur2 = await fetch('/api/agents?type=upload-talking-photo', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image_url: imgUrl })
-          });
-          const udata2 = await ur2.json();
-          if (udata2.talking_photo_id) {
-            talkingPhotoId = udata2.talking_photo_id;
-            document.getElementById('reel-talking-photo-id').value = talkingPhotoId;
-            status.textContent = '✅ תמונה הועלתה בהצלחה (ניסיון שני)!';
-            status.style.color = '#6fcf6f';
-          } else {
-            throw new Error(udata2.error || 'Upload failed after retry');
+          // HeyGen delete is slow — wait 20s then retry, up to 2 retries
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            const waitSec = attempt === 1 ? 20 : 15;
+            status.textContent = `⏳ מוחק תמונות ישנות מ-HeyGen... ניסיון ${attempt}/2, ממתין ${waitSec} שניות`;
+            status.style.color = '#fbbf24';
+            await new Promise(resolve => setTimeout(resolve, waitSec * 1000));
+            status.textContent = `⏳ מנסה להעלות שוב (ניסיון ${attempt}/2)...`;
+            const ur2 = await fetch('/api/agents?type=upload-talking-photo', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image_url: imgUrl })
+            });
+            const udata2 = await ur2.json();
+            if (udata2.talking_photo_id) {
+              talkingPhotoId = udata2.talking_photo_id;
+              document.getElementById('reel-talking-photo-id').value = talkingPhotoId;
+              status.textContent = `✅ תמונה הועלתה בהצלחה (ניסיון ${attempt + 1})!`;
+              status.style.color = '#6fcf6f';
+              break;
+            }
+            if (attempt === 2) {
+              throw new Error(udata2.error || 'Upload failed after 2 retries. Wait 30 seconds and try again.');
+            }
+            // If first retry also got retry:true, continue loop
           }
         } else {
           throw new Error(udata.error || 'Upload failed');

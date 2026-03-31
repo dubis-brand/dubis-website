@@ -1632,57 +1632,44 @@ Generate a social media post. Return ONLY valid JSON:
                 });
             }
 
-            // If limit exceeded — delete oldest, then retry upload with user's photo
+            // If limit exceeded — delete ALL existing photos, return for client to retry after delay
             const errMsg = data.error?.message || data.message || '';
             if (errMsg.toLowerCase().includes('exceeded') || errMsg.toLowerCase().includes('limit')) {
-                console.log(`🎬 Limit reached, deleting oldest to make room...`);
+                console.log(`🎬 Limit reached, deleting ALL existing photos...`);
                 const listRes = await fetch(`${HEYGEN_BASE}/v1/talking_photo.list`, {
                     headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
                 });
                 const listData = await listRes.json();
                 let photos = listData.data?.talking_photos || listData.data || [];
                 if (!Array.isArray(photos)) photos = [];
-                console.log(`🎬 Found ${photos.length} existing photos`);
+                console.log(`🎬 Found ${photos.length} existing photos, deleting all...`);
 
+                // Delete ALL photos in parallel (fire and forget — don't wait for responses to avoid timeout)
+                let deleted = 0;
                 if (photos.length > 0) {
-                    // Delete the OLDEST photo to make room
-                    const oldest = photos[0];
-                    const oldId = oldest.talking_photo_id || oldest.id;
-                    console.log(`🎬 Deleting oldest talking photo: ${oldId}`);
-                    try {
-                        await fetch(`${HEYGEN_BASE}/v1/talking_photo/${oldId}`, {
+                    const deletePromises = photos.map(p => {
+                        const pid = p.talking_photo_id || p.id;
+                        return fetch(`${HEYGEN_BASE}/v1/talking_photo/${pid}`, {
                             method: 'DELETE',
                             headers: { 'X-Api-Key': heygenKey }
-                        });
-                    } catch(delErr) { console.log(`🎬 Delete error (non-fatal): ${delErr.message}`); }
-
-                    // Retry upload with the user's actual photo
-                    console.log(`🎬 Retrying upload after delete...`);
-                    r = await fetch('https://upload.heygen.com/v1/talking_photo', {
-                        method: 'POST',
-                        headers: { 'X-Api-Key': heygenKey, 'Content-Type': contentType },
-                        body: imgBuffer
+                        }).then(r => { deleted++; return r; }).catch(() => {});
                     });
-                    data = await r.json();
-                    console.log(`🎬 Retry upload response: ${JSON.stringify(data).substring(0, 300)}`);
-
-                    if (data.data?.talking_photo_id) {
-                        return res.json({
-                            success: true,
-                            talking_photo_id: data.data.talking_photo_id,
-                            talking_photo_url: data.data.talking_photo_url || null,
-                            replaced: true,
-                            message: 'Deleted oldest photo and uploaded new one'
-                        });
-                    }
-
-                    // If retry still fails (delete might be slow), return error with clear message
-                    console.log(`🎬 Retry failed, returning error`);
-                    return res.status(400).json({
-                        error: 'HeyGen still at limit after delete. Try again in 30 seconds.',
-                        retry: true
-                    });
+                    // Wait max 4 seconds for deletes, then move on
+                    await Promise.race([
+                        Promise.allSettled(deletePromises),
+                        new Promise(resolve => setTimeout(resolve, 4000))
+                    ]);
+                    console.log(`🎬 Deleted ${deleted}/${photos.length} photos (4s timeout)`);
                 }
+
+                // Tell client to wait and retry
+                return res.json({
+                    success: false,
+                    retry: true,
+                    deleted: deleted,
+                    total: photos.length,
+                    message: `Deleted ${deleted}/${photos.length} photos. Wait and retry.`
+                });
             }
 
             return res.status(400).json({ error: errMsg || 'Upload failed' });
