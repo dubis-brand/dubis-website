@@ -1640,26 +1640,45 @@ Generate a social media post. Return ONLY valid JSON:
                     headers: { 'X-Api-Key': heygenKey, 'Accept': 'application/json' }
                 });
                 const listData = await listRes.json();
-                let photos = listData.data?.talking_photos || listData.data || [];
-                if (!Array.isArray(photos)) photos = [];
-                console.log(`🎬 Found ${photos.length} existing photos, deleting all...`);
+                // Debug: log the raw structure
+                const topKeys = Object.keys(listData.data || {});
+                console.log(`🎬 List response keys: ${JSON.stringify(topKeys)}, type of data: ${typeof listData.data}`);
 
-                // Delete ALL photos in parallel (fire and forget — don't wait for responses to avoid timeout)
+                // Only get actual talking_photos array
+                let photos = [];
+                if (listData.data?.talking_photos && Array.isArray(listData.data.talking_photos)) {
+                    photos = listData.data.talking_photos;
+                } else if (Array.isArray(listData.data)) {
+                    // Only use if items have talking_photo_id
+                    photos = listData.data.filter(p => p.talking_photo_id);
+                }
+                console.log(`🎬 Found ${photos.length} actual talking photos to delete`);
+                if (photos.length > 0) {
+                    console.log(`🎬 Photo IDs: ${photos.map(p => p.talking_photo_id || p.id).join(', ')}`);
+                }
+
+                // Delete ALL photos in parallel
                 let deleted = 0;
                 if (photos.length > 0) {
                     const deletePromises = photos.map(p => {
                         const pid = p.talking_photo_id || p.id;
+                        console.log(`🎬 Deleting photo: ${pid}`);
                         return fetch(`${HEYGEN_BASE}/v1/talking_photo/${pid}`, {
                             method: 'DELETE',
                             headers: { 'X-Api-Key': heygenKey }
-                        }).then(r => { deleted++; return r; }).catch(() => {});
+                        }).then(async r => {
+                            const rt = await r.text();
+                            console.log(`🎬 Delete ${pid} response: ${r.status} ${rt.substring(0, 100)}`);
+                            deleted++;
+                            return r;
+                        }).catch(e => { console.log(`🎬 Delete ${pid} error: ${e.message}`); });
                     });
-                    // Wait max 4 seconds for deletes, then move on
+                    // Wait max 5 seconds for deletes
                     await Promise.race([
                         Promise.allSettled(deletePromises),
-                        new Promise(resolve => setTimeout(resolve, 4000))
+                        new Promise(resolve => setTimeout(resolve, 5000))
                     ]);
-                    console.log(`🎬 Deleted ${deleted}/${photos.length} photos (4s timeout)`);
+                    console.log(`🎬 Deleted ${deleted}/${photos.length} photos (5s timeout)`);
                 }
 
                 // Tell client to wait and retry
