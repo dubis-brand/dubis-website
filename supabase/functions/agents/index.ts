@@ -926,7 +926,8 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     const authHeader = req.headers.get('authorization') ?? '';
     const token = url.searchParams.get('token') || req.headers.get('x-agent-secret') || authHeader.replace('Bearer ', '').trim() || '';
     const isAuthed = (svcKey && token === svcKey) || (agentSecret && token === agentSecret);
-    if (!isAuthed) return json({ error: 'Unauthorized', debug: { token_len: token.length } }, 401);
+    const adminOk = await verifyAdmin(req);
+    if (!isAuthed && !adminOk) return json({ error: 'Unauthorized', debug: { token_len: token.length } }, 401);
 
     const igToken   = Deno.env.get('INSTAGRAM_ACCESS_TOKEN') ?? '';
     const igAccount = Deno.env.get('INSTAGRAM_ACCOUNT_ID') ?? '';

@@ -5816,7 +5816,21 @@
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'HTTP ' + res.status); }
 
-      _removeCaCard(taskId);
+      // Trigger publish-ready to post to Instagram immediately
+      approveBtn.textContent = '...מפרסם';
+      const pubRes = await fetch(AGENTS_BASE + '?type=publish-ready', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      });
+      const pubData = await pubRes.json().catch(() => ({}));
+      if (pubData.published > 0) {
+        approveBtn.textContent = '✅ פורסם!';
+      } else {
+        approveBtn.textContent = '✅ אושר';
+        console.warn('publish-ready result:', pubData);
+      }
+
+      setTimeout(() => _removeCaCard(taskId), 1200);
     } catch(err) {
       approveBtn.disabled    = false;
       rejectBtn.disabled     = false;
