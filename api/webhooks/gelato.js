@@ -92,6 +92,20 @@ module.exports = async function handler(req, res) {
   const payload = req.body;
   const event   = payload?.event || payload?.type || '';
 
+  // ── Idempotency: skip duplicate events ──────────────────────────
+  const eventId = payload?.id || payload?.eventId || `${event}-${payload?.order?.id || payload?.orderReferenceId || Date.now()}`;
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const { createClient } = require('@supabase/supabase-js');
+    const _sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } });
+    const { error: insertErr } = await _sb.from('webhook_events')
+      .insert({ source: 'gelato', event_id: eventId });
+    if (insertErr?.code === '23505') { // unique_violation
+      console.log('Gelato webhook: duplicate event', eventId, '— skipping');
+      return res.status(200).json({ received: true, duplicate: true });
+    }
+  }
+
   console.log('Gelato webhook event:', event, JSON.stringify(payload).substring(0, 300));
 
   // ── Determine order reference and status from event ──

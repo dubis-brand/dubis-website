@@ -374,7 +374,7 @@ function openProductModal(productId) {
   body.innerHTML = `
     <div class="modal-left">
       <div class="modal-image" id="modal-img-${product.id}">
-        <img id="modal-img-src-${product.id}"
+        <img id="modal-img-src-${product.id}" loading="lazy"
              src="${productImg(product.id, product.colors[0], 'back')}"
              alt="${product.phrase}"
              data-color="${product.colors[0]}"
@@ -383,11 +383,11 @@ function openProductModal(productId) {
       </div>
       <div class="modal-thumbnails" id="modal-thumbs-${product.id}">
         <div class="thumb active" data-view="back" onclick="setModalThumb(event, ${product.id}, 'back')">
-          <img src="${productImg(product.id, product.colors[0], 'back')}" alt="Back view"
+          <img src="${productImg(product.id, product.colors[0], 'back')}" alt="Back view" loading="lazy"
                onerror="this.onerror=null;this.src='${product.image}'" />
         </div>
         <div class="thumb" data-view="front" onclick="setModalThumb(event, ${product.id}, 'front')">
-          <img src="${productImg(product.id, product.colors[0], 'front')}" alt="Front view"
+          <img src="${productImg(product.id, product.colors[0], 'front')}" alt="Front view" loading="lazy"
                onerror="this.onerror=null;this.src='${product.image}'" />
         </div>
       </div>
@@ -731,14 +731,11 @@ function animateAddToCart(btn) {
 // ===== PRICE OVERRIDES FROM SUPABASE =====
 async function loadPriceOverrides() {
   try {
-    const client = window.supabase.createClient(
-      window.DUBIS_SUPABASE_URL,
-      window.DUBIS_SUPABASE_ANON,
-      { auth: { autoRefreshToken: false, persistSession: false } }
+    const res = await fetch(
+      `${window.DUBIS_SUPABASE_URL}/rest/v1/product_prices?select=product_id,selling_price,gelato_image_url`,
+      { headers: { 'apikey': window.DUBIS_SUPABASE_ANON, 'Authorization': 'Bearer ' + window.DUBIS_SUPABASE_ANON } }
     );
-    const { data } = await client
-      .from('product_prices')
-      .select('product_id, selling_price, gelato_image_url');
+    const data = res.ok ? await res.json() : null;
     if (data) {
       data.forEach(r => {
         const p = products.find(p => p.id === r.product_id);
