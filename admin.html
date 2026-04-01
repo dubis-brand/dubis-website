@@ -795,6 +795,118 @@
       display: none;
     }
     .price-save-status.visible { display: inline; }
+
+    /* ── Content Approval Cards ── */
+    .ca-card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      overflow: hidden;
+      transition: border-color .2s;
+    }
+    .ca-card:hover { border-color: #3a3a3a; }
+    .ca-card-img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      background: #111;
+      display: block;
+    }
+    .ca-card-img-placeholder {
+      width: 100%;
+      aspect-ratio: 1;
+      background: #111;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #333;
+      font-size: 3rem;
+    }
+    .ca-card-body { padding: 1rem; }
+    .ca-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: .5rem;
+      margin-bottom: .65rem;
+    }
+    .ca-slogan {
+      font-size: .82rem;
+      font-weight: 700;
+      color: #c8a96e;
+      line-height: 1.3;
+    }
+    .ca-type-badge {
+      font-size: .63rem;
+      padding: .2rem .55rem;
+      border-radius: 10px;
+      background: rgba(200,169,110,.12);
+      color: #c8a96e;
+      border: 1px solid rgba(200,169,110,.2);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .ca-date-badge {
+      font-size: .68rem;
+      color: #555;
+      margin-bottom: .7rem;
+    }
+    .ca-caption-label {
+      font-size: .65rem;
+      color: #555;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: .35rem;
+    }
+    .ca-caption-textarea {
+      width: 100%;
+      min-height: 110px;
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      color: #e8e0d5;
+      font-size: .8rem;
+      line-height: 1.6;
+      padding: .65rem .75rem;
+      resize: vertical;
+      font-family: inherit;
+      direction: rtl;
+      text-align: right;
+      outline: none;
+      transition: border-color .2s;
+      margin-bottom: .75rem;
+    }
+    .ca-caption-textarea:focus { border-color: #c8a96e; }
+    .ca-actions { display: flex; gap: .6rem; }
+    .ca-btn-approve {
+      flex: 1;
+      padding: .5rem;
+      border-radius: 6px;
+      border: none;
+      background: #1e3a1e;
+      color: #6fcf6f;
+      font-size: .8rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .2s;
+      border: 1px solid #2a5a2a;
+    }
+    .ca-btn-approve:hover { background: #2a5a2a; }
+    .ca-btn-approve:disabled { opacity: .45; cursor: not-allowed; }
+    .ca-btn-reject {
+      flex: 1;
+      padding: .5rem;
+      border-radius: 6px;
+      border: 1px solid #5a2a2a;
+      background: #2a1a1a;
+      color: #f87171;
+      font-size: .8rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .ca-btn-reject:hover { background: #5a2a2a; }
+    .ca-btn-reject:disabled { opacity: .45; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -840,6 +952,7 @@
       <button class="nav-tab" id="nav-agents"    onclick="showSection('agents',this)">🧠 סוכנים</button>
       <button class="nav-tab" id="nav-campaigns" onclick="showSection('campaigns',this)">📣 קמפיינים</button>
       <button class="nav-tab" id="nav-gallery"   onclick="showSection('gallery',this)">🖼 גלריה</button>
+      <button class="nav-tab" id="nav-content-approval" onclick="showSection('content-approval',this)">✅ תוכן לאישור</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -2070,6 +2183,20 @@
     </div>
   </div><!-- /section-gallery -->
 
+  <!-- ══ CONTENT APPROVAL SECTION ════════════════════════════ -->
+  <div id="section-content-approval" style="display:none;padding:1.5rem" dir="rtl">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem">
+      <h2 style="font-size:1rem;color:#c8a96e;letter-spacing:2px;text-transform:uppercase;font-weight:700">✅ תוכן ממתין לאישור</h2>
+      <div style="display:flex;gap:.6rem;align-items:center">
+        <span id="ca-count-badge" style="font-size:.75rem;color:#555;background:#1a1a1a;padding:.25rem .75rem;border-radius:20px;border:1px solid #2a2a2a"></span>
+        <button class="btn-sm" style="color:#c8a96e;border-color:rgba(200,169,110,.4)" onclick="loadContentApproval()">רענן</button>
+      </div>
+    </div>
+    <div id="ca-loading" class="loading">טוען תוכן...</div>
+    <div id="ca-empty"   class="empty"   style="display:none">אין תוכן ממתין לאישור</div>
+    <div id="ca-grid"    style="display:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1.25rem"></div>
+  </div><!-- /section-content-approval -->
+
   <!-- Coupon Modal -->
   <div id="coupon-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
     <div style="background:#1e1e1e;border-radius:12px;padding:2rem;width:min(480px,90vw);max-height:90vh;overflow-y:auto">
@@ -2409,11 +2536,13 @@
     document.getElementById('section-tasks').style.display     = name === 'tasks'     ? '' : 'none';
     document.getElementById('section-agents').style.display    = name === 'agents'    ? '' : 'none';
     document.getElementById('section-campaigns').style.display = name === 'campaigns' ? '' : 'none';
-    document.getElementById('section-gallery').style.display   = name === 'gallery'   ? '' : 'none';
+    document.getElementById('section-gallery').style.display            = name === 'gallery'            ? '' : 'none';
+    document.getElementById('section-content-approval').style.display   = name === 'content-approval'   ? '' : 'none';
     if (name === 'tasks') loadTasks();
     if (name === 'agents') loadAgentsSection();
     if (name === 'campaigns' && !_campaignsLoaded) { _campaignsLoaded = true; loadCampaigns(); }
     if (name === 'gallery' && !_galleryLoaded) { _galleryLoaded = true; loadGalleryInit(); }
+    if (name === 'content-approval') loadContentApproval();
     document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     if (name === 'coupons') loadCoupons();
@@ -5559,6 +5688,191 @@
       loadAgentsSection();
     } catch(e) { alert('שגיאה: '+e.message); }
     finally { if (btn) { btn.disabled=false; btn.textContent='▶ הרץ כל הסוכנים'; } }
+  }
+
+  // ── Content Approval ─────────────────────────────────────────────────
+
+  const AGENTS_BASE = 'https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents';
+  let _caRefreshTimer = null;
+  let _caTasks = [];
+
+  async function loadContentApproval() {
+    const loadEl  = document.getElementById('ca-loading');
+    const emptyEl = document.getElementById('ca-empty');
+    const gridEl  = document.getElementById('ca-grid');
+    const badgeEl = document.getElementById('ca-count-badge');
+
+    loadEl.style.display  = '';
+    emptyEl.style.display = 'none';
+    gridEl.style.display  = 'none';
+
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) { loadEl.textContent = 'לא מחובר.'; return; }
+
+    try {
+      const res = await fetch(AGENTS_BASE + '?type=tasks&status=pending_approval', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      _caTasks = (data.tasks || []).filter(t => t.agent_id === 'content');
+
+      loadEl.style.display = 'none';
+      badgeEl.textContent  = _caTasks.length + ' ממתינים';
+
+      if (!_caTasks.length) {
+        emptyEl.style.display = '';
+        return;
+      }
+
+      gridEl.innerHTML = '';
+      _caTasks.forEach(task => gridEl.appendChild(buildCaCard(task)));
+      gridEl.style.display = 'grid';
+
+    } catch(err) {
+      loadEl.textContent = 'שגיאה בטעינה: ' + err.message;
+    }
+
+    // auto-refresh every 60 seconds while tab is active
+    clearTimeout(_caRefreshTimer);
+    _caRefreshTimer = setTimeout(loadContentApproval, 60000);
+  }
+
+  function buildCaCard(task) {
+    const cd      = task.content_data || {};
+    const caption = cd.caption_he || cd.caption_en || '';
+    const imgUrl  = cd.generated_image_url || '';
+    const slogan  = cd.product_slogan || task.title || '';
+    const type    = cd.product_type   || cd.format  || '';
+    const date    = new Date(task.created_at).toLocaleDateString('he-IL', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+
+    const card = document.createElement('div');
+    card.className = 'ca-card';
+    card.dataset.taskId = task.id;
+
+    const imgHtml = imgUrl
+      ? `<img class="ca-card-img" src="${imgUrl}" alt="תמונה שנוצרה" loading="lazy"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+         <div class="ca-card-img-placeholder" style="display:none">🖼</div>`
+      : `<div class="ca-card-img-placeholder">🖼</div>`;
+
+    const typeLabel = type ? `<span class="ca-type-badge">${escHtml(type)}</span>` : '';
+
+    card.innerHTML = `
+      ${imgHtml}
+      <div class="ca-card-body">
+        <div class="ca-card-header">
+          <div class="ca-slogan">${escHtml(slogan)}</div>
+          ${typeLabel}
+        </div>
+        <div class="ca-date-badge">נוצר: ${date}</div>
+        <div class="ca-caption-label">קאפשן</div>
+        <textarea class="ca-caption-textarea" id="ca-caption-${task.id}">${escHtml(caption)}</textarea>
+        <div class="ca-actions">
+          <button class="ca-btn-approve" id="ca-approve-${task.id}" onclick="approveContentTask('${task.id}')">אשר לפרסום</button>
+          <button class="ca-btn-reject"  id="ca-reject-${task.id}"  onclick="rejectContentTask('${task.id}')">דחה</button>
+        </div>
+      </div>`;
+
+    return card;
+  }
+
+  function escHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  async function approveContentTask(taskId) {
+    const approveBtn = document.getElementById('ca-approve-' + taskId);
+    const rejectBtn  = document.getElementById('ca-reject-'  + taskId);
+    const captionEl  = document.getElementById('ca-caption-' + taskId);
+    if (!approveBtn) return;
+
+    approveBtn.disabled = true;
+    rejectBtn.disabled  = true;
+    approveBtn.textContent = '...שומר';
+
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) { approveBtn.textContent = 'שגיאת אימות'; return; }
+
+    // Merge edited caption into content_data and flag content_approved = true
+    const task = _caTasks.find(t => t.id === taskId);
+    const cd   = Object.assign({}, task ? (task.content_data || {}) : {});
+    const editedCaption = captionEl ? captionEl.value : (cd.caption_he || cd.caption_en || '');
+    if (cd.caption_he !== undefined) cd.caption_he = editedCaption;
+    else cd.caption_en = editedCaption;
+    cd.content_approved = true;
+
+    try {
+      const res = await fetch(AGENTS_BASE + '?type=tasks&id=' + taskId, {
+        method: 'PATCH',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content_data: cd })
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'HTTP ' + res.status); }
+
+      _removeCaCard(taskId);
+    } catch(err) {
+      approveBtn.disabled    = false;
+      rejectBtn.disabled     = false;
+      approveBtn.textContent = 'אשר לפרסום';
+      alert('שגיאה באישור: ' + err.message);
+    }
+  }
+
+  async function rejectContentTask(taskId) {
+    if (!confirm('לדחות את המשימה הזו?')) return;
+
+    const approveBtn = document.getElementById('ca-approve-' + taskId);
+    const rejectBtn  = document.getElementById('ca-reject-'  + taskId);
+    if (!rejectBtn) return;
+
+    approveBtn.disabled    = true;
+    rejectBtn.disabled     = true;
+    rejectBtn.textContent  = '...דוחה';
+
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) { rejectBtn.textContent = 'שגיאת אימות'; return; }
+
+    try {
+      const res = await fetch(AGENTS_BASE + '?type=tasks&id=' + taskId, {
+        method: 'PATCH',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'rejected' })
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'HTTP ' + res.status); }
+
+      _removeCaCard(taskId);
+    } catch(err) {
+      approveBtn.disabled   = false;
+      rejectBtn.disabled    = false;
+      rejectBtn.textContent = 'דחה';
+      alert('שגיאה בדחייה: ' + err.message);
+    }
+  }
+
+  function _removeCaCard(taskId) {
+    const card = document.querySelector('.ca-card[data-task-id="' + taskId + '"]');
+    if (card) {
+      card.style.transition = 'opacity .3s';
+      card.style.opacity    = '0';
+      setTimeout(() => card.remove(), 320);
+    }
+    _caTasks = _caTasks.filter(t => t.id !== taskId);
+    const badgeEl = document.getElementById('ca-count-badge');
+    if (badgeEl) badgeEl.textContent = _caTasks.length + ' ממתינים';
+    if (!_caTasks.length) {
+      const gridEl  = document.getElementById('ca-grid');
+      const emptyEl = document.getElementById('ca-empty');
+      if (gridEl)  gridEl.style.display  = 'none';
+      if (emptyEl) emptyEl.style.display = '';
+    }
   }
 
 </script>
