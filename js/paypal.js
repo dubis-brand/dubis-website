@@ -300,6 +300,7 @@ function renderPayPalButtons() {
 
                 closePaypalModal();
                 cart = [];
+                saveCart();
                 updateCartCount();
                 showSuccessModal();
             } catch (err) {
@@ -420,6 +421,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('order') === 'success') {
         cart = [];
+        saveCart();
         updateCartCount();
         showSuccessModal();
         window.history.replaceState({}, '', '/');
