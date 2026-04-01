@@ -118,6 +118,10 @@
 | ✅ | loading=lazy על תמונות modal | `9f80165` |
 | ✅ | defer ל-reviews.js + engage.js | `9f80165` |
 | ✅ | Webhook idempotency (webhook_events table) | `9f80165` |
+| ✅ | review_request_sent_at column on orders (Supabase migration) | migration |
+| ✅ | Review request emails — 7 ימים אחרי delivery (morning cron) | `a77287c` |
+| ✅ | Auto-content pipeline — route `auto-content` ב-Edge Function | `a77287c` |
+| ✅ | Morning cron → auto-content → content-run (אוטונומי יומי) | `a77287c` |
 
 ---
 
@@ -128,7 +132,7 @@
 | P2 | 3.4 הסרת `unsafe-inline` מ-CSP | דורש העברת 30+ onclick handlers |
 | P3 | Phase 4: esbuild bundle + minify | ביצועים |
 | P3 | Phase 5.1: Approval Workflow System | תשתית AI |
-| P3 | Phase 5.2: Content Generation Pipeline | שיווק אוטומטי |
+| P3 | Phase 5.2: Content Generation Pipeline — Approval UI באדמין | שיווק אוטומטי |
 | P3 | Phase 5.3: Order Monitoring אוטומטי | תפעול |
 | P4 | Phase 6.1: דפי מוצר נפרדים (SEO) | build script |
 | P4 | Phase 6.2: Email Marketing Automation | |
@@ -158,6 +162,6 @@
 | `js/engage.js` | cart recovery, ניוזלטר |
 | `api/create-gelato-order.js` | buildProductUid(), COLOR_MAP |
 | `api/admin/orders.js` | הזמנות (מוציא cancelled מהכנסות) |
-| `supabase/functions/agents/index.ts` | Edge Function — 21 routes |
+| `supabase/functions/agents/index.ts` | Edge Function — 22 routes (כולל auto-content) |
 | `admin.html` | לוח ניהול |
 | `vercel.json` | crons, rewrites, headers |
