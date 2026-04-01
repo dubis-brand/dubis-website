@@ -3957,7 +3957,7 @@
       const { data: { session } } = await _sb.auth.getSession();
       const token = session?.access_token;
       if (token) {
-        const res = await fetch('/api/agents?type=product-images', {
+        const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=product-images', {
           headers: { 'Authorization': 'Bearer ' + token }
         });
         const imgs = await res.json();
@@ -4004,7 +4004,7 @@
       reader.onload = async (e) => {
         try {
           const base64Data = e.target.result;
-          const res = await fetch('/api/agents?type=upload-reel-photo', {
+          const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=upload-reel-photo', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ image_base64: base64Data, filename: file.name })
@@ -4041,7 +4041,7 @@
     loading.style.display = 'flex';
     errEl.style.display   = 'none';
     try {
-      const res = await fetch('/api/agents?type=generate-image', {
+      const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=generate-image', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ task_id: _publishState.taskId })
@@ -4097,7 +4097,7 @@
     status.style.color = '#999';
 
     try {
-      const r = await fetch('/api/agents?type=upload-talking-photo', {
+      const r = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=upload-talking-photo', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ image_url: imgUrl })
@@ -4139,7 +4139,7 @@
       try {
         // Upload base64 to Supabase storage via API
         status.textContent = '⏳ מעלה תמונה לאחסון...';
-        const upRes = await fetch('/api/agents?type=upload-reel-photo', {
+        const upRes = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=upload-reel-photo', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ image_base64: base64Data, filename: file.name })
@@ -4149,7 +4149,7 @@
 
         // Step 2: Upload to HeyGen as Talking Photo (with auto-fallback to existing)
         status.textContent = '⏳ מעלה ל-HeyGen...';
-        const r = await fetch('/api/agents?type=upload-talking-photo', {
+        const r = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=upload-talking-photo', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ image_url: upData.url })
@@ -4196,7 +4196,7 @@
     const grid = document.getElementById('reel-avatar-grid');
     grid.innerHTML = '<div style="color:#555;font-size:.75rem;text-align:center;padding:20px">⏳ טוען אווטארים...</div>';
     try {
-      const r = await fetch('/api/agents?type=avatars', {
+      const r = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=avatars', {
         headers: { 'Authorization': `Bearer ${_publishState.token}` }
       });
       const data = await r.json();
@@ -4228,7 +4228,7 @@
     sel.innerHTML = '<option value="">⏳ טוען קולות...</option>';
     statusEl.textContent = '';
     try {
-      const r = await fetch(`/api/agents?type=voices&lang=${langName}`, {
+      const r = await fetch(`https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=voices&lang=${langName}`, {
         headers: { 'Authorization': `Bearer ${_publishState.token}` }
       });
       const data = await r.json();
@@ -4339,7 +4339,7 @@
       preview.innerHTML = `<img src="${imgUrl}" style="width:100%;height:100%;object-fit:cover">`;
       status.textContent = '⏳ מעלה תמונה...';
       try {
-        const ur = await fetch('/api/agents?type=upload-talking-photo', {
+        const ur = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=upload-talking-photo', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ image_url: imgUrl })
@@ -4370,7 +4370,7 @@
             status.textContent = `⏳ מנסה להעלות שוב (ניסיון ${attempt}/2)...`;
             let ur2, udata2;
             try {
-              ur2 = await fetch('/api/agents?type=upload-talking-photo', {
+              ur2 = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=upload-talking-photo', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ image_url: imgUrl })
@@ -4414,7 +4414,7 @@
     btn.textContent = '⏳ יוצר סרטון...';
 
     try {
-      const r = await fetch('/api/agents?type=generate-reel', {
+      const r = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=generate-reel', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4451,7 +4451,7 @@
     const check = async () => {
       attempt++;
       try {
-        const r = await fetch(`/api/agents?type=reel-status&video_id=${_reelVideoId}`, {
+        const r = await fetch(`https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=reel-status&video_id=${_reelVideoId}`, {
           headers: { 'Authorization': `Bearer ${_publishState.token}` }
         });
         const data = await r.json();
@@ -4519,7 +4519,7 @@
     loading.style.display = 'flex';
     errEl.style.display   = 'none';
     try {
-      const res = await fetch('/api/agents?type=generate-image', {
+      const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=generate-image', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ task_id: _publishState.taskId })
@@ -4562,7 +4562,7 @@
     btn.textContent = 'מפרסם...';
 
     try {
-      const res = await fetch('/api/agents?type=publish', {
+      const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=publish', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${_publishState.token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4742,7 +4742,7 @@
     btn.textContent = '⏳ מפרסם...';
 
     try {
-      const res = await fetch('/api/agents?type=publish', {
+      const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=publish', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ image_url: imageUrl, caption, task_id: taskId, platforms: { instagram, facebook } })
@@ -4784,7 +4784,7 @@
     btn.disabled = true;
     status.textContent = '⏳ מייצר תמונה… (עד 60 שניות)';
     try {
-      const r = await fetch(`/api/agents?type=generate-image`, {
+      const r = await fetch(`https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=generate-image`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ task_id: taskId })
@@ -4841,7 +4841,7 @@
       const { data: { session } } = await _sb.auth.getSession();
       const token = session?.access_token;
       if (token) {
-        const res = await fetch('/api/agents?type=product-images', {
+        const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=product-images', {
           headers: { 'Authorization': 'Bearer ' + token }
         });
         const imgs = await res.json();
@@ -4935,7 +4935,7 @@
     const { data: { session: runSession } } = await _sb.auth.getSession();
     const token = runSession?.access_token;
     try {
-      const res = await fetch('/api/agents?type=run', {
+      const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=run', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
       });
@@ -5042,7 +5042,7 @@
     const btn = document.querySelector(`[onclick="runAgent('${agentId}')"]`);
     if (btn) { btn.disabled=true; btn.textContent='⏳ רץ...'; }
     try {
-      const res = await fetch('/api/agents?type=run', {
+      const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=run', {
         method:'POST',
         headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
         body: JSON.stringify({ agent_id: agentId })
@@ -5217,7 +5217,7 @@
     const { data: { session } } = await _sb.auth.getSession();
     const token = session?.access_token;
     try {
-      const res = await fetch('/api/agents?type=products-catalog', {
+      const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=products-catalog', {
         headers: { 'Authorization': 'Bearer ' + token }
       });
       _galProducts = await res.json();
@@ -5264,7 +5264,7 @@
     const productId = document.getElementById('gal-filter-product').value;
     const status = document.getElementById('gal-filter-status').value;
 
-    let url = '/api/agents?type=product-images';
+    let url = 'https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=product-images';
     if (productId) url += '&product_id=' + productId;
     if (status === 'approved') url += '&approved=true';
     if (status === 'pending') url += '&approved=false';
@@ -5320,7 +5320,7 @@
   async function approveImage(id) {
     const { data: { session } } = await _sb.auth.getSession();
     const token = session?.access_token;
-    await fetch('/api/agents?type=product-images&id=' + id, {
+    await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=product-images&id=' + id, {
       method: 'PATCH',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ approved: true })
@@ -5331,7 +5331,7 @@
   async function rejectImage(id) {
     const { data: { session } } = await _sb.auth.getSession();
     const token = session?.access_token;
-    await fetch('/api/agents?type=product-images&id=' + id, {
+    await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=product-images&id=' + id, {
       method: 'PATCH',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ approved: false })
@@ -5342,7 +5342,7 @@
   async function rateImage(id, score) {
     const { data: { session } } = await _sb.auth.getSession();
     const token = session?.access_token;
-    await fetch('/api/agents?type=product-images&id=' + id, {
+    await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=product-images&id=' + id, {
       method: 'PATCH',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ quality_score: score })
@@ -5354,7 +5354,7 @@
     if (!confirm('למחוק את התמונה? לא ניתן לשחזר.')) return;
     const { data: { session } } = await _sb.auth.getSession();
     const token = session?.access_token;
-    await fetch('/api/agents?type=product-images&id=' + id, {
+    await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=product-images&id=' + id, {
       method: 'DELETE',
       headers: { 'Authorization': 'Bearer ' + token }
     });
@@ -5393,7 +5393,7 @@
     const token = session?.access_token;
 
     try {
-      const res = await fetch('/api/agents?type=generate-product-image', {
+      const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=generate-product-image', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -5442,7 +5442,7 @@
           reader.onerror = reject;
           reader.readAsDataURL(file);
         });
-        const res = await fetch('/api/agents?type=product-images', {
+        const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=product-images', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ image_base64: base64, filename: file.name, product_id: productId })
@@ -5490,7 +5490,7 @@
       for (let i = 0; i < 3; i++) {
         statusEl.textContent = `⏳ מייצר ${success+fail+1}/${total}... (✅${success} ❌${fail})`;
         try {
-          const res = await fetch('/api/agents?type=generate-product-image', {
+          const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=generate-product-image', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -5516,7 +5516,7 @@
     const token = session?.access_token;
 
     try {
-      const res = await fetch('/api/agents?type=smart-match', {
+      const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=smart-match', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ caption })
@@ -5550,7 +5550,7 @@
     const btn = document.querySelector('[onclick="runAllAgents()"]');
     if (btn) { btn.disabled=true; btn.textContent='⏳ מריץ...'; }
     try {
-      const res = await fetch('/api/agents?type=run', {
+      const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=run', {
         method:'POST', headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'}
       });
       const data = await res.json();

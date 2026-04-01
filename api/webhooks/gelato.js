@@ -6,6 +6,7 @@
 // =================================================================
 
 const { createClient } = require('@supabase/supabase-js');
+const crypto            = require('crypto');
 
 // ─────────────────────────────────────────────────────────────────
 // Gelato status → DUBIS internal status
@@ -77,7 +78,13 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'Webhook not configured' });
   }
   const incoming = req.headers['x-gelato-webhook-secret'] || req.headers['x-webhook-secret'] || '';
-  if (incoming !== secret) {
+  // Timing-safe comparison prevents timing attacks
+  let valid = false;
+  try {
+    valid = incoming.length === secret.length &&
+            crypto.timingSafeEqual(Buffer.from(incoming), Buffer.from(secret));
+  } catch { valid = false; }
+  if (!valid) {
     console.warn('Gelato webhook: invalid secret');
     return res.status(401).json({ error: 'Invalid webhook secret' });
   }

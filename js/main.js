@@ -223,7 +223,48 @@ function translateUI(lang) {
 
   // Re-render dynamic content
   renderProducts();
+  injectProductStructuredData();
   if (q('.cart-modal.open')) renderCart();
+}
+
+// ===== PRODUCT STRUCTURED DATA (JSON-LD for SEO) =====
+function injectProductStructuredData() {
+  const existing = document.getElementById('dubis-product-jsonld');
+  if (existing) existing.remove();
+
+  const itemList = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: 'DUBIS Collection',
+    url: 'https://www.dubis.net/',
+    itemListElement: products.map((p, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      item: {
+        '@type': 'Product',
+        '@id': `https://www.dubis.net/#product-${p.id}`,
+        name: p.phrase,
+        description: p.description,
+        image: `https://www.dubis.net/${p.image}`,
+        brand: { '@type': 'Brand', name: 'DUBIS' },
+        category: p.typeLabel,
+        offers: {
+          '@type': 'Offer',
+          price: p.price,
+          priceCurrency: 'USD',
+          availability: 'https://schema.org/InStock',
+          url: `https://www.dubis.net/#product-${p.id}`,
+          seller: { '@type': 'Organization', name: 'DUBIS' }
+        }
+      }
+    }))
+  };
+
+  const script = document.createElement('script');
+  script.id   = 'dubis-product-jsonld';
+  script.type = 'application/ld+json';
+  script.textContent = JSON.stringify(itemList);
+  document.head.appendChild(script);
 }
 
 // ===== RENDER PRODUCTS =====
