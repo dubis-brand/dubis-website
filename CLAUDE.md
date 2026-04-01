@@ -7,19 +7,22 @@
 Vercel Hobby plan allows MAX 12 Serverless Functions per deployment.
 We are currently AT the limit (12/12).
 
-**Current API files:**
-1. `/api/agents.js` — Agent system (tasks, runs, publishing) — maxDuration: 90s
-2. `/api/track.js` — Page view tracking
-3. `/api/checkout.js` — PayPal order creation
-4. `/api/gelato-hook.js` — Gelato webhook
-5. `/api/gelato-products.js` — Gelato product sync
-6. `/api/admin/analytics.js` — Admin analytics dashboard
-7. `/api/admin/coupons.js` — Coupon management
-8. `/api/admin/gelato-sync.js` — Gelato sync admin
-9. `/api/admin/orders.js` — Order management
-10. `/api/admin/users.js` — User management
-11. `/api/_rateLimit.js` — Rate limiting helper (shared)
-12. `/api/_printful.js` — Printful helper (shared)
+**Current API files (11/12):**
+1. `/api/analytics/track.js` — Page view tracking
+2. `/api/create-gelato-order.js` — Gelato order creation
+3. `/api/coupons/` — Coupon management
+4. `/api/cron/morning-report.js` — Morning cron report
+5. `/api/email/confirm-order.js` — Order confirmation email
+6. `/api/orders/save.js` — Save order to Supabase
+7. `/api/webhooks/gelato.js` — Gelato webhook
+8. `/api/admin/analytics.js` — Admin analytics dashboard
+9. `/api/admin/coupons.js` — Coupon management
+10. `/api/admin/gelato-sync.js` — Gelato sync admin
+11. `/api/admin/orders.js` — Order management
+12. (free slot)
+
+**Migrated to Supabase Edge Functions:**
+- `agents` — All 21 agent routes at `https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents`
 
 **To add new functionality:** Add routes inside existing API files using query params (e.g., `?type=newroute` in agents.js).
 
