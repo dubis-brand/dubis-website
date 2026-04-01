@@ -491,6 +491,17 @@ module.exports = async function handler(req, res) {
                 });
                 const runData = await runRes.json();
                 console.log('Content-run:', JSON.stringify(runData));
+
+                // 3. Run QA on the generated content before it reaches the admin
+                const qaRes  = await fetch(`${agentsBase}?type=qa-content`, {
+                    method:  'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+                        'Content-Type': 'application/json',
+                    },
+                });
+                const qaData = await qaRes.json();
+                console.log('QA-content:', JSON.stringify(qaData));
             }
         } catch (autoErr) {
             console.warn('Auto-content trigger failed (non-fatal):', autoErr.message);

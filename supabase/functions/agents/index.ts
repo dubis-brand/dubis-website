@@ -1297,7 +1297,183 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     });
   }
 
+  // ── QA-CONTENT ───────────────────────────────────────────────────────
+  if (type === 'qa-content') {
+    // Auth: admin JWT or service role key (same as content-run)
+    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const cronSecret = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader = req.headers.get('authorization') ?? '';
+    const token = authHeader.replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
+    const isAuthed = (svcKey && token === svcKey)
+                  || (agentSecret && token === agentSecret)
+                  || (cronSecret && token === cronSecret);
+    const adminOk = await verifyAdmin(req);
+    if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
+
+    const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+    if (!geminiKey) return json({ error: 'GEMINI_API_KEY not configured' }, 503);
+
+    // Fetch pending_approval content tasks that have caption_he but no qa_score
+    type Task = Record<string, unknown>;
+    const { data: tasks, error: fetchErr } = await sb.from('agent_tasks')
+      .select('id, title, notes, content_data')
+      .eq('status', 'pending_approval')
+      .eq('agent_id', 'content')
+      .order('created_at', { ascending: true });
+    if (fetchErr) return json({ error: fetchErr.message }, 500);
+
+    const unscored = ((tasks || []) as Task[]).filter((t) => {
+      const cd = (t.content_data as Task) || {};
+      return cd.caption_he && !cd.qa_score;
+    });
+
+    if (!unscored.length) return json({ checked: 0, passed: 0, failed: 0, results: [], summary: 'כל משימות התוכן כבר עברו QA' });
+
+    const now = new Date().toISOString();
+    const results: unknown[] = [];
+    let passed = 0;
+    let failed = 0;
+
+    for (const task of unscored) {
+      const cd = (task.content_data as Task) || {};
+      const captionHe  = (cd.caption_he as string) || '';
+      const hashtags   = (cd.hashtags as string) || '';
+      const imageUrl   = (cd.generated_image_url as string) || '';
+      const format     = (cd.format as string) || 'feed_post';
+      const qaDetails: Record<string, unknown> = {};
+      let score = 0;
+      const failReasons: string[] = [];
+
+      // ── 1. Hebrew brand voice (30pts) — Gemini ──────────────────────
+      let voiceScore = 0;
+      try {
+        const voicePrompt = `You are a DUBIS brand QA reviewer. DUBIS is an Israeli body-positive humor apparel brand.
+Brand voice rules:
+- Uses "קפוצון" NOT "הודי" or "הודיז"
+- Tone: self-aware humor, body-positive, relatable
+- Not generic, ties to the brand personality
+
+Caption to review (Hebrew): "${captionHe}"
+
+Score the caption 0-30 for brand voice quality. Return ONLY valid JSON:
+{"score": <0-30>, "reason": "<one sentence>"}`;
+        const vRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: voicePrompt }] }] }),
+            signal: AbortSignal.timeout(15000) },
+        );
+        const vRaw = (await vRes.json()).candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const vParsed = JSON.parse(vRaw.replace(/```json|```/g, '').trim());
+        voiceScore = Math.min(30, Math.max(0, Number(vParsed.score) || 0));
+        qaDetails.voice_reason = vParsed.reason || '';
+      } catch { voiceScore = 15; qaDetails.voice_reason = 'Gemini unavailable — default score'; }
+      score += voiceScore;
+      qaDetails.voice_score = voiceScore;
+      if (voiceScore < 15) failReasons.push('קול המותג חלש');
+
+      // ── 2. Caption quality (25pts) ───────────────────────────────────
+      let captionScore = 0;
+      const captionLen = captionHe.length;
+      const minLen = format === 'story' ? 10 : 50;
+      const maxLen = format === 'story' ? 150 : 300;
+      if (captionLen >= minLen && captionLen <= maxLen) {
+        captionScore = 20;
+        // Check it's not generic: if it contains product slogan keyword or brand reference, +5
+        const slogan = ((cd.product_slogan as string) || '').toLowerCase();
+        const sloganWords = slogan.split(/\s+/).filter((w: string) => w.length > 3);
+        const hasRef = sloganWords.some((w: string) => captionHe.toLowerCase().includes(w));
+        if (hasRef || captionHe.includes('DUBIS') || captionHe.includes('דוביס')) captionScore = 25;
+      } else if (captionLen > 0) {
+        captionScore = 10; // has content but wrong length
+      }
+      score += captionScore;
+      qaDetails.caption_score = captionScore;
+      qaDetails.caption_length = captionLen;
+      if (captionScore < 10) failReasons.push(`כיתוב לא מתאים (${captionLen} תווים)`);
+
+      // ── 3. Hashtags (15pts) ──────────────────────────────────────────
+      let hashtagScore = 0;
+      const tags = hashtags.match(/#\w+/g) || [];
+      const hasDubis = tags.some((t) => t.toLowerCase() === '#dubis');
+      const noSpam = tags.length <= 30; // basic spam guard
+      if (tags.length >= 5 && tags.length <= 10 && hasDubis && noSpam) {
+        hashtagScore = 15;
+      } else if (tags.length >= 3 && hasDubis) {
+        hashtagScore = 10;
+      } else if (tags.length >= 1) {
+        hashtagScore = 5;
+      }
+      score += hashtagScore;
+      qaDetails.hashtag_score = hashtagScore;
+      qaDetails.hashtag_count = tags.length;
+      if (hashtagScore < 10) failReasons.push(`האשטאגים לא מספיקים (${tags.length} תגים, #DUBIS: ${hasDubis ? 'כן' : 'לא'})`);
+
+      // ── 4. Image exists (20pts) ──────────────────────────────────────
+      let imageScore = 0;
+      if (imageUrl && imageUrl.includes('supabase.co')) {
+        imageScore = 20;
+      } else if (imageUrl) {
+        imageScore = 10;
+      }
+      score += imageScore;
+      qaDetails.image_score = imageScore;
+      qaDetails.image_url = imageUrl || null;
+      if (imageScore === 0) failReasons.push('חסרה תמונה');
+
+      // ── 5. No forbidden words (10pts) ────────────────────────────────
+      const forbidden = ['הודי', 'הודיז', 'זיפ הודי'];
+      const foundForbidden = forbidden.filter((w) => captionHe.includes(w));
+      const forbiddenScore = foundForbidden.length === 0 ? 10 : 0;
+      score += forbiddenScore;
+      qaDetails.forbidden_score = forbiddenScore;
+      if (foundForbidden.length > 0) failReasons.push(`מילים אסורות: ${foundForbidden.join(', ')}`);
+
+      // ── Final verdict ────────────────────────────────────────────────
+      const qaPass = score >= 60;
+      const newContentData = {
+        ...cd,
+        qa_score: score,
+        qa_pass: qaPass,
+        qa_details: qaDetails,
+        qa_checked_at: now,
+      };
+
+      if (qaPass) {
+        // Keep pending_approval — ready for human review
+        await sb.from('agent_tasks').update({
+          content_data: newContentData,
+          updated_at: now,
+        }).eq('id', task.id);
+        passed++;
+      } else {
+        // Reject — add QA failure note
+        const existingNotes = ((task.notes as string) || '').trim();
+        const qaNote = `QA נכשל: ${failReasons.join('; ')} (ציון ${score}/100)`;
+        await sb.from('agent_tasks').update({
+          content_data: newContentData,
+          status: 'rejected',
+          notes: existingNotes ? `${existingNotes}\n${qaNote}` : qaNote,
+          updated_at: now,
+        }).eq('id', task.id);
+        failed++;
+      }
+
+      results.push({
+        id: task.id,
+        title: task.title,
+        score,
+        qa_pass: qaPass,
+        details: qaDetails,
+        fail_reasons: failReasons,
+      });
+    }
+
+    return json({ checked: unscored.length, passed, failed, results });
+  }
+
   return json({
-    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content',
+    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, qa-content',
   }, 400);
 });
