@@ -1203,7 +1203,100 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     return json({ received: true, note: 'unhandled event type' });
   }
 
+  // ── AUTO-CONTENT ─────────────────────────────────────────────────────
+  if (type === 'auto-content') {
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const token       = authHeader.replace('Bearer ', '').trim()
+                     || req.headers.get('x-agent-secret') || '';
+    const isAuthed = (cronSecret && token === cronSecret)
+                  || (agentSecret && token === agentSecret)
+                  || (svcKey && token === svcKey);
+    const adminOk = await verifyAdmin(req);
+    if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
+
+    // Product catalog for rotation (matches Typography Map in CLAUDE.md)
+    type ProductDef = { slogan: string; type: string; gender: string; format: string };
+    const PRODUCTS: ProductDef[] = [
+      { slogan: "I am not fat, I am a LIMITED edition.",       type: 'tshirt',     gender: 'unisex', format: 'feed_post'  },
+      { slogan: "more of me to LOVE",                          type: 'tshirt',     gender: 'unisex', format: 'feed_post'  },
+      { slogan: "NAPPING IS MY CARDIO",                        type: 'hoodie',     gender: 'unisex', format: 'feed_post'  },
+      { slogan: "I survived. That's enough.",                  type: 'tshirt',     gender: 'unisex', format: 'feed_post'  },
+      { slogan: "low maintenance VALUE high",                  type: 'tshirt',     gender: 'unisex', format: 'quote_card' },
+      { slogan: "Not a model. NEVER. wanted to be.",           type: 'hoodie',     gender: 'unisex', format: 'feed_post'  },
+      { slogan: "NAP — Born to nap, forced to work",           type: 'tshirt',     gender: 'unisex', format: 'feed_post'  },
+      { slogan: "certified OVER thinker",                      type: 'ziphoodie',  gender: 'unisex', format: 'feed_post'  },
+      { slogan: "serial NAPPER",                               type: 'longsleeve', gender: 'unisex', format: 'feed_post'  },
+      { slogan: "She believed she could, so she took a NAP.",  type: 'tshirt',     gender: 'women',  format: 'feed_post'  },
+      { slogan: "COFFEE — I run on coffee and sarcasm.",       type: 'tshirt',     gender: 'women',  format: 'feed_post'  },
+      { slogan: "Zero Motivation CLUB",                        type: 'hoodie',     gender: 'women',  format: 'feed_post'  },
+      { slogan: "emotionally attached to my COUCH",            type: 'longsleeve', gender: 'women',  format: 'feed_post'  },
+    ];
+
+    // Skip if a content task was already created today
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const { data: todayTask } = await sb.from('agent_tasks')
+      .select('id')
+      .eq('agent_id', 'content')
+      .gte('created_at', todayStart.toISOString())
+      .limit(1);
+    if (todayTask?.length) {
+      return json({ skipped: true, reason: 'Content task already created today', task_id: (todayTask[0] as Record<string, unknown>).id });
+    }
+
+    // Find product not recently featured (check last N tasks)
+    type TaskRow = Record<string, unknown>;
+    const { data: recentTasks } = await sb.from('agent_tasks')
+      .select('content_data')
+      .eq('agent_id', 'content')
+      .order('created_at', { ascending: false })
+      .limit(PRODUCTS.length);
+    const recentSlogans = new Set<string>((recentTasks || []).map((t: TaskRow) => {
+      const cd = (t.content_data as TaskRow) || {};
+      return (cd.product_slogan as string) || '';
+    }).filter(Boolean));
+
+    let picked = PRODUCTS.find(p => !recentSlogans.has(p.slogan));
+    if (!picked) {
+      // All products recently used — cycle by day of week
+      picked = PRODUCTS[new Date().getDay() % PRODUCTS.length];
+    }
+
+    const typeLabels: Record<string, string> = {
+      tshirt: 'חולצה', hoodie: 'קפוצון', ziphoodie: 'קפוצון זיפ', longsleeve: 'ארוכת שרוול', cap: 'כובע',
+    };
+    const { data: newTask, error: insertErr } = await sb.from('agent_tasks').insert({
+      agent_id:     'content',
+      title:        `Instagram Post — ${picked.slogan.substring(0, 50)}`,
+      description:  `פוסט אוטומטי: ${typeLabels[picked.type] || picked.type} — "${picked.slogan}"`,
+      category:     'social_post',
+      status:       'approved',
+      priority:     'medium',
+      content_data: {
+        format:         picked.format,
+        product_type:   picked.type,
+        product_slogan: picked.slogan,
+        product_gender: picked.gender,
+        language:       'he',
+        auto_created:   true,
+        created_by:     'auto-content-cron',
+      },
+    }).select('id').single();
+
+    if (insertErr) return json({ error: insertErr.message }, 500);
+
+    return json({
+      success: true,
+      task_id: (newTask as Record<string, unknown>)?.id,
+      product: picked.slogan,
+      format:  picked.format,
+      message: 'Content task created ✅ — content-run will generate caption and image',
+    });
+  }
+
   return json({
-    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook',
+    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content',
   }, 400);
 });

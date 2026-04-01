@@ -339,6 +339,56 @@ module.exports = async function handler(req, res) {
 </body>
 </html>`;
 
+    // ── Review requests (7 days post-delivery) ──────────────────────
+    try {
+        const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const { data: deliveredOrders } = await supabase
+            .from('orders')
+            .select('id, buyer_email, shipping_address, items, paypal_order_id')
+            .eq('status', 'delivered')
+            .is('review_request_sent_at', null)
+            .lt('updated_at', sevenDaysAgo.toISOString());
+
+        let reviewRequestsSent = 0;
+        for (const order of (deliveredOrders || [])) {
+            if (!order.buyer_email) continue;
+            const buyerName = order.shipping_address?.name || '';
+            const item = (order.items || [])[0] || {};
+            const reviewLink = `https://www.dubis.net?review=1&order=${encodeURIComponent(order.paypal_order_id || order.id)}`;
+            try {
+                await fetch('https://api.resend.com/emails', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        from: SENDER_EMAIL,
+                        to: [order.buyer_email],
+                        subject: '⭐ How was your DUBIS order?',
+                        html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#fff">
+                          <h2 style="color:#c8a96e;font-size:22px">How did we do? 🙏</h2>
+                          <p style="color:#333">Hi ${buyerName || 'there'},</p>
+                          <p style="color:#333">We hope you're loving your DUBIS order${item.typeLabel ? ` (${item.typeLabel})` : ''}!</p>
+                          <p style="color:#333">Your feedback means everything to us — it helps other customers and helps us improve. Would you take 60 seconds to leave a quick review?</p>
+                          <p style="text-align:center;margin:28px 0">
+                            <a href="${reviewLink}" style="background:#c8a96e;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px">Leave a Review ⭐</a>
+                          </p>
+                          <p style="color:#999;font-size:12px;margin-top:24px">— The DUBIS team</p>
+                        </div>`,
+                    }),
+                });
+                await supabase.from('orders').update({ review_request_sent_at: new Date().toISOString() }).eq('id', order.id);
+                reviewRequestsSent++;
+            } catch (revErr) {
+                console.warn('Review request failed for order', order.id, revErr.message);
+            }
+        }
+        if (reviewRequestsSent > 0) console.log(`✅ Review requests sent: ${reviewRequestsSent}`);
+    } catch (reviewErr) {
+        console.warn('Review request check failed (non-fatal):', reviewErr.message);
+    }
+
     // ── Daily snapshot → daily_snapshots table ───────────────────────
     try {
         const snapshotDate = new Date().toISOString().slice(0, 10);
@@ -419,6 +469,33 @@ module.exports = async function handler(req, res) {
         if (!response.ok) throw new Error(data.message || 'Send failed');
 
         console.log(`✅ Morning report sent | Tasks: ${(pendingTasks||[]).length} | Revenue today: $${todayRevenue}`);
+
+        // ── Trigger daily content generation ────────────────────────
+        try {
+            const agentsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1/agents';
+            const authToken  = process.env.CRON_SECRET || process.env.AGENT_SECRET || '';
+
+            // 1. Create today's content task (auto-rotate products)
+            const autoRes  = await fetch(`${agentsBase}?type=auto-content`, {
+                method:  'POST',
+                headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+            });
+            const autoData = await autoRes.json();
+            console.log('Auto-content:', JSON.stringify(autoData));
+
+            // 2. If a new task was created, immediately generate caption + image
+            if (autoData.task_id && !autoData.skipped) {
+                const runRes  = await fetch(`${agentsBase}?type=content-run`, {
+                    method:  'GET',
+                    headers: { 'x-agent-secret': process.env.SUPABASE_SERVICE_ROLE_KEY },
+                });
+                const runData = await runRes.json();
+                console.log('Content-run:', JSON.stringify(runData));
+            }
+        } catch (autoErr) {
+            console.warn('Auto-content trigger failed (non-fatal):', autoErr.message);
+        }
+
         return res.status(200).json({
             success: true,
             emailId: data.id,
