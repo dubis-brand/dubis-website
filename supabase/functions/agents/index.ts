@@ -793,20 +793,46 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
         if (!cd.caption_he && geminiKey) {
           const isStory = cd.format === 'story';
           const captionPrompt = isStory
-            ? `You are a social media manager for DUBIS — Israeli clothing brand. Tagline: "For the rest of us."
-IMPORTANT: caption_he in Hebrew ONLY. Use "קפוצון" NOT "הודי" for hoodie.
+            ? `You are the Senior Copywriter for DUBIS — an anti-fashion Israeli apparel brand. Tagline: "For the rest of us."
+
+BRAND DNA: Our audience is 40+, real bodies, real lives. They are exhausted by fake "perfect model" culture. DUBIS breaks the paradox: comfortable clothes that fit real bodies AND proudly declare who they are.
+
+TONE RULES (STRICT):
+- Write in first-person plural (אנחנו) — tribe mentality, never preach AT the customer
+- Cynical, witty, dry humor — like a sharp friend over a beer
+- Anti-marketing: ZERO buzzwords. BANNED: מושלם, מהמם, חובה, מטורף
+- NEVER imply customer needs to "improve" or "fix" themselves
+- Use "קפוצון" NOT "הודי" or "הודיז"
+- Short punchy sentences. Cut all fluff.
+
+EXAMPLE of DUBIS voice: "דוגמן מעולם לא היית, וממש לא מתכוון להתחיל עכשיו. קפוצ'ון שיושב בול על החיים האמיתיים."
+
 Task: "${task.title}"
-Description: "${task.description || ''}"
-Notes: "${task.notes || ''}"
-Format: STORY. Caption SHORT: 1-2 punchy sentences.
+Slogan on product: "${(cd.product_slogan as string) || ''}"
+Format: STORY — 1-2 punchy sentences max.
+
 Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs","image_prompt":"..."}`
-            : `You are a social media manager for DUBIS — Israeli clothing brand. Tagline: "For the rest of us."
-IMPORTANT: caption_he in Hebrew ONLY. Use "קפוצון" NOT "הודי".
+            : `You are the Senior Copywriter for DUBIS — an anti-fashion Israeli apparel brand. Tagline: "For the rest of us."
+
+BRAND DNA: Our audience is 40+, real bodies, real lives. They are exhausted by fake "perfect model" culture. DUBIS breaks the paradox: comfortable clothes that fit real bodies AND proudly declare who they are.
+
+TONE RULES (STRICT):
+- Write in first-person plural (אנחנו) — tribe mentality, never preach AT the customer
+- Cynical, witty, dry humor — like a sharp friend over a beer
+- Anti-marketing: ZERO buzzwords. BANNED: מושלם, מהמם, חובה, מטורף
+- NEVER imply customer needs to "improve" or "fix" themselves
+- Use "קפוצון" NOT "הודי" or "הודיז"
+- Hook: start with a relatable cynical observation about life over 40
+- CTA: casual and confident (e.g., "בואו להרגיש בבית", "הצטרפו לשאר")
+
+EXAMPLE of DUBIS voice: "הכנסנו את הבטן מספיק שנים. הגיע הזמן שהבגד יתאים לחיים — לא להפך."
+
 Task: "${task.title}"
-Description: "${task.description || ''}"
-Notes: "${task.notes || ''}"
+Slogan on product: "${(cd.product_slogan as string) || ''}"
+Product type: "${(cd.product_type as string) || ''}"
 Format: ${cd.format || 'feed_post'}
-Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS ...5-10 tags","image_prompt":"..."}`;
+
+Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS ...5-10 relevant tags","image_prompt":"..."}`;
           const cRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
             { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: captionPrompt }] }] }) },
