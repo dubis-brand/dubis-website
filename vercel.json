@@ -1,7 +1,4 @@
 {
-  "functions": {
-    "api/agents.js": { "maxDuration": 90 }
-  },
   "crons": [
     { "path": "/api/cron/morning-report", "schedule": "0 5 * * *" },
     { "path": "/api/admin/gelato-sync",   "schedule": "0 0 * * *" }
