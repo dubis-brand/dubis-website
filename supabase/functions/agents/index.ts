@@ -883,55 +883,48 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
 
         let gen: Record<string, string> = {};
         if (!cd.caption_he && geminiKey) {
+          const dubisPrompt = `[Your Role]
+You are the Senior Copywriter for "DUBIS" – an anti-fashion Israeli apparel brand. Tagline: "For the rest of us."
+
+[Target Audience] Age 40+, real bodies, real lives. Exhausted by fake "perfect model" culture. They refuse to apologize for who they are.
+
+[Brand DNA] The Pain: forced to choose between uncomfortable "fashionable" clothes OR comfortable but ugly clothes. The DUBIS Solution: clothes that fit real bodies, provide comfort, and feature cynical witty quotes.
+
+[Tone Rules]
+- First-person plural ("אנחנו") — tribe mentality
+- Cynical, witty, dry humor — like a sharp friend over a beer
+- BANNED WORDS (Hebrew): מושלם, מהמם, חובה, מטורף
+- NEVER imply customer needs to "improve" or "fix" themselves
+- Use "קפוצון" NOT "הודי"
+- Short punchy sentences. Cut the fluff.
+
+[Protocol] 1. Hook: cynical observation about life over 40. 2. Product as antidote. 3. CTA: casual ("הפסיקו להכניס את הבטן", "הצטרפו לשאר").
+
+[Example] Standard: "Buy our amazing hoodie!" → DUBIS: "דוגמן מעולם לא היית, וממש לא מתכוון להתחיל עכשיו. קפוצון שיושב בול על החיים האמיתיים, לאנשים שמזמן הפסיקו להכניס את הבטן."`;
+
           const isStory = cd.format === 'story';
-          const captionPrompt = isStory
-            ? `You are the Senior Copywriter for DUBIS — an anti-fashion Israeli apparel brand. Tagline: "For the rest of us."
+          const captionPrompt = `${dubisPrompt}
 
-BRAND DNA: Our audience is 40+, real bodies, real lives. They are exhausted by fake "perfect model" culture. DUBIS breaks the paradox: comfortable clothes that fit real bodies AND proudly declare who they are.
-
-TONE RULES (STRICT):
-- Write in first-person plural (אנחנו) — tribe mentality, never preach AT the customer
-- Cynical, witty, dry humor — like a sharp friend over a beer
-- Anti-marketing: ZERO buzzwords. BANNED: מושלם, מהמם, חובה, מטורף
-- NEVER imply customer needs to "improve" or "fix" themselves
-- Use "קפוצון" NOT "הודי" or "הודיז"
-- Short punchy sentences. Cut all fluff.
-
-EXAMPLE of DUBIS voice: "דוגמן מעולם לא היית, וממש לא מתכוון להתחיל עכשיו. קפוצ'ון שיושב בול על החיים האמיתיים."
-
-Task: "${task.title}"
-Slogan on product: "${(cd.product_slogan as string) || ''}"
-Format: STORY — 1-2 punchy sentences max.
-
-Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs","image_prompt":"..."}`
-            : `You are the Senior Copywriter for DUBIS — an anti-fashion Israeli apparel brand. Tagline: "For the rest of us."
-
-BRAND DNA: Our audience is 40+, real bodies, real lives. They are exhausted by fake "perfect model" culture. DUBIS breaks the paradox: comfortable clothes that fit real bodies AND proudly declare who they are.
-
-TONE RULES (STRICT):
-- Write in first-person plural (אנחנו) — tribe mentality, never preach AT the customer
-- Cynical, witty, dry humor — like a sharp friend over a beer
-- Anti-marketing: ZERO buzzwords. BANNED: מושלם, מהמם, חובה, מטורף
-- NEVER imply customer needs to "improve" or "fix" themselves
-- Use "קפוצון" NOT "הודי" or "הודיז"
-- Hook: start with a relatable cynical observation about life over 40
-- CTA: casual and confident (e.g., "בואו להרגיש בבית", "הצטרפו לשאר")
-
-EXAMPLE of DUBIS voice: "הכנסנו את הבטן מספיק שנים. הגיע הזמן שהבגד יתאים לחיים — לא להפך."
-
+--- TASK ---
 Task: "${task.title}"
 Slogan on product: "${(cd.product_slogan as string) || ''}"
 Product type: "${(cd.product_type as string) || ''}"
-Format: ${cd.format || 'feed_post'}
+Format: ${isStory ? 'STORY — 1-2 punchy sentences max.' : (cd.format || 'feed_post')}
 
-Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS ...5-10 relevant tags","image_prompt":"..."}`;
+Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs ...5-10 tags","image_prompt":"..."}`;
           const cRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: captionPrompt }] }] }) },
+            { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: captionPrompt }] }] }),
+              signal: AbortSignal.timeout(30000) },
           );
-          const raw = (await cRes.json()).candidates?.[0]?.content?.parts?.[0]?.text || '';
+          if (!cRes.ok) throw new Error(`Gemini caption HTTP ${cRes.status}`);
+          const cData = await cRes.json();
+          const raw = cData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          if (!raw) throw new Error('Gemini returned empty caption');
           try { gen = JSON.parse(raw.replace(/```json|```/g, '').trim()); } catch { gen = { caption_en: raw.substring(0, 200) }; }
           if (gen.caption_he) gen.caption_he = fixHebrew(gen.caption_he);
+          if (!gen.caption_he && !gen.caption_en) throw new Error('Caption generation empty');
         } else {
           gen = { caption_he: cd.caption_he as string, caption_en: cd.caption_en as string, hashtags: cd.hashtags as string };
         }
@@ -993,8 +986,19 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
           } catch (polErr) { imgError += ` pol_catch:${(polErr as Error).message}`; }
         }
 
-        await sb.from('agent_tasks').update({ status: 'pending_approval', content_data: { ...cd, ...gen, generated_image_url: imageUrl || (cd.generated_image_url as string) || '' }, updated_at: now }).eq('id', task.id);
-        taskResults.push(`✅ ${task.title}: ${imageUrl ? '🖼 תמונה+כיתוב' : `⚠️ כיתוב בלבד [${imgError}]`} → pending_approval`);
+        const finalCapHe = gen.caption_he || (cd.caption_he as string) || '';
+        const finalCapEn = gen.caption_en || (cd.caption_en as string) || '';
+        const hasCaption = !!(finalCapHe || finalCapEn);
+        const newStatus = hasCaption ? 'pending_approval' : 'in_progress';
+        await sb.from('agent_tasks').update({
+          status: newStatus,
+          content_data: { ...cd, caption_he: finalCapHe, caption_en: finalCapEn, hashtags: gen.hashtags || (cd.hashtags as string) || '', image_prompt: gen.image_prompt || '', generated_image_url: imageUrl || (cd.generated_image_url as string) || '' },
+          notes: ((task.notes as string) || '') + (hasCaption ? '' : `\n⚠️ Caption empty — retry needed`),
+          updated_at: now,
+        }).eq('id', task.id);
+        taskResults.push(hasCaption
+          ? `✅ ${task.title}: ${imageUrl ? '🖼 תמונה+כיתוב' : `⚠️ כיתוב בלבד [${imgError}]`} → pending_approval`
+          : `⚠️ ${task.title}: caption empty — stays in_progress`);
       } catch (e) {
         taskResults.push(`❌ ${task.title}: ${(e as Error).message}`);
       }
