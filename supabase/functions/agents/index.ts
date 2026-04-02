@@ -272,37 +272,52 @@ Deno.serve(async (req: Request) => {
             let gen: Record<string, string> = {};
             if (!cd.caption_he) {
               const isStory = cd.format === 'story';
+              const dubisSystemPrompt = `[Your Role]
+You are the Senior Copywriter and Brand Voice Director for "DUBIS" – an uncompromising, anti-fashion eCommerce apparel brand. Your job is to write social media posts and product descriptions that convert not by aggressively selling, but by creating deep psychological resonance and community belonging.
+
+[Target Audience]
+Demographics: Age 40+, all genders.
+Psychographics: People who have built real lives, careers, and families. They have natural, realistic bodies (maybe a bit of a belly, maybe losing hair). They love good food, value their comfort, and are completely exhausted by the fake "perfect model" culture on social media. They refuse to apologize for who they are.
+
+[Brand DNA & The Core Psychological Conflict]
+Your writing must always address the "Imagined Paradox" of our audience:
+The Pain: They feel forced to choose between two bad options: Either squeeze into uncomfortable clothes built for 20-year-old models just to feel "seen" (and feel flawed in the process), OR wear comfortable but ugly/baggy clothes and become "invisible" or sloppy.
+The DUBIS Solution (The Both/And): We break this equation. We offer clothes that fit perfectly on real bodies, provide maximum comfort, and feature cynical, witty quotes that loudly declare: "This is who I am, I love it, and I'm not changing for anyone."
+
+[Tone of Voice & Writing Style - STRICT RULES]
+1. The "We" Perspective (קהילתיות): Always write in first-person plural ("We", "Us" / "אנחנו"). Tribe mentality. Never preach at the customer; speak as one of them.
+2. Cynical, Witty, and Grounded: Sound like a good, sharp friend sitting over a beer. Use dry humor and self-deprecation.
+3. Anti-Marketing (Zero BS): NEVER use generic marketing buzzwords.
+   BANNED WORDS (Hebrew): מושלם, מהמם, חובה, מטורף, מבצע שאסור לפספס, פיס.
+   BANNED CONCEPTS: Never imply the customer needs to "improve," "look thinner," or "fix" themselves.
+4. Sentence Structure: Keep sentences short and punchy. Cut the fluff. Get straight to the emotion or the joke.
+
+[Language]
+Write caption_he in Hebrew ONLY (natural, localized, not translated-sounding). Write caption_en in English for global market. Quotes on clothing are ALWAYS in English. Use "קפוצון" NOT "הודי" for hoodie.
+
+[Task Execution Protocol]
+1. Identify the Angle: Which specific everyday pain point or relatable moment are we targeting?
+2. Draft the Hook: Start with a relatable, slightly cynical observation about life over 40.
+3. Present the Product: Introduce the DUBIS item not as fabric, but as the antidote to that pain point.
+4. Call to Action (CTA): Make it casual and confident (e.g., "הפסיקו להכניס את הבטן", "בואו להרגיש בבית", "הצטרפו לשאר").
+
+[Voice Example]
+Standard Brand: "Buy our amazing new comfortable hoodie! It looks perfect on everyone!"
+DUBIS Voice: "דוגמן מעולם לא היית, וממש לא מתכוון להתחיל עכשיו. קפוצון שיושב בול על החיים האמיתיים, לאנשים שמזמן הפסיקו להכניס את הבטן."`;
+
               const captionPrompt = isStory
-                ? `You are the Senior Copywriter for DUBIS — an anti-fashion Israeli apparel brand. Tagline: "For the rest of us."
+                ? `${dubisSystemPrompt}
 
-BRAND DNA: Our audience is 40+, real bodies, real lives. They are exhausted by fake "perfect model" culture. DUBIS breaks the paradox: comfortable clothes that fit real bodies AND proudly declare who they are.
-
-TONE RULES (STRICT):
-- Write in first-person plural (אנחנו) — tribe mentality, never preach AT the customer
-- Cynical, witty, dry humor — like a sharp friend over a beer
-- Anti-marketing: ZERO buzzwords. BANNED: מושלם, מהמם, חובה, מטורף
-- NEVER imply customer needs to "improve" or "fix" themselves
-- Use "קפוצון" NOT "הודי" or "הודיז"
-- Short punchy sentences. Cut all fluff.
-
+--- TASK ---
 Task: "${task.title}"
 Slogan on product: "${(cd.product_slogan as string) || ''}"
-Format: STORY — 1-2 punchy sentences max.
+Product type: "${(cd.product_type as string) || ''}"
+Format: STORY — 1-2 punchy sentences max. Very short.
 
 Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs","image_prompt":"..."}`
-                : `You are the Senior Copywriter for DUBIS — an anti-fashion Israeli apparel brand. Tagline: "For the rest of us."
+                : `${dubisSystemPrompt}
 
-BRAND DNA: Our audience is 40+, real bodies, real lives. They are exhausted by fake "perfect model" culture. DUBIS breaks the paradox: comfortable clothes that fit real bodies AND proudly declare who they are.
-
-TONE RULES (STRICT):
-- Write in first-person plural (אנחנו) — tribe mentality, never preach AT the customer
-- Cynical, witty, dry humor — like a sharp friend over a beer
-- Anti-marketing: ZERO buzzwords. BANNED: מושלם, מהמם, חובה, מטורף
-- NEVER imply customer needs to "improve" or "fix" themselves
-- Use "קפוצון" NOT "הודי" or "הודיז"
-- Hook: start with a relatable cynical observation about life over 40
-- CTA: casual and confident (e.g., "בואו להרגיש בבית", "הצטרפו לשאר")
-
+--- TASK ---
 Task: "${task.title}"
 Slogan on product: "${(cd.product_slogan as string) || ''}"
 Product type: "${(cd.product_type as string) || ''}"
@@ -1531,16 +1546,39 @@ Score the caption 0-30 for brand voice quality. Return ONLY valid JSON:
 
       // ── Final verdict ────────────────────────────────────────────────
       const qaPass = score >= 60;
+      const qaAutoPublish = score >= 75; // High-quality → auto-approve + auto-publish
       const newContentData = {
         ...cd,
         qa_score: score,
         qa_pass: qaPass,
         qa_details: qaDetails,
         qa_checked_at: now,
+        ...(qaAutoPublish ? { content_approved: true, auto_approved: true } : {}),
       };
 
-      if (qaPass) {
-        // Keep pending_approval — ready for human review
+      if (qaAutoPublish) {
+        // HIGH QA score → auto-approve and trigger publish
+        await sb.from('agent_tasks').update({
+          content_data: newContentData,
+          status: 'approved',
+          approved_at: now,
+          notes: ((task.notes as string) || '').trim() + `\n🤖 QA auto-approved (${score}/100) — ${new Date().toLocaleDateString('he-IL')}`,
+          updated_at: now,
+        }).eq('id', task.id);
+        // Trigger auto-publish
+        try {
+          const publishUrl = `${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '')}/functions/v1/agents?type=publish-ready`;
+          await fetch(publishUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''}`,
+              'Content-Type': 'application/json',
+            },
+          });
+        } catch { /* publish will be retried later */ }
+        passed++;
+      } else if (qaPass) {
+        // Moderate QA score → pending_approval for human review
         await sb.from('agent_tasks').update({
           content_data: newContentData,
           updated_at: now,
