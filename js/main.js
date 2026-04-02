@@ -294,7 +294,7 @@ function renderProducts(filter, gender) {
         <img class="img-view img-back"  src="${productImg(product.id, product.colors[0], 'back')}"  alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}'" />
         <img class="img-view img-front" src="${productImg(product.id, product.colors[0], 'front')}" alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}'" />
         <div class="product-badge">${typeMap[product.type] || product.typeLabel}</div>
-        <div class="product-rating-badge">&#9733; 4.9</div>
+        <div class="product-rating-badge" id="badge-${product.id}">${currentLang === 'he' ? 'NEW' : 'NEW'}</div>
         <div class="product-hover-overlay"><span>${t.view_details}</span></div>
       </div>
       <div class="product-info">
@@ -775,10 +775,43 @@ document.querySelectorAll('.nav-links a').forEach(a => {
   });
 });
 
+// ── Load product reviews for badge display ──
+let productReviews = {};
+async function loadProductReviews() {
+  try {
+    if (!window.DUBIS_SUPABASE_URL) return;
+    const res = await fetch(`${window.DUBIS_SUPABASE_URL}/rest/v1/product_reviews?approved=eq.true&select=product_name,rating`, {
+      headers: { 'apikey': window.DUBIS_SUPABASE_ANON, 'Authorization': `Bearer ${window.DUBIS_SUPABASE_ANON}` }
+    });
+    const reviews = await res.json();
+    if (!Array.isArray(reviews)) return;
+    reviews.forEach(r => {
+      const name = (r.product_name || '').toLowerCase();
+      if (!productReviews[name]) productReviews[name] = { count: 0, total: 0 };
+      productReviews[name].count++;
+      productReviews[name].total += r.rating;
+    });
+    // Update badges on cards
+    document.querySelectorAll('[id^="badge-"]').forEach(badge => {
+      const id = badge.id.replace('badge-', '');
+      const product = products.find(p => p.id == id);
+      if (!product) return;
+      const key = product.phrase.toLowerCase();
+      const rev = productReviews[key];
+      if (rev && rev.count > 0) {
+        const avg = (rev.total / rev.count).toFixed(1);
+        badge.textContent = `★ ${avg} (${rev.count})`;
+        badge.classList.add('has-reviews');
+      }
+    });
+  } catch { /* non-critical */ }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   loadCart();
   checkCookieConsent();
   await loadPriceOverrides();
   detectLanguage(); // IP-based language detection → renders products after
   initScrollAnimations();
+  loadProductReviews(); // Load reviews for badges (non-blocking)
 });
