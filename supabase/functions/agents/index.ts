@@ -942,7 +942,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
             : titleLower.includes('nap') || titleLower.includes('cardio')
             ? `Person relaxing on couch wearing oversized dark hoodie. Cozy apartment, soft warm lighting. ${dubisRule}`
             : `Authentic people wearing DUBIS streetwear, urban minimal setting, dark aesthetic, natural lighting, square 1:1. ${dubisRule}`;
-          const fullPrompt = (gen.image_prompt || defaultImgPrompt) + '. Fashion photography. Square 1:1. No watermark. Photorealistic.';
+          const fullPrompt = (gen.image_prompt || defaultImgPrompt) + ". Fashion photography. Square 1:1. Photorealistic. Small 'DUBIS\u2122' text watermark in the bottom-left corner of the image.";
 
           try {
             const gRes = await fetch(
@@ -971,7 +971,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
           try {
             const titleLower = (task.title as string).toLowerCase();
             const imgPromptText = gen.image_prompt || `${task.title}, authentic urban lifestyle, DUBIS streetwear, dark minimal aesthetic`;
-            const fullPrompt = imgPromptText + '. Fashion photography. Square 1:1. No watermark. Photorealistic.';
+            const fullPrompt = imgPromptText + ". Fashion photography. Square 1:1. Photorealistic. Small 'DUBIS\u2122' text watermark in the bottom-left corner of the image.";
             const prompt = encodeURIComponent(fullPrompt);
             const seed = parseInt((task.id as string).replace(/-/g, '').substring(0, 8), 16) % 999999 + 1;
             const imgRes = await fetch(`https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&model=flux&seed=${seed}&token=${polToken}`, { signal: AbortSignal.timeout(55000) });
@@ -1084,8 +1084,33 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
         const pRes = await fetch(`${igBase}/media_publish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ creation_id: container.id, access_token: igToken }) });
         const pub = await pRes.json();
         if (!pRes.ok || pub.error) { results.push({ id: task.id, title: task.title, status: 'error', error: pub.error?.message || 'publish failed' }); continue; }
-        await sb.from('agent_tasks').update({ status: 'done', content_data: { ...cd, instagram_post_id: pub.id, published_at: now }, updated_at: now }).eq('id', task.id);
-        results.push({ id: task.id, title: task.title, status: 'published', ig_id: pub.id });
+        // Instagram succeeded — now try Facebook as well
+        let fbPostId: string | null = null;
+        let fbError: string | null = null;
+        try {
+          const fbPageId = Deno.env.get('FACEBOOK_PAGE_ID') ?? '';
+          const fbToken  = Deno.env.get('FACEBOOK_PAGE_TOKEN') ?? igToken; // fall back to IG token
+          if (fbPageId) {
+            const fbRes = await fetch(`https://graph.facebook.com/v19.0/${fbPageId}/photos`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: image_url, caption, access_token: fbToken }),
+            });
+            const fbData = await fbRes.json();
+            if (fbRes.ok && fbData.id && !fbData.error) {
+              fbPostId = fbData.id as string;
+            } else {
+              fbError = fbData.error?.message || `HTTP ${fbRes.status}`;
+            }
+          } else {
+            fbError = 'FACEBOOK_PAGE_ID not set — skipped';
+          }
+        } catch (fbErr) {
+          fbError = (fbErr as Error).message;
+        }
+
+        await sb.from('agent_tasks').update({ status: 'done', content_data: { ...cd, instagram_post_id: pub.id, facebook_post_id: fbPostId, published_at: now }, updated_at: now }).eq('id', task.id);
+        results.push({ id: task.id, title: task.title, status: 'published', ig_id: pub.id, fb_id: fbPostId, fb_error: fbError });
       } catch (e) {
         results.push({ id: task.id, title: task.title, status: 'error', error: (e as Error).message });
       }
