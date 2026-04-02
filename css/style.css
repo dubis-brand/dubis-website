@@ -419,6 +419,19 @@ body {
     border-radius: 4px;
     font-weight: 500;
 }
+.product-rating-badge {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    background: rgba(0,0,0,0.55);
+    color: #c8a96e;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+    z-index: 3;
+}
 
 .color-dot {
     display: inline-block;
@@ -912,6 +925,38 @@ body {
     color: #666;
 }
 .modal-add-btn { width: 100%; padding: 14px; font-size: 1rem; margin-top: auto; }
+
+/* CRO elements */
+.modal-limited-badge {
+    display: inline-block;
+    background: #c0392b;
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    margin-bottom: 6px;
+}
+.modal-recent-buyers {
+    font-size: 0.8rem;
+    color: #777;
+    margin: 4px 0 8px;
+}
+.modal-trust-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 10px 0 12px;
+}
+.modal-trust-badges span {
+    font-size: 0.75rem;
+    color: #666;
+    background: var(--light-gray);
+    padding: 5px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+}
 
 /* ===== COOKIE BANNER ===== */
 .cookie-banner {

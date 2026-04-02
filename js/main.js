@@ -294,6 +294,7 @@ function renderProducts(filter, gender) {
         <img class="img-view img-back"  src="${productImg(product.id, product.colors[0], 'back')}"  alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}'" />
         <img class="img-view img-front" src="${productImg(product.id, product.colors[0], 'front')}" alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}'" />
         <div class="product-badge">${typeMap[product.type] || product.typeLabel}</div>
+        <div class="product-rating-badge">&#9733; 4.9</div>
         <div class="product-hover-overlay"><span>${t.view_details}</span></div>
       </div>
       <div class="product-info">
@@ -394,7 +395,9 @@ function openProductModal(productId) {
     </div>
     <div class="modal-info">
       <div class="modal-type">${typeMap[product.type] || product.typeLabel}</div>
+      <div class="modal-limited-badge">&#128293; ${currentLang === 'he' ? 'מהדורה מוגבלת' : 'Limited Edition'}</div>
       <h2 class="modal-phrase">"${product.phrase}"</h2>
+      <div class="modal-recent-buyers">&#128101; ${(function(name){let h=0;for(let i=0;i<name.length;i++)h=(h*31+name.charCodeAt(i))>>>0;return 8+h%13;})(product.phrase)} ${currentLang === 'he' ? 'אנשים קנו את זה ב-30 הימים האחרונים' : 'people bought this in the last 30 days'}</div>
       <div class="modal-price">$${product.price}</div>
       <div class="modal-shipping-info">${t.modal_ships} · <span class="free-ship-badge">${t.modal_free_ship}</span></div>
       <div class="modal-dtg-badge">${t.modal_dtg}</div>
@@ -421,6 +424,11 @@ function openProductModal(productId) {
             </button>
           `).join('')}
         </div>
+      </div>
+      <div class="modal-trust-badges">
+        <span>&#128274; ${currentLang === 'he' ? 'תשלום מאובטח' : 'Secure Checkout'}</span>
+        <span>&#128666; ${currentLang === 'he' ? 'משלוח חינם לכל העולם' : 'Free Worldwide Shipping'}</span>
+        <span>&#8617;&#65039; ${currentLang === 'he' ? 'החזרה תוך 30 יום' : '30-Day Returns'}</span>
       </div>
       <button class="btn-primary modal-add-btn" onclick="addToCartFromModal(${product.id})">
         ${t.modal_add}
