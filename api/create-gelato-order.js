@@ -107,9 +107,15 @@ function buildProductUid(type, gelatoColor, gelatoSize, gender = 'unisex') {
 // dark garment → white ink design; light garment → dark ink design
 // designRef: use a different product's design file (for shared phrases or placeholders)
 // ─────────────────────────────────────────────────────────────────
-function getDesignFiles(productId, color, designRef) {
+function getDesignFiles(productId, color, designRef, productType) {
   const variant  = DARK_COLORS.has(color) ? 'white' : 'dark';
   const designId = designRef || productId;
+  // Caps use different file naming: cap_design_*.png (front only, no back)
+  if (productType === 'cap') {
+    return [
+      { type: 'front', url: `${DESIGN_BASE_URL}/cap_design_${variant}.png` },
+    ];
+  }
   return [
     { type: 'back',  url: `${DESIGN_BASE_URL}/back_design_${designId}_${variant}.png` },
     { type: 'front', url: `${DESIGN_BASE_URL}/front_logo_${variant}.png` },
@@ -238,7 +244,7 @@ module.exports = async function handler(req, res) {
   // We catch this here so we never ship an order with the wrong design.
   const preflightItems = cartItems.map((item, i) => ({
     itemReferenceId: `item-${i + 1}`,
-    files: getDesignFiles(item.id, item.selectedColor, item.designRef),
+    files: getDesignFiles(item.id, item.selectedColor, item.designRef, item.type),
   }));
   const fileErrors = await validateAllDesignFiles(preflightItems);
   if (fileErrors.length > 0) {
