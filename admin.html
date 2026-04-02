@@ -1082,31 +1082,43 @@
       </div>
     </div>
 
-    <!-- ── רשתות חברתיות ── -->
-    <div class="analytics-section-title">📱 רשתות חברתיות</div>
-    <div class="social-stats">
+    <!-- ── קמפיינים פעילים ── -->
+    <div class="analytics-section-title">📣 קמפיינים פעילים</div>
+    <div id="active-campaigns-cards" class="social-stats">
+      <div class="social-card" style="color:#555;font-size:.85rem;padding:1.5rem">טוען קמפיינים…</div>
+    </div>
+
+    <!-- ── תוכן ו-ROI ── -->
+    <div class="social-stats" style="margin-top:.75rem">
+      <!-- Content pipeline card -->
       <div class="social-card">
-        <h4>📸 אינסטגרם</h4>
-        <div class="social-metric"><span>פוסטים שפורסמו</span><span id="ig-posts-count">—</span></div>
-        <div class="social-metric"><span>פוסטים ממתינים</span><span id="ig-posts-pending">—</span></div>
-        <div class="social-metric"><span>פוסטים מאושרים</span><span id="ig-posts-approved">—</span></div>
-        <div class="social-metric"><span>פרסום הבא</span><span id="ig-next-post" style="color:#4caf50">—</span></div>
-        <div class="social-metric"><span>קמפיין פעיל</span><span id="ig-campaign" style="color:#4caf50">—</span></div>
+        <h4>✍️ צינור תוכן</h4>
+        <div class="social-metric"><span>פורסמו</span><span id="cp-published" style="color:#4caf50">—</span></div>
+        <div class="social-metric"><span>ממתינים לאישור</span><span id="cp-pending" style="color:#ff9800">—</span></div>
+        <div class="social-metric"><span>נדחו</span><span id="cp-rejected" style="color:#e74c3c">—</span></div>
+        <div class="social-metric"><span>ציון QA ממוצע</span><span id="cp-qa-score">—</span></div>
+        <div class="social-metric"><span>סה״כ פריטים</span><span id="cp-total" style="color:#aaa">—</span></div>
       </div>
+      <!-- ROAS / ROI card -->
       <div class="social-card">
-        <h4>📘 פייסבוק</h4>
-        <div class="social-metric"><span>סטטוס חיבור</span><span id="fb-status" style="color:#ff9800">בהגדרה</span></div>
-        <div class="social-metric"><span>קמפיין פעיל</span><span id="fb-campaign" style="color:#4caf50">109.97 ₪ / 7 ימים</span></div>
-        <div class="social-metric"><span>יעד הקמפיין</span><span>Post Engagement</span></div>
-        <div class="social-metric"><span>סטטוס מודעה</span><span id="fb-ad-status" style="color:#64b5f6">בסקירה</span></div>
+        <h4>💹 החזר על השקעה</h4>
+        <div class="social-metric"><span>ROAS</span><span id="api-roas" style="color:#c8a96e;font-weight:700">—</span></div>
+        <div class="social-metric"><span>ROI</span><span id="api-roi" style="color:#64b5f6;font-weight:700">—</span></div>
+        <div class="social-metric"><span>הוצאות פרסום</span><span id="api-ad-spend" style="color:#e74c3c">—</span></div>
+        <div class="social-metric"><span>תקציב כולל</span><span id="api-total-budget" style="color:#aaa">—</span></div>
+        <div class="social-metric"><span>קמפיינים פעילים</span><span id="api-active-camps" style="color:#4caf50">—</span></div>
       </div>
-      <div class="social-card">
-        <h4>📅 לוח תוכן שבועי</h4>
-        <div class="social-metric"><span>אסטרטגיה</span><span>60% EN / 40% HE</span></div>
-        <div class="social-metric"><span>Backlog</span><span id="cal-backlog">—</span></div>
-        <div class="social-metric"><span>ממתינים לאישור</span><span id="cal-pending">—</span></div>
-        <div class="social-metric"><span>מאושרים לפרסום</span><span id="cal-approved" style="color:#4caf50">—</span></div>
-      </div>
+      <!-- Legacy fields kept hidden so old code doesn't break -->
+      <span id="ig-posts-count" style="display:none"></span>
+      <span id="ig-posts-pending" style="display:none"></span>
+      <span id="ig-posts-approved" style="display:none"></span>
+      <span id="ig-next-post" style="display:none"></span>
+      <span id="ig-campaign" style="display:none"></span>
+      <span id="fb-campaign" style="display:none"></span>
+      <span id="fb-ad-status" style="display:none"></span>
+      <span id="cal-backlog" style="display:none"></span>
+      <span id="cal-pending" style="display:none"></span>
+      <span id="cal-approved" style="display:none"></span>
     </div>
 
     <!-- ── לוח תוכן 7 ימים ── -->
@@ -3394,71 +3406,115 @@
     document.getElementById('budget-remaining').textContent = '$' + remainingUSD.toFixed(0);
     document.getElementById('budget-roi').textContent = roi;
 
-    // Update ROAS card in sales section: Revenue / Ad Spend
-    const roas = spentUSD > 0 ? ((monthlyRevenue / spentUSD) * 100).toFixed(0) + '%' : (monthlyRevenue > 0 ? 'אין הוצאה' : 'אין נתונים');
-    document.getElementById('av-conversion').textContent = roas;
+    // ── ROAS card in sales section — prefer API value, fall back to local calc ──
+    const apiRoas = analyticsData.roas;
+    const apiRoi  = analyticsData.roi;
+    if (apiRoas != null) {
+      document.getElementById('av-conversion').textContent = apiRoas.toFixed(2) + 'x';
+    } else {
+      const roasFallback = spentUSD > 0 ? ((monthlyRevenue / spentUSD) * 100).toFixed(0) + '%' : (monthlyRevenue > 0 ? 'אין הוצאה' : 'אין נתונים');
+      document.getElementById('av-conversion').textContent = roasFallback;
+    }
 
-    // Active campaigns display — show ALL active ones
+    // ── ROI / ROAS summary card (new panel) ──
+    const apiSpend  = analyticsData.totalAdSpend;
+    const apiBudget = analyticsData.totalBudget;
+    const apiActive = analyticsData.activeCampaigns;
+    if (document.getElementById('api-roas')) {
+      document.getElementById('api-roas').textContent      = apiRoas  != null ? apiRoas.toFixed(2) + 'x'  : (spentUSD > 0 ? ((monthlyRevenue / spentUSD)).toFixed(2) + 'x' : '—');
+      document.getElementById('api-roi').textContent       = apiRoi   != null ? apiRoi.toFixed(0) + '%'   : roi;
+      document.getElementById('api-ad-spend').textContent  = apiSpend  != null ? '₪' + apiSpend.toFixed(0)  : `$${spentUSD.toFixed(0)} (₪${Math.round(totalSpentILS)})`;
+      document.getElementById('api-total-budget').textContent = apiBudget != null ? '₪' + apiBudget.toFixed(0) : `$${masterBudget}`;
+      document.getElementById('api-active-camps').textContent = apiActive != null ? apiActive : (allCampaigns.filter(c => c.status === 'active').length);
+    }
+
+    // ── Campaign performance cards ──
     try {
-      const activeCamps = allCampaigns.filter(c => c.status === 'active');
+      const apiCampaigns = analyticsData.campaigns;
+      const campaignsWrap = document.getElementById('active-campaigns-cards');
+      if (campaignsWrap) {
+        // Use API campaigns array if available, otherwise fall back to Supabase data
+        const source = (apiCampaigns && apiCampaigns.length > 0)
+          ? apiCampaigns.filter(c => c.status === 'active')
+          : allCampaigns.filter(c => c.status === 'active');
 
-      // Instagram campaign card
-      const igCamp = activeCamps.find(c => c.platform === 'instagram_facebook' || c.platform === 'instagram');
-      if (igCamp) {
-        const daysLeft = igCamp.end_date ? Math.max(0, Math.ceil((new Date(igCamp.end_date) - Date.now()) / 86400000)) : '?';
-        document.getElementById('ig-campaign').textContent = `₪${igCamp.budget} / ${daysLeft} ימים נותרו`;
-        document.getElementById('ig-campaign').style.color = '#4caf50';
-      } else {
-        document.getElementById('ig-campaign').textContent = '—';
-      }
-
-      // Facebook campaign card
-      const fbCamp = activeCamps.find(c => c.platform === 'facebook');
-      if (fbCamp) {
-        const daysLeft = fbCamp.end_date ? Math.max(0, Math.ceil((new Date(fbCamp.end_date) - Date.now()) / 86400000)) : '?';
-        document.getElementById('fb-campaign').textContent = `₪${fbCamp.budget} / ${daysLeft} ימים נותרו`;
-        document.getElementById('fb-ad-status').textContent = fbCamp.impressions > 0 ? 'פעיל' : 'בסקירה';
-        document.getElementById('fb-ad-status').style.color = fbCamp.impressions > 0 ? '#4caf50' : '#64b5f6';
-      }
-    } catch(e) { console.error('Campaign display error:', e); }
-
-    // Social media stats from agent_tasks
-    try {
-      const { data: tasks } = await _sb.from('agent_tasks').select('id,status,title,content_data,due_date,created_at').order('created_at', { ascending: false });
-      if (tasks) {
-        const published = tasks.filter(t => t.status === 'done');
-        const igPublished = tasks.filter(t => t.status === 'done' && t.content_data?.instagram_post_id);
-        const pending = tasks.filter(t => t.status === 'pending_approval');
-        const approved = tasks.filter(t => t.status === 'approved');
-        const backlog = tasks.filter(t => t.status === 'backlog');
-
-        document.getElementById('ig-posts-count').textContent = igPublished.length + ' (מתוך ' + published.length + ' done)';
-        document.getElementById('ig-posts-pending').textContent = pending.length;
-        document.getElementById('ig-posts-approved').textContent = approved.length;
-
-        // Next post to publish
-        if (approved.length > 0) {
-          const next = approved.sort((a,b) => (a.due_date||'').localeCompare(b.due_date||''))[0];
-          const dueStr = next.due_date ? new Date(next.due_date).toLocaleDateString('he-IL', {day:'2-digit',month:'2-digit'}) : '';
-          document.getElementById('ig-next-post').textContent = dueStr + ' ' + (next.title || '').substring(0, 20) + '…';
-        } else if (pending.length > 0) {
-          document.getElementById('ig-next-post').textContent = pending.length + ' ממתינים לאישור';
-          document.getElementById('ig-next-post').style.color = '#ff9800';
+        if (!source.length) {
+          campaignsWrap.innerHTML = '<div class="social-card" style="color:#555;font-size:.85rem">אין קמפיינים פעילים כרגע</div>';
         } else {
-          document.getElementById('ig-next-post').textContent = 'אין פוסטים מוכנים';
-          document.getElementById('ig-next-post').style.color = '#e74c3c';
+          const platformIcon = { facebook: '📘', instagram: '📸', instagram_facebook: '📸📘', google: '🔍', tiktok: '🎵' };
+          campaignsWrap.innerHTML = source.map(c => {
+            const icon    = platformIcon[c.platform] || '📣';
+            const budget  = c.budgetCurrency === 'ILS' ? `₪${Number(c.budget).toFixed(0)}` : `$${Number(c.budget).toFixed(0)}`;
+            const spend   = c.spend  != null ? (c.budgetCurrency === 'ILS' ? `₪${Number(c.spend).toFixed(0)}`  : `$${Number(c.spend).toFixed(0)}`)
+                                             : (c.spend_to_date != null ? `₪${Number(c.spend_to_date).toFixed(0)}` : '—');
+            const daysRem = c.daysRemaining != null ? c.daysRemaining
+                          : (c.end_date ? Math.max(0, Math.ceil((new Date(c.end_date) - Date.now()) / 86400000)) : '?');
+            const daysColor = daysRem > 7 ? '#4caf50' : daysRem > 3 ? '#ff9800' : '#e74c3c';
+
+            // Progress bar
+            const budgetNum = Number(c.budget || 0);
+            const spendNum  = c.spend != null ? Number(c.spend) : (c.spend_to_date != null ? Number(c.spend_to_date) : 0);
+            const pct       = budgetNum > 0 ? Math.min(100, Math.round(spendNum / budgetNum * 100)) : 0;
+            const barColor  = pct < 60 ? '#4caf50' : pct < 85 ? '#ff9800' : '#e74c3c';
+
+            // CPC / CPM / CTR — only from API campaigns object
+            const cpc = c.cpc  != null ? `$${Number(c.cpc).toFixed(2)}`   : '—';
+            const cpm = c.cpm  != null ? `$${Number(c.cpm).toFixed(2)}`   : '—';
+            const ctr = c.ctr  != null ? `${Number(c.ctr).toFixed(2)}%`   : '—';
+
+            return `
+              <div class="social-card">
+                <h4>${icon} ${c.platform || 'קמפיין'}</h4>
+                <div class="social-metric"><span>תקציב</span><span style="color:#c8a96e;font-weight:600">${budget}</span></div>
+                <div class="social-metric"><span>הוצאה עד כה</span><span style="color:#e74c3c">${spend}</span></div>
+                <div class="social-metric"><span>ימים שנותרו</span><span style="color:${daysColor};font-weight:600">${daysRem}</span></div>
+                <div style="margin:.5rem 0 .3rem;background:#1e1e1e;border-radius:4px;height:6px;overflow:hidden">
+                  <div style="width:${pct}%;height:100%;background:${barColor};border-radius:4px;transition:width .4s"></div>
+                </div>
+                <div style="font-size:.72rem;color:#555;text-align:left;margin-bottom:.5rem">${pct}% נוצל</div>
+                <div class="social-metric"><span>CPC</span><span style="color:#aaa">${cpc}</span></div>
+                <div class="social-metric"><span>CPM</span><span style="color:#aaa">${cpm}</span></div>
+                <div class="social-metric"><span>CTR</span><span style="color:#aaa">${ctr}</span></div>
+              </div>`;
+          }).join('');
         }
-
-        // Content calendar counts
-        document.getElementById('cal-backlog').textContent = backlog.length;
-        document.getElementById('cal-pending').textContent = pending.length;
-        document.getElementById('cal-approved').textContent = approved.length;
-
-        // Build 7-day calendar
-        buildContentCalendar(tasks);
       }
-    } catch(e) {
-      console.error('Social stats error:', e);
+    } catch(e) { console.error('Campaign cards error:', e); }
+
+    // ── Content pipeline stats — prefer API contentStats, fall back to agent_tasks ──
+    const cs = analyticsData.contentStats;
+    if (cs) {
+      document.getElementById('cp-published').textContent = cs.published ?? '—';
+      document.getElementById('cp-pending').textContent   = cs.pendingApproval ?? '—';
+      document.getElementById('cp-rejected').textContent  = cs.rejected ?? '—';
+      document.getElementById('cp-total').textContent     = cs.total ?? '—';
+      const qa = cs.avgQaScore;
+      if (qa != null) {
+        const qaColor = qa > 75 ? '#4caf50' : qa > 60 ? '#ff9800' : '#e74c3c';
+        document.getElementById('cp-qa-score').textContent = qa;
+        document.getElementById('cp-qa-score').style.color = qaColor;
+      }
+    } else {
+      // Fallback: read from agent_tasks (legacy path)
+      try {
+        const { data: tasks } = await _sb.from('agent_tasks').select('id,status,title,content_data,due_date,created_at').order('created_at', { ascending: false });
+        if (tasks) {
+          const published = tasks.filter(t => t.status === 'done');
+          const pending   = tasks.filter(t => t.status === 'pending_approval');
+          const approved  = tasks.filter(t => t.status === 'approved');
+          const backlog   = tasks.filter(t => t.status === 'backlog');
+          const rejected  = tasks.filter(t => t.status === 'rejected');
+          document.getElementById('cp-published').textContent = published.length;
+          document.getElementById('cp-pending').textContent   = pending.length;
+          document.getElementById('cp-rejected').textContent  = rejected.length;
+          document.getElementById('cp-total').textContent     = tasks.length;
+          // legacy hidden elements still used by buildContentCalendar
+          document.getElementById('cal-backlog').textContent  = backlog.length;
+          document.getElementById('cal-pending').textContent  = pending.length;
+          document.getElementById('cal-approved').textContent = approved.length;
+          buildContentCalendar(tasks);
+        }
+      } catch(e) { console.error('Content pipeline fallback error:', e); }
     }
   }
 
