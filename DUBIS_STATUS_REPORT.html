@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DUBIS — דוח סטטוס מערכת</title>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&family=Anton&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f0f0f;
+      --bg2:       #181818;
+      --bg3:       #222222;
+      --border:    #2e2e2e;
+      --gold:      #c8a96e;
+      --gold-dim:  #8a7148;
+      --text:      #e8e8e8;
+      --muted:     #888888;
+      --green:     #4caf6e;
+      --yellow:    #e6b93a;
+      --red:       #e05252;
+      --blue:      #5a9ade;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Heebo', sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      padding: 0 0 60px;
+    }
+
+    /* ─── HEADER ─── */
+    .header {
+      background: linear-gradient(160deg, #1a1610 0%, #0f0f0f 60%);
+      border-bottom: 1px solid var(--border);
+      padding: 40px 48px 32px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .header-brand {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .header-brand .wordmark {
+      font-family: 'Anton', sans-serif;
+      font-size: 52px;
+      color: var(--gold);
+      letter-spacing: 4px;
+      line-height: 1;
+    }
+    .header-brand .subtitle {
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .header-meta {
+      text-align: left;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 2;
+    }
+    .header-meta .ts {
+      color: var(--gold);
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    /* ─── LAYOUT ─── */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 32px;
+    }
+
+    section {
+      margin-top: 48px;
+    }
+
+    .section-title {
+      font-family: 'Anton', sans-serif;
+      font-size: 22px;
+      color: var(--gold);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-title .num {
+      background: var(--gold);
+      color: #0f0f0f;
+      font-size: 13px;
+      font-family: 'Heebo', sans-serif;
+      font-weight: 900;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* ─── STATUS DOTS ─── */
+    .dot {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.green  { background: var(--green);  box-shadow: 0 0 6px var(--green); }
+    .dot.yellow { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+    .dot.red    { background: var(--red);    box-shadow: 0 0 6px var(--red); }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge.ok      { background: rgba(76,175,110,.15); color: var(--green);  border: 1px solid rgba(76,175,110,.3); }
+    .badge.partial { background: rgba(230,185,58,.12); color: var(--yellow); border: 1px solid rgba(230,185,58,.3); }
+    .badge.fail    { background: rgba(224,82,82,.12);  color: var(--red);    border: 1px solid rgba(224,82,82,.3); }
+    .badge.info    { background: rgba(90,154,222,.12); color: var(--blue);   border: 1px solid rgba(90,154,222,.3); }
+
+    /* ─── AGENT CARDS ─── */
+    .agents-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 16px;
+    }
+
+    .agent-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: border-color .2s;
+    }
+    .agent-card:hover { border-color: var(--gold-dim); }
+
+    .agent-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .agent-name {
+      font-family: 'Anton', sans-serif;
+      font-size: 18px;
+      color: var(--text);
+      letter-spacing: 1px;
+    }
+    .agent-role {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .agent-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .agent-row {
+      display: flex;
+      gap: 8px;
+    }
+    .agent-row .label {
+      color: var(--muted);
+      min-width: 100px;
+      flex-shrink: 0;
+    }
+    .agent-row .val {
+      color: var(--text);
+    }
+
+    .agent-summary {
+      background: var(--bg3);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #aaa;
+      font-style: italic;
+      border-right: 3px solid var(--gold-dim);
+      line-height: 1.5;
+    }
+
+    .agent-issue {
+      font-size: 12px;
+      color: var(--yellow);
+      background: rgba(230,185,58,.07);
+      border-radius: 6px;
+      padding: 8px 10px;
+      border-right: 3px solid var(--yellow);
+    }
+
+    /* ─── TABLES ─── */
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead th {
+      background: var(--bg3);
+      color: var(--gold);
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 12px 16px;
+      text-align: right;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr {
+      border-bottom: 1px solid #1e1e1e;
+      transition: background .15s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--bg3); }
+    tbody td {
+      padding: 11px 16px;
+      color: var(--text);
+      vertical-align: middle;
+    }
+    .td-muted { color: var(--muted); }
+    .td-mono  { font-family: 'Courier New', monospace; font-size: 12px; color: #9ab; }
+
+    /* ─── CRON TABLE HIGHLIGHTS ─── */
+    .tag-new {
+      display: inline-block;
+      background: rgba(90,154,222,.2);
+      color: var(--blue);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(90,154,222,.4);
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    /* ─── ENV GRID ─── */
+    .env-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 10px;
+    }
+    .env-row {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .env-key {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: #9ab;
+    }
+
+    /* ─── FUNCTIONS LIST ─── */
+    .fn-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 10px;
+    }
+    .fn-row {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .fn-path {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: var(--gold-dim);
+    }
+    .fn-desc {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .capacity-bar-wrap {
+      margin-bottom: 20px;
+    }
+    .capacity-label {
+      font-size: 13px;
+      color: var(--text);
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .capacity-label span { color: var(--red); font-weight: 700; }
+    .capacity-bar {
+      height: 10px;
+      background: var(--bg3);
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .capacity-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, var(--yellow), var(--red));
+      border-radius: 6px;
+    }
+
+    /* ─── ISSUES ─── */
+    .issues-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .issue-item {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-right: 4px solid var(--red);
+      border-radius: 8px;
+      padding: 14px 18px;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+    .issue-num {
+      font-family: 'Anton', sans-serif;
+      font-size: 22px;
+      color: var(--red);
+      opacity: .5;
+      line-height: 1;
+      flex-shrink: 0;
+      width: 28px;
+    }
+    .issue-title {
+      font-weight: 700;
+      color: var(--text);
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .issue-body {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* ─── VISION TABLE ─── */
+    .vision-table tbody td:nth-child(2),
+    .vision-table tbody td:nth-child(3) {
+      text-align: center;
+    }
+
+    /* ─── FOOTER ─── */
+    .footer {
+      margin-top: 60px;
+      border-top: 1px solid var(--border);
+      padding: 24px 32px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .footer strong { color: var(--gold); }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════ HEADER ══════════════════ -->
+<div class="header">
+  <div class="header-brand">
+    <div class="wordmark">DUBIS</div>
+    <div class="subtitle">System Status Report &nbsp;·&nbsp; דוח סטטוס מערכת</div>
+  </div>
+  <div class="header-meta">
+    <div class="ts">נוצר: 2 באפריל 2026</div>
+    <div>dubis.net &nbsp;|&nbsp; Vercel Hobby &nbsp;|&nbsp; Supabase + Gelato</div>
+    <div>Agents: 8 &nbsp;|&nbsp; Cron Jobs: 6 &nbsp;|&nbsp; Functions: 12/12</div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ══════════════════ SECTION 1: AGENTS ══════════════════ -->
+  <section>
+    <div class="section-title"><span class="num">1</span>סוכנים — סקירה כללית (8 Agents)</div>
+
+    <div class="agents-grid">
+
+      <!-- Boss Agent -->
+      <div class="agent-card">
+        <div class="agent-header">
+          <div>
+            <div class="agent-name">Boss Agent</div>
+            <div class="agent-role">ניהול יומי + דוח בוקר</div>
+          </div>
+          <span class="badge ok"><span class="dot green"></span>פעיל</span>
+        </div>
+        <div class="agent-body">
+          <div class="agent-row"><span class="label">לוח זמנים</span><span class="val">AUTO — cron 05:00 UTC (07:00 IL)</span></div>
+          <div class="agent-row"><span class="label">ריצה אחרונה</span><span class="val">02/04/2026 — completed</span></div>
+          <div class="agent-row"><span class="label">משימות פתוחות</span><span class="val">2 daily reports pending approval</span></div>
+        </div>
+        <div class="agent-summary">"Daily summary compiled — 2 pending approval, 3 high-priority backlog"</div>
+      </div>
+
+      <!-- Content Agent -->
+      <div class="agent-card">
+        <div class="agent-header">
+          <div>
+            <div class="agent-name">Content Agent</div>
+            <div class="agent-role">יצירת תוכן לאינסטגרם (caption + image)</div>
+          </div>
+          <span class="badge partial"><span class="dot yellow"></span>חלקי</span>
+        </div>
+        <div class="agent-body">
+          <div class="agent-row"><span class="label">לוח זמנים</span><span class="val">AUTO — cron 10:00 UTC + חלק מ-05:00</span></div>
+          <div class="agent-row"><span class="label">ריצה אחרונה</span><span class="val">01/04/2026 — completed</span></div>
+          <div class="agent-row"><span class="label">משימות פתוחות</span><span class="val">1 approved (רילס), 3 backlog</span></div>
+        </div>
+        <div class="agent-summary">"Instagram Post — NAPPING IS MY CARDIO → pending_approval"</div>
+        <div class="agent-issue">NAPPING IS MY CARDIO הגיע עם caption ריק ותמונה לא מותגית. תיקון deployed. Gemini image gen הוסף כ-primary.</div>
+      </div>
+
+      <!-- CTO Agent -->
+      <div class="agent-card">
+        <div class="agent-header">
+          <div>
+            <div class="agent-name">CTO Agent</div>
+            <div class="agent-role">תוכניות יישום טכניות</div>
+          </div>
+          <span class="badge info"><span class="dot green"></span>ידני</span>
+        </div>
+        <div class="agent-body">
+          <div class="agent-row"><span class="label">לוח זמנים</span><span class="val">ידני — רץ רק כשלוחצים "הרץ"</span></div>
+          <div class="agent-row"><span class="label">ריצה אחרונה</span><span class="val">לא רץ לאחרונה</span></div>
+          <div class="agent-row"><span class="label">משימות פתוחות</span><span class="val">2 backlog (Stripe, Google Shopping)</span></div>
+        </div>
+        <div class="agent-summary">יוצר תוכנית טכנית עם Gemini כשרץ — אבל לא רץ אוטומטית.</div>
+      </div>
+
+      <!-- Email Monitor Agent -->
+      <div class="agent-card">
+        <div class="agent-header">
+          <div>
+            <div class="agent-name">Email Monitor</div>
+            <div class="agent-role">סריקת Gmail יומית — חשבוניות, התראות, הזמנות</div>
+          </div>
+          <span class="badge ok"><span class="dot green"></span>פעיל</span>
+        </div>
+        <div class="agent-body">
+          <div class="agent-row"><span class="label">לוח זמנים</span><span class="val">AUTO 06:45 UTC (08:45 IL) — Cowork</span></div>
+          <div class="agent-row"><span class="label">ריצה אחרונה</span><span class="val">02/04/2026 — completed</span></div>
+          <div class="agent-row"><span class="label">משימות פתוחות</span><span class="val">4 backlog (Vercel deployment, Meta ads...)</span></div>
+        </div>
+        <div class="agent-summary">"11 emails scanned, 3 tasks created (1 HIGH: Vercel failed deployment)"</div>
+      </div>
+
+      <!-- Marketing Agent -->
+      <div class="agent-card">
+        <div class="agent-header">
+          <div>
+            <div class="agent-name">Marketing Agent</div>
+            <div class="agent-role">אסטרטגיית שיווק וניתוח</div>
+          </div>
+          <span class="badge partial"><span class="dot yellow"></span>חלקי</span>
+        </div>
+        <div class="agent-body">
+          <div class="agent-row"><span class="label">לוח זמנים</span><span class="val">ידני</span></div>
+          <div class="agent-row"><span class="label">ריצה אחרונה</span><span class="val">לא רץ לאחרונה</span></div>
+          <div class="agent-row"><span class="label">משימות פתוחות</span><span class="val">1 in_progress (SEO — תקוע מ-21/03)</span></div>
+        </div>
+        <div class="agent-summary">יוצר ניתוח עם Gemini אבל לא מבצע שום דבר בפועל.</div>
+        <div class="agent-issue">SEO keyword research תקוע מ-21/03/2026 — ללא התקדמות.</div>
+      </div>
+
+      <!-- Design Agent -->
+      <div class="agent-card">
+        <div class="agent-header">
+          <div>
+            <div class="agent-name">Design Agent</div>
+            <div class="agent-role">עיצוב AI תמונות</div>
+          </div>
+          <span class="badge fail"><span class="dot red"></span>לא פעיל</span>
+        </div>
+        <div class="agent-body">
+          <div class="agent-row"><span class="label">לוח זמנים</span><span class="val">ידני</span></div>
+          <div class="agent-row"><span class="label">ריצה אחרונה</span><span class="val">לא רץ</span></div>
+          <div class="agent-row"><span class="label">משימות פתוחות</span><span class="val">0</span></div>
+        </div>
+        <div class="agent-summary">אין משימות, אין runs — לא ממומש בפועל.</div>
+      </div>
+
+      <!-- Supply Agent -->
+      <div class="agent-card">
+        <div class="agent-header">
+          <div>
+            <div class="agent-name">Supply Agent</div>
+            <div class="agent-role">שרשרת אספקה — Gelato sync</div>
+          </div>
+          <span class="badge ok"><span class="dot green"></span>פעיל</span>
+        </div>
+        <div class="agent-body">
+          <div class="agent-row"><span class="label">לוח זמנים</span><span class="val">AUTO — cron 00:00 UTC (02:00 IL)</span></div>
+          <div class="agent-row"><span class="label">ריצה אחרונה</span><span class="val">אוטומטי כל לילה</span></div>
+          <div class="agent-row"><span class="label">משימות פתוחות</span><span class="val">0</span></div>
+        </div>
+        <div class="agent-summary">Gelato sync רץ כל לילה — מעדכן סטטוסי הזמנות.</div>
+      </div>
+
+      <!-- Site Audit Agent -->
+      <div class="agent-card">
+        <div class="agent-header">
+          <div>
+            <div class="agent-name">Site Audit Agent</div>
+            <div class="agent-role">סריקת SEO/UX יומית</div>
+          </div>
+          <span class="badge ok"><span class="dot green"></span>פעיל</span>
+        </div>
+        <div class="agent-body">
+          <div class="agent-row"><span class="label">לוח זמנים</span><span class="val">AUTO 06:50 UTC (08:50 IL) — Cowork</span></div>
+          <div class="agent-row"><span class="label">ריצה אחרונה</span><span class="val">02/04/2026 — completed</span></div>
+          <div class="agent-row"><span class="label">משימות פתוחות</span><span class="val">4 backlog + 2 in_progress</span></div>
+        </div>
+        <div class="agent-summary">"13 checks, 0 new findings. Known issues still open" — GA duplicate, WhatsApp button.</div>
+      </div>
+
+    </div><!-- /agents-grid -->
+  </section>
+
+  <!-- ══════════════════ SECTION 2: CRON JOBS ══════════════════ -->
+  <section>
+    <div class="section-title"><span class="num">2</span>לוח זמנים — Cron Jobs</div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>זמן UTC</th>
+            <th>זמן ישראל</th>
+            <th>משימה</th>
+            <th>Endpoint</th>
+            <th>סטטוס</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="td-muted">00:00</td>
+            <td class="td-muted">02:00</td>
+            <td>Gelato Sync</td>
+            <td class="td-mono">/api/admin/gelato-sync</td>
+            <td><span class="badge ok"><span class="dot green"></span>פעיל</span></td>
+          </tr>
+          <tr>
+            <td class="td-muted">05:00</td>
+            <td class="td-muted">07:00</td>
+            <td>Morning Report + Content</td>
+            <td class="td-mono">/api/cron/morning-report</td>
+            <td><span class="badge ok"><span class="dot green"></span>פעיל</span></td>
+          </tr>
+          <tr>
+            <td class="td-muted">06:45</td>
+            <td class="td-muted">08:45</td>
+            <td>Email Monitor</td>
+            <td class="td-mono">Cowork Agent</td>
+            <td><span class="badge ok"><span class="dot green"></span>פעיל</span></td>
+          </tr>
+          <tr>
+            <td class="td-muted">06:50</td>
+            <td class="td-muted">08:50</td>
+            <td>Site Audit</td>
+            <td class="td-mono">Cowork Agent</td>
+            <td><span class="badge ok"><span class="dot green"></span>פעיל</span></td>
+          </tr>
+          <tr>
+            <td class="td-muted">08:00</td>
+            <td class="td-muted">10:00</td>
+            <td><span class="tag-new">NEW</span>Review Requests</td>
+            <td class="td-mono">/api/cron/review-requests</td>
+            <td><span class="badge ok"><span class="dot green"></span>פעיל</span></td>
+          </tr>
+          <tr>
+            <td class="td-muted">10:00</td>
+            <td class="td-muted">12:00</td>
+            <td><span class="tag-new">NEW</span>Content Pipeline</td>
+            <td class="td-mono">/api/cron/morning-report?type=content</td>
+            <td><span class="badge ok"><span class="dot green"></span>פעיל</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══════════════════ SECTION 3: ENV VARS ══════════════════ -->
+  <section>
+    <div class="section-title"><span class="num">3</span>משתני סביבה — Environment Variables</div>
+
+    <div class="env-grid">
+      <div class="env-row"><span class="env-key">SUPABASE_URL</span><span class="badge ok"><span class="dot green"></span>מוגדר</span></div>
+      <div class="env-row"><span class="env-key">SUPABASE_SERVICE_ROLE_KEY</span><span class="badge ok"><span class="dot green"></span>מוגדר</span></div>
+      <div class="env-row"><span class="env-key">RESEND_API_KEY</span><span class="badge ok"><span class="dot green"></span>מוגדר</span></div>
+      <div class="env-row"><span class="env-key">GELATO</span><span class="badge ok"><span class="dot green"></span>מוגדר</span></div>
+      <div class="env-row"><span class="env-key">GMAIL_CLIENT_ID</span><span class="badge ok"><span class="dot green"></span>מוגדר</span></div>
+      <div class="env-row"><span class="env-key">GMAIL_CLIENT_SECRET</span><span class="badge ok"><span class="dot green"></span>מוגדר</span></div>
+      <div class="env-row"><span class="env-key">GMAIL_REFRESH_TOKEN</span><span class="badge ok"><span class="dot green"></span>מוגדר</span></div>
+      <div class="env-row"><span class="env-key">INSTAGRAM_ACCESS_TOKEN</span><span class="badge ok"><span class="dot green"></span>מוגדר</span></div>
+      <div class="env-row"><span class="env-key">INSTAGRAM_ACCOUNT_ID</span><span class="badge ok"><span class="dot green"></span>מוגדר</span></div>
+      <div class="env-row"><span class="env-key">CRON_SECRET</span><span class="badge ok"><span class="dot green"></span>מוגדר</span></div>
+      <div class="env-row"><span class="env-key">GEMINI_API_KEY</span><span class="badge partial"><span class="dot yellow"></span>לא ידוע — לבדוק</span></div>
+      <div class="env-row"><span class="env-key">AGENT_SECRET</span><span class="badge ok"><span class="dot green"></span>מוגדר</span></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════ SECTION 4: SERVERLESS FUNCTIONS ══════════════════ -->
+  <section>
+    <div class="section-title"><span class="num">4</span>Serverless Functions — 12/12 (קיבולת מלאה)</div>
+
+    <div class="capacity-bar-wrap">
+      <div class="capacity-label">
+        ניצול קיבולת Vercel Hobby &nbsp;
+        <span>12 / 12 — אין אפשרות להוסיף functions נוספות</span>
+      </div>
+      <div class="capacity-bar"><div class="capacity-fill"></div></div>
+    </div>
+
+    <div class="fn-grid">
+      <div class="fn-row">
+        <span class="fn-path">/api/create-gelato-order.js</span>
+        <span class="fn-desc">יצירת הזמנה ב-Gelato אחרי PayPal capture</span>
+      </div>
+      <div class="fn-row">
+        <span class="fn-path">/api/orders/save.js</span>
+        <span class="fn-desc">שמירת הזמנה ב-Supabase</span>
+      </div>
+      <div class="fn-row">
+        <span class="fn-path">/api/email/confirm-order.js</span>
+        <span class="fn-desc">שליחת אימייל אישור הזמנה דרך Resend</span>
+      </div>
+      <div class="fn-row">
+        <span class="fn-path">/api/admin/orders.js</span>
+        <span class="fn-desc">Admin API — רשימת הזמנות + הכנסות</span>
+      </div>
+      <div class="fn-row">
+        <span class="fn-path">/api/admin/gelato-sync.js</span>
+        <span class="fn-desc">סנכרון סטטוסי הזמנות מ-Gelato</span>
+      </div>
+      <div class="fn-row">
+        <span class="fn-path">/api/admin/analytics.js</span>
+        <span class="fn-desc">Admin analytics — נתוני ביצועים</span>
+      </div>
+      <div class="fn-row">
+        <span class="fn-path">/api/analytics/track.js</span>
+        <span class="fn-desc">מעקב page views</span>
+      </div>
+      <div class="fn-row">
+        <span class="fn-path">/api/cron/morning-report.js</span>
+        <span class="fn-desc">Boss Agent + Content Pipeline (cron 05:00 + 10:00)</span>
+      </div>
+      <div class="fn-row">
+        <span class="fn-path">/api/cron/review-requests.js</span>
+        <span class="fn-desc">שליחת בקשות ביקורת אחרי משלוח (cron 08:00)</span>
+      </div>
+      <div class="fn-row">
+        <span class="fn-path">/api/agent/run.js</span>
+        <span class="fn-desc">הפעלת agents ידנית — CTO / Marketing / Design</span>
+      </div>
+      <div class="fn-row">
+        <span class="fn-path">/api/agent/tasks.js</span>
+        <span class="fn-desc">ניהול task queue — קריאה + עדכון</span>
+      </div>
+      <div class="fn-row">
+        <span class="fn-path">/api/instagram/publish.js</span>
+        <span class="fn-desc">פרסום תוכן לאינסטגרם אחרי אישור</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════ SECTION 5: CRITICAL ISSUES ══════════════════ -->
+  <section>
+    <div class="section-title"><span class="num">5</span>בעיות קריטיות — Open Items</div>
+
+    <div class="issues-list">
+
+      <div class="issue-item">
+        <div class="issue-num">01</div>
+        <div>
+          <div class="issue-title">Content Agent — תמונות לא מותגיות</div>
+          <div class="issue-body">Pollinations מייצר תמונות גנריות שאינן מותאמות למותג DUBIS. Gemini image gen הוסף כ-primary source, אבל יש לוודא ש-GEMINI_API_KEY מוגדר ב-Vercel. בלי המפתח — Gemini לא ירוץ וה-fallback יהיה Pollinations.</div>
+        </div>
+      </div>
+
+      <div class="issue-item">
+        <div class="issue-num">02</div>
+        <div>
+          <div class="issue-title">Design Agent — לא פעיל בכלל</div>
+          <div class="issue-body">אין משימות, אין runs, לא ממומש בפועל. הסוכן קיים בתיעוד אבל לא יוצר ערך. נדרש: להגדיר pipeline ברור — מה הסוכן מייצר, מתי, ועם איזה כלי.</div>
+        </div>
+      </div>
+
+      <div class="issue-item">
+        <div class="issue-num">03</div>
+        <div>
+          <div class="issue-title">Marketing Agent — SEO Research תקוע</div>
+          <div class="issue-body">משימת SEO keyword research נוצרה ב-21/03/2026 ונשארת in_progress ללא התקדמות מאז. הסוכן יוצר ניתוח אבל לא מבצע בפועל. נדרש סקירה ידנית והגדרת deliverables ברורים.</div>
+        </div>
+      </div>
+
+      <div class="issue-item">
+        <div class="issue-num">04</div>
+        <div>
+          <div class="issue-title">~42 תמונות מוצר קדמיות חסרות</div>
+          <div class="issue-body">כ-42 מוצרים חסרי תמונת front במצב נוכחי. משפיע על חוויית הקנייה ועל SEO. נדרש: הפעלת Design Agent עם pipeline של Gelato mockup + overlay לוגו, או הפקת ידנית.</div>
+        </div>
+      </div>
+
+      <div class="issue-item">
+        <div class="issue-num">05</div>
+        <div>
+          <div class="issue-title">Amos Ashkenazi — הזמנה חסרה ב-Supabase</div>
+          <div class="issue-body">$33.99 שולמו דרך PayPal אבל ההזמנה לא נשמרה ב-Supabase. ייתכן שהייתה שגיאה ב-/api/orders/save בזמן הרכישה. נדרש: בדיקת PayPal dashboard, יצירת רשומה ידנית ב-Supabase, ומעקב אחר ה-Gelato order.</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ══════════════════ SECTION 6: VISION VS REALITY ══════════════════ -->
+  <section>
+    <div class="section-title"><span class="num">6</span>חזון מול מציאות — סיכום</div>
+
+    <div class="table-wrap">
+      <table class="vision-table">
+        <thead>
+          <tr>
+            <th>רכיב</th>
+            <th>חזון</th>
+            <th>מציאות</th>
+            <th>הערה</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>סוכנים אוטונומיים 24/7</td>
+            <td><span class="badge ok"><span class="dot green"></span>יעד</span></td>
+            <td><span class="badge partial"><span class="dot yellow"></span>4/8 אוטומטי</span></td>
+            <td class="td-muted">Boss, Supply, Email, Site Audit — AUTO. שאר ידני</td>
+          </tr>
+          <tr>
+            <td>תוכן יומי ללא מגע</td>
+            <td><span class="badge ok"><span class="dot green"></span>יעד</span></td>
+            <td><span class="badge partial"><span class="dot yellow"></span>תוכן נוצר</span></td>
+            <td class="td-muted">נוצר אבל איכות תמונה לא עקבית — Gemini בתהליך</td>
+          </tr>
+          <tr>
+            <td>ROI אוטומטי</td>
+            <td><span class="badge ok"><span class="dot green"></span>יעד</span></td>
+            <td><span class="badge partial"><span class="dot yellow"></span>חלקי</span></td>
+            <td class="td-muted">Gmail מחובר, expense tracking אפשרי — לא מומש</td>
+          </tr>
+          <tr>
+            <td>הבעלים רק מאשר</td>
+            <td><span class="badge ok"><span class="dot green"></span>יעד</span></td>
+            <td><span class="badge partial"><span class="dot yellow"></span>חלקי</span></td>
+            <td class="td-muted">הבעלים עדיין מפעיל agents ידניים (CTO, Marketing, Design)</td>
+          </tr>
+          <tr>
+            <td>Follow-up אוטומטי</td>
+            <td><span class="badge ok"><span class="dot green"></span>יעד</span></td>
+            <td><span class="badge ok"><span class="dot green"></span>מומש</span></td>
+            <td class="td-muted">Review requests cron חדש — פעיל</td>
+          </tr>
+          <tr>
+            <td>Agent Orchestrator</td>
+            <td><span class="badge ok"><span class="dot green"></span>יעד</span></td>
+            <td><span class="badge fail"><span class="dot red"></span>לא קיים</span></td>
+            <td class="td-muted">אין orchestrator — כל agent רץ עצמאית, אין תיאום</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div><!-- /container -->
+
+<div class="footer">
+  <strong>DUBIS</strong> &nbsp;·&nbsp; dubis.net &nbsp;·&nbsp; דוח נוצר אוטומטית &nbsp;·&nbsp; 2 באפריל 2026
+</div>
+
+</body>
+</html>

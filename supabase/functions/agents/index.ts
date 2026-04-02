@@ -312,12 +312,19 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
               const cRes = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
                 { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ contents: [{ parts: [{ text: captionPrompt }] }] }) },
+                  body: JSON.stringify({ contents: [{ parts: [{ text: captionPrompt }] }] }),
+                  signal: AbortSignal.timeout(30000) },
               );
+              if (!cRes.ok) throw new Error(`Gemini caption HTTP ${cRes.status}`);
               const cData = await cRes.json();
               const raw = cData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              if (!raw) throw new Error('Gemini returned empty caption response');
               try { gen = JSON.parse(raw.replace(/```json|```/g, '').trim()); } catch { gen = { caption_en: raw.substring(0, 200) }; }
               if (gen.caption_he) gen.caption_he = fixHebrew(gen.caption_he);
+              // Validate: caption must not be empty after generation
+              if (!gen.caption_he && !gen.caption_en) {
+                throw new Error('Caption generation failed — both he and en are empty');
+              }
             } else {
               gen = { caption_he: cd.caption_he as string, caption_en: cd.caption_en as string, hashtags: cd.hashtags as string };
             }
@@ -373,13 +380,22 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
                 }
               } catch { /* timeout — proceed without image */ }
             }
+            const finalCapHe = gen.caption_he || (cd.caption_he as string) || '';
+            const finalCapEn = gen.caption_en || (cd.caption_en as string) || '';
+            const finalHashtags = gen.hashtags || (cd.hashtags as string) || '';
+            const hasCaption = !!(finalCapHe || finalCapEn);
+            const newStatus = hasCaption ? 'pending_approval' : 'in_progress';
             await sb.from('agent_tasks').update({
-              content_data: { ...cd, caption_he: gen.caption_he || cd.caption_he || '', caption_en: gen.caption_en || cd.caption_en || '', hashtags: gen.hashtags || cd.hashtags || '', ...(imageUrl ? { generated_image_url: imageUrl } : {}) },
-              status: 'pending_approval',
-              notes: ((task.notes as string) || '') + `\n✍️ תוכן נוצר ע"י AI — ${new Date().toLocaleDateString('he-IL')}`,
+              content_data: { ...cd, caption_he: finalCapHe, caption_en: finalCapEn, hashtags: finalHashtags, ...(imageUrl ? { generated_image_url: imageUrl } : {}) },
+              status: newStatus,
+              notes: ((task.notes as string) || '') + (hasCaption
+                ? `\n✍️ תוכן נוצר ע"י AI — ${new Date().toLocaleDateString('he-IL')}`
+                : `\n⚠️ יצירת תוכן נכשלה — נשאר ב-in_progress לניסיון חוזר — ${new Date().toLocaleDateString('he-IL')}`),
               updated_at: now,
             }).eq('id', task.id);
-            taskResults.push(`✅ ${task.title}: תוכן${imageUrl ? ' + תמונה' : ' (ללא תמונה)'} → pending_approval`);
+            taskResults.push(hasCaption
+              ? `✅ ${task.title}: תוכן${imageUrl ? ' + תמונה' : ' (ללא תמונה)'} → pending_approval`
+              : `⚠️ ${task.title}: קופי ריק — נשאר ב-in_progress לניסיון חוזר`);
           } catch (e) {
             await sb.from('agent_tasks').update({ status: 'in_progress', updated_at: now }).eq('id', task.id);
             taskResults.push(`❌ ${task.title}: ${(e as Error).message}`);
