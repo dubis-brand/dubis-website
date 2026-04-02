@@ -7,11 +7,11 @@
 Vercel Hobby plan allows MAX 12 Serverless Functions per deployment.
 We are currently AT the limit (12/12).
 
-**Current API files (11/12):**
+**Current API files (12/12) — NO MORE SLOTS:**
 1. `/api/analytics/track.js` — Page view tracking
 2. `/api/create-gelato-order.js` — Gelato order creation
-3. `/api/coupons/` — Coupon management
-4. `/api/cron/morning-report.js` — Morning cron report
+3. `/api/cron/morning-report.js` — Morning cron report + content pipeline (?type=content)
+4. `/api/cron/review-requests.js` — Review request emails (7 days post-delivery)
 5. `/api/email/confirm-order.js` — Order confirmation email
 6. `/api/orders/save.js` — Save order to Supabase
 7. `/api/webhooks/gelato.js` — Gelato webhook
@@ -19,7 +19,7 @@ We are currently AT the limit (12/12).
 9. `/api/admin/coupons.js` — Coupon management
 10. `/api/admin/gelato-sync.js` — Gelato sync admin
 11. `/api/admin/orders.js` — Order management
-12. (free slot)
+12. `/api/admin/users.js` — User management
 
 **Migrated to Supabase Edge Functions:**
 - `agents` — All 21 agent routes at `https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents`

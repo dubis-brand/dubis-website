@@ -273,18 +273,42 @@ Deno.serve(async (req: Request) => {
             if (!cd.caption_he) {
               const isStory = cd.format === 'story';
               const captionPrompt = isStory
-                ? `You are a social media manager for DUBIS — Israeli clothing brand. Tagline: "For the rest of us."
-IMPORTANT: Write caption_he in Hebrew ONLY. Use "קפוצון" NOT "הודי" for hoodie.
+                ? `You are the Senior Copywriter for DUBIS — an anti-fashion Israeli apparel brand. Tagline: "For the rest of us."
+
+BRAND DNA: Our audience is 40+, real bodies, real lives. They are exhausted by fake "perfect model" culture. DUBIS breaks the paradox: comfortable clothes that fit real bodies AND proudly declare who they are.
+
+TONE RULES (STRICT):
+- Write in first-person plural (אנחנו) — tribe mentality, never preach AT the customer
+- Cynical, witty, dry humor — like a sharp friend over a beer
+- Anti-marketing: ZERO buzzwords. BANNED: מושלם, מהמם, חובה, מטורף
+- NEVER imply customer needs to "improve" or "fix" themselves
+- Use "קפוצון" NOT "הודי" or "הודיז"
+- Short punchy sentences. Cut all fluff.
+
 Task: "${task.title}"
-Description: "${task.description || ''}"
-Format: STORY. Caption must be SHORT: 1-2 punchy sentences max.
+Slogan on product: "${(cd.product_slogan as string) || ''}"
+Format: STORY — 1-2 punchy sentences max.
+
 Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs","image_prompt":"..."}`
-                : `You are a social media manager for DUBIS — Israeli clothing brand. Tagline: "For the rest of us."
-IMPORTANT: Write caption_he in Hebrew ONLY. Use "קפוצון" NOT "הודי".
+                : `You are the Senior Copywriter for DUBIS — an anti-fashion Israeli apparel brand. Tagline: "For the rest of us."
+
+BRAND DNA: Our audience is 40+, real bodies, real lives. They are exhausted by fake "perfect model" culture. DUBIS breaks the paradox: comfortable clothes that fit real bodies AND proudly declare who they are.
+
+TONE RULES (STRICT):
+- Write in first-person plural (אנחנו) — tribe mentality, never preach AT the customer
+- Cynical, witty, dry humor — like a sharp friend over a beer
+- Anti-marketing: ZERO buzzwords. BANNED: מושלם, מהמם, חובה, מטורף
+- NEVER imply customer needs to "improve" or "fix" themselves
+- Use "קפוצון" NOT "הודי" or "הודיז"
+- Hook: start with a relatable cynical observation about life over 40
+- CTA: casual and confident (e.g., "בואו להרגיש בבית", "הצטרפו לשאר")
+
 Task: "${task.title}"
-Description: "${task.description || ''}"
+Slogan on product: "${(cd.product_slogan as string) || ''}"
+Product type: "${(cd.product_type as string) || ''}"
 Format: ${cd.format || 'feed_post'}
-Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS ...5-10 tags","image_prompt":"..."}`;
+
+Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS ...5-10 relevant tags","image_prompt":"..."}`;
               const cRes = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
                 { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -299,9 +323,42 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
             }
 
             let imageUrl = hasPermImg ? (cd.generated_image_url as string) : '';
+            // Try Gemini first for brand-accurate images
+            if (!imageUrl && geminiKey) {
+              const dubisRule = 'Israeli streetwear brand. Real diverse body types 40+, authentic candid look. Dark oversized clothing. Dark minimal urban aesthetic. Do NOT render any text, words, letters, or logos anywhere in the image.';
+              const titleLower = (task.title as string).toLowerCase();
+              const defaultImgPrompt = (cd.format as string) === 'quote_card'
+                ? 'Minimalist dark charcoal textured background. Moody low-key lighting. No people. No text. Square 1:1.'
+                : titleLower.includes('nap') || titleLower.includes('cardio')
+                ? `Person relaxing on couch wearing oversized dark hoodie. Cozy apartment, soft warm lighting. ${dubisRule}`
+                : `Authentic people wearing dark DUBIS streetwear, urban minimal setting, dark aesthetic, natural lighting, square 1:1. ${dubisRule}`;
+              const fullPrompt = (gen.image_prompt || defaultImgPrompt) + '. Fashion photography. Square 1:1. No watermark. Photorealistic.';
+              try {
+                const gRes = await fetch(
+                  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiKey}`,
+                  { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: fullPrompt }] }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'] } }),
+                    signal: AbortSignal.timeout(50000) },
+                );
+                if (gRes.ok) {
+                  const gData = await gRes.json();
+                  type GemPart = Record<string, unknown>;
+                  const imgPart = gData.candidates?.[0]?.content?.parts?.find((p: GemPart) => (p.inlineData as GemPart)?.mimeType?.toString().startsWith('image/'));
+                  if (imgPart?.inlineData) {
+                    const imgBytes = b64ToBytes(imgPart.inlineData.data as string);
+                    await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
+                    const fname = `ig-${task.id}.jpg`;
+                    await sb.storage.from('ig-images').upload(fname, imgBytes, { contentType: 'image/jpeg', upsert: true });
+                    const { data: { publicUrl } } = sb.storage.from('ig-images').getPublicUrl(fname);
+                    imageUrl = publicUrl;
+                  }
+                }
+              } catch { /* Gemini timeout — fall through to Pollinations */ }
+            }
+            // Fallback: Pollinations
             if (!imageUrl) {
               const imgPromptText = gen.image_prompt ||
-                `${task.title}, authentic urban lifestyle, DUBIS Israeli clothing brand, real diverse people, dark minimal aesthetic`;
+                `${task.title}, authentic urban lifestyle, DUBIS Israeli dark streetwear, real diverse people 40+, dark minimal aesthetic, no text`;
               const prompt = encodeURIComponent(imgPromptText + '. Fashion photography. No text. No watermark. Square 1:1. Photorealistic.');
               const seed = parseInt((task.id as string).replace(/-/g, '').substring(0, 8), 16) % 999999 + 1;
               try {

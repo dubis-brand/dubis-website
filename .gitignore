@@ -9,3 +9,5 @@ node_modules/
 *.bak
 images/test-*.jpg
 supabase-migration-*.sql
+
+.env*.local

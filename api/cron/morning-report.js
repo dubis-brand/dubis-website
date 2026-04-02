@@ -99,6 +99,50 @@ async function runGmailScan(supabase) {
         return { error: err.message };
     }
 }
+// ── Standalone content pipeline (called via ?type=content) ──────────────────
+async function runContentPipeline(supabase, res) {
+    try {
+        const agentsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1/agents';
+        const authToken  = process.env.CRON_SECRET || process.env.AGENT_SECRET || '';
+
+        // 1. Create today's content task (auto-rotate products)
+        const autoRes  = await fetch(`${agentsBase}?type=auto-content`, {
+            method:  'POST',
+            headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+        });
+        const autoData = await autoRes.json();
+        console.log('[content-cron] Auto-content:', JSON.stringify(autoData));
+
+        // 2. If a new task was created, generate caption + image
+        if (autoData.task_id && !autoData.skipped) {
+            const runRes  = await fetch(`${agentsBase}?type=content-run`, {
+                method:  'GET',
+                headers: { 'x-agent-secret': process.env.SUPABASE_SERVICE_ROLE_KEY },
+            });
+            const runData = await runRes.json();
+            console.log('[content-cron] Content-run:', JSON.stringify(runData));
+
+            // 3. Run QA on the generated content
+            const qaRes  = await fetch(`${agentsBase}?type=qa-content`, {
+                method:  'POST',
+                headers: {
+                    'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+            const qaData = await qaRes.json();
+            console.log('[content-cron] QA-content:', JSON.stringify(qaData));
+
+            return res.status(200).json({ success: true, task_id: autoData.task_id, qa: qaData });
+        }
+
+        return res.status(200).json({ success: true, skipped: autoData.skipped || false, message: autoData.message || 'No new content needed' });
+    } catch (err) {
+        console.error('[content-cron] Error:', err.message);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 
 module.exports = async function handler(req, res) {
@@ -117,15 +161,23 @@ module.exports = async function handler(req, res) {
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
         return res.status(500).json({ error: 'Supabase not configured' });
     }
-    if (!process.env.RESEND_API_KEY) {
-        return res.status(500).json({ error: 'Resend not configured' });
-    }
 
     const supabase = createClient(
         process.env.SUPABASE_URL,
         process.env.SUPABASE_SERVICE_ROLE_KEY,
         { auth: { autoRefreshToken: false, persistSession: false } }
     );
+
+    // ── Route: ?type=content — standalone content generation ────────────
+    // Called by Vercel cron at 10:00 UTC (12:00 Israel) separately from morning report
+    const urlType = new URL(req.url, `https://${req.headers.host}`).searchParams.get('type');
+    if (urlType === 'content') {
+        return runContentPipeline(supabase, res);
+    }
+
+    if (!process.env.RESEND_API_KEY) {
+        return res.status(500).json({ error: 'Resend not configured' });
+    }
 
     // ── 0. Gmail scan ────────────────────────────────────────────────────
     // ⚠️ DISABLED — Gmail scanning is now handled by the Cowork Email Monitor agent
