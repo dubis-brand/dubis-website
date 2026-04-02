@@ -168,9 +168,37 @@ module.exports = async function handler(req, res) {
         { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
+    const urlType = new URL(req.url, `https://${req.headers.host}`).searchParams.get('type');
+
+    // ── Route: ?type=agents — run email-monitor + site-audit via Edge Function ──
+    // Called by Vercel cron at 04:00 UTC (06:00 Israel) — replaces Cowork scheduled tasks
+    if (urlType === 'agents') {
+        const agentsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1/agents';
+        const authToken  = process.env.CRON_SECRET || process.env.AGENT_SECRET || '';
+        const results = {};
+        // 1. Email Monitor
+        try {
+            const r = await fetch(`${agentsBase}?type=run`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ agents: ['email_monitor'] }),
+            });
+            results.email_monitor = await r.json();
+        } catch (e) { results.email_monitor = { error: e.message }; }
+        // 2. Site Audit
+        try {
+            const r = await fetch(`${agentsBase}?type=run`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ agents: ['site_audit'] }),
+            });
+            results.site_audit = await r.json();
+        } catch (e) { results.site_audit = { error: e.message }; }
+        return res.status(200).json({ success: true, results });
+    }
+
     // ── Route: ?type=content — standalone content generation ────────────
     // Called by Vercel cron at 10:00 UTC (12:00 Israel) separately from morning report
-    const urlType = new URL(req.url, `https://${req.headers.host}`).searchParams.get('type');
     if (urlType === 'content') {
         return runContentPipeline(supabase, res);
     }
