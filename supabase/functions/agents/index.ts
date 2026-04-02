@@ -325,7 +325,7 @@ Format: ${cd.format || 'feed_post'}
 
 Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS ...5-10 relevant tags","image_prompt":"..."}`;
               const cRes = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
                 { method: 'POST', headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ contents: [{ parts: [{ text: captionPrompt }] }] }),
                   signal: AbortSignal.timeout(30000) },
@@ -425,7 +425,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
         for (const task of agentTasks) {
           try {
             const mRes = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
               { method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ contents: [{ parts: [{ text: `אתה אנליסט שיווק של DUBIS.\nמשימה: ${task.title}\nתיאור: ${task.description || ''}\n7 ימים: ${(orders || []).length} הזמנות, $${rev.toFixed(2)} הכנסה.\nספק 3-5 המלצות שיווק בעברית.` }] }] }) },
             );
@@ -443,7 +443,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
         for (const task of agentTasks) {
           try {
             const tRes = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
               { method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ contents: [{ parts: [{ text: `אתה מפתח full-stack בכיר של DUBIS. Stack: Vercel, Supabase, Vanilla JS, PayPal, Gelato.\nמשימה: ${task.title}\nתיאור: ${task.description || ''}\nקטגוריה: ${task.category || ''}\nספק תוכנית יישום טכנית בעברית.` }] }] }) },
             );
@@ -913,7 +913,7 @@ Format: ${isStory ? 'STORY — 1-2 punchy sentences max.' : (cd.format || 'feed_
 
 Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs ...5-10 tags","image_prompt":"..."}`;
           const cRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
             { method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ contents: [{ parts: [{ text: captionPrompt }] }] }),
               signal: AbortSignal.timeout(30000) },
@@ -1482,7 +1482,7 @@ Caption to review (Hebrew): "${captionHe}"
 Score the caption 0-30 for brand voice quality. Return ONLY valid JSON:
 {"score": <0-30>, "reason": "<one sentence>"}`;
         const vRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
           { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents: [{ parts: [{ text: voicePrompt }] }] }),
             signal: AbortSignal.timeout(15000) },
