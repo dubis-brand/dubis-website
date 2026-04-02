@@ -849,9 +849,13 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
 
   // ── CONTENT-RUN ─────────────────────────────────────────────────────
   if (type === 'content-run') {
-    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const token = url.searchParams.get('token') || req.headers.get('x-agent-secret') || '';
-    if (!svcKey || token !== svcKey) return json({ error: 'Unauthorized' }, 401);
+    const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const token = url.searchParams.get('token') || req.headers.get('x-agent-secret') || (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim() || '';
+    const isAuthed = (svcKey && token === svcKey) || (cronSecret && token === cronSecret) || (agentSecret && token === agentSecret);
+    const adminOk = await verifyAdmin(req);
+    if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
 
     const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
     const [{ data: approvedTasks }, { data: pendingTasks }] = await Promise.all([
@@ -1035,13 +1039,14 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
 
   // ── PUBLISH-READY ────────────────────────────────────────────────────
   if (type === 'publish-ready') {
-    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
-    const authHeader = req.headers.get('authorization') ?? '';
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
     const token = url.searchParams.get('token') || req.headers.get('x-agent-secret') || authHeader.replace('Bearer ', '').trim() || '';
-    const isAuthed = (svcKey && token === svcKey) || (agentSecret && token === agentSecret);
+    const isAuthed = (svcKey && token === svcKey) || (agentSecret && token === agentSecret) || (cronSecret && token === cronSecret);
     const adminOk = await verifyAdmin(req);
-    if (!isAuthed && !adminOk) return json({ error: 'Unauthorized', debug: { token_len: token.length } }, 401);
+    if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
 
     const igToken   = Deno.env.get('INSTAGRAM_ACCESS_TOKEN') ?? '';
     const igAccount = Deno.env.get('INSTAGRAM_ACCOUNT_ID') ?? '';
