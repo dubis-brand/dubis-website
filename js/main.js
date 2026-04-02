@@ -587,6 +587,10 @@ function addToCartFromModal(productId) {
   const selectedSize  = document.querySelector(`#modal-sizes-${productId} .size-btn.selected`)?.dataset.size  || product.sizes[0];
   cart.push({ ...product, selectedColor, selectedSize });
   saveCart();
+  // Meta Pixel — AddToCart event
+  if (typeof fbq === 'function') {
+    fbq('track', 'AddToCart', { value: product.price, currency: 'USD', content_name: product.phrase, content_type: 'product' });
+  }
   updateCartCount();
   showCartNotification(product.phrase);
   closeProductModal();

@@ -194,6 +194,16 @@ function renderPayPalButtons() {
                 const details  = await actions.order.capture();
                 const shipping = details.purchase_units[0]?.shipping;
 
+                // Meta Pixel — Purchase event
+                if (typeof fbq === 'function') {
+                    fbq('track', 'Purchase', {
+                        value: totalAmount,
+                        currency: 'USD',
+                        content_type: 'product',
+                        num_items: cart.length,
+                    });
+                }
+
                 const shippingAddress = {
                     name:           shipping?.name?.full_name || '',
                     address_line_1: shipping?.address?.address_line_1 || '',
