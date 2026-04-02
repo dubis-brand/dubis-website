@@ -221,6 +221,30 @@ module.exports = async function handler(req, res) {
         ? Math.round(reviews.reduce((s, r) => s + r.rating, 0) / reviews.length * 10) / 10
         : 0;
 
+    // ── CAMPAIGNS & CONTENT PERFORMANCE ──
+    const [campaignsRes, contentTasksRes] = await Promise.all([
+        supabase.from('ad_campaigns').select('*').order('created_at', { ascending: false }),
+        supabase.from('agent_tasks').select('id, title, status, agent_id, category, content_data, created_at')
+            .eq('agent_id', 'content').order('created_at', { ascending: false }).limit(30),
+    ]);
+
+    const campaigns = (campaignsRes.data || []);
+    const activeCampaigns = campaigns.filter(c => c.status === 'active');
+    const totalAdSpend = campaigns.reduce((s, c) => s + (parseFloat(c.spend_to_date) || 0), 0);
+    const totalBudget = campaigns.reduce((s, c) => s + (parseFloat(c.budget) || 0), 0);
+    const roas = totalAdSpend > 0 ? Math.round((totalRevenue / totalAdSpend) * 100) / 100 : 0;
+    const roi = totalAdSpend > 0 ? Math.round(((totalRevenue - totalAdSpend) / totalAdSpend) * 10000) / 100 : 0;
+
+    // Content performance
+    const contentTasks = (contentTasksRes.data || []);
+    const publishedPosts = contentTasks.filter(t => t.status === 'done' && t.content_data?.instagram_post_id);
+    const pendingContent = contentTasks.filter(t => t.status === 'pending_approval');
+    const approvedContent = contentTasks.filter(t => t.status === 'approved');
+    const rejectedContent = contentTasks.filter(t => t.status === 'rejected');
+    const avgQaScore = contentTasks
+        .filter(t => t.content_data?.qa_score)
+        .reduce((acc, t, _, arr) => acc + (t.content_data.qa_score / arr.length), 0);
+
     return res.status(200).json({
         // Page views
         totalViews: totalViewsRes.count || 0,
@@ -256,5 +280,34 @@ module.exports = async function handler(req, res) {
         pendingReviews,
         approvedReviews,
         avgRating,
+
+        // Campaigns & Ad Spend
+        campaigns: campaigns.map(c => ({
+            id: c.id, platform: c.platform, goal: c.goal,
+            budget: parseFloat(c.budget) || 0,
+            budgetCurrency: c.budget_currency || 'ILS',
+            spend: parseFloat(c.spend_to_date) || 0,
+            clicks: c.clicks || 0, impressions: c.impressions || 0,
+            status: c.status, startDate: c.start_date, endDate: c.end_date,
+            daysRemaining: c.end_date ? Math.max(0, Math.ceil((new Date(c.end_date) - new Date()) / 86400000)) : null,
+            cpc: c.clicks > 0 ? Math.round((parseFloat(c.spend_to_date) || 0) / c.clicks * 100) / 100 : null,
+            cpm: c.impressions > 0 ? Math.round((parseFloat(c.spend_to_date) || 0) / c.impressions * 1000 * 100) / 100 : null,
+            ctr: c.impressions > 0 ? Math.round(c.clicks / c.impressions * 10000) / 100 : null,
+        })),
+        activeCampaigns: activeCampaigns.length,
+        totalAdSpend: Math.round(totalAdSpend * 100) / 100,
+        totalBudget: Math.round(totalBudget * 100) / 100,
+        roas,
+        roi,
+
+        // Content Performance
+        contentStats: {
+            published: publishedPosts.length,
+            pendingApproval: pendingContent.length,
+            approved: approvedContent.length,
+            rejected: rejectedContent.length,
+            total: contentTasks.length,
+            avgQaScore: Math.round(avgQaScore),
+        },
     });
 };
