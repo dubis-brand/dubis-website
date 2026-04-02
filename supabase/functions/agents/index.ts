@@ -1056,7 +1056,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     const igAccount = Deno.env.get('INSTAGRAM_ACCOUNT_ID') ?? '';
     if (!igToken || !igAccount) return json({ error: 'Instagram env vars חסרים' }, 503);
 
-    const { data: candidates, error: fetchErr } = await sb.from('agent_tasks').select('id, title, content_data').eq('status', 'pending_approval').eq('agent_id', 'content').order('created_at', { ascending: true });
+    const { data: candidates, error: fetchErr } = await sb.from('agent_tasks').select('id, title, content_data').in('status', ['pending_approval', 'approved']).eq('agent_id', 'content').order('created_at', { ascending: true });
     if (fetchErr) return json({ error: fetchErr.message }, 500);
 
     type Task = Record<string, unknown>;
