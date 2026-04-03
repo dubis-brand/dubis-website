@@ -3374,8 +3374,8 @@
     try {
       const { data: campaigns } = await _sb.from('ad_campaigns').select('*');
       allCampaigns = campaigns || [];
-      // Total budget = sum of all active campaign budgets
-      const activeCamps = allCampaigns.filter(c => c.status === 'active');
+      // Total budget = sum of all campaign budgets (active + completed)
+      const activeCamps = allCampaigns.filter(c => c.status === 'active' || c.status === 'completed');
       totalBudgetILS = activeCamps.reduce((s, c) => s + Number(c.budget || 0), 0);
       // Actual spend = spend_to_date if tracked, otherwise estimate based on days passed
       totalSpentILS = activeCamps.reduce((s, c) => {

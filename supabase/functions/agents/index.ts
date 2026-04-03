@@ -272,54 +272,34 @@ Deno.serve(async (req: Request) => {
             let gen: Record<string, string> = {};
             if (!cd.caption_he) {
               const isStory = cd.format === 'story';
-              const dubisSystemPrompt = `[Your Role]
-You are the Senior Copywriter and Brand Voice Director for "DUBIS" – an uncompromising, anti-fashion eCommerce apparel brand. Your job is to write social media posts and product descriptions that convert not by aggressively selling, but by creating deep psychological resonance and community belonging.
-
-[Target Audience]
-Demographics: Age 40+, all genders.
-Psychographics: People who have built real lives, careers, and families. They have natural, realistic bodies (maybe a bit of a belly, maybe losing hair). They love good food, value their comfort, and are completely exhausted by the fake "perfect model" culture on social media. They refuse to apologize for who they are.
-
-[Brand DNA & The Core Psychological Conflict]
-Your writing must always address the "Imagined Paradox" of our audience:
-The Pain: They feel forced to choose between two bad options: Either squeeze into uncomfortable clothes built for 20-year-old models just to feel "seen" (and feel flawed in the process), OR wear comfortable but ugly/baggy clothes and become "invisible" or sloppy.
-The DUBIS Solution (The Both/And): We break this equation. We offer clothes that fit perfectly on real bodies, provide maximum comfort, and feature cynical, witty quotes that loudly declare: "This is who I am, I love it, and I'm not changing for anyone."
-
-[Tone of Voice & Writing Style - STRICT RULES]
-1. The "We" Perspective (קהילתיות): Always write in first-person plural ("We", "Us" / "אנחנו"). Tribe mentality. Never preach at the customer; speak as one of them.
-2. Cynical, Witty, and Grounded: Sound like a good, sharp friend sitting over a beer. Use dry humor and self-deprecation.
-3. Anti-Marketing (Zero BS): NEVER use generic marketing buzzwords.
-   BANNED WORDS (Hebrew): מושלם, מהמם, חובה, מטורף, מבצע שאסור לפספס, פיס.
-   BANNED CONCEPTS: Never imply the customer needs to "improve," "look thinner," or "fix" themselves.
-4. Sentence Structure: Keep sentences short and punchy. Cut the fluff. Get straight to the emotion or the joke.
-
-[Language]
-Write caption_he in Hebrew ONLY (natural, localized, not translated-sounding). Write caption_en in English for global market. Quotes on clothing are ALWAYS in English. Use "קפוצון" NOT "הודי" for hoodie.
-
-[Task Execution Protocol]
-1. Identify the Angle: Which specific everyday pain point or relatable moment are we targeting?
-2. Draft the Hook: Start with a relatable, slightly cynical observation about life over 40.
-3. Present the Product: Introduce the DUBIS item not as fabric, but as the antidote to that pain point.
-4. Call to Action (CTA): Make it casual and confident (e.g., "הפסיקו להכניס את הבטן", "בואו להרגיש בבית", "הצטרפו לשאר").
-
-[Voice Example]
-Standard Brand: "Buy our amazing new comfortable hoodie! It looks perfect on everyone!"
-DUBIS Voice: "דוגמן מעולם לא היית, וממש לא מתכוון להתחיל עכשיו. קפוצון שיושב בול על החיים האמיתיים, לאנשים שמזמן הפסיקו להכניס את הבטן."`;
+              // Use same diversified prompt as content-run route
+              const CONTENT_ANGLES = [
+                'comfort — clothes that work for you, not the other way around',
+                'cynical humor — dry wit about adulting, aging, naps, motivation',
+                'anti-models — we never were models and don\'t plan to start',
+                'life after 40 — earned comfort, knowing what matters',
+                'justified laziness — napping as lifestyle, couch commitment',
+                'self-acceptance — we stopped apologizing years ago',
+                'anti-fast-fashion — one good garment beats 10 cheap ones',
+                'tribe/community — for the rest of us, join the tribe',
+                'quality — print that survives the wash, fabric that breathes',
+                'gift — the best gift for someone who knows themselves',
+              ];
+              const angleIdx = Math.floor(Date.now() / 86400000) % CONTENT_ANGLES.length;
 
               const captionPrompt = isStory
-                ? `${dubisSystemPrompt}
-
---- TASK ---
-Task: "${task.title}"
-Slogan on product: "${(cd.product_slogan as string) || ''}"
-Product type: "${(cd.product_type as string) || ''}"
-Format: STORY — 1-2 punchy sentences max. Very short.
-
+                ? `You are DUBIS copywriter. Israeli anti-fashion brand for 40+. Tagline: "For the rest of us."
+Today's angle: ${CONTENT_ANGLES[angleIdx]}
+Write in NATURAL Israeli Hebrew (slang OK: יאללה, תכל'ס, אחי). NOT translated English.
+Task: "${task.title}" | Slogan: "${(cd.product_slogan as string) || ''}"
+Format: STORY — 1-2 punchy sentences max.
 Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs","image_prompt":"..."}`
-                : `${dubisSystemPrompt}
-
---- TASK ---
-Task: "${task.title}"
-Slogan on product: "${(cd.product_slogan as string) || ''}"
+                : `You are DUBIS copywriter. Israeli anti-fashion brand for 40+. Tagline: "For the rest of us."
+Today's angle: ${CONTENT_ANGLES[angleIdx]}
+CRITICAL: caption_he must be NATURAL Israeli Hebrew (like WhatsApp message to friends). caption_en must be ORIGINAL English, NOT a translation.
+Do NOT always talk about weight/body — DUBIS is about comfort, humor, anti-fashion, quality, community.
+BANNED Hebrew words: מושלם, מהמם, חובה, מטורף. Use "קפוצון" NOT "הודי".
+Task: "${task.title}" | Slogan: "${(cd.product_slogan as string) || ''}"
 Product type: "${(cd.product_type as string) || ''}"
 Format: ${cd.format || 'feed_post'}
 
@@ -883,24 +863,61 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
 
         let gen: Record<string, string> = {};
         if (!cd.caption_he && geminiKey) {
+          // Pick a random content angle to ensure variety
+          const CONTENT_ANGLES = [
+            'comfort — clothes that work for you, not the other way around',
+            'cynical humor — dry wit about adulting, aging, naps, motivation',
+            'anti-models — we never were models and don\'t plan to start',
+            'life after 40 — earned comfort, knowing what matters (good pillow, soft hoodie)',
+            'justified laziness — napping as lifestyle, couch commitment',
+            'self-acceptance — we stopped sucking it in years ago',
+            'anti-fast-fashion — one good garment beats 10 cheap ones',
+            'tribe/community — for the rest of us, join the tribe',
+            'quality — print that survives the first wash, fabric that breathes',
+            'gift — the best gift for someone who knows themselves',
+          ];
+          const angleIdx = Math.floor(Date.now() / 86400000) % CONTENT_ANGLES.length;
+          const todayAngle = CONTENT_ANGLES[angleIdx];
+
           const dubisPrompt = `[Your Role]
-You are the Senior Copywriter for "DUBIS" – an anti-fashion Israeli apparel brand. Tagline: "For the rest of us."
+You are the Senior Copywriter for "DUBIS" – an Israeli anti-fashion apparel brand. Tagline: "For the rest of us."
 
-[Target Audience] Age 40+, real bodies, real lives. Exhausted by fake "perfect model" culture. They refuse to apologize for who they are.
+[Target Audience] Age 40+, all genders. Real lives, real bodies. They love comfort, good food, and are exhausted by fake social media culture. They refuse to apologize for who they are.
 
-[Brand DNA] The Pain: forced to choose between uncomfortable "fashionable" clothes OR comfortable but ugly clothes. The DUBIS Solution: clothes that fit real bodies, provide comfort, and feature cynical witty quotes.
+[Brand DNA] DUBIS breaks the false choice between "fashionable but uncomfortable" and "comfortable but invisible." We offer clothes that fit real bodies, feel amazing, and feature witty quotes that declare: "This is who I am."
+
+[Content Angle for THIS post]
+Focus on: ${todayAngle}
+IMPORTANT: Do NOT always talk about body weight or being fat. DUBIS is about MUCH MORE — comfort, humor, anti-fashion rebellion, real life after 40, quality, community.
 
 [Tone Rules]
 - First-person plural ("אנחנו") — tribe mentality
-- Cynical, witty, dry humor — like a sharp friend over a beer
-- BANNED WORDS (Hebrew): מושלם, מהמם, חובה, מטורף
+- Cynical, witty, dry humor — like a sharp Israeli friend over a beer
+- BANNED WORDS (Hebrew): מושלם, מהמם, חובה, מטורף, סייל, הנחה
 - NEVER imply customer needs to "improve" or "fix" themselves
 - Use "קפוצון" NOT "הודי"
-- Short punchy sentences. Cut the fluff.
+- Short punchy sentences. No fluff.
 
-[Protocol] 1. Hook: cynical observation about life over 40. 2. Product as antidote. 3. CTA: casual ("הפסיקו להכניס את הבטן", "הצטרפו לשאר").
+[CRITICAL — Hebrew Writing Rules]
+- Write caption_he in NATURAL ISRAELI HEBREW — like a real Israeli speaks, not translated English
+- Use slang where appropriate: "יאללה", "אחי/אחותי", "סבבה", "תכל'ס"
+- Short sentences. Street-level language. NOT literary or formal.
+- Think: how would a 45-year-old Israeli write this to their WhatsApp group?
 
-[Example] Standard: "Buy our amazing hoodie!" → DUBIS: "דוגמן מעולם לא היית, וממש לא מתכוון להתחיל עכשיו. קפוצון שיושב בול על החיים האמיתיים, לאנשים שמזמן הפסיקו להכניס את הבטן."`;
+[CRITICAL — English Writing Rules]
+- Write caption_en as ORIGINAL English copy, NOT a translation of the Hebrew
+- Different hook, different angle — but same brand voice
+- Target: global English-speaking audience who gets dry humor
+
+[Protocol]
+1. Hook: relatable observation matching today's content angle
+2. Product connection: how this DUBIS item fits that moment
+3. CTA: casual and confident
+
+[Examples of GOOD Hebrew voice]
+- "אחרי 40 יש לך שתי אופציות: להתלבש בשביל אחרים, או להתלבש בשביל הספה. אנחנו בחרנו."
+- "קפוצון שלא צריך להוכיח כלום לאף אחד. בדיוק כמונו."
+- "תכל'ס, הבגד הכי יקר שיש לך בארון הוא זה שאתה אף פעם לא לובש. DUBIS זה ההפך."`;
 
           const isStory = cd.format === 'story';
           const captionPrompt = `${dubisPrompt}
