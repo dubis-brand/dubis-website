@@ -85,7 +85,7 @@ const UGC_PROMPTS = [
 ];
 
 async function generateImage(prompt, idx) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
 
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
