@@ -117,7 +117,7 @@ async function runContentPipeline(supabase, res) {
         if (autoData.task_id && !autoData.skipped) {
             const runRes  = await fetch(`${agentsBase}?type=content-run`, {
                 method:  'GET',
-                headers: { 'x-agent-secret': process.env.SUPABASE_SERVICE_ROLE_KEY },
+                headers: { 'Authorization': `Bearer ${authToken}` },
             });
             const runData = await runRes.json();
             console.log('[content-cron] Content-run:', JSON.stringify(runData));
@@ -126,7 +126,7 @@ async function runContentPipeline(supabase, res) {
             const qaRes  = await fetch(`${agentsBase}?type=qa-content`, {
                 method:  'POST',
                 headers: {
-                    'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+                    'Authorization': `Bearer ${authToken}`,
                     'Content-Type': 'application/json',
                 },
             });
@@ -567,7 +567,7 @@ module.exports = async function handler(req, res) {
             if (autoData.task_id && !autoData.skipped) {
                 const runRes  = await fetch(`${agentsBase}?type=content-run`, {
                     method:  'GET',
-                    headers: { 'x-agent-secret': process.env.SUPABASE_SERVICE_ROLE_KEY },
+                    headers: { 'Authorization': `Bearer ${authToken}` },
                 });
                 const runData = await runRes.json();
                 console.log('Content-run:', JSON.stringify(runData));
@@ -576,7 +576,7 @@ module.exports = async function handler(req, res) {
                 const qaRes  = await fetch(`${agentsBase}?type=qa-content`, {
                     method:  'POST',
                     headers: {
-                        'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+                        'Authorization': `Bearer ${authToken}`,
                         'Content-Type': 'application/json',
                     },
                 });
