@@ -987,15 +987,19 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
 
         if (!imageUrl && geminiKey) {
           const titleLower = (task.title as string).toLowerCase();
-          const dubisRule = 'Israeli streetwear brand aesthetic. Real diverse body types, authentic candid look. Plain black/dark oversized clothing, NO visible text or logos. Dark minimal urban tones. IMPORTANT: Do NOT render any text, words, letters, or logos anywhere in the image.';
-          const defaultImgPrompt = cd.format === 'quote_card'
-            ? 'Minimalist dark charcoal textured background. Moody low-key lighting. No people. No text. No logos. Square 1:1.'
-            : cd.format === 'story'
-            ? 'Clean minimal dark urban background. No people. No text. No logos. Suitable for Instagram Story text overlay.'
-            : titleLower.includes('nap') || titleLower.includes('cardio')
-            ? `Person relaxing on couch wearing oversized dark hoodie. Cozy apartment, soft warm lighting. ${dubisRule}`
-            : `Authentic people wearing DUBIS streetwear, urban minimal setting, dark aesthetic, natural lighting, square 1:1. ${dubisRule}`;
-          const fullPrompt = (gen.image_prompt || defaultImgPrompt) + ". Fashion photography. Square 1:1. Photorealistic. Small 'DUBIS\u2122' text watermark in the bottom-left corner of the image.";
+          // Use same high-quality prompt style as generate-product-image
+          const slogan = (cd.product_slogan as string) || '';
+          const productType = (cd.product_type as string) || 't-shirt';
+          const clothingMap: Record<string,string> = { 't-shirt':'t-shirt','hoodie':'hoodie','zip-hoodie':'zip-up hoodie','long-sleeve':'long sleeve shirt','cap':'baseball cap' };
+          const clothingName = clothingMap[productType] || productType;
+          const sloganTypo = slogan ? getSloganTypographyPrompt(slogan) : 'bold text';
+          const scenes = ['cobblestone street with cafes, golden hour','cozy living room, natural window light','minimal studio, soft professional lighting','outdoor cafe, wooden tables, morning light','urban concrete walls, dramatic lighting'];
+          const models = ['a confident person in their 40s, natural look, warm smile','a curvy confident woman in her 30s-40s, body-positive energy','a bearded man in his 40s, relaxed casual posture','a couple walking side by side, both wearing matching dark clothing'];
+          const sceneIdx = Math.floor(Date.now() / 3600000) % scenes.length;
+          const modelIdx = Math.floor(Date.now() / 7200000) % models.length;
+          const fullPrompt = cd.format === 'quote_card'
+            ? 'Minimalist dark charcoal textured background. Moody low-key lighting. No people. No text. Square 1:1.'
+            : `Create a photorealistic DSLR-quality lifestyle photo of ${models[modelIdx]} wearing a dark ${clothingName}. BACK of garment shows MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. Small "DUBIS" at bottom hem. SETTING: ${scenes[sceneIdx]}. Candid, authentic, NOT a fashion model. Bold condensed sans-serif font. Photorealistic DSLR. Square 1:1. Small "DUBIS™" watermark bottom-left.`;
 
           try {
             const gRes = await fetch(
@@ -1037,6 +1041,21 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
               else { const { data: { publicUrl } } = sb.storage.from('ig-images').getPublicUrl(fname); imageUrl = publicUrl; }
             } else imgError += ` pol_${imgRes.status}`;
           } catch (polErr) { imgError += ` pol_catch:${(polErr as Error).message}`; }
+        }
+
+        // Save to gallery (dubis_images) for future reuse
+        if (imageUrl && imageUrl.includes('supabase.co')) {
+          try {
+            await sb.from('dubis_images').insert({
+              image_url: imageUrl,
+              scene_type: 'urban',
+              model_type: 'man',
+              prompt_used: `Content pipeline: ${task.title}`,
+              quality_score: 3,
+              approved: false,
+              tags: ['content', 'auto-generated', cd.product_type || 'unknown'],
+            });
+          } catch { /* non-critical — don't fail if gallery save fails */ }
         }
 
         const finalCapHe = gen.caption_he || (cd.caption_he as string) || '';
