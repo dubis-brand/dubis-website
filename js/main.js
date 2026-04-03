@@ -7,6 +7,18 @@ let currentLang  = 'en';
 let _activeFilter = 'all';
 let _activeGender = 'all';
 
+// ── Currency by language ──
+const USD_TO_ILS = 3.7;
+function formatPrice(usdPrice) {
+  if (currentLang === 'he') {
+    return '₪' + Math.round(usdPrice * USD_TO_ILS);
+  }
+  return '$' + usdPrice;
+}
+function freeShippingThreshold() {
+  return currentLang === 'he' ? '₪444' : '$120';
+}
+
 // ===== COMPREHENSIVE TRANSLATIONS =====
 const translations = {
   en: {
@@ -57,6 +69,22 @@ const translations = {
     footer_privacy: 'Privacy Policy', footer_contact: 'Contact', footer_shop: 'Shop',
     footer_rights: '© 2026 DUBIS. All rights reserved. Built for you.',
     lang_btn: 'עב',
+    faq_title: 'Frequently Asked Questions',
+    faq_subtitle: 'Everything you wanted to know, without having to search',
+    faq_q1: 'What sizes do you offer?',
+    faq_a1: 'Our products come in sizes S through 3XL. All sizes run comfortable and roomy — if you\'re between sizes, take the smaller one. A detailed size chart is available on every product page.',
+    faq_q2: 'How long does shipping take?',
+    faq_a2: 'Free worldwide shipping! Production time: 3–5 business days (printed to order). Delivery: 5–12 business days depending on destination. Total: 8–17 business days.',
+    faq_q3: 'What is your return policy?',
+    faq_a3: 'Full refund within 30 days. If the product doesn\'t fit — send it back and we\'ll return your money. No questions asked.',
+    faq_q4: 'Will the print peel off?',
+    faq_a4: 'We use DTG (Direct-to-Garment) technology — the print goes directly into the fabric. It\'s not a sticker, not an iron-on. The print survives dozens of washes.',
+    faq_q5: 'Why is it priced this way?',
+    faq_a5: 'Every item is made to order — not mass-produced in a factory by the thousands. DTG quality, premium materials, original design. $28–$80 for a product you\'ll wear for years.',
+    faq_q6: 'Do you have a physical store?',
+    faq_a6: 'No. DUBIS is an online-only brand. That\'s how we keep prices fair.',
+    faq_q7: 'How do I wash it?',
+    faq_a7: 'Regular wash at 30°C, turn the garment inside out before washing, do not tumble dry. The print will survive.',
   },
   he: {
     nav_home: 'ראשי', nav_shop: 'חנות', nav_people: 'אנשים אמיתיים',
@@ -95,8 +123,8 @@ const translations = {
     modal_returns: '↩️ החזרה קלה — ללא דרמה.',
     modal_add: 'זה שלי 🐾',
     tab_details: 'פרטים', tab_size: 'מדריך מידות', tab_care: 'טיפול',
-    shipping_note: '✈️ + משלוח · חינם מ-$120',
-    modal_ships: '🚚 משלוח תוך 5–9 ימי עסקים', modal_free_ship: 'משלוח חינם מעל $120',
+    shipping_note: '✈️ + משלוח · חינם מ-₪444',
+    modal_ships: '🚚 משלוח תוך 5–9 ימי עסקים', modal_free_ship: 'משלוח חינם מעל ₪444',
     modal_dtg: 'DTG — הדפסה ישירה על בד',
     modal_fabric: 'בד', modal_fit: 'גזרה', modal_print: 'הדפסה', modal_print_areas: 'אזורי הדפסה',
     size_size: 'מידה', size_chest: 'חזה (ס"מ)', size_length: 'אורך (ס"מ)',
@@ -106,6 +134,22 @@ const translations = {
     footer_privacy: 'מדיניות פרטיות', footer_contact: 'צור קשר', footer_shop: 'חנות',
     footer_rights: '© 2026 DUBIS. כל הזכויות שמורות. בנוי בשבילך.',
     lang_btn: 'EN',
+    faq_title: 'שאלות נפוצות',
+    faq_subtitle: 'כל מה שרצית לדעת, בלי לחפש',
+    faq_q1: 'מה המידות שלכם?',
+    faq_a1: 'המוצרים שלנו מגיעים במידות S עד 3XL. כל המידות נוחות ורחבות — אם את/ה בין מידות, קח/י את הקטנה. טבלת מידות מפורטת זמינה בכל עמוד מוצר.',
+    faq_q2: 'כמה זמן לוקח המשלוח?',
+    faq_a2: 'משלוח חינם לכל העולם! זמן הכנה: 3-5 ימי עסקים (הדפסה לפי הזמנה). משלוח: 5-12 ימי עסקים בהתאם ליעד. סה"כ: 8-17 ימי עסקים.',
+    faq_q3: 'מה מדיניות ההחזרות?',
+    faq_a3: '30 יום להחזרה מלאה. אם המוצר לא מתאים — שלח/י חזרה ונחזיר את הכסף. ללא שאלות.',
+    faq_q4: 'ההדפס לא מתקלף?',
+    faq_a4: 'אנחנו משתמשים בטכנולוגיית DTG (Direct-to-Garment) — הדפסה ישירה על הבד. זה לא מדבקה ולא סטיקר. ההדפס שורד עשרות כביסות.',
+    faq_q5: 'למה המחיר כזה?',
+    faq_a5: 'כל מוצר מיוצר בהזמנה אישית — לא מיוצר במפעל בסין באלפים. DTG quality, חומרים פרימיום, עיצוב מקורי. $28-$80 למוצר שלובשים שנים.',
+    faq_q6: 'יש לכם חנות פיזית?',
+    faq_a6: 'לא. DUBIS הוא מותג אונליין בלבד. ככה אנחנו שומרים על מחירים הוגנים.',
+    faq_q7: 'איך מכבסים?',
+    faq_a7: 'כביסה רגילה 30°, הפוך את המוצר לפני כביסה, לא לייבש בטמבור. ההדפס ישרוד.',
   }
 };
 
@@ -200,6 +244,14 @@ function translateUI(lang) {
   // Contact
   if (q('#contact h2')) q('#contact h2').textContent = t.contact_title;
   if (q('#contact p'))  q('#contact p').textContent  = t.contact_sub;
+
+  // FAQ
+  if (q('#faq-title'))    q('#faq-title').textContent    = t.faq_title;
+  if (q('#faq-subtitle')) q('#faq-subtitle').textContent = t.faq_subtitle;
+  var faqKeys = ['faq_q1','faq_q2','faq_q3','faq_q4','faq_q5','faq_q6','faq_q7'];
+  var faqAnsKeys = ['faq_a1','faq_a2','faq_a3','faq_a4','faq_a5','faq_a6','faq_a7'];
+  qa('.faq-q-text').forEach(function(el, i) { if (faqKeys[i] && t[faqKeys[i]]) el.textContent = t[faqKeys[i]]; });
+  qa('.faq-answer p').forEach(function(el, i) { if (faqAnsKeys[i] && t[faqAnsKeys[i]]) el.textContent = t[faqAnsKeys[i]]; });
 
   // Cart
   if (q('.cart-header h3')) q('.cart-header h3').textContent = t.cart_title;
@@ -309,7 +361,7 @@ function renderProducts(filter, gender) {
           `).join('')}
         </div>
         <div class="product-bottom">
-          <div class="product-price">$${product.price}</div>
+          <div class="product-price">${formatPrice(product.price)}</div>
           <div class="product-shipping-note">${(translations[currentLang]||translations.en).shipping_note}</div>
         </div>
       </div>
@@ -398,7 +450,7 @@ function openProductModal(productId) {
       <div class="modal-limited-badge">&#128293; ${currentLang === 'he' ? 'מהדורה מוגבלת' : 'Limited Edition'}</div>
       <h2 class="modal-phrase">"${product.phrase}"</h2>
       <div class="modal-recent-buyers">&#128101; ${(function(name){let h=0;for(let i=0;i<name.length;i++)h=(h*31+name.charCodeAt(i))>>>0;return 8+h%13;})(product.phrase)} ${currentLang === 'he' ? 'אנשים קנו את זה ב-30 הימים האחרונים' : 'people bought this in the last 30 days'}</div>
-      <div class="modal-price">$${product.price}</div>
+      <div class="modal-price">${formatPrice(product.price)}</div>
       <div class="modal-shipping-info">${t.modal_ships} · <span class="free-ship-badge">${t.modal_free_ship}</span></div>
       <div class="modal-dtg-badge">${t.modal_dtg}</div>
       <div class="modal-option">
@@ -653,7 +705,7 @@ function renderCart() {
         <div class="cart-item-type">${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}</div>
       </div>
       <div class="cart-item-right">
-        <div class="cart-item-price">$${item.price}</div>
+        <div class="cart-item-price">${formatPrice(item.price)}</div>
         <button class="cart-item-remove" onclick="removeFromCart(${index})">✕</button>
       </div>
     </div>
