@@ -728,8 +728,9 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
     const admin = await verifyAdmin(req);
     if (!admin && !isAgentSecret(req)) return json({ error: 'Unauthorized' }, 401);
-    const { caption, image_url, task_id, platforms = {} } = body as { caption?: string; image_url?: string; task_id?: string; platforms?: Record<string, boolean> };
-    if (!caption || !image_url) return json({ error: 'caption and image_url required' }, 400);
+    const { caption, image_url, video_url, task_id, platforms = {} } = body as { caption?: string; image_url?: string; video_url?: string; task_id?: string; platforms?: Record<string, boolean> };
+    const isReel = !!(video_url);
+    if (!caption || (!image_url && !video_url)) return json({ error: 'caption and image_url (or video_url for Reels) required' }, 400);
 
     const doIG = (platforms as Record<string, boolean>).instagram !== false && ((platforms as Record<string, boolean>).instagram === true || !Object.keys(platforms).length);
     const doFB = (platforms as Record<string, boolean>).facebook === true;
@@ -744,15 +745,50 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       } else {
         try {
           const igBase = `https://graph.facebook.com/v19.0/${igAccount}`;
-          const cRes = await fetch(`${igBase}/media`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url, caption, access_token: igToken }) });
-          const container = await cRes.json();
-          if (!cRes.ok || container.error) {
-            (result.errors as string[]).push('Instagram container: ' + (container.error?.message || 'failed'));
+          let container: Record<string, unknown>;
+          if (isReel) {
+            // Instagram Reels: POST /{ig-account}/media with media_type=REELS
+            const cRes = await fetch(`${igBase}/media`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ video_url, caption, media_type: 'REELS', access_token: igToken }),
+            });
+            container = await cRes.json();
+            if (!cRes.ok || container.error) {
+              (result.errors as string[]).push('Instagram reel container: ' + ((container.error as Record<string,unknown>)?.message || 'failed'));
+            } else {
+              // Poll container status — videos take longer to process (up to 30s)
+              const containerId = container.id as string;
+              let ready = false;
+              for (let attempt = 0; attempt < 6; attempt++) {
+                await new Promise((r) => setTimeout(r, 5000));
+                const statusRes = await fetch(`https://graph.facebook.com/v19.0/${containerId}?fields=status_code&access_token=${igToken}`);
+                const statusData = await statusRes.json() as Record<string, unknown>;
+                if (statusData.status_code === 'FINISHED') { ready = true; break; }
+                if (statusData.status_code === 'ERROR') { break; }
+              }
+              if (!ready) {
+                (result.errors as string[]).push('Instagram reel: container not ready after 30s');
+              } else {
+                const pRes = await fetch(`${igBase}/media_publish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ creation_id: containerId, access_token: igToken }) });
+                const published = await pRes.json();
+                if (!pRes.ok || published.error) (result.errors as string[]).push('Instagram reel publish: ' + (published.error?.message || 'failed'));
+                else result.instagram_post_id = published.id;
+              }
+            }
           } else {
-            const pRes = await fetch(`${igBase}/media_publish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ creation_id: container.id, access_token: igToken }) });
-            const published = await pRes.json();
-            if (!pRes.ok || published.error) (result.errors as string[]).push('Instagram publish: ' + (published.error?.message || 'failed'));
-            else result.instagram_post_id = published.id;
+            // Image post
+            const cRes = await fetch(`${igBase}/media`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url, caption, access_token: igToken }) });
+            container = await cRes.json();
+            if (!cRes.ok || container.error) {
+              (result.errors as string[]).push('Instagram container: ' + ((container.error as Record<string,unknown>)?.message || 'failed'));
+            } else {
+              await new Promise((r) => setTimeout(r, 7000));
+              const pRes = await fetch(`${igBase}/media_publish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ creation_id: container.id, access_token: igToken }) });
+              const published = await pRes.json();
+              if (!pRes.ok || published.error) (result.errors as string[]).push('Instagram publish: ' + (published.error?.message || 'failed'));
+              else result.instagram_post_id = published.id;
+            }
           }
         } catch (e) { (result.errors as string[]).push('Instagram: ' + (e as Error).message); }
       }
@@ -1080,7 +1116,9 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     const batchSize = parseInt(url.searchParams.get('batch') || '1', 10);
     const readyTasks = (candidates || []).filter((t: Task) => {
       const cd = (t.content_data as Task) || {};
-      return cd.content_approved && (cd.generated_image_url as string)?.includes('supabase.co');
+      const hasImage = (cd.generated_image_url as string)?.includes('supabase.co');
+      const hasReel  = !!(cd.video_url && cd.reel_status === 'ready');
+      return cd.content_approved && (hasImage || hasReel);
     }).slice(0, batchSize);
 
     if (!readyTasks.length) return json({ published: 0, summary: 'אין משימות מוכנות לפרסום עדיין' });
@@ -1093,11 +1131,37 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       const cd = (task.content_data as Task) || {};
       const caption = `${(cd.caption_he as string) || (cd.caption_en as string) || task.title}\n\n${(cd.hashtags as string) || '#DUBIS #ForTheRestOfUs'}`;
       const image_url = cd.generated_image_url as string;
+      const videoUrl = cd.video_url as string;
+      const isReel = !!(videoUrl && cd.reel_status === 'ready');
       try {
-        const cRes = await fetch(`${igBase}/media`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url, caption, access_token: igToken }) });
-        const container = await cRes.json();
-        if (!cRes.ok || container.error) { results.push({ id: task.id, title: task.title, status: 'error', error: container.error?.message || 'container failed' }); continue; }
-        await new Promise((r) => setTimeout(r, 7000));
+        let container: Record<string, unknown>;
+        if (isReel) {
+          // Instagram Reels: POST /{ig-account}/media with media_type=REELS
+          const cRes = await fetch(`${igBase}/media`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ video_url: videoUrl, caption, media_type: 'REELS', access_token: igToken }),
+          });
+          container = await cRes.json();
+          if (!cRes.ok || container.error) { results.push({ id: task.id, title: task.title, status: 'error', error: (container.error as Record<string,unknown>)?.message || 'reel container failed' }); continue; }
+          // Poll container status — videos take longer to process (up to 30s)
+          const containerId = container.id as string;
+          let ready = false;
+          for (let attempt = 0; attempt < 6; attempt++) {
+            await new Promise((r) => setTimeout(r, 5000));
+            const statusRes = await fetch(`https://graph.facebook.com/v19.0/${containerId}?fields=status_code&access_token=${igToken}`);
+            const statusData = await statusRes.json() as Record<string, unknown>;
+            if (statusData.status_code === 'FINISHED') { ready = true; break; }
+            if (statusData.status_code === 'ERROR') { break; }
+          }
+          if (!ready) { results.push({ id: task.id, title: task.title, status: 'error', error: 'Reel container not ready after 30s' }); continue; }
+        } else {
+          // Image post
+          const cRes = await fetch(`${igBase}/media`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url, caption, access_token: igToken }) });
+          container = await cRes.json();
+          if (!cRes.ok || container.error) { results.push({ id: task.id, title: task.title, status: 'error', error: (container.error as Record<string,unknown>)?.message || 'container failed' }); continue; }
+          await new Promise((r) => setTimeout(r, 7000));
+        }
         const pRes = await fetch(`${igBase}/media_publish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ creation_id: container.id, access_token: igToken }) });
         const pub = await pRes.json();
         if (!pRes.ok || pub.error) { results.push({ id: task.id, title: task.title, status: 'error', error: pub.error?.message || 'publish failed' }); continue; }
@@ -1430,6 +1494,19 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       picked = PRODUCTS[new Date().getDay() % PRODUCTS.length];
     }
 
+    // Weekly content calendar — rotate formats by day of week
+    const dayOfWeek = new Date().getDay(); // 0=Sun, 1=Mon, ...
+    const WEEKLY_CALENDAR = [
+      { format: 'feed_post', lang: 'he' },   // Sunday    — HE feed post
+      { format: 'feed_post', lang: 'en' },   // Monday    — EN feed post
+      { format: 'reel',      lang: 'he' },   // Tuesday   — Reel
+      { format: 'feed_post', lang: 'he' },   // Wednesday — HE feed post
+      { format: 'feed_post', lang: 'en' },   // Thursday  — EN feed post
+      { format: 'reel',      lang: 'he' },   // Friday    — Reel
+      { format: 'story',     lang: 'he' },   // Saturday  — Story
+    ];
+    const todayPlan = WEEKLY_CALENDAR[dayOfWeek];
+
     const typeLabels: Record<string, string> = {
       tshirt: 'חולצה', hoodie: 'קפוצון', ziphoodie: 'קפוצון זיפ', longsleeve: 'ארוכת שרוול', cap: 'כובע',
     };
@@ -1441,11 +1518,11 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       status:       'approved',
       priority:     'medium',
       content_data: {
-        format:         picked.format,
+        format:         todayPlan.format,
         product_type:   picked.type,
         product_slogan: picked.slogan,
         product_gender: picked.gender,
-        language:       'he',
+        language:       todayPlan.lang,
         auto_created:   true,
         created_by:     'auto-content-cron',
       },
@@ -1454,11 +1531,13 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     if (insertErr) return json({ error: insertErr.message }, 500);
 
     return json({
-      success: true,
-      task_id: (newTask as Record<string, unknown>)?.id,
-      product: picked.slogan,
-      format:  picked.format,
-      message: 'Content task created ✅ — content-run will generate caption and image',
+      success:  true,
+      task_id:  (newTask as Record<string, unknown>)?.id,
+      product:  picked.slogan,
+      format:   todayPlan.format,
+      language: todayPlan.lang,
+      day:      dayOfWeek,
+      message:  'Content task created — content-run will generate caption and image',
     });
   }
 
