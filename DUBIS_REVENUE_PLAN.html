@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DUBIS — תוכנית הכנסות $1,000</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --charcoal: #2C2C2C;
+      --honey: #C17E3A;
+      --cream: #F5F0E8;
+      --dark-bg: #1a1a1a;
+      --card-bg: #242424;
+      --border: #3a3a3a;
+      --green: #4caf50;
+      --yellow: #f5a623;
+      --red: #e53935;
+      --blue: #2196f3;
+      --text-muted: #888;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Heebo', sans-serif;
+      background-color: var(--dark-bg);
+      color: var(--cream);
+      direction: rtl;
+      text-align: right;
+      line-height: 1.7;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2C2C2C 100%);
+      border-bottom: 3px solid var(--honey);
+      padding: 48px 40px 40px;
+      text-align: center;
+    }
+
+    .header .brand {
+      font-family: 'Anton', sans-serif;
+      font-size: 64px;
+      color: var(--honey);
+      letter-spacing: 4px;
+      line-height: 1;
+    }
+
+    .header .subtitle {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--cream);
+      margin-top: 12px;
+    }
+
+    .header .meta {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-top: 10px;
+    }
+
+    .header .goal-badge {
+      display: inline-block;
+      background: var(--honey);
+      color: #1a1a1a;
+      font-family: 'Anton', sans-serif;
+      font-size: 22px;
+      padding: 8px 24px;
+      border-radius: 4px;
+      margin-top: 20px;
+      letter-spacing: 2px;
+    }
+
+    /* Container */
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    /* Section titles */
+    .section-title {
+      font-family: 'Anton', sans-serif;
+      font-size: 28px;
+      color: var(--honey);
+      letter-spacing: 2px;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .section-title .num {
+      background: var(--honey);
+      color: #1a1a1a;
+      font-size: 14px;
+      padding: 3px 10px;
+      border-radius: 3px;
+    }
+
+    /* Status cards */
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .stat-card .value {
+      font-family: 'Anton', sans-serif;
+      font-size: 36px;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .stat-card .label {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .stat-card.red .value { color: var(--red); }
+    .stat-card.green .value { color: var(--green); }
+    .stat-card.yellow .value { color: var(--yellow); }
+    .stat-card.honey .value { color: var(--honey); }
+    .stat-card.blue .value { color: var(--blue); }
+
+    /* Progress bar */
+    .progress-section {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 40px;
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      font-weight: 700;
+    }
+
+    .progress-bar {
+      background: #333;
+      border-radius: 100px;
+      height: 24px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--honey), #e8952a);
+      border-radius: 100px;
+      width: 7%;
+      transition: width 1s ease;
+      position: relative;
+    }
+
+    .progress-fill::after {
+      content: '7%';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 11px;
+      font-weight: 700;
+      color: #1a1a1a;
+      white-space: nowrap;
+    }
+
+    .progress-note {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Week cards */
+    .week-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .week-header {
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .week-header .week-label {
+      font-family: 'Anton', sans-serif;
+      font-size: 20px;
+      letter-spacing: 1px;
+    }
+
+    .week-header .week-dates {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+
+    .week-header .week-goal {
+      text-align: left;
+    }
+
+    .week-goal .goal-num {
+      font-family: 'Anton', sans-serif;
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    .week-goal .goal-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .week-card.w1 .week-header { background: rgba(33, 150, 243, 0.08); border-right: 4px solid var(--blue); }
+    .week-card.w2 .week-header { background: rgba(245, 166, 35, 0.08); border-right: 4px solid var(--yellow); }
+    .week-card.w3 .week-header { background: rgba(76, 175, 80, 0.08); border-right: 4px solid var(--green); }
+    .week-card.w4 .week-header { background: rgba(193, 126, 58, 0.08); border-right: 4px solid var(--honey); }
+    .week-card.w5 .week-header { background: rgba(156, 39, 176, 0.08); border-right: 4px solid #9c27b0; }
+
+    .week-card.w1 .week-goal .goal-num { color: var(--blue); }
+    .week-card.w2 .week-goal .goal-num { color: var(--yellow); }
+    .week-card.w3 .week-goal .goal-num { color: var(--green); }
+    .week-card.w4 .week-goal .goal-num { color: var(--honey); }
+    .week-card.w5 .week-goal .goal-num { color: #9c27b0; }
+
+    .week-body {
+      padding: 20px 24px;
+    }
+
+    .week-theme {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 16px;
+      opacity: 0.6;
+    }
+
+    .task-list {
+      list-style: none;
+    }
+
+    .task-list li {
+      padding: 8px 0;
+      border-bottom: 1px solid #2e2e2e;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 15px;
+    }
+
+    .task-list li:last-child {
+      border-bottom: none;
+    }
+
+    .task-list .tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .tag.urgent { background: rgba(229, 57, 53, 0.2); color: var(--red); }
+    .tag.high { background: rgba(245, 166, 35, 0.2); color: var(--yellow); }
+    .tag.medium { background: rgba(76, 175, 80, 0.2); color: var(--green); }
+    .tag.low { background: rgba(136, 136, 136, 0.2); color: var(--text-muted); }
+    .tag.done { background: rgba(76, 175, 80, 0.15); color: var(--green); }
+    .tag.budget { background: rgba(33, 150, 243, 0.2); color: var(--blue); }
+
+    /* Revenue table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 40px;
+      font-size: 15px;
+    }
+
+    th {
+      background: #2e2e2e;
+      padding: 12px 16px;
+      text-align: right;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr.current td { background: rgba(33, 150, 243, 0.05); }
+    tr.target td { background: rgba(76, 175, 80, 0.08); font-weight: 700; }
+
+    .cumulative-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .mini-bar {
+      flex: 1;
+      background: #333;
+      border-radius: 100px;
+      height: 8px;
+      overflow: hidden;
+    }
+
+    .mini-fill {
+      height: 100%;
+      border-radius: 100px;
+      background: var(--honey);
+    }
+
+    /* Success factors */
+    .factors-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+
+    @media (max-width: 600px) {
+      .factors-grid { grid-template-columns: 1fr; }
+    }
+
+    .factor-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .factor-card .factor-num {
+      font-family: 'Anton', sans-serif;
+      font-size: 48px;
+      color: #333;
+      line-height: 1;
+      float: left;
+      margin-left: 16px;
+      margin-bottom: 4px;
+    }
+
+    .factor-card .factor-title {
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--honey);
+      margin-bottom: 6px;
+    }
+
+    .factor-card .factor-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      clear: both;
+    }
+
+    /* Budget section */
+    .budget-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+
+    @media (max-width: 600px) {
+      .budget-grid { grid-template-columns: 1fr; }
+    }
+
+    .budget-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .budget-card h4 {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .budget-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #2e2e2e;
+      font-size: 14px;
+    }
+
+    .budget-row:last-child { border-bottom: none; }
+    .budget-row .amount { font-weight: 700; }
+    .budget-row .amount.spent { color: var(--red); }
+    .budget-row .amount.available { color: var(--green); }
+    .budget-row .amount.planned { color: var(--yellow); }
+
+    /* Action box */
+    .action-box {
+      background: linear-gradient(135deg, rgba(193, 126, 58, 0.15), rgba(193, 126, 58, 0.05));
+      border: 1px solid var(--honey);
+      border-radius: 8px;
+      padding: 28px;
+      margin-bottom: 40px;
+    }
+
+    .action-box h3 {
+      font-family: 'Anton', sans-serif;
+      font-size: 24px;
+      color: var(--honey);
+      letter-spacing: 2px;
+      margin-bottom: 16px;
+    }
+
+    .action-steps {
+      list-style: none;
+      counter-reset: step;
+    }
+
+    .action-steps li {
+      counter-increment: step;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(193, 126, 58, 0.2);
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 15px;
+    }
+
+    .action-steps li:last-child { border-bottom: none; }
+
+    .action-steps li::before {
+      content: counter(step);
+      background: var(--honey);
+      color: #1a1a1a;
+      font-family: 'Anton', sans-serif;
+      font-size: 14px;
+      min-width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 32px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .footer .brand-name {
+      font-family: 'Anton', sans-serif;
+      font-size: 24px;
+      color: var(--honey);
+      display: block;
+      margin-bottom: 8px;
+      letter-spacing: 3px;
+    }
+
+    /* Alert boxes */
+    .alert {
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .alert.warning {
+      background: rgba(229, 57, 53, 0.1);
+      border: 1px solid rgba(229, 57, 53, 0.3);
+      color: #ef9a9a;
+    }
+
+    .alert.info {
+      background: rgba(33, 150, 243, 0.1);
+      border: 1px solid rgba(33, 150, 243, 0.3);
+      color: #90caf9;
+    }
+
+    .alert strong {
+      font-weight: 700;
+    }
+
+    /* Divider */
+    .section-gap {
+      margin-bottom: 48px;
+    }
+
+    /* Timeline visual */
+    .timeline {
+      position: relative;
+      padding-right: 24px;
+      margin-bottom: 40px;
+    }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      right: 7px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--border);
+    }
+
+    .timeline-item {
+      position: relative;
+      margin-bottom: 24px;
+      padding-right: 28px;
+    }
+
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: 6px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--charcoal);
+      border: 2px solid var(--border);
+    }
+
+    .timeline-item.done::before { background: var(--green); border-color: var(--green); }
+    .timeline-item.active::before { background: var(--honey); border-color: var(--honey); }
+    .timeline-item.upcoming::before { background: var(--charcoal); border-color: #555; }
+
+    .timeline-item .tl-date {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .timeline-item .tl-title {
+      font-weight: 700;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
+    .timeline-item .tl-detail {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    @media (max-width: 600px) {
+      .header .brand { font-size: 44px; }
+      .header .subtitle { font-size: 20px; }
+      .week-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+      .status-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="brand">DUBIS</div>
+    <div class="subtitle">תוכנית הכנסות — 50 ימים</div>
+    <div class="meta">עודכן: 3 באפריל 2026 | מאת: מערכת DUBIS CTO</div>
+    <div class="goal-badge">TARGET: $1,000 REVENUE</div>
+  </div>
+
+  <div class="container">
+
+    <!-- Reality check -->
+    <div class="alert warning">
+      <strong>מצב נוכחי — גלוי ובלתי מסוכר:</strong> 10 ימים, 3 הזמנות, $70 הכנסה. ממוצע הזמנה $23.
+      כדי להגיע ל-$1,000 נדרשות עוד <strong>~40 הזמנות</strong> ב-50 יום הנותרים.
+      זה אפשרי — אבל דורש שינוי תפעולי מיידי, לא רק תקציב פרסום.
+    </div>
+
+    <!-- Stats -->
+    <div class="status-grid">
+      <div class="stat-card honey">
+        <div class="value">$70</div>
+        <div class="label">הכנסה עד כה</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="value">3</div>
+        <div class="label">הזמנות</div>
+      </div>
+      <div class="stat-card red">
+        <div class="value">$930</div>
+        <div class="label">נשאר להשיג</div>
+      </div>
+      <div class="stat-card yellow">
+        <div class="value">50</div>
+        <div class="label">ימים נותרים</div>
+      </div>
+      <div class="stat-card green">
+        <div class="value">₪420</div>
+        <div class="label">תקציב פרסום נותר</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="value">70</div>
+        <div class="label">ביקורים/יום</div>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-section">
+      <div class="progress-header">
+        <span>התקדמות לעבר $1,000</span>
+        <span style="color: var(--honey);">$70 / $1,000</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill"></div>
+      </div>
+      <div class="progress-note">7% מהיעד הושג. נדרשת עלייה של פי 13 בקצב המכירות.</div>
+    </div>
+
+    <!-- The core problem -->
+    <div class="section-gap">
+      <div class="section-title">
+        <span class="num">!</span>
+        הבעיה המרכזית — 0% המרה מפרסום
+      </div>
+      <div class="alert info">
+        <strong>האבחנה:</strong> 70 ביקורים ביום, 0% המרה מפרסום ממומן. הבעיה היא לא טראפיק — הבעיה היא
+        <strong>אמון</strong>. קונים ישראלים ב-40+, בגדלים גדולים, לא קונים מאתר חדש ללא:
+        (1) תמונות UGC אמיתיות, (2) ביקורות, (3) מענה לשאלות נפוצות, (4) תמחור מוצדק.
+        כל הצעדים בשבוע 1 מכוונים לפתור בדיוק את זה.
+      </div>
+    </div>
+
+    <!-- Week 1 -->
+    <div class="week-card w1">
+      <div class="week-header">
+        <div>
+          <div class="week-label">שבוע 1 — תיקון הפאנל</div>
+          <div class="week-dates">4–10 באפריל 2026</div>
+        </div>
+        <div class="week-goal">
+          <div class="goal-num">2–3</div>
+          <div class="goal-label">מכירות יעד</div>
+        </div>
+      </div>
+      <div class="week-body">
+        <div class="week-theme">FIX THE FUNNEL BEFORE SPENDING MORE</div>
+        <ul class="task-list">
+          <li><span class="tag done">בוצע</span> הוספת FAQ לאתר — שאלות נפוצות על משלוח, מידות, איכות</li>
+          <li><span class="tag done">בוצע</span> הפעלת auto-publish תוכן יומי — IG + FB</li>
+          <li><span class="tag urgent">דחוף</span> הוספת תמונות UGC לאתר (generate-ugc.js) — הוכחה חברתית</li>
+          <li><span class="tag urgent">דחוף</span> הקמת קמפיין Retargeting ב-Meta — ₪50/שבוע, קהל: 700+ מבקרים</li>
+          <li><span class="tag high">גבוה</span> הוספת badge "100% שביעות רצון" + אייקוני אמון בעמוד הראשי</li>
+          <li><span class="tag high">גבוה</span> שיפור תיאורי מוצרים — להוסיף מידות ספציפיות + טיפים על בחירת מידה</li>
+          <li><span class="tag budget">תקציב: ₪50</span> Retargeting בלבד — אל תגדיל לפני שהאתר מוכן להמיר</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Week 2 -->
+    <div class="week-card w2">
+      <div class="week-header">
+        <div>
+          <div class="week-label">שבוע 2 — קמפיין המרות</div>
+          <div class="week-dates">11–17 באפריל 2026</div>
+        </div>
+        <div class="week-goal">
+          <div class="goal-num">5–7</div>
+          <div class="goal-label">מכירות יעד</div>
+        </div>
+      </div>
+      <div class="week-body">
+        <div class="week-theme">CONVERSION CAMPAIGN — STOP TRAFFIC, START BUYING</div>
+        <ul class="task-list">
+          <li><span class="tag urgent">דחוף</span> הקמת קמפיין Conversions ב-Meta — ₪100/שבוע, אופטימיזציה ל-Purchase</li>
+          <li><span class="tag urgent">דחוף</span> בניית קהל Lookalike מנתוני Pixel שבוע 1 (700+ מבקרים + 3 קונים)</li>
+          <li><span class="tag high">גבוה</span> קוד הנחה DUBIS20 — 20% הנחה לקנייה ראשונה, להציג בבאנר בראש האתר</li>
+          <li><span class="tag high">גבוה</span> A/B: קריאייטיב AI images מול UGC images בפרסום — למה מגיב הקהל יותר</li>
+          <li><span class="tag medium">בינוני</span> הוספת popup יציאה עם קוד DUBIS20 — לתפוס עוזבים לפני שיצאו</li>
+          <li><span class="tag medium">בינוני</span> שליחת email לכל הרשומים עם קוד ההנחה</li>
+          <li><span class="tag budget">תקציב: ₪150</span> ₪100 Conversions + ₪50 Retargeting ממשיך</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Week 3 -->
+    <div class="week-card w3">
+      <div class="week-header">
+        <div>
+          <div class="week-label">שבוע 3 — Scale מה שעובד</div>
+          <div class="week-dates">18–24 באפריל 2026</div>
+        </div>
+        <div class="week-goal">
+          <div class="goal-num">8–10</div>
+          <div class="goal-label">מכירות יעד</div>
+        </div>
+      </div>
+      <div class="week-body">
+        <div class="week-theme">DOUBLE DOWN ON THE WINNER — KILL WHAT DOESN'T WORK</div>
+        <ul class="task-list">
+          <li><span class="tag urgent">דחוף</span> הכפלת תקציב על הקריאייטיב המנצח מ-A/B שבוע 2</li>
+          <li><span class="tag urgent">דחוף</span> פנייה ל-5 מיקרו-אינפלואנסרים ישראלים (15K-80K עוקבים) — מוצר תמורת ביקורת</li>
+          <li><span class="tag high">גבוה</span> הוספת Instagram Shopping — תיוג מוצרים בפוסטים</li>
+          <li><span class="tag high">גבוה</span> יצירת מבצע Bundle: "2 חולצות ב-$70" (חיסכון של $10)</li>
+          <li><span class="tag medium">בינוני</span> פוסט Reel שבועי ב-IG — תוכן: "הסיבות שלא ירדנו ממידה" (הומור)</li>
+          <li><span class="tag medium">בינוני</span> שליחת בקשות ביקורת לשלושת הקונים הראשונים</li>
+          <li><span class="tag budget">תקציב: ₪120</span> Scale + Retargeting</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Week 4 -->
+    <div class="week-card w4">
+      <div class="week-header">
+        <div>
+          <div class="week-label">שבוע 4 — דחיפה לסגירה</div>
+          <div class="week-dates">25 באפריל – 1 במאי 2026</div>
+        </div>
+        <div class="week-goal">
+          <div class="goal-num">10–15</div>
+          <div class="goal-label">מכירות יעד</div>
+        </div>
+      </div>
+      <div class="week-body">
+        <div class="week-theme">MAXIMUM PUSH — CLOSE THE GAP</div>
+        <ul class="task-list">
+          <li><span class="tag urgent">דחוף</span> Scale קמפיינים מנצחים ל-₪200/שבוע</li>
+          <li><span class="tag urgent">דחוף</span> Flash Sale 48 שעות — 25% הנחה על הכל, קאונטדאון באתר</li>
+          <li><span class="tag high">גבוה</span> Email blast לכל המנויים עם קוד בלעדי ל-Flash Sale</li>
+          <li><span class="tag high">גבוה</span> Re-engage כל עוזבי עגלה — email אוטומטי עם תזכורת + קוד</li>
+          <li><span class="tag medium">בינוני</span> עדכון תוכן: Reels עם UGC images מהשבועות הקודמים</li>
+          <li><span class="tag budget">תקציב: ₪100</span> (תקציב כבר מוצה רובו — Flash Sale ממיר אורגנית)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Week 5-7 -->
+    <div class="week-card w5">
+      <div class="week-header">
+        <div>
+          <div class="week-label">שבועות 5–7 — שמירה ואופטימיזציה</div>
+          <div class="week-dates">2–22 במאי 2026</div>
+        </div>
+        <div class="week-goal">
+          <div class="goal-num">10–15</div>
+          <div class="goal-label">מכירות יעד</div>
+        </div>
+      </div>
+      <div class="week-body">
+        <div class="week-theme">MAINTAIN MOMENTUM — REACH $1,000</div>
+        <ul class="task-list">
+          <li><span class="tag high">גבוה</span> המשך קמפיינים מנצחים בתקציב שנותר</li>
+          <li><span class="tag high">גבוה</span> תוכן שבועי: Reels + Stories + IG posts — 5-7 פוסטים לשבוע</li>
+          <li><span class="tag medium">בינוני</span> follow-up בקשות ביקורת לכל קוני שבוע 2–3</li>
+          <li><span class="tag medium">בינוני</span> ניתוח מה עבד — לבנות בסיס לתכנון Q3</li>
+          <li><span class="tag low">נמוך</span> בדיקת עלויות Gelato מול מחירי מכירה — לוודא רווחיות</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Revenue projection table -->
+    <div class="section-gap">
+      <div class="section-title">תחזית הכנסות</div>
+      <table>
+        <thead>
+          <tr>
+            <th>תקופה</th>
+            <th>מכירות</th>
+            <th>הכנסה</th>
+            <th>מצטבר</th>
+            <th>% מהיעד</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="current">
+            <td>נוכחי (10 ימים)</td>
+            <td>3</td>
+            <td>$70</td>
+            <td>
+              <div class="cumulative-bar">
+                <span>$70</span>
+                <div class="mini-bar"><div class="mini-fill" style="width:7%"></div></div>
+              </div>
+            </td>
+            <td style="color: var(--yellow);">7%</td>
+          </tr>
+          <tr>
+            <td>שבוע 1 (4–10.4)</td>
+            <td>3</td>
+            <td>$69</td>
+            <td>
+              <div class="cumulative-bar">
+                <span>$139</span>
+                <div class="mini-bar"><div class="mini-fill" style="width:14%"></div></div>
+              </div>
+            </td>
+            <td>14%</td>
+          </tr>
+          <tr>
+            <td>שבוע 2 (11–17.4)</td>
+            <td>6</td>
+            <td>$138</td>
+            <td>
+              <div class="cumulative-bar">
+                <span>$277</span>
+                <div class="mini-bar"><div class="mini-fill" style="width:28%"></div></div>
+              </div>
+            </td>
+            <td>28%</td>
+          </tr>
+          <tr>
+            <td>שבוע 3 (18–24.4)</td>
+            <td>9</td>
+            <td>$207</td>
+            <td>
+              <div class="cumulative-bar">
+                <span>$484</span>
+                <div class="mini-bar"><div class="mini-fill" style="width:48%"></div></div>
+              </div>
+            </td>
+            <td>48%</td>
+          </tr>
+          <tr>
+            <td>שבוע 4 (25.4–1.5)</td>
+            <td>12</td>
+            <td>$276</td>
+            <td>
+              <div class="cumulative-bar">
+                <span>$760</span>
+                <div class="mini-bar"><div class="mini-fill" style="width:76%"></div></div>
+              </div>
+            </td>
+            <td>76%</td>
+          </tr>
+          <tr class="target">
+            <td>שבועות 5–7 (2–22.5)</td>
+            <td>12</td>
+            <td>$276</td>
+            <td>
+              <div class="cumulative-bar">
+                <span style="color:var(--green);">$1,036</span>
+                <div class="mini-bar"><div class="mini-fill" style="width:100%; background: var(--green);"></div></div>
+              </div>
+            </td>
+            <td style="color: var(--green);">103%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Budget breakdown -->
+    <div class="section-gap">
+      <div class="section-title">תקציב פרסום — פירוט</div>
+      <div class="budget-grid">
+        <div class="budget-card">
+          <h4>מה היה</h4>
+          <div class="budget-row">
+            <span>תקציב התחלתי</span>
+            <span class="amount">₪500</span>
+          </div>
+          <div class="budget-row">
+            <span>הוצאה עד כה</span>
+            <span class="amount spent">–₪80</span>
+          </div>
+          <div class="budget-row">
+            <span>נותר</span>
+            <span class="amount available">₪420</span>
+          </div>
+        </div>
+        <div class="budget-card">
+          <h4>תוכנית הוצאות</h4>
+          <div class="budget-row">
+            <span>שבוע 1 — Retargeting</span>
+            <span class="amount planned">₪50</span>
+          </div>
+          <div class="budget-row">
+            <span>שבוע 2 — Conversions</span>
+            <span class="amount planned">₪150</span>
+          </div>
+          <div class="budget-row">
+            <span>שבוע 3 — Scale</span>
+            <span class="amount planned">₪120</span>
+          </div>
+          <div class="budget-row">
+            <span>שבוע 4 — Push</span>
+            <span class="amount planned">₪100</span>
+          </div>
+          <div class="budget-row" style="border-top: 1px solid var(--border); margin-top: 4px;">
+            <span>סה"כ מתוכנן</span>
+            <span class="amount" style="color: var(--honey);">₪420</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Critical success factors -->
+    <div class="section-gap">
+      <div class="section-title">5 גורמים קריטיים להצלחה</div>
+      <div class="factors-grid">
+        <div class="factor-card">
+          <div class="factor-num">1</div>
+          <div class="factor-title">שיעור המרה — 0% ל-1.5%</div>
+          <div class="factor-desc">כרגע 0% המרה מפרסום. FAQ, UGC ואמון יעלו אותו. בלי זה — כל שקל בפרסום נשרף.</div>
+        </div>
+        <div class="factor-card">
+          <div class="factor-num">2</div>
+          <div class="factor-title">Retargeting — הכי זול</div>
+          <div class="factor-desc">700+ מבקרים שכבר מכירים את המותג. Retargeting עולה 3–5x פחות מקהל חדש. להתחיל כאן.</div>
+        </div>
+        <div class="factor-card">
+          <div class="factor-num">3</div>
+          <div class="factor-title">קוד DUBIS20 — לשבור מחסום</div>
+          <div class="factor-desc">מוצרים ב-$45–$75 מחייבים הצדקה. 20% הנחה לקנייה ראשונה מורידה חסם מנטלי.</div>
+        </div>
+        <div class="factor-card">
+          <div class="factor-num">4</div>
+          <div class="factor-title">UGC + ביקורות — אמון</div>
+          <div class="factor-desc">ישראלים ב-40+ לא קונים בגדים אונליין ללא תמונות אמיתיות. UGC עושה את ההבדל.</div>
+        </div>
+        <div class="factor-card" style="grid-column: 1 / -1;">
+          <div class="factor-num">5</div>
+          <div class="factor-title">נפח תוכן — בניית זיהוי מותג</div>
+          <div class="factor-desc">פוסט יומי בונה זיהוי לאורך זמן. אנשים צריכים לראות מותג 7–10 פעמים לפני שהם קונים. auto-publish פועל — לא לכבות.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Immediate action plan -->
+    <div class="action-box">
+      <h3>5 הצעדים הראשונים — עכשיו</h3>
+      <ol class="action-steps">
+        <li>להריץ <code>node scripts/generate-ugc.js</code> — לייצר תמונות UGC ולהוסיף לאתר בסקשן "לקוחות שלנו"</li>
+        <li>לפתוח Meta Business Manager ולהקים קמפיין Retargeting — קהל Custom Audience מ-Pixel, ₪50/שבוע</li>
+        <li>להוסיף קוד DUBIS20 דרך ממשק ה-Admin של DUBIS, ולהציג אותו בבאנר צהוב בראש האתר</li>
+        <li>לשלוח email ידני ל-3 הקונים הראשונים — לבקש ביקורת + תמונה תמורת קוד 10% לקנייה הבאה</li>
+        <li>לבדוק Analytics — אילו מוצרים מקבלים הכי הרבה צפיות אך אפס רכישות — לשם הבעיה</li>
+      </ol>
+    </div>
+
+    <!-- Timeline -->
+    <div class="section-gap">
+      <div class="section-title">ציר זמן מרכזי</div>
+      <div class="timeline">
+        <div class="timeline-item done">
+          <div class="tl-date">24 מרץ 2026</div>
+          <div class="tl-title">השקת האתר + הזמנה ראשונה</div>
+          <div class="tl-detail">3 הזמנות, $70 הכנסה. Auto-publish תוכן פועל.</div>
+        </div>
+        <div class="timeline-item active">
+          <div class="tl-date">3–10 באפריל 2026</div>
+          <div class="tl-title">שבוע 1 — תיקון פאנל</div>
+          <div class="tl-detail">FAQ, UGC, Retargeting. יעד: 2–3 מכירות נוספות.</div>
+        </div>
+        <div class="timeline-item upcoming">
+          <div class="tl-date">11–17 באפריל 2026</div>
+          <div class="tl-title">שבוע 2 — קמפיין המרות</div>
+          <div class="tl-detail">Conversions campaign, DUBIS20, A/B קריאייטיב.</div>
+        </div>
+        <div class="timeline-item upcoming">
+          <div class="tl-date">18–24 באפריל 2026</div>
+          <div class="tl-title">שבוע 3 — Scale</div>
+          <div class="tl-detail">הכפלת תקציב, אינפלואנסרים, Instagram Shopping.</div>
+        </div>
+        <div class="timeline-item upcoming">
+          <div class="tl-date">25 אפריל – 1 מאי 2026</div>
+          <div class="tl-title">שבוע 4 — Flash Sale</div>
+          <div class="tl-detail">48 שעות, 25% הנחה. Email blast. Re-engage עגלות.</div>
+        </div>
+        <div class="timeline-item upcoming">
+          <div class="tl-date">2–22 מאי 2026</div>
+          <div class="tl-title">שבועות 5–7 — חציית ה-$1,000</div>
+          <div class="tl-detail">המשך קמפיינים. יעד: $1,036 מצטבר.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span class="brand-name">DUBIS</span>
+    תוכנית זו הופקה ב-3 באפריל 2026 | dubis.net | dubis.brand@gmail.com
+  </div>
+
+</body>
+</html>
