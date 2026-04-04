@@ -39,11 +39,11 @@ const translations = {
     type_ziphoodie: 'Zip Hoodie', type_longsleeve: 'Long-Sleeve',
     quality_title: 'What You See Is What You Get 🐾',
     quality_sub: 'We know the worry — ordering online and getting something that looks nothing like the photo. Here\'s our promise:',
-    q1_title: 'Made Fresh For You', q2_title: 'Fabrics that live with you, not judge you.', q3_title: 'Quality Control', q4_title: 'Easy Returns',
+    q1_title: 'Made Fresh For You', q2_title: 'Fabrics that live with you, not judge you.', q3_title: 'Quality Control', q4_title: 'Defective? Wrong Item? We Fix It.',
     q1_text: 'Every piece is made for you, the moment you order. Not sitting in a warehouse. Not pre-printed in bulk. Made fresh — because you deserve something made for you, not someone else.',
     q2_text: '100% breathable cotton and fits that actually understand your body. No annoying seams, no feeling like you need to change for the shirt. Just put it on, feel at home, and step out into the world.',
     q3_text: 'Every item is checked before it reaches you. Print not sharp enough? Wrong color? We reprint it. You waited for this — it better be worth the wait.',
-    q4_text: '30 days. No drama. No fine print. If it doesn\'t feel like you — send it back, full refund. We\'re real people. We get it.',
+    q4_text: 'Got a defect? Wrong item? Email us within 30 days of delivery with a photo and order number — we\'ll replace or refund. No hassle.',
     about_title: 'Who are we at DUBIS?',
     about_p1: 'Sometime after 40, it hits you: Life is way too short for clothes that make you feel bad about your body. We\'ve been around, built lives worth waking up for, and we absolutely refuse to apologize for enjoying them.',
     about_p2: 'But when it comes to fashion? Suddenly it feels like we\'re expected to change ourselves. DUBIS was created to stop this nonsense. We stopped waiting for fashion brands to notice us — and made exactly what we were looking for.',
@@ -55,7 +55,7 @@ const translations = {
     modal_color: 'Color', modal_size: 'Size',
     modal_made: '🏭 Made fresh for you, the moment you order.',
     modal_material: '👕 Moves with you, not against you.',
-    modal_returns: '↩️ Easy returns — no drama.',
+    modal_returns: '↩️ Defective? Wrong item? We fix it — no hassle.',
     modal_add: 'This Is Mine 🐾',
     tab_details: 'Details', tab_size: 'Size Guide', tab_care: 'Care',
     shipping_note: '✈️ + shipping · free on $120+',
@@ -74,9 +74,9 @@ const translations = {
     faq_q1: 'What sizes do you offer?',
     faq_a1: 'Our products come in sizes S through 3XL. All sizes run comfortable and roomy — if you\'re between sizes, take the smaller one. A detailed size chart is available on every product page.',
     faq_q2: 'How long does shipping take?',
-    faq_a2: 'Free worldwide shipping! Production time: 3–5 business days (printed to order). Delivery: 5–12 business days depending on destination. Total: 8–17 business days.',
+    faq_a2: 'Shipping: $8.99 (free on orders over $120). Production: 3–5 business days (printed to order). Delivery: 5–12 business days. Total: 8–17 business days.',
     faq_q3: 'What is your return policy?',
-    faq_a3: 'Full refund within 30 days. If the product doesn\'t fit — send it back and we\'ll return your money. No questions asked.',
+    faq_a3: 'Returns only for defective, wrong, or lost items. Email dubis.brand@gmail.com within 30 days of delivery with a photo and order number.',
     faq_q4: 'Will the print peel off?',
     faq_a4: 'We use DTG (Direct-to-Garment) technology — the print goes directly into the fabric. It\'s not a sticker, not an iron-on. The print survives dozens of washes.',
     faq_q5: 'Why is it priced this way?',
@@ -104,11 +104,11 @@ const translations = {
     type_ziphoodie: 'קפוצון רוכסן', type_longsleeve: 'ארוכת שרוול',
     quality_title: 'מה שרואים זה מה שמקבלים 🐾',
     quality_sub: 'מזמינים אונליין ומקווים לטוב? אצלנו לא צריך לקוות. הנה מה שאנחנו מבטיחים:',
-    q1_title: 'נתפר בשבילך, לא יושב במחסן', q2_title: 'בד שזז איתך, לא נגדך.', q3_title: 'עובר בדיקה לפני שיוצא', q4_title: 'לא מתאים? מחזירים.',
+    q1_title: 'נתפר בשבילך, לא יושב במחסן', q2_title: 'בד שזז איתך, לא נגדך.', q3_title: 'עובר בדיקה לפני שיוצא', q4_title: 'פגם? מוצר שגוי? מתקנים.',
     q1_text: 'כל פריט נתפר ומודפס ברגע שהזמנת. לא סחורה מהמדף, לא מלאי ישן. הבגד הזה נעשה בדיוק בשבילך — כי ככה זה צריך לעבוד.',
     q2_text: '100% כותנה שנושמת וגזרות שמכבדות את הגוף שלך. בלי תפרים שמציקים, בלי להרגיש שאתה צריך להתאים את עצמך לבגד. פשוט לובשים ויוצאים.',
     q3_text: 'כל פריט עובר בדיקה לפני שהוא יוצא מהדלת. הדפסה לא חדה? צבע לא תקין? מייצרים מחדש. הזמנת — מגיע לך שזה יהיה מושלם.',
-    q4_text: '30 יום. בלי דרמות. בלי אותיות קטנות. לא מתאים? שולחים חזרה ומקבלים החזר מלא. פשוט ככה.',
+    q4_text: 'הגיע פגום? מוצר שגוי? שלחו מייל תוך 30 יום מהמסירה עם תמונה ומספר הזמנה — נחליף או נחזיר כסף. בלי סיבוכים.',
     about_title: 'מי אנחנו ב-DUBIS?',
     about_p1: 'יש רגע — בדרך כלל אחרי גיל 40 — שנופל לך האסימון: החיים קצרים מדי בשביל בגדים שמרגישים כאילו הם שייכים למישהו אחר. עברנו כבר כמה דברים, בנינו חיים שאנחנו מרוצים מהם, ואין לנו כוח להתנצל על זה.',
     about_p2: 'אבל כשמסתכלים על האופנה? פתאום מרגישים שמצפים מאיתנו להשתנות בשביל הבגד, לא להפך. DUBIS קם כדי לשים לזה סוף. הפסקנו לחכות שהמותגים יראו אותנו — וייצרנו את מה שתמיד חיפשנו.',
@@ -120,7 +120,7 @@ const translations = {
     modal_color: 'צבע', modal_size: 'מידה',
     modal_made: '🏭 נתפר במיוחד בשבילך, ברגע ההזמנה.',
     modal_material: '👕 בד שזז איתך, לא נגדך.',
-    modal_returns: '↩️ לא מתאים? מחזירים בלי דרמות.',
+    modal_returns: '↩️ פגם? מוצר שגוי? מחזירים בלי סיבוכים.',
     modal_add: 'זה שלי 🐾',
     tab_details: 'פרטים', tab_size: 'מדריך מידות', tab_care: 'טיפול',
     shipping_note: '✈️ + משלוח · חינם מ-₪444',
@@ -139,9 +139,9 @@ const translations = {
     faq_q1: 'אילו מידות יש לכם?',
     faq_a1: 'S עד 3XL. כל המידות רחבות ונוחות — אם אתה בין מידות, קח את הקטנה. טבלת מידות מפורטת בכל עמוד מוצר.',
     faq_q2: 'כמה זמן לוקח המשלוח?',
-    faq_a2: 'משלוח חינם לכל העולם. זמן הכנה: 3–5 ימי עסקים (מודפס לפי הזמנה). משלוח: 5–12 ימי עסקים לפי היעד. סה"כ: 8–17 ימי עסקים.',
+    faq_a2: 'משלוח: $8.99 (חינם בהזמנה מעל $120). זמן הכנה: 3–5 ימי עסקים (מודפס לפי הזמנה). משלוח: 5–12 ימי עסקים לפי היעד. סה"כ: 8–17 ימי עסקים.',
     faq_q3: 'מה מדיניות ההחזרות?',
-    faq_a3: '30 יום, החזר מלא. לא מתאים? שולחים חזרה ומקבלים את הכסף. בלי שאלות.',
+    faq_a3: 'החזרות רק במקרה של פגם, מוצר שגוי, או אבדן במשלוח. שלחו מייל ל-dubis.brand@gmail.com תוך 30 יום מהמסירה עם תמונה ומספר הזמנה.',
     faq_q4: 'ההדפסה מחזיקה?',
     faq_a4: 'אנחנו עובדים עם DTG — הדפסה ישירה על הבד, לא מדבקה. ההדפסה שורדת עשרות כביסות בלי בעיה.',
     faq_q5: 'למה המחיר כזה?',
@@ -479,8 +479,8 @@ function openProductModal(productId) {
       </div>
       <div class="modal-trust-badges">
         <span>&#128274; ${currentLang === 'he' ? 'תשלום מאובטח' : 'Secure Checkout'}</span>
-        <span>&#128666; ${currentLang === 'he' ? 'משלוח חינם לכל העולם' : 'Free Worldwide Shipping'}</span>
-        <span>&#8617;&#65039; ${currentLang === 'he' ? 'החזרה תוך 30 יום' : '30-Day Returns'}</span>
+        <span>&#128666; ${currentLang === 'he' ? 'משלוח $8.99 · חינם מעל $120' : '$8.99 Shipping · Free over $120'}</span>
+        <span>&#8617;&#65039; ${currentLang === 'he' ? 'החזרה על פגמים תוך 30 יום' : '30-Day Defect Returns'}</span>
       </div>
       <button class="btn-primary modal-add-btn" onclick="addToCartFromModal(${product.id})">
         ${t.modal_add}
