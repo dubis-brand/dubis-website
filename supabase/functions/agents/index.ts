@@ -77,7 +77,7 @@ function fixHebrew(text: string): string {
 // ── Slogan typography map ──
 const SLOGAN_TYPOGRAPHY: Record<string, { small: string; big: string; after: string; layout: string }> = {
   "I'm not fat, I'm a limited edition":   { small: 'I am not fat, I am a', big: 'LIMITED', after: 'edition.', layout: 'top-bottom' },
-  "More of me to love":                   { small: 'more of me', big: 'LOVE', after: '', layout: 'top-bottom' },
+  "More of me to love":                   { small: 'more of me to', big: 'LOVE', after: '', layout: 'top-bottom' },
   "Napping is my cardio":                 { small: 'NAPPING IS MY', big: 'CARDIO', after: '', layout: 'top-bottom' },
   "I survived. That's enough.":           { small: '', big: 'I survived.', after: "That's enough.", layout: 'top-bottom' },
   "Low maintenance, high value":          { small: 'low maintenance', big: 'VALUE', after: 'high', layout: 'top-bottom' },
@@ -1611,19 +1611,44 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       let score = 0;
       const failReasons: string[] = [];
 
-      // ── 1. Hebrew brand voice (30pts) — Gemini ──────────────────────
+      // ── 0. Slogan completeness check — verify typography has all slogan words ──
+      const productSlogan = ((cd.product_slogan as string) || '').toLowerCase().replace(/[^a-z\s]/g, '').trim();
+      const typoSmall = ((cd.typography_small as string) || (SLOGAN_TYPOGRAPHY[cd.product_slogan as string]?.small) || '').toLowerCase().replace(/[^a-z\s]/g, '').trim();
+      const typoBig = ((cd.typography_big as string) || (SLOGAN_TYPOGRAPHY[cd.product_slogan as string]?.big) || '').toLowerCase().replace(/[^a-z\s]/g, '').trim();
+      const typoAfter = ((cd.typography_after as string) || (SLOGAN_TYPOGRAPHY[cd.product_slogan as string]?.after) || '').toLowerCase().replace(/[^a-z\s]/g, '').trim();
+      const typoFull = `${typoSmall} ${typoBig} ${typoAfter}`.replace(/\s+/g, ' ').trim();
+      const sloganWords = productSlogan.split(/\s+/).filter((w: string) => w.length > 1);
+      const typoWords = typoFull.split(/\s+/).filter((w: string) => w.length > 1);
+      const missingWords = sloganWords.filter((w: string) => !typoWords.some((tw: string) => tw.includes(w) || w.includes(tw)));
+      if (missingWords.length > 0) {
+        failReasons.push(`טיפוגרפיה חסרה מילים מהסלוגן: ${missingWords.join(', ')} — סלוגן: "${productSlogan}" → טיפו: "${typoFull}"`);
+        qaDetails.slogan_completeness = false;
+        qaDetails.missing_words = missingWords;
+      } else {
+        qaDetails.slogan_completeness = true;
+      }
+
+      // ── 1. Hebrew brand voice + English grammar (30pts) — Gemini ────
       let voiceScore = 0;
+      const captionEn = (cd.caption_en as string) || '';
       try {
         const voicePrompt = `You are a DUBIS brand QA reviewer. DUBIS is an Israeli body-positive humor apparel brand.
 Brand voice rules:
 - Uses "קפוצון" NOT "הודי" or "הודיז"
-- Tone: self-aware humor, body-positive, relatable
+- Tone: self-aware, cynical humor, body-positive, relatable
 - Not generic, ties to the brand personality
 
 Caption to review (Hebrew): "${captionHe}"
+${captionEn ? `English caption: "${captionEn}"` : ''}
+Product slogan on garment: "${productSlogan}"
 
-Score the caption 0-30 for brand voice quality. Return ONLY valid JSON:
-{"score": <0-30>, "reason": "<one sentence>"}`;
+Check:
+1. Hebrew caption brand voice quality (0-20)
+2. English caption grammar correctness — if present (0-5, or 5 if no English caption)
+3. Does the product slogan read as grammatically correct English? (0-5)
+
+Score the total 0-30. Return ONLY valid JSON:
+{"score": <0-30>, "reason": "<one sentence>", "english_grammar_ok": <true/false>, "slogan_grammar_ok": <true/false>}`;
         const vRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
           { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1634,6 +1659,10 @@ Score the caption 0-30 for brand voice quality. Return ONLY valid JSON:
         const vParsed = JSON.parse(vRaw.replace(/```json|```/g, '').trim());
         voiceScore = Math.min(30, Math.max(0, Number(vParsed.score) || 0));
         qaDetails.voice_reason = vParsed.reason || '';
+        qaDetails.english_grammar_ok = vParsed.english_grammar_ok ?? true;
+        qaDetails.slogan_grammar_ok = vParsed.slogan_grammar_ok ?? true;
+        if (vParsed.english_grammar_ok === false) failReasons.push('שגיאת דקדוק בכיתוב האנגלי');
+        if (vParsed.slogan_grammar_ok === false) failReasons.push('סלוגן המוצר לא תקין דקדוקית באנגלית');
       } catch { voiceScore = 15; qaDetails.voice_reason = 'Gemini unavailable — default score'; }
       score += voiceScore;
       qaDetails.voice_score = voiceScore;

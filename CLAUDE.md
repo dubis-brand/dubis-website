@@ -60,7 +60,7 @@ Each slogan uses **mixed-size typography**: a KEY POWER WORD in huge bold upperc
 Format: `small text` → **HUGE TEXT** → `small text` | Product type
 
 1. `I am not fat, I am a` → **LIMITED** → `edition.` | T-Shirt
-2. `more of me` → **LOVE** | T-Shirt
+2. `more of me to` → **LOVE** | T-Shirt
 3. `NAPPING IS MY` → **CARDIO** | Hoodie
 4. `I survived.` (large) / `That's enough.` (medium below) | T-Shirt
 5. `low maintenance` → **VALUE** → `high` (below) | T-Shirt

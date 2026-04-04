@@ -47,7 +47,7 @@ const PRODUCTS = [
   { id: 1,  phrase: "I'm not fat, I'm a limited edition", layout: 'top-bottom',
     small: "I am not fat, I am a", big: "LIMITED",   after: "edition."           },
   { id: 2,  phrase: "More of me to love",                 layout: 'top-bottom',
-    small: "more of me",           big: "LOVE",       after: ""                  },
+    small: "more of me to",        big: "LOVE",       after: ""                  },
   { id: 3,  phrase: "Napping is my cardio",               layout: 'top-bottom',
     small: "NAPPING IS MY",        big: "CARDIO",     after: ""                  },
   { id: 4,  phrase: "I survived. That's enough.",         layout: 'top-bottom',
