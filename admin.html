@@ -6004,7 +6004,7 @@
   }
 
   // ── PRODUCT CREATOR ────────────────────────────────────
-  async function generateSlogans() {
+  window.generateSlogans = async function generateSlogans() {
     if (!confirm('לייצר 3 הצעות סלוגנים חדשים?')) return;
     const btn = event.target;
     btn.disabled = true; btn.textContent = '...מייצר';
@@ -6022,7 +6022,7 @@
     finally { btn.disabled = false; btn.textContent = '+ סלוגן חדש'; }
   }
 
-  async function runSecurityScan() {
+  window.runSecurityScan = async function runSecurityScan() {
     if (!confirm('להריץ סריקת אבטחה?')) return;
     const btn = event.target;
     btn.disabled = true; btn.textContent = '...סורק';
@@ -6040,7 +6040,7 @@
     finally { btn.disabled = false; btn.textContent = '🔍 סרוק'; }
   }
 
-  async function loadProductSuggestionsCount() {
+  window.loadProductSuggestionsCount = async function loadProductSuggestionsCount() {
     try {
       const { data: { session } } = await _sb.auth.getSession();
       const res = await fetch(AGENTS_BASE + '?type=approve-product', {
@@ -6057,7 +6057,7 @@
     } catch(_) {}
   }
 
-  async function showProductSuggestions() {
+  window.showProductSuggestions = async function showProductSuggestions() {
     try {
       const { data: { session } } = await _sb.auth.getSession();
       const res = await fetch(AGENTS_BASE + '?type=approve-product', {
@@ -6127,7 +6127,8 @@
     } catch(e) { alert('שגיאה: ' + e.message); }
   }
 
-  async function approveProduct(productId, action) {
+  window.approveProduct = async function approveProduct(productId, action) {
+    console.log('approveProduct called:', productId, action);
     const actionLabel = action === 'approve' ? 'לאשר' : 'לדחות';
     if (!confirm(`בטוח ${actionLabel} את המוצר?`)) return;
     try {
@@ -6154,7 +6155,8 @@
     } catch(e) { alert('שגיאה: ' + e.message); }
   }
 
-  async function editAndApproveProduct(productId) {
+  window.editAndApproveProduct = async function editAndApproveProduct(productId) {
+    console.log('editAndApproveProduct called:', productId);
     const newSlogan = prompt('ערוך סלוגן (או השאר ריק לבטל):');
     if (newSlogan === null || newSlogan.trim() === '') return;
     try {
