@@ -1998,7 +1998,7 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array:
           const imgPrompt = `Professional product mockup photo: a dark black ${garment} laid flat on dark background. On the back of the ${garment}, white bold text is printed with dramatic size contrast: "${prod.typography_small || ''}" in small text, "${prod.typography_big || ''}" in HUGE bold Impact font (3x larger), "${prod.typography_after || ''}" in small text below. Clean product photography, no person, just the garment. Photorealistic, studio lighting. Do NOT add any other text or watermarks.`;
 
           const imgRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${geminiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiKey}`,
             { method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 contents: [{ parts: [{ text: imgPrompt }] }],
