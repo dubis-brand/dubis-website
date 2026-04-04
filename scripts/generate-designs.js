@@ -12,6 +12,12 @@ const { createCanvas, registerFont } = require('canvas');
 const fs   = require('fs');
 const path = require('path');
 
+// Try loading .env for Supabase credentials
+try { require('dotenv').config({ path: path.resolve(__dirname, '../.env') }); } catch {}
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
 // ---------------------------------------------------------------------------
 // Font registration
 // Impact is pre-installed on Windows. Register it so canvas can use it.
@@ -281,13 +287,36 @@ function generateCap(color, outPath) {
 }
 
 // ---------------------------------------------------------------------------
+// Fetch a single product from Supabase DB (for --product-id=X flag)
+// ---------------------------------------------------------------------------
+async function fetchProductFromDB(productId) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for DB fetch');
+  }
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/dubis_products?id=eq.${productId}&select=*`, {
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+  });
+  if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
+  const rows = await res.json();
+  if (!rows.length) throw new Error(`Product ${productId} not found in DB`);
+  const p = rows[0];
+  return {
+    id: p.id,
+    phrase: p.phrase || p.slogan,
+    layout: p.typography_layout || 'top-bottom',
+    small: p.typography_small || '',
+    big: p.typography_big || '',
+    after: p.typography_after || '',
+    type: p.type
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main — run all generators
 // ---------------------------------------------------------------------------
 const MIN_SIZE_BYTES = 200 * 1024; // 200 KB
-const warnings = [];
-let generated = 0;
 
-function reportFile(label, bytes) {
+function reportFile(label, bytes, warnings) {
   const kb = (bytes / 1024).toFixed(1);
   if (bytes < MIN_SIZE_BYTES) {
     const msg = `SMALL FILE WARNING: ${label} is only ${kb} KB (< 200 KB required)`;
@@ -296,49 +325,70 @@ function reportFile(label, bytes) {
   } else {
     console.log(`  OK  ${label} — ${kb} KB`);
   }
-  generated++;
 }
 
-console.log('\n=== DUBIS Design Generator ===\n');
+async function main() {
+  const warnings = [];
+  let generated = 0;
 
-// ---- Back designs (products 1-6, 8-14 — skip id 7 which is cap-only) ----
-console.log('--- Back designs ---');
-for (const p of PRODUCTS) {
-  if (p.type === 'cap') continue; // handled separately
+  // Check for --product-id=X flag
+  const productIdArg = process.argv.find(a => a.startsWith('--product-id='));
+  let products = PRODUCTS;
 
+  if (productIdArg) {
+    const id = parseInt(productIdArg.split('=')[1]);
+    console.log(`Fetching product ${id} from Supabase...`);
+    const dbProduct = await fetchProductFromDB(id);
+    products = [dbProduct];
+    console.log(`Found: "${dbProduct.phrase}" (${dbProduct.layout})`);
+  }
+
+  console.log('\n=== DUBIS Design Generator ===\n');
+
+  // ---- Back designs (skip cap-only products) ----
+  console.log('--- Back designs ---');
+  for (const p of products) {
+    if (p.type === 'cap') continue; // handled separately
+
+    for (const color of ['white', 'dark']) {
+      const filename = `back_design_${p.id}_${color}.png`;
+      const outPath  = path.join(OUTPUT_DIR, filename);
+      const bytes    = generateBack(p, color, outPath);
+      reportFile(filename, bytes, warnings);
+      generated++;
+    }
+  }
+
+  // ---- Front logo ----
+  console.log('\n--- Front logos ---');
   for (const color of ['white', 'dark']) {
-    const filename = `back_design_${p.id}_${color}.png`;
+    const filename = `front_logo_${color}.png`;
     const outPath  = path.join(OUTPUT_DIR, filename);
-    const bytes    = generateBack(p, color, outPath);
-    reportFile(filename, bytes);
+    const bytes    = generateFrontLogo(color, outPath);
+    reportFile(filename, bytes, warnings);
+    generated++;
+  }
+
+  // ---- Cap designs ----
+  console.log('\n--- Cap designs ---');
+  for (const color of ['white', 'dark']) {
+    const filename = `cap_design_${color}.png`;
+    const outPath  = path.join(OUTPUT_DIR, filename);
+    const bytes    = generateCap(color, outPath);
+    reportFile(filename, bytes, warnings);
+    generated++;
+  }
+
+  // ---- Summary ----
+  console.log(`\n=== Done. ${generated} files written to ${OUTPUT_DIR} ===`);
+  if (warnings.length > 0) {
+    console.warn(`\n${warnings.length} file(s) are below the 200 KB minimum:`);
+    warnings.forEach(w => console.warn(' -', w));
+    console.warn('\nThese files may be rejected by Gelato. Consider increasing');
+    console.warn('canvas dimensions, font sizes, or adding decorative elements.');
+  } else {
+    console.log('All files meet the 200 KB minimum size requirement.');
   }
 }
 
-// ---- Front logo ----
-console.log('\n--- Front logos ---');
-for (const color of ['white', 'dark']) {
-  const filename = `front_logo_${color}.png`;
-  const outPath  = path.join(OUTPUT_DIR, filename);
-  const bytes    = generateFrontLogo(color, outPath);
-  reportFile(filename, bytes);
-}
-
-// ---- Cap designs ----
-console.log('\n--- Cap designs ---');
-for (const color of ['white', 'dark']) {
-  const filename = `cap_design_${color}.png`;
-  const outPath  = path.join(OUTPUT_DIR, filename);
-  const bytes    = generateCap(color, outPath);
-  reportFile(filename, bytes);
-}
-
-// ---- Summary ----
-console.log(`\n=== Done. ${generated} files written to ${OUTPUT_DIR} ===`);
-if (warnings.length > 0) {
-  console.warn(`\n${warnings.length} file(s) are below the 200 KB minimum:`);
-  warnings.forEach(w => console.warn(' -', w));
-  console.warn('\nThese files may be rejected by Gelato. Consider increasing');
-  console.warn('canvas dimensions, font sizes, or adding decorative elements.');
-} else {
-  console.log('All files meet the 200 KB minimum size requirement.');
-}
+main().catch(e => { console.error(e); process.exit(1); });

@@ -2029,6 +2029,48 @@
         </div>
       </div>
 
+      <!-- Product Agent -->
+      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #9c27b0">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem">
+          <div>
+            <div style="font-size:1.4rem">🎨</div>
+            <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Product Agent</div>
+            <div style="color:#999;font-size:.8rem">יצירת סלוגנים ומוצרים</div>
+          </div>
+          <button onclick="generateSlogans()" class="agent-run-btn">+ סלוגן חדש</button>
+        </div>
+        <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
+          מייצר 3 הצעות סלוגנים ציניים חדשים בסגנון DUBIS דרך Gemini. כל הצעה כוללת: סלוגן, power word, טיפוגרפיה, תיאורים. דורש אישור ידני.
+        </div>
+        <div id="agent-tasks-product" style="margin-bottom:.6rem"></div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#9c27b0">Gemini 2.5 Flash</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#999">ידני</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-product">—</span>
+        </div>
+      </div>
+
+      <!-- Security Agent -->
+      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #f44336">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem">
+          <div>
+            <div style="font-size:1.4rem">🔒</div>
+            <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Security Agent</div>
+            <div style="color:#999;font-size:.8rem">סריקת אבטחה שבועית</div>
+          </div>
+          <button onclick="runSecurityScan()" class="agent-run-btn">🔍 סרוק</button>
+        </div>
+        <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
+          סורק headers אבטחה, HTTPS, מפתחות חשופים בקוד JS, מצב PayPal (sandbox/production). רץ אוטומטית כל יום שני.
+        </div>
+        <div id="agent-tasks-security" style="margin-bottom:.6rem"></div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#f44336">Headers Scan</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#999">שני 03:00 UTC</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-security">—</span>
+        </div>
+      </div>
+
     </div>
 
     <!-- Recent runs -->
@@ -5943,6 +5985,91 @@
       if (gridEl)  gridEl.style.display  = 'none';
       if (emptyEl) emptyEl.style.display = '';
     }
+  }
+
+  // ── PRODUCT CREATOR ────────────────────────────────────
+  async function generateSlogans() {
+    if (!confirm('לייצר 3 הצעות סלוגנים חדשים?')) return;
+    const btn = event.target;
+    btn.disabled = true; btn.textContent = '...מייצר';
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch(AGENTS_BASE + '?type=generate-slogan', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      alert('נוצרו ' + data.count + ' הצעות סלוגנים! עבור ללשונית מוצרים לאישור.');
+      showProductSuggestions();
+    } catch(e) { alert('שגיאה: ' + e.message); }
+    finally { btn.disabled = false; btn.textContent = '+ סלוגן חדש'; }
+  }
+
+  async function runSecurityScan() {
+    if (!confirm('להריץ סריקת אבטחה?')) return;
+    const btn = event.target;
+    btn.disabled = true; btn.textContent = '...סורק';
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch(AGENTS_BASE + '?type=security-scan', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const msg = `סריקה הושלמה!\n\nממצאים: ${data.total_findings}\nקריטי: ${data.critical}\nגבוה: ${data.high}\nבינוני: ${data.medium}\nנמוך: ${data.low}`;
+      alert(msg);
+    } catch(e) { alert('שגיאה: ' + e.message); }
+    finally { btn.disabled = false; btn.textContent = '🔍 סרוק'; }
+  }
+
+  async function showProductSuggestions() {
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch(AGENTS_BASE + '?type=approve-product', {
+        headers: { 'Authorization': 'Bearer ' + session.access_token }
+      });
+      const data = await res.json();
+      if (!data.products || !data.products.length) { alert('אין הצעות ממתינות'); return; }
+
+      let html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:200;display:flex;align-items:center;justify-content:center" id="product-suggestions-modal" onclick="if(event.target===this)this.remove()">';
+      html += '<div style="background:#1a1a1a;border-radius:12px;padding:2rem;width:95%;max-width:800px;max-height:85vh;overflow-y:auto" dir="rtl">';
+      html += '<h3 style="color:#c8a96e;margin-bottom:1.5rem">הצעות סלוגנים חדשים</h3>';
+
+      for (const p of data.products) {
+        html += `<div style="background:#111;border-radius:8px;padding:1.2rem;margin-bottom:1rem;border-right:3px solid #9c27b0">
+          <div style="font-size:1.2rem;font-weight:700;color:#e8e0d5;margin-bottom:.5rem">${p.slogan || p.phrase}</div>
+          <div style="color:#9c27b0;font-weight:700;margin-bottom:.3rem">Power Word: ${p.typography_big || '—'}</div>
+          <div style="color:#999;font-size:.85rem;margin-bottom:.3rem">${p.description_he || ''}</div>
+          <div style="color:#666;font-size:.8rem;margin-bottom:.8rem">סוג: ${p.type} | מגדר: ${p.gender}</div>
+          <div style="display:flex;gap:.5rem">
+            <button onclick="approveProduct(${p.id},'approve')" style="background:#2a7a2a;color:#fff;border:none;padding:.5rem 1rem;border-radius:6px;cursor:pointer;font-size:.85rem">✅ אשר</button>
+            <button onclick="approveProduct(${p.id},'reject')" style="background:#7a2a2a;color:#fff;border:none;padding:.5rem 1rem;border-radius:6px;cursor:pointer;font-size:.85rem">❌ דחה</button>
+          </div>
+        </div>`;
+      }
+      html += '<button onclick="this.closest(\'#product-suggestions-modal\').remove()" style="background:#333;color:#fff;border:none;padding:.6rem 1.5rem;border-radius:6px;cursor:pointer;margin-top:1rem">סגור</button>';
+      html += '</div></div>';
+      document.body.insertAdjacentHTML('beforeend', html);
+    } catch(e) { alert('שגיאה: ' + e.message); }
+  }
+
+  async function approveProduct(productId, action) {
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch(AGENTS_BASE + '?type=approve-product', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: productId, action })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      alert(action === 'approve' ? 'המוצר אושר!' : 'המוצר נדחה.');
+      const modal = document.getElementById('product-suggestions-modal');
+      if (modal) modal.remove();
+      showProductSuggestions();
+    } catch(e) { alert('שגיאה: ' + e.message); }
   }
 
 </script>
