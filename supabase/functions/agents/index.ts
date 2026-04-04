@@ -1212,6 +1212,21 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
         }
 
         await sb.from('agent_tasks').update({ status: 'done', content_data: { ...cd, instagram_post_id: pub.id, facebook_post_id: fbPostId, published_at: now }, updated_at: now }).eq('id', task.id);
+        // Save published image to dubis_images gallery so it appears in the gallery tab
+        if (image_url && image_url.includes('supabase.co')) {
+          try {
+            const productId = cd.product_id as string | undefined;
+            await sb.from('dubis_images').insert({
+              image_url,
+              product_id: productId || null,
+              scene_type: 'published',
+              model_type: cd.model_type as string || 'auto',
+              color_variant: cd.color_variant as string || null,
+              tags: ['published', 'instagram', cd.language as string || 'he'].filter(Boolean),
+              approved: true,
+            });
+          } catch (_imgErr) { /* non-critical — don't fail the publish */ }
+        }
         results.push({ id: task.id, title: task.title, status: 'published', ig_id: pub.id, fb_id: fbPostId, fb_error: fbError });
       } catch (e) {
         results.push({ id: task.id, title: task.title, status: 'error', error: (e as Error).message });

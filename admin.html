@@ -2252,7 +2252,7 @@
     </div>
     <div id="ca-loading" class="loading">טוען תוכן...</div>
     <div id="ca-empty"   class="empty"   style="display:none">אין תוכן ממתין לאישור</div>
-    <div id="ca-grid"    style="display:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1.25rem"></div>
+    <div id="ca-grid"    style="display:none;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1.25rem"></div>
   </div><!-- /section-content-approval -->
 
   <!-- Coupon Modal -->
@@ -3838,7 +3838,12 @@
       // EXECUTE workflow — marketing, site, technical
       if (isPending || t.status === 'backlog') {
         actions = `<div class="task-card-actions">
-          <button class="btn-approve" style="background:#16a34a" onclick="updateTaskStatus('${t.id}','in_progress');event.stopPropagation()">▶ אשר לביצוע</button>
+          <button class="btn-approve" style="background:#16a34a" onclick="updateTaskStatus('${t.id}','approved');event.stopPropagation()">✅ אשר לביצוע</button>
+        </div>`;
+      } else if (isApproved) {
+        actions = `<div class="task-card-actions">
+          <button class="btn-approve" style="background:#1d4ed8" onclick="event.stopPropagation()">⏳ ממתין להרצת סוכן</button>
+          <button class="btn-done" onclick="updateTaskStatus('${t.id}','done');event.stopPropagation()">✓ בוצע ידנית</button>
         </div>`;
       } else if (isActive) {
         actions = `<div class="task-card-actions">
@@ -3977,8 +3982,13 @@
       // EXECUTE workflow
       if (data.status === 'backlog' || data.status === 'pending_approval') {
         buttonsHtml = `
-          <button class="btn-approve" style="flex:1;background:#16a34a" onclick="updateTaskStatus('${data.id}','in_progress');closeTaskDetail()">▶ אשר לביצוע</button>
+          <button class="btn-approve" style="flex:1;background:#16a34a" onclick="updateTaskStatus('${data.id}','approved');closeTaskDetail()">✅ אשר לביצוע</button>
           <button class="btn-reject" style="flex:1" onclick="updateTaskStatus('${data.id}','rejected');closeTaskDetail()">✕ לא רלוונטי</button>`;
+      } else if (data.status === 'approved') {
+        buttonsHtml = `
+          <span style="flex:1;text-align:center;color:#4caf50;font-size:.85rem">⏳ ממתין להרצת סוכן</span>
+          <button class="btn-done" style="flex:1" onclick="updateTaskStatus('${data.id}','done');closeTaskDetail()">✓ בוצע ידנית</button>
+          <button class="btn-approve" style="flex:1;background:#374151" onclick="updateTaskStatus('${data.id}','backlog');closeTaskDetail()">↩ חזרה ל-Backlog</button>`;
       } else if (data.status === 'in_progress') {
         buttonsHtml = `
           <button class="btn-done" style="flex:1" onclick="updateTaskStatus('${data.id}','done');closeTaskDetail()">✓ בוצע</button>
@@ -5211,7 +5221,7 @@
       document.getElementById('stat-pending').textContent    = (tasks||[]).filter(t=>t.status==='pending_approval').length;
       // Load product suggestions count inline (no modal)
       try { loadProductSuggestionsCount(); } catch(_) {}
-      const allAgentIds = ['boss','content','cto','marketing','design','supply','email_monitor','site_audit','product','security'];
+      const allAgentIds = ['boss','content','cto','supply','email_monitor','site_audit','product','security'];
       allAgentIds.forEach(ag => {
         const el = document.getElementById('agent-status-'+ag);
         if (!el) return;
@@ -5999,7 +6009,7 @@
     const btn = event.target;
     btn.disabled = true; btn.textContent = '...מייצר';
     try {
-      const { data: { session } } = await sb.auth.getSession();
+      const { data: { session } } = await _sb.auth.getSession();
       const res = await fetch(AGENTS_BASE + '?type=generate-slogan', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' }
@@ -6017,7 +6027,7 @@
     const btn = event.target;
     btn.disabled = true; btn.textContent = '...סורק';
     try {
-      const { data: { session } } = await sb.auth.getSession();
+      const { data: { session } } = await _sb.auth.getSession();
       const res = await fetch(AGENTS_BASE + '?type=security-scan', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' }
@@ -6032,7 +6042,7 @@
 
   async function loadProductSuggestionsCount() {
     try {
-      const { data: { session } } = await sb.auth.getSession();
+      const { data: { session } } = await _sb.auth.getSession();
       const res = await fetch(AGENTS_BASE + '?type=approve-product', {
         headers: { 'Authorization': 'Bearer ' + session.access_token }
       });
@@ -6049,7 +6059,7 @@
 
   async function showProductSuggestions() {
     try {
-      const { data: { session } } = await sb.auth.getSession();
+      const { data: { session } } = await _sb.auth.getSession();
       const res = await fetch(AGENTS_BASE + '?type=approve-product', {
         headers: { 'Authorization': 'Bearer ' + session.access_token }
       });
@@ -6120,7 +6130,7 @@
     const actionLabel = action === 'approve' ? 'לאשר' : 'לדחות';
     if (!confirm(`בטוח ${actionLabel} את המוצר?`)) return;
     try {
-      const { data: { session } } = await sb.auth.getSession();
+      const { data: { session } } = await _sb.auth.getSession();
       const res = await fetch(AGENTS_BASE + '?type=approve-product', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
@@ -6145,7 +6155,7 @@
     const newSlogan = prompt('ערוך סלוגן (או השאר ריק לבטל):');
     if (newSlogan === null || newSlogan.trim() === '') return;
     try {
-      const { data: { session } } = await sb.auth.getSession();
+      const { data: { session } } = await _sb.auth.getSession();
       const res = await fetch(AGENTS_BASE + '?type=approve-product', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
