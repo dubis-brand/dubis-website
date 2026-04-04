@@ -1148,7 +1148,9 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
 
     for (const task of readyTasks) {
       const cd = (task.content_data as Task) || {};
-      const caption = `${(cd.caption_he as string) || (cd.caption_en as string) || task.title}\n\n${(cd.hashtags as string) || '#DUBIS #ForTheRestOfUs'}`;
+      const lang = (cd.lang as string) || 'he';
+      const shopLine = lang === 'he' ? '🛒 לחנות: www.dubis.net' : '🛒 Shop: www.dubis.net';
+      const caption = `${(cd.caption_he as string) || (cd.caption_en as string) || task.title}\n\n${shopLine}\n\n${(cd.hashtags as string) || '#DUBIS #ForTheRestOfUs'}`;
       const image_url = cd.generated_image_url as string;
       const videoUrl = cd.video_url as string;
       const isReel = !!(videoUrl && cd.reel_status === 'ready');
