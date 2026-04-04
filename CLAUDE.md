@@ -115,11 +115,11 @@ Format: `small text` → **HUGE TEXT** → `small text` | Product type
 | Agent | Auto? | Schedule | What it does | Works? |
 |-------|-------|----------|-------------|--------|
 | Boss | ✅ AUTO | cron 05:00 UTC | Daily report + snapshot | ✅ Yes |
-| Content | ✅ AUTO | cron 10:00 UTC | Generate caption + image for Instagram | ⚠️ Partial — captions sometimes empty |
+| Content | ✅ AUTO | cron 10:00+16:00 UTC | 2 posts/day (HE+EN) IG+FB | ✅ Yes |
 | CTO | ❌ Manual | "הרץ" button | Technical implementation plans | ✅ When triggered |
 | Email Monitor | ✅ AUTO | Cowork 06:45 | Scan Gmail for invoices/alerts | ✅ Yes |
-| Marketing | ❌ Manual | "הרץ" button | Marketing analysis + recommendations | ⚠️ Partial |
-| Design | ❌ Manual | — | AI image generation | ❌ Not active |
+| Product | ❌ Manual | Admin button | Generate slogans + new products | ✅ New |
+| Security | ✅ AUTO | Weekly Mon 03:00 | Security scan headers/RLS/keys | ✅ New |
 | Supply | ✅ AUTO | cron 00:00 UTC | Gelato order sync | ✅ Yes |
 | Site Audit | ✅ AUTO | Cowork 06:50 | SEO/UX scan of dubis.net | ✅ Yes |
 
@@ -128,9 +128,11 @@ Format: `small text` → **HUGE TEXT** → `small text` | Product type
 | UTC | Israel | Endpoint | Task |
 |-----|--------|----------|------|
 | 00:00 | 02:00 | /api/admin/gelato-sync | Gelato order sync |
+| 04:00 | 06:00 | /api/cron/morning-report?type=agents | Agent runs |
 | 05:00 | 07:00 | /api/cron/morning-report | Morning report + boss agent |
 | 08:00 | 10:00 | /api/cron/review-requests | Review request emails (7d post-delivery) |
-| 10:00 | 12:00 | /api/cron/morning-report?type=content | Content generation pipeline |
+| 10:00 | 12:00 | /api/cron/morning-report?type=content | Content — HE post |
+| 16:00 | 18:00 | /api/cron/morning-report?type=content | Content — EN post |
 
 ### Cowork Agents (external, not in vercel.json)
 - Email Monitor: 06:45 UTC via Cowork Scheduler
@@ -141,11 +143,14 @@ Format: `small text` → **HUGE TEXT** → `small text` | Product type
 - `tasks` — CRUD agent_tasks (GET/POST/PATCH/DELETE)
 - `runs` — CRUD agent_runs
 - `run` — Execute all approved tasks by agent type
-- `auto-content` — Auto-rotate products and create daily content task
+- `auto-content` — Auto-rotate products, create 2 daily content tasks (HE+EN)
 - `content-run` — Generate captions + images for pending tasks
 - `qa-content` — QA check on generated content
-- `publish` — Publish approved content to Instagram
+- `publish` / `publish-ready` — Publish approved content to Instagram + Facebook
 - `generate-image` — Generate images via Gemini/Pollinations
+- `generate-slogan` — Product Creator: generate 3 slogan suggestions via Gemini
+- `approve-product` — Approve/reject/edit product suggestions (admin only)
+- `security-scan` — Security audit: headers, RLS, exposed keys, PayPal mode
 
 ## User Preferences (oren)
 - **Plans & proposals**: ALWAYS deliver as HTML file with RTL Hebrew alignment (direction:rtl, text-align:right). Never as inline text in chat.

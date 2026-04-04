@@ -1484,16 +1484,19 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       { slogan: "emotionally attached to my COUCH",            type: 'longsleeve', gender: 'women',  format: 'feed_post'  },
     ];
 
-    // Skip if a content task was already created today
+    // Allow up to 2 content tasks per day (1 HE + 1 EN)
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-    const { data: todayTask } = await sb.from('agent_tasks')
-      .select('id')
+    const { data: todayTasks } = await sb.from('agent_tasks')
+      .select('id, content_data')
       .eq('agent_id', 'content')
-      .gte('created_at', todayStart.toISOString())
-      .limit(1);
-    if (todayTask?.length) {
-      return json({ skipped: true, reason: 'Content task already created today', task_id: (todayTask[0] as Record<string, unknown>).id });
+      .gte('created_at', todayStart.toISOString());
+    const MAX_DAILY_POSTS = 2;
+    if ((todayTasks?.length ?? 0) >= MAX_DAILY_POSTS) {
+      return json({ skipped: true, reason: `Already ${todayTasks?.length} content tasks today (max ${MAX_DAILY_POSTS})`, task_ids: (todayTasks || []).map((t: Record<string, unknown>) => t.id) });
     }
+    // Determine which language to use — first call = HE, second = EN
+    const todayLangs = new Set((todayTasks || []).map((t: Record<string, unknown>) => ((t.content_data as Record<string, unknown>)?.language as string) || ''));
+    const nextLang = !todayLangs.has('he') ? 'he' : 'en';
 
     // Find product not recently featured (check last N tasks)
     type TaskRow = Record<string, unknown>;
@@ -1513,18 +1516,18 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       picked = PRODUCTS[new Date().getDay() % PRODUCTS.length];
     }
 
-    // Weekly content calendar — rotate formats by day of week
+    // Weekly format calendar — rotate format by day, language determined above (2 posts/day: 1 HE + 1 EN)
     const dayOfWeek = new Date().getDay(); // 0=Sun, 1=Mon, ...
-    const WEEKLY_CALENDAR = [
-      { format: 'feed_post', lang: 'he' },   // Sunday    — HE feed post
-      { format: 'feed_post', lang: 'en' },   // Monday    — EN feed post
-      { format: 'reel',      lang: 'he' },   // Tuesday   — Reel
-      { format: 'feed_post', lang: 'he' },   // Wednesday — HE feed post
-      { format: 'feed_post', lang: 'en' },   // Thursday  — EN feed post
-      { format: 'reel',      lang: 'he' },   // Friday    — Reel
-      { format: 'story',     lang: 'he' },   // Saturday  — Story
+    const DAILY_FORMAT = [
+      'feed_post',  // Sunday
+      'feed_post',  // Monday
+      'reel',       // Tuesday
+      'feed_post',  // Wednesday
+      'feed_post',  // Thursday
+      'reel',       // Friday
+      'story',      // Saturday
     ];
-    const todayPlan = WEEKLY_CALENDAR[dayOfWeek];
+    const todayPlan = { format: DAILY_FORMAT[dayOfWeek], lang: nextLang };
 
     const typeLabels: Record<string, string> = {
       tshirt: 'חולצה', hoodie: 'קפוצון', ziphoodie: 'קפוצון זיפ', longsleeve: 'ארוכת שרוול', cap: 'כובע',
@@ -1759,7 +1762,265 @@ Score the caption 0-30 for brand voice quality. Return ONLY valid JSON:
     return json({ checked: unscored.length, passed, failed, results });
   }
 
+  // ── GENERATE-SLOGAN — Product Creator Agent ────────────────────────
+  if (type === 'generate-slogan') {
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const token       = authHeader.replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
+    const isAuthed = (cronSecret && token === cronSecret) || (agentSecret && token === agentSecret) || (svcKey && token === svcKey);
+    const adminOk = await verifyAdmin(req);
+    if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
+
+    const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+    if (!geminiKey) return json({ error: 'GEMINI_API_KEY not configured' }, 503);
+
+    // Get existing slogans to avoid duplicates
+    const { data: existingProducts } = await sb.from('dubis_products').select('slogan');
+    const existingSlogans = (existingProducts || []).map((p: Record<string, unknown>) => p.slogan).filter(Boolean);
+
+    // Also get from hardcoded products.js slogans
+    const allSlogans = [...existingSlogans, ...Object.keys(SLOGAN_TYPOGRAPHY)];
+
+    const prompt = `You are the head copywriter at DUBIS — an Israeli apparel brand with CYNICAL humor (not dry, not gentle — CYNICAL!).
+Target audience: 35+, Israeli AND international, body-positive, anti-fashion, comfort-first.
+
+Rules:
+- Slogan: 2-7 words in English
+- Must contain ONE POWER WORD that will be printed 3-5x larger than the rest
+- Cynical humor, not offensive, not political, not racist, not sexist
+- NO repetition of existing slogans: ${allSlogans.join(' | ')}
+- NEVER use: "premium", "luxury", "exclusive", body-shaming words
+- Body-positive but NOT preachy
+
+10 possible angles:
+1. Comfort & laziness (napping, couch)
+2. Cynical self-humor
+3. Anti-fashion / anti-models
+4. Quality & self-confidence
+5. Community & belonging
+6. Age & experience (40+)
+7. Coffee & daily survival
+8. Sarcasm about life
+9. Food without apologies
+10. Relationships (with the couch)
+
+Generate 3 slogan proposals. For each, return ONLY valid JSON array:
+[{
+  "slogan": "full slogan text",
+  "power_word": "THE_BIG_WORD",
+  "text_before": "words before power word",
+  "text_after": "words after power word",
+  "layout": "top-bottom",
+  "product_type": "tshirt|hoodie|ziphoodie|longsleeve",
+  "gender": "unisex|women",
+  "description_en": "2 sentences, conversational, for product page",
+  "description_he": "2 משפטים, עברית ישראלית טבעית, לדף מוצר",
+  "colors": ["Black", "White", "Navy", "Charcoal"]
+}]`;
+
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+          signal: AbortSignal.timeout(30000) },
+      );
+      const raw = (await res.json()).candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const cleaned = raw.replace(/```json|```/g, '').trim();
+      const suggestions = JSON.parse(cleaned);
+
+      if (!Array.isArray(suggestions) || suggestions.length === 0) {
+        return json({ error: 'Gemini returned invalid format', raw }, 500);
+      }
+
+      // Save each suggestion to dubis_products (active=false) + agent_task
+      const savedProducts: unknown[] = [];
+      for (const s of suggestions) {
+        const { data: product, error: pErr } = await sb.from('dubis_products').insert({
+          slogan: s.slogan,
+          phrase: s.slogan,
+          type: s.product_type || 'tshirt',
+          gender: s.gender || 'unisex',
+          description_en: s.description_en || '',
+          description_he: s.description_he || '',
+          colors: s.colors || ['Black', 'White'],
+          typography_small: s.text_before || '',
+          typography_big: s.power_word || '',
+          typography_after: s.text_after || '',
+          typography_layout: s.layout || 'top-bottom',
+          source: 'ai-generated',
+          active: false,
+        }).select('id').single();
+
+        if (!pErr && product) {
+          await sb.from('agent_tasks').insert({
+            agent_id: 'product',
+            title: `סלוגן חדש: ${s.slogan}`,
+            description: `${s.description_he}\nPower word: ${s.power_word}\nType: ${s.product_type}`,
+            category: 'new_product',
+            status: 'pending_approval',
+            priority: 'medium',
+            content_data: { ...s, product_id: (product as Record<string, unknown>).id },
+          });
+          savedProducts.push({ id: (product as Record<string, unknown>).id, slogan: s.slogan, power_word: s.power_word });
+        }
+      }
+
+      return json({ success: true, count: savedProducts.length, products: savedProducts, suggestions });
+    } catch (e) {
+      return json({ error: 'Gemini call failed', detail: (e as Error).message }, 500);
+    }
+  }
+
+  // ── APPROVE-PRODUCT — Approve/reject product suggestions ──────────
+  if (type === 'approve-product') {
+    const adminOk = await verifyAdmin(req);
+    if (!adminOk) return json({ error: 'Admin only' }, 401);
+
+    if (req.method === 'GET') {
+      // Get all pending product suggestions
+      const { data, error } = await sb.from('dubis_products')
+        .select('*')
+        .eq('active', false)
+        .eq('source', 'ai-generated')
+        .order('created_at', { ascending: false });
+      if (error) return json({ error: error.message }, 500);
+      return json({ products: data });
+    }
+
+    if (req.method === 'POST') {
+      const { product_id, action, edits } = body as Record<string, unknown>;
+      if (!product_id || !action) return json({ error: 'product_id and action required' }, 400);
+      if (!['approve', 'reject', 'edit_approve'].includes(action as string)) {
+        return json({ error: 'action must be approve, reject, or edit_approve' }, 400);
+      }
+
+      if (action === 'reject') {
+        await sb.from('dubis_products').update({ source: 'rejected' }).eq('id', product_id);
+        await sb.from('agent_tasks')
+          .update({ status: 'rejected', updated_at: new Date().toISOString() })
+          .eq('agent_id', 'product')
+          .filter('content_data->>product_id', 'eq', String(product_id));
+        return json({ success: true, action: 'rejected', product_id });
+      }
+
+      // approve or edit_approve
+      const updates: Record<string, unknown> = { active: true, source: 'approved' };
+      if (action === 'edit_approve' && edits && typeof edits === 'object') {
+        Object.assign(updates, edits as Record<string, unknown>);
+      }
+      const { data: updated, error: upErr } = await sb.from('dubis_products')
+        .update(updates).eq('id', product_id).select().single();
+      if (upErr) return json({ error: upErr.message }, 500);
+
+      // Update agent_task
+      await sb.from('agent_tasks')
+        .update({ status: 'approved', approved_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('agent_id', 'product')
+        .filter('content_data->>product_id', 'eq', String(product_id));
+
+      return json({ success: true, action: 'approved', product: updated });
+    }
+
+    return json({ error: 'Use GET to list or POST to approve/reject' }, 405);
+  }
+
+  // ── SECURITY-SCAN — Security audit agent ──────────────────────────
+  if (type === 'security-scan') {
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const token       = authHeader.replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
+    const isAuthed = (cronSecret && token === cronSecret) || (agentSecret && token === agentSecret) || (svcKey && token === svcKey);
+    const adminOk = await verifyAdmin(req);
+    if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
+
+    const findings: { severity: string; category: string; detail: string }[] = [];
+    const siteUrl = 'https://www.dubis.net';
+
+    // 1. Check security headers
+    try {
+      const headRes = await fetch(siteUrl, { method: 'HEAD', signal: AbortSignal.timeout(10000) });
+      const requiredHeaders: Record<string, string> = {
+        'strict-transport-security': 'HSTS',
+        'x-content-type-options': 'X-Content-Type-Options',
+        'x-frame-options': 'X-Frame-Options',
+        'content-security-policy': 'CSP',
+        'referrer-policy': 'Referrer-Policy',
+        'permissions-policy': 'Permissions-Policy',
+      };
+      for (const [header, name] of Object.entries(requiredHeaders)) {
+        if (!headRes.headers.get(header)) {
+          findings.push({ severity: 'medium', category: 'headers', detail: `חסר ${name} header` });
+        }
+      }
+      // Check for HTTPS redirect
+      if (!headRes.url.startsWith('https://')) {
+        findings.push({ severity: 'high', category: 'https', detail: 'האתר לא מפנה ל-HTTPS' });
+      }
+    } catch (e) {
+      findings.push({ severity: 'high', category: 'connectivity', detail: `לא ניתן לגשת לאתר: ${(e as Error).message}` });
+    }
+
+    // 2. Check RLS on tables
+    const tables = ['orders', 'profiles', 'coupons', 'page_views', 'agent_tasks', 'agent_runs', 'newsletter_subscribers', 'product_reviews', 'dubis_products'];
+    for (const table of tables) {
+      try {
+        const { error } = await sb.rpc('check_rls_enabled', { table_name: table });
+        // If the RPC doesn't exist, we skip. RLS check is best-effort
+        if (error && error.message.includes('not found')) break;
+      } catch { /* RPC may not exist */ }
+    }
+
+    // 3. Check for exposed API keys in public JS
+    try {
+      const jsRes = await fetch(`${siteUrl}/js/main.js`, { signal: AbortSignal.timeout(10000) });
+      const jsContent = await jsRes.text();
+      const keyPatterns = [/SUPABASE_SERVICE_ROLE/i, /sk_live_/i, /GELATO_API_KEY/i, /RESEND_API_KEY/i, /PAYPAL_SECRET/i];
+      for (const pattern of keyPatterns) {
+        if (pattern.test(jsContent)) {
+          findings.push({ severity: 'critical', category: 'exposed_key', detail: `מפתח חשוף ב-main.js: ${pattern.source}` });
+        }
+      }
+    } catch { /* skip */ }
+
+    // 4. Check PayPal mode (sandbox vs production)
+    try {
+      const paypalRes = await fetch(`${siteUrl}/js/paypal.js`, { signal: AbortSignal.timeout(10000) });
+      const paypalContent = await paypalRes.text();
+      if (paypalContent.includes('sandbox')) {
+        findings.push({ severity: 'medium', category: 'paypal', detail: 'נמצאה הפניה ל-sandbox ב-paypal.js — לוודא שזה production' });
+      }
+    } catch { /* skip */ }
+
+    // Save scan results
+    const scanResult = {
+      scanned_at: new Date().toISOString(),
+      total_findings: findings.length,
+      critical: findings.filter(f => f.severity === 'critical').length,
+      high: findings.filter(f => f.severity === 'high').length,
+      medium: findings.filter(f => f.severity === 'medium').length,
+      low: findings.filter(f => f.severity === 'low').length,
+      findings,
+    };
+
+    await sb.from('agent_tasks').insert({
+      agent_id: 'security',
+      title: `סריקת אבטחה — ${new Date().toLocaleDateString('he-IL')}`,
+      description: `נמצאו ${findings.length} ממצאים (${scanResult.critical} קריטי, ${scanResult.high} גבוה)`,
+      category: 'security_scan',
+      status: findings.some(f => f.severity === 'critical') ? 'in_progress' : 'done',
+      priority: findings.some(f => f.severity === 'critical') ? 'urgent' : 'low',
+      content_data: scanResult,
+    });
+
+    return json(scanResult);
+  }
+
   return json({
-    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, qa-content',
+    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, qa-content, generate-slogan, approve-product, security-scan',
   }, 400);
 });
