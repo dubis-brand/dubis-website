@@ -1822,11 +1822,15 @@
   <div id="section-products" style="display:none">
     <div class="products-header">
       <h2 style="margin:0;font-size:1.1rem;color:#e8e0d5">Product Catalog</h2>
-      <div class="gender-filter-tabs">
-        <button class="gender-filter-tab active" onclick="filterProductCards('all',this)">All</button>
-        <button class="gender-filter-tab" onclick="filterProductCards('unisex',this)">Unisex</button>
-        <button class="gender-filter-tab" onclick="filterProductCards('men',this)">Men</button>
-        <button class="gender-filter-tab" onclick="filterProductCards('women',this)">Women</button>
+      <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+        <button onclick="showProductSuggestions()" style="background:#9c27b0;color:#fff;border:none;padding:.5rem 1rem;border-radius:6px;cursor:pointer;font-size:.85rem;font-weight:600" id="btn-suggestions">📋 הצעות ממתינות <span id="suggestions-badge" style="background:#fff;color:#9c27b0;border-radius:10px;padding:0 .5rem;margin-right:.3rem;font-size:.75rem"></span></button>
+        <button onclick="generateSlogans()" style="background:#1a3a5c;color:#fff;border:none;padding:.5rem 1rem;border-radius:6px;cursor:pointer;font-size:.85rem">+ סלוגן חדש</button>
+        <div class="gender-filter-tabs">
+          <button class="gender-filter-tab active" onclick="filterProductCards('all',this)">All</button>
+          <button class="gender-filter-tab" onclick="filterProductCards('unisex',this)">Unisex</button>
+          <button class="gender-filter-tab" onclick="filterProductCards('men',this)">Men</button>
+          <button class="gender-filter-tab" onclick="filterProductCards('women',this)">Women</button>
+        </div>
       </div>
     </div>
     <div class="loading" id="products-loading" style="display:none">Loading catalog… 🐾</div>
@@ -6047,12 +6051,18 @@
         headers: { 'Authorization': 'Bearer ' + session.access_token }
       });
       const data = await res.json();
+      const count = (data.products || []).length;
+      // Update badge in products section header
+      const badge = document.getElementById('suggestions-badge');
+      if (badge) badge.textContent = count > 0 ? count : '';
+      // Update inline element in agents section
       const inlineEl = document.getElementById('product-suggestions-inline');
-      if (!inlineEl) return;
-      if (!data.products || !data.products.length) {
-        inlineEl.innerHTML = '<div style="color:#4caf50;font-size:.85rem;padding:.3rem 0">✅ אין הצעות ממתינות</div>';
-      } else {
-        inlineEl.innerHTML = `<div style="color:#9c27b0;font-size:.85rem;padding:.3rem 0;font-weight:600;cursor:pointer" onclick="showProductSuggestions()">📌 ${data.products.length} הצעות ממתינות לאישור — לחץ לצפייה</div>`;
+      if (inlineEl) {
+        if (!count) {
+          inlineEl.innerHTML = '<div style="color:#4caf50;font-size:.85rem;padding:.3rem 0">✅ אין הצעות ממתינות</div>';
+        } else {
+          inlineEl.innerHTML = `<div style="color:#9c27b0;font-size:.85rem;padding:.3rem 0;font-weight:600;cursor:pointer" onclick="showProductSuggestions()">📌 ${count} הצעות ממתינות לאישור — לחץ לצפייה</div>`;
+        }
       }
     } catch(_) {}
   }
@@ -6145,8 +6155,27 @@
       if (el) { el.style.transition = 'all .3s'; el.style.opacity = '0'; el.style.transform = 'translateX(20px)'; setTimeout(() => el.remove(), 300); }
       if (action === 'approve') {
         const pid = data.product_id_numeric || '?';
-        const mockup = data.mockup_url ? '\n🖼 תמונת מוקאפ נוצרה!' : '\n⚠️ תמונת מוקאפ לא נוצרה — תצטרך להעלות ידנית.';
-        alert(`✅ מוצר #${pid} אושר!${mockup}\n\nהשלב הבא: הרצת סנכרון לחנות.`);
+        const mockup = data.mockup_url ? '\n🖼 תמונת מוקאפ נוצרה!' : '';
+        alert(`✅ מוצר #${pid} אושר!${mockup}\n\nמסנכרן לחנות...`);
+        // Auto-sync to store
+        try {
+          const syncRes = await fetch(AGENTS_BASE + '?type=sync-products', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + session.access_token }
+          });
+          const syncData = await syncRes.json();
+          if (syncData.pushed_to_github) {
+            alert(`🚀 מוצר #${pid} סונכרן לחנות! האתר יתעדכן תוך ~30 שניות.`);
+          } else if (syncData.content) {
+            // No GitHub token — offer manual download
+            const blob = new Blob([syncData.content], { type: 'text/javascript' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'products.js';
+            a.click();
+            alert(`📥 products.js הורד (${syncData.product_count} מוצרים). העלה ידנית ל-js/products.js ב-GitHub.`);
+          }
+        } catch(syncErr) { console.error('Sync error:', syncErr); }
       } else {
         alert('❌ המוצר נדחה.');
       }
