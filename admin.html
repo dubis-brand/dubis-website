@@ -2037,11 +2037,15 @@
             <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Product Agent</div>
             <div style="color:#999;font-size:.8rem">יצירת סלוגנים ומוצרים</div>
           </div>
-          <button onclick="generateSlogans()" class="agent-run-btn">+ סלוגן חדש</button>
+          <div style="display:flex;gap:.5rem">
+            <button onclick="showProductSuggestions()" class="agent-run-btn" style="background:#9c27b0">📋 הצעות ממתינות</button>
+            <button onclick="generateSlogans()" class="agent-run-btn">+ סלוגן חדש</button>
+          </div>
         </div>
         <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
           מייצר 3 הצעות סלוגנים ציניים חדשים בסגנון DUBIS דרך Gemini. כל הצעה כוללת: סלוגן, power word, טיפוגרפיה, תיאורים. דורש אישור ידני.
         </div>
+        <div id="product-suggestions-inline" style="margin-bottom:.6rem"></div>
         <div id="agent-tasks-product" style="margin-bottom:.6rem"></div>
         <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#9c27b0">Gemini 2.5 Flash</span>
@@ -5205,7 +5209,9 @@
       document.getElementById('stat-done').textContent       = (tasks||[]).filter(t=>t.status==='done'&&new Date(t.created_at)>weekAgo).length;
       document.getElementById('stat-inprogress').textContent = (tasks||[]).filter(t=>t.status==='in_progress').length;
       document.getElementById('stat-pending').textContent    = (tasks||[]).filter(t=>t.status==='pending_approval').length;
-      const allAgentIds = ['boss','content','cto','marketing','design','supply','email_monitor','site_audit'];
+      // Load product suggestions count inline (no modal)
+      try { loadProductSuggestionsCount(); } catch(_) {}
+      const allAgentIds = ['boss','content','cto','marketing','design','supply','email_monitor','site_audit','product','security'];
       allAgentIds.forEach(ag => {
         const el = document.getElementById('agent-status-'+ag);
         if (!el) return;
@@ -6024,6 +6030,23 @@
     finally { btn.disabled = false; btn.textContent = '🔍 סרוק'; }
   }
 
+  async function loadProductSuggestionsCount() {
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch(AGENTS_BASE + '?type=approve-product', {
+        headers: { 'Authorization': 'Bearer ' + session.access_token }
+      });
+      const data = await res.json();
+      const inlineEl = document.getElementById('product-suggestions-inline');
+      if (!inlineEl) return;
+      if (!data.products || !data.products.length) {
+        inlineEl.innerHTML = '<div style="color:#4caf50;font-size:.85rem;padding:.3rem 0">✅ אין הצעות ממתינות</div>';
+      } else {
+        inlineEl.innerHTML = `<div style="color:#9c27b0;font-size:.85rem;padding:.3rem 0;font-weight:600;cursor:pointer" onclick="showProductSuggestions()">📌 ${data.products.length} הצעות ממתינות לאישור — לחץ לצפייה</div>`;
+      }
+    } catch(_) {}
+  }
+
   async function showProductSuggestions() {
     try {
       const { data: { session } } = await sb.auth.getSession();
@@ -6031,31 +6054,71 @@
         headers: { 'Authorization': 'Bearer ' + session.access_token }
       });
       const data = await res.json();
-      if (!data.products || !data.products.length) { alert('אין הצעות ממתינות'); return; }
 
-      let html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:200;display:flex;align-items:center;justify-content:center" id="product-suggestions-modal" onclick="if(event.target===this)this.remove()">';
-      html += '<div style="background:#1a1a1a;border-radius:12px;padding:2rem;width:95%;max-width:800px;max-height:85vh;overflow-y:auto" dir="rtl">';
-      html += '<h3 style="color:#c8a96e;margin-bottom:1.5rem">הצעות סלוגנים חדשים</h3>';
+      // Update inline badge on card
+      const inlineEl = document.getElementById('product-suggestions-inline');
+      if (inlineEl) {
+        if (!data.products || !data.products.length) {
+          inlineEl.innerHTML = '<div style="color:#4caf50;font-size:.85rem;padding:.3rem 0">✅ אין הצעות ממתינות</div>';
+        } else {
+          inlineEl.innerHTML = `<div style="color:#9c27b0;font-size:.85rem;padding:.3rem 0;font-weight:600">📌 ${data.products.length} הצעות ממתינות לאישור</div>`;
+        }
+      }
+
+      if (!data.products || !data.products.length) return;
+
+      // Remove old modal if exists
+      const old = document.getElementById('product-suggestions-modal');
+      if (old) old.remove();
+
+      const typeLabels = { tshirt: 'חולצה', hoodie: 'קפוצון', ziphoodie: 'קפוצון זיפ', longsleeve: 'ארוכת שרוול', cap: 'כובע' };
+      const genderLabels = { unisex: 'יוניסקס', men: 'גברים', women: 'נשים' };
+
+      let html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;display:flex;align-items:center;justify-content:center;padding:1rem" id="product-suggestions-modal" onclick="if(event.target===this)this.remove()">';
+      html += '<div style="background:#1a1a1a;border-radius:12px;padding:2rem;width:95%;max-width:900px;max-height:85vh;overflow-y:auto" dir="rtl">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem"><h3 style="color:#c8a96e;margin:0">🎨 הצעות סלוגנים חדשים</h3><button onclick="this.closest(\'#product-suggestions-modal\').remove()" style="background:none;border:none;color:#999;font-size:1.5rem;cursor:pointer">✕</button></div>';
 
       for (const p of data.products) {
-        html += `<div style="background:#111;border-radius:8px;padding:1.2rem;margin-bottom:1rem;border-right:3px solid #9c27b0">
-          <div style="font-size:1.2rem;font-weight:700;color:#e8e0d5;margin-bottom:.5rem">${p.slogan || p.phrase}</div>
-          <div style="color:#9c27b0;font-weight:700;margin-bottom:.3rem">Power Word: ${p.typography_big || '—'}</div>
-          <div style="color:#999;font-size:.85rem;margin-bottom:.3rem">${p.description_he || ''}</div>
-          <div style="color:#666;font-size:.8rem;margin-bottom:.8rem">סוג: ${p.type} | מגדר: ${p.gender}</div>
-          <div style="display:flex;gap:.5rem">
-            <button onclick="approveProduct(${p.id},'approve')" style="background:#2a7a2a;color:#fff;border:none;padding:.5rem 1rem;border-radius:6px;cursor:pointer;font-size:.85rem">✅ אשר</button>
-            <button onclick="approveProduct(${p.id},'reject')" style="background:#7a2a2a;color:#fff;border:none;padding:.5rem 1rem;border-radius:6px;cursor:pointer;font-size:.85rem">❌ דחה</button>
+        const tl = typeLabels[p.type] || p.type;
+        const gl = genderLabels[p.gender] || p.gender;
+        html += `<div style="background:#111;border-radius:10px;padding:1.5rem;margin-bottom:1.2rem;border-right:4px solid #9c27b0" id="suggestion-${p.id}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem;flex-wrap:wrap;gap:.5rem">
+            <div>
+              <div style="font-size:1.3rem;font-weight:700;color:#e8e0d5;margin-bottom:.3rem;font-family:Impact,Arial">${p.slogan || p.phrase}</div>
+              <div style="display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:.5rem">
+                <span style="color:#9c27b0;font-weight:700;font-size:.9rem">⚡ ${p.typography_big || '—'}</span>
+                <span style="background:#2a2a2a;border-radius:4px;padding:.1rem .5rem;font-size:.75rem;color:#bbb">${tl}</span>
+                <span style="background:#2a2a2a;border-radius:4px;padding:.1rem .5rem;font-size:.75rem;color:#bbb">${gl}</span>
+              </div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-bottom:1rem">
+            <div>
+              <div style="color:#666;font-size:.7rem;margin-bottom:.2rem">טיפוגרפיה</div>
+              <div style="color:#bbb;font-size:.85rem"><span style="color:#999">${p.typography_small || ''}</span> <span style="color:#9c27b0;font-weight:700;font-size:1.1rem">${p.typography_big || ''}</span> <span style="color:#999">${p.typography_after || ''}</span></div>
+            </div>
+            <div>
+              <div style="color:#666;font-size:.7rem;margin-bottom:.2rem">צבעים</div>
+              <div style="display:flex;gap:.3rem">${(p.colors || []).map(c => '<span style="background:' + (c === 'Black' ? '#222' : c === 'White' ? '#ddd' : c === 'Navy' ? '#1a3a5c' : '#444') + ';border-radius:50%;width:18px;height:18px;display:inline-block;border:1px solid #555" title="' + c + '"></span>').join('')}</div>
+            </div>
+          </div>
+          <div style="color:#999;font-size:.85rem;margin-bottom:.5rem;line-height:1.5">${p.description_he || ''}</div>
+          <div style="color:#666;font-size:.8rem;margin-bottom:1rem;line-height:1.4;font-style:italic">${p.description_en || ''}</div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button onclick="approveProduct(${p.id},'approve')" style="background:#2a7a2a;color:#fff;border:none;padding:.6rem 1.2rem;border-radius:6px;cursor:pointer;font-size:.9rem;font-weight:600">✅ אשר מוצר</button>
+            <button onclick="editAndApproveProduct(${p.id})" style="background:#7a6a2a;color:#fff;border:none;padding:.6rem 1.2rem;border-radius:6px;cursor:pointer;font-size:.9rem">✏️ ערוך ואשר</button>
+            <button onclick="approveProduct(${p.id},'reject')" style="background:#7a2a2a;color:#fff;border:none;padding:.6rem 1.2rem;border-radius:6px;cursor:pointer;font-size:.9rem">❌ דחה</button>
           </div>
         </div>`;
       }
-      html += '<button onclick="this.closest(\'#product-suggestions-modal\').remove()" style="background:#333;color:#fff;border:none;padding:.6rem 1.5rem;border-radius:6px;cursor:pointer;margin-top:1rem">סגור</button>';
       html += '</div></div>';
       document.body.insertAdjacentHTML('beforeend', html);
     } catch(e) { alert('שגיאה: ' + e.message); }
   }
 
   async function approveProduct(productId, action) {
+    const actionLabel = action === 'approve' ? 'לאשר' : 'לדחות';
+    if (!confirm(`בטוח ${actionLabel} את המוצר?`)) return;
     try {
       const { data: { session } } = await sb.auth.getSession();
       const res = await fetch(AGENTS_BASE + '?type=approve-product', {
@@ -6065,7 +6128,32 @@
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      alert(action === 'approve' ? 'המוצר אושר!' : 'המוצר נדחה.');
+      // Animate removal
+      const el = document.getElementById('suggestion-' + productId);
+      if (el) { el.style.transition = 'all .3s'; el.style.opacity = '0'; el.style.transform = 'translateX(20px)'; setTimeout(() => el.remove(), 300); }
+      if (action === 'approve') {
+        alert('✅ המוצר אושר! הוא יופיע בחנות אחרי סנכרון.');
+      } else {
+        alert('❌ המוצר נדחה.');
+      }
+      // Refresh after short delay
+      setTimeout(() => showProductSuggestions(), 500);
+    } catch(e) { alert('שגיאה: ' + e.message); }
+  }
+
+  async function editAndApproveProduct(productId) {
+    const newSlogan = prompt('ערוך סלוגן (או השאר ריק לבטל):');
+    if (newSlogan === null || newSlogan.trim() === '') return;
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch(AGENTS_BASE + '?type=approve-product', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: productId, action: 'edit_approve', slogan: newSlogan.trim() })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      alert('✅ המוצר עודכן ואושר!');
       const modal = document.getElementById('product-suggestions-modal');
       if (modal) modal.remove();
       showProductSuggestions();
