@@ -1987,39 +1987,47 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array:
         };
       }
 
-      // 4. Generate mockup image via Gemini
+      // 4. Generate mockup image via Gemini (using image-capable model)
       let mockupUrl = '';
       const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
       if (geminiKey) {
         try {
           const clothType = (prod.clothing_type as string) || 't-shirt';
           const typeLabel: Record<string, string> = { 't-shirt': 'T-shirt', 'hoodie': 'Hoodie', 'zip-hoodie': 'Zip Hoodie', 'long-sleeve': 'Long-sleeve shirt', 'cap': 'Cap' };
-          const imgPrompt = `Professional product photo of a person wearing a dark ${typeLabel[clothType] || 'T-shirt'} with the text "${sloganKey}" printed on the back. The word "${prod.typography_big}" is printed very large (3x bigger than the rest). White text on dark fabric. Casual urban setting, natural lighting. Person facing away showing the back print. Small "DUBIS" text at bottom of back. Photorealistic, high quality product photography.`;
+          const garment = typeLabel[clothType] || 'T-shirt';
+          const imgPrompt = `Professional product mockup photo: a dark black ${garment} laid flat on dark background. On the back of the ${garment}, white bold text is printed with dramatic size contrast: "${prod.typography_small || ''}" in small text, "${prod.typography_big || ''}" in HUGE bold Impact font (3x larger), "${prod.typography_after || ''}" in small text below. Clean product photography, no person, just the garment. Photorealistic, studio lighting. Do NOT add any other text or watermarks.`;
 
           const imgRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${geminiKey}`,
             { method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 contents: [{ parts: [{ text: imgPrompt }] }],
-                generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+                generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
               }),
               signal: AbortSignal.timeout(60000) },
           );
-          const imgData = await imgRes.json();
-          const parts = imgData?.candidates?.[0]?.content?.parts || [];
-          const imgPart = parts.find((p: Record<string, unknown>) => p.inlineData);
-          if (imgPart?.inlineData?.data) {
-            const imgBytes = Uint8Array.from(atob(imgPart.inlineData.data), (c: string) => c.charCodeAt(0));
-            const fileName = `product-${nextId}.jpg`;
-            const { error: upErr2 } = await sb.storage.from('ig-images').upload(fileName, imgBytes, {
-              contentType: imgPart.inlineData.mimeType || 'image/jpeg',
-              upsert: true,
-            });
-            if (!upErr2) {
-              mockupUrl = `${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '')}/storage/v1/object/public/ig-images/${fileName}`;
+          if (imgRes.ok) {
+            const imgData = await imgRes.json();
+            const parts = imgData?.candidates?.[0]?.content?.parts || [];
+            const imgPart = parts.find((p: Record<string, unknown>) => (p.inlineData as Record<string,unknown>)?.mimeType?.toString().startsWith('image/'));
+            if (imgPart?.inlineData?.data) {
+              const raw = imgPart.inlineData.data as string;
+              const imgBytes = Uint8Array.from(atob(raw), (c: string) => c.charCodeAt(0));
+              await sb.storage.createBucket('product-images', { public: true }).catch(() => {});
+              const fileName = `product-${nextId}.jpg`;
+              const { error: upErr2 } = await sb.storage.from('product-images').upload(fileName, imgBytes, {
+                contentType: imgPart.inlineData.mimeType || 'image/jpeg',
+                upsert: true,
+              });
+              if (!upErr2) {
+                const { data: { publicUrl } } = sb.storage.from('product-images').getPublicUrl(fileName);
+                mockupUrl = publicUrl;
+                // Save mockup URL to product record
+                await sb.from('dubis_products').update({ image_url: mockupUrl }).eq('id', product_id);
+              }
             }
           }
-        } catch { /* mockup generation is optional */ }
+        } catch (imgErr) { console.error('Mockup generation error:', imgErr); }
       }
 
       // 5. Update agent_task
@@ -2036,11 +2044,196 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array:
         product_id_numeric: nextId,
         product: updated,
         mockup_url: mockupUrl || null,
-        next_steps: `Product #${nextId} approved! Run "node scripts/sync-products-to-js.js --write --commit" to add to the store.`,
       });
     }
 
     return json({ error: 'Use GET to list or POST to approve/reject' }, 405);
+  }
+
+  // ── SYNC-PRODUCTS — Generate products.js and push to GitHub ──────
+  if (type === 'sync-products') {
+    const adminOk = await verifyAdmin(req);
+    const cronSecret = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader = req.headers.get('authorization') ?? '';
+    const token = url.searchParams.get('token') || authHeader.replace('Bearer ', '').trim();
+    const isCron = cronSecret && token === cronSecret;
+    if (!adminOk && !isCron) return json({ error: 'Unauthorized' }, 401);
+
+    // 1. Fetch all active products from DB
+    const { data: products, error: fetchErr } = await sb.from('dubis_products')
+      .select('*')
+      .eq('active', true)
+      .order('product_id_numeric', { ascending: true });
+    if (fetchErr) return json({ error: fetchErr.message }, 500);
+    if (!products?.length) return json({ error: 'No active products found' }, 404);
+
+    // 2. Generate products.js content
+    const JS_TYPE_MAP: Record<string, string> = { 't-shirt': 'tshirt', 'hoodie': 'hoodie', 'zip-hoodie': 'ziphoodie', 'long-sleeve': 'longsleeve', 'cap': 'cap' };
+    const TYPE_META: Record<string, Record<string, string|null>> = {
+      tshirt: { typeLabel: 'T-Shirt', fabric: '100% combed ring-spun cotton', fitUnisex: 'Unisex, regular fit', fitWomen: "Women's fitted cut", printMethod: 'DTG — Direct-to-Garment', printAreas: '["Front", "Back"]', care: 'CARE_TSHIRT', care_he: 'CARE_TSHIRT_HE', sizes: 'SIZES_TSHIRT', sizeGuide: 'SIZE_GUIDE_TSHIRT' },
+      hoodie: { typeLabel: 'Hoodie', fabric: '80% cotton, 20% polyester — heavyweight fleece', fitUnisex: 'Unisex, relaxed fit', fitWomen: "Women's relaxed fit", printMethod: 'DTG — Direct-to-Garment', printAreas: '["Front", "Back"]', care: 'CARE_HOODIE', care_he: 'CARE_HOODIE_HE', sizes: 'SIZES_HOODIE', sizeGuide: 'SIZE_GUIDE_HOODIE' },
+      ziphoodie: { typeLabel: 'Zip Hoodie', fabric: '80% cotton, 20% polyester — heavyweight fleece', fitUnisex: 'Unisex, regular fit', fitWomen: "Women's fitted cut", printMethod: 'DTG — Direct-to-Garment', printAreas: '["Front", "Back"]', care: 'CARE_HOODIE', care_he: 'CARE_HOODIE_HE', sizes: 'SIZES_HOODIE', sizeGuide: 'SIZE_GUIDE_HOODIE' },
+      longsleeve: { typeLabel: 'Long-Sleeve', fabric: '100% combed ring-spun cotton', fitUnisex: 'Unisex, regular fit', fitWomen: "Women's fitted cut", printMethod: 'DTG — Direct-to-Garment', printAreas: '["Front", "Back"]', care: 'CARE_TSHIRT', care_he: 'CARE_TSHIRT_HE', sizes: 'SIZES_LONGSLEEVE', sizeGuide: 'SIZE_GUIDE_LONGSLEEVE' },
+      cap: { typeLabel: 'Cap', fabric: '100% chino cotton twill, unstructured', fitUnisex: 'One Size, adjustable strap', fitWomen: 'One Size, adjustable strap', printMethod: 'Embroidery', printAreas: '["Front"]', care: null, care_he: 'CARE_CAP_HE', sizes: 'SIZES_CAP', sizeGuide: null },
+    };
+    const PRICES: Record<string, number> = { tshirt: 28, hoodie: 41, ziphoodie: 46, longsleeve: 31, cap: 28 };
+
+    const esc = (s: string) => (s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+
+    function genEntry(p: Record<string, unknown>) {
+      const pType = JS_TYPE_MAP[(p.clothing_type as string)] || (p.clothing_type as string) || 'tshirt';
+      const meta = TYPE_META[pType] || TYPE_META.tshirt;
+      const fit = p.category === 'women' ? meta.fitWomen : meta.fitUnisex;
+      const price = (p.price_usd as number) || PRICES[pType] || 28;
+      const pid = (p.product_id_numeric as number) || p.id;
+      const colors = JSON.stringify(p.colors || ['Black', 'White']);
+      const careStr = meta.care ? `care: ${meta.care},` : `care: ["Spot clean only","Do not machine wash","Do not tumble dry","Reshape and air dry"],`;
+      const sgStr = meta.sizeGuide ? `sizeGuide: ${meta.sizeGuide}` : `sizeGuide: [{ size: 'One Size', note: 'Adjustable strap, fits most head sizes' }]`;
+      return `    {
+        id: ${pid},
+        phrase: "${esc((p.slogan as string) || '')}",
+        type: "${pType}",
+        typeLabel: "${meta.typeLabel}",
+        gender: "${p.category || 'unisex'}",
+        price: ${price},
+        image: "images/product-${pid}.jpg",
+        colors: ${colors},
+        sizes: ${meta.sizes},
+        description: "${esc((p.description_en as string) || '')}",
+        description_he: "${esc((p.description_he as string) || '')}",
+        fabric: "${meta.fabric}",
+        fit: "${fit}",
+        printMethod: "${meta.printMethod}",
+        printAreas: ${meta.printAreas},
+        ${careStr}
+        care_he: ${meta.care_he},
+        ${sgStr}
+    }`;
+    }
+
+    const header = `// DUBIS - Product Catalog
+// Auto-generated by sync-products — DO NOT EDIT MANUALLY
+// Last sync: ${new Date().toISOString()}
+// Collection 01 - For the rest of us
+
+const SIZES_TSHIRT    = ['S', 'M', 'L', 'XL', '2XL', '3XL'];
+const SIZES_HOODIE    = ['S', 'M', 'L', 'XL', '2XL', '3XL'];
+const SIZES_LONGSLEEVE = ['S', 'M', 'L', 'XL', '2XL', '3XL'];
+const SIZES_CAP       = ['One Size'];
+
+const SIZE_GUIDE_TSHIRT = [
+    { size: 'S',   chest: 46, length: 70 },
+    { size: 'M',   chest: 51, length: 72 },
+    { size: 'L',   chest: 56, length: 74 },
+    { size: 'XL',  chest: 61, length: 76 },
+    { size: '2XL', chest: 66, length: 78 },
+    { size: '3XL', chest: 71, length: 80 },
+];
+
+const SIZE_GUIDE_HOODIE = [
+    { size: 'S',   chest: 56, length: 67 },
+    { size: 'M',   chest: 61, length: 70 },
+    { size: 'L',   chest: 66, length: 73 },
+    { size: 'XL',  chest: 71, length: 76 },
+    { size: '2XL', chest: 76, length: 79 },
+    { size: '3XL', chest: 81, length: 82 },
+];
+
+const SIZE_GUIDE_LONGSLEEVE = SIZE_GUIDE_TSHIRT;
+
+const CARE_TSHIRT = [
+    "Machine wash cold, inside out",
+    "Tumble dry low heat",
+    "Do not bleach",
+    "Do not iron directly on print",
+    "Do not dry clean"
+];
+
+const CARE_HOODIE = [
+    "Machine wash cold, inside out",
+    "Tumble dry low heat",
+    "Do not bleach",
+    "Do not iron directly on print",
+    "Do not dry clean"
+];
+
+const CARE_TSHIRT_HE = [
+    "כביסה קרה במכונה, בפנים החוצה",
+    "ייבוש בחום נמוך",
+    "אין להלבין",
+    "אל תגהץ ישירות על ההדפסה",
+    "אין לניקוי יבש"
+];
+
+const CARE_HOODIE_HE = CARE_TSHIRT_HE;
+
+const CARE_CAP_HE = [
+    "ניקוי ידני בלבד",
+    "אין כביסה במכונה",
+    "אין לייבש במייבש",
+    "עצב מחדש וייבש באוויר"
+];
+`;
+
+    type Prod = Record<string, unknown>;
+    const unisex = products.filter((p: Prod) => (p.category || 'unisex') === 'unisex');
+    const men = products.filter((p: Prod) => p.category === 'men');
+    const women = products.filter((p: Prod) => p.category === 'women');
+
+    let body = 'const products = [\n';
+    if (unisex.length) { body += '\n    // ─── UNISEX ────────────────────\n\n'; body += unisex.map((p: Prod) => genEntry(p)).join(',\n'); body += ',\n'; }
+    if (men.length) { body += "\n    // ─── MEN'S ─────────────────────\n\n"; body += men.map((p: Prod) => genEntry(p)).join(',\n'); body += ',\n'; }
+    if (women.length) { body += "\n    // ─── WOMEN'S ───────────────────\n\n"; body += women.map((p: Prod) => genEntry(p)).join(',\n'); body += ',\n'; }
+    body += '];\n';
+
+    const content = header + '\n' + body;
+
+    // Validate generated content before pushing
+    if (!content.includes('const products = [') || !content.includes('id: 1,')) {
+      return json({ error: 'Generated products.js failed validation — aborting push', preview: content.substring(0, 300) }, 500);
+    }
+
+    // 3. Push to GitHub if GITHUB_TOKEN is set
+    let pushed = false;
+    let pushError = '';
+    const ghToken = Deno.env.get('GITHUB_TOKEN') ?? '';
+    if (ghToken) {
+      try {
+        const repo = 'dubis-brand/dubis-website';
+        const filePath = 'js/products.js';
+        // Get current file SHA
+        const getRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filePath}`, {
+          headers: { 'Authorization': `token ${ghToken}`, 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'DUBIS-Sync' },
+        });
+        const fileData = await getRes.json();
+        const sha = fileData.sha || '';
+        // Encode content to base64 (Deno-compatible)
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(content);
+        const encoded = btoa(String.fromCharCode(...bytes));
+        // Push update
+        const putRes = await fetch(`https://api.github.com/repos/${repo}/contents/${filePath}`, {
+          method: 'PUT',
+          headers: { 'Authorization': `token ${ghToken}`, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json', 'User-Agent': 'DUBIS-Sync' },
+          body: JSON.stringify({
+            message: `sync: update products.js (${products.length} products)`,
+            content: encoded,
+            sha,
+            branch: 'main',
+          }),
+        });
+        pushed = putRes.ok;
+        if (!pushed) pushError = await putRes.text();
+      } catch (e) { pushError = (e as Error).message; }
+    }
+
+    return json({
+      success: true,
+      product_count: products.length,
+      pushed_to_github: pushed,
+      push_error: pushError || undefined,
+      content: pushed ? undefined : content,
+    });
   }
 
   // ── SECURITY-SCAN — Security audit agent ──────────────────────────
