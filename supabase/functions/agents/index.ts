@@ -1799,7 +1799,7 @@ Score the total 0-30. Return ONLY valid JSON:
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
     const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const authHeader  = req.headers.get('authorization') ?? '';
-    const token       = authHeader.replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
+    const token       = url.searchParams.get('token') || authHeader.replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
     const isAuthed = (cronSecret && token === cronSecret) || (agentSecret && token === agentSecret) || (svcKey && token === svcKey);
     const adminOk = await verifyAdmin(req);
     if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
@@ -1964,7 +1964,7 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array:
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
     const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const authHeader  = req.headers.get('authorization') ?? '';
-    const token       = authHeader.replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
+    const token       = url.searchParams.get('token') || authHeader.replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
     const isAuthed = (cronSecret && token === cronSecret) || (agentSecret && token === agentSecret) || (svcKey && token === svcKey);
     const adminOk = await verifyAdmin(req);
     if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
