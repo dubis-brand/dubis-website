@@ -1570,7 +1570,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
     const cronSecret = Deno.env.get('CRON_SECRET') ?? '';
     const authHeader = req.headers.get('authorization') ?? '';
-    const token = authHeader.replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
+    const token = url.searchParams.get('token') || authHeader.replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
     const isAuthed = (svcKey && token === svcKey)
                   || (agentSecret && token === agentSecret)
                   || (cronSecret && token === cronSecret);

@@ -203,6 +203,23 @@ module.exports = async function handler(req, res) {
         return runContentPipeline(supabase, res);
     }
 
+    // ── Route: ?type=security — weekly security scan ──────────────────
+    // Called by Vercel cron every Monday 03:00 UTC (05:00 Israel)
+    if (urlType === 'security') {
+        const agentsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1/agents';
+        const authToken  = process.env.CRON_SECRET || process.env.AGENT_SECRET || '';
+        try {
+            const r = await fetch(`${agentsBase}?type=security-scan`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+            });
+            const data = await r.json();
+            return res.status(200).json({ success: true, security: data });
+        } catch (e) {
+            return res.status(500).json({ success: false, error: e.message });
+        }
+    }
+
     if (!process.env.RESEND_API_KEY) {
         return res.status(500).json({ error: 'Resend not configured' });
     }
