@@ -111,10 +111,13 @@ function escapeStr(s) {
   return (s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
 }
 
+const JS_TYPE_MAP = { 't-shirt': 'tshirt', 'hoodie': 'hoodie', 'zip-hoodie': 'ziphoodie', 'long-sleeve': 'longsleeve', 'cap': 'cap' };
+
 function generateProductEntry(p) {
-  const meta = TYPE_META[p.type] || TYPE_META.tshirt;
+  const pType = JS_TYPE_MAP[p.clothing_type] || p.clothing_type || p.type || 'tshirt';
+  const meta = TYPE_META[pType] || TYPE_META.tshirt;
   const fit = p.gender === 'women' ? meta.fitWomen : meta.fitUnisex;
-  const price = p.price || PRICES[p.type] || 28;
+  const price = p.price_usd || p.price || PRICES[pType] || 28;
   const colors = JSON.stringify(p.colors || ['Black', 'White']);
 
   let careStr = meta.care ? `care: ${meta.care},` : `care: [\n            "Spot clean only",\n            "Do not machine wash",\n            "Do not tumble dry",\n            "Reshape and air dry"\n        ],`;
@@ -122,13 +125,13 @@ function generateProductEntry(p) {
 
   const lines = [
     `    {`,
-    `        id: ${p.id},`,
-    `        phrase: "${escapeStr(p.phrase || p.slogan)}",`,
-    `        type: "${p.type}",`,
+    `        id: ${p.product_id_numeric || p.id},`,
+    `        phrase: "${escapeStr(p.slogan || p.phrase)}",`,
+    `        type: "${pType}",`,
     `        typeLabel: "${meta.typeLabel}",`,
     `        gender: "${p.gender || 'unisex'}",`,
     `        price: ${price},`,
-    `        image: "images/product-${p.id}.jpg",`,
+    `        image: "images/product-${p.product_id_numeric || p.id}.jpg",`,
     `        colors: ${colors},`,
     `        sizes: ${meta.sizes},`,
     `        description: "${escapeStr(p.description_en || p.description || '')}",`,
@@ -210,10 +213,11 @@ const CARE_CAP_HE = [
 ];
 `;
 
-  // Group by gender
-  const unisex = products.filter(p => p.gender === 'unisex');
-  const men = products.filter(p => p.gender === 'men');
-  const women = products.filter(p => p.gender === 'women');
+  // Group by gender (DB uses 'category' or 'gender' column)
+  const getGender = (p) => p.gender || p.category || 'unisex';
+  const unisex = products.filter(p => getGender(p) === 'unisex');
+  const men = products.filter(p => getGender(p) === 'men');
+  const women = products.filter(p => getGender(p) === 'women');
 
   let body = 'const products = [\n';
 

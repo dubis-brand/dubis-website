@@ -1883,12 +1883,16 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array:
 
       // Save each suggestion to dubis_products (active=false) + agent_task
       const savedProducts: unknown[] = [];
+      const PRICE_MAP: Record<string, number> = { 't-shirt': 28, hoodie: 41, 'zip-hoodie': 46, 'long-sleeve': 31, cap: 28 };
+      const DB_TYPE_MAP: Record<string, string> = { tshirt: 't-shirt', hoodie: 'hoodie', ziphoodie: 'zip-hoodie', longsleeve: 'long-sleeve', cap: 'cap', 't-shirt': 't-shirt', 'zip-hoodie': 'zip-hoodie', 'long-sleeve': 'long-sleeve' };
       for (const s of suggestions) {
+        const clothingType = DB_TYPE_MAP[s.product_type || 'tshirt'] || 't-shirt';
         const { data: product, error: pErr } = await sb.from('dubis_products').insert({
           slogan: s.slogan,
-          phrase: s.slogan,
-          type: s.product_type || 'tshirt',
+          clothing_type: clothingType,
+          category: s.gender === 'women' ? 'women' : 'unisex',
           gender: s.gender || 'unisex',
+          price_usd: PRICE_MAP[clothingType] || 28,
           description_en: s.description_en || '',
           description_he: s.description_he || '',
           colors: s.colors || ['Black', 'White'],

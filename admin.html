@@ -6089,7 +6089,8 @@
       html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem"><h3 style="color:#c8a96e;margin:0">🎨 הצעות סלוגנים חדשים</h3><button onclick="this.closest(\'#product-suggestions-modal\').remove()" style="background:none;border:none;color:#999;font-size:1.5rem;cursor:pointer">✕</button></div>';
 
       for (const p of data.products) {
-        const tl = typeLabels[p.type] || p.type;
+        const pType = p.clothing_type || p.type || 'tshirt';
+        const tl = typeLabels[pType] || pType;
         const gl = genderLabels[p.gender] || p.gender;
         html += `<div style="background:#111;border-radius:10px;padding:1.5rem;margin-bottom:1.2rem;border-right:4px solid #9c27b0" id="suggestion-${p.id}">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem;flex-wrap:wrap;gap:.5rem">
@@ -6159,7 +6160,7 @@
       const res = await fetch(AGENTS_BASE + '?type=approve-product', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product_id: productId, action: 'edit_approve', slogan: newSlogan.trim() })
+        body: JSON.stringify({ product_id: productId, action: 'edit_approve', edits: { slogan: newSlogan.trim() } })
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
