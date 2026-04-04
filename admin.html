@@ -6143,7 +6143,9 @@
       const el = document.getElementById('suggestion-' + productId);
       if (el) { el.style.transition = 'all .3s'; el.style.opacity = '0'; el.style.transform = 'translateX(20px)'; setTimeout(() => el.remove(), 300); }
       if (action === 'approve') {
-        alert('✅ המוצר אושר! הוא יופיע בחנות אחרי סנכרון.');
+        const pid = data.product_id_numeric || '?';
+        const mockup = data.mockup_url ? '\n🖼 תמונת מוקאפ נוצרה!' : '\n⚠️ תמונת מוקאפ לא נוצרה — תצטרך להעלות ידנית.';
+        alert(`✅ מוצר #${pid} אושר!${mockup}\n\nהשלב הבא: הרצת סנכרון לחנות.`);
       } else {
         alert('❌ המוצר נדחה.');
       }

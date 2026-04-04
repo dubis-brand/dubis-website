@@ -1957,21 +1957,87 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array:
       }
 
       // approve or edit_approve
-      const updates: Record<string, unknown> = { active: true, source: 'approved' };
+      // 1. Get next numeric product ID
+      const { data: maxRow } = await sb.from('dubis_products')
+        .select('product_id_numeric')
+        .not('product_id_numeric', 'is', null)
+        .order('product_id_numeric', { ascending: false })
+        .limit(1)
+        .single();
+      const nextId = ((maxRow as Record<string, unknown>)?.product_id_numeric as number || 14) + 1;
+
+      // 2. Build updates
+      const updates: Record<string, unknown> = { active: true, source: 'approved', product_id_numeric: nextId };
       if (action === 'edit_approve' && edits && typeof edits === 'object') {
         Object.assign(updates, edits as Record<string, unknown>);
       }
       const { data: updated, error: upErr } = await sb.from('dubis_products')
         .update(updates).eq('id', product_id).select().single();
       if (upErr) return json({ error: upErr.message }, 500);
+      const prod = updated as Record<string, unknown>;
 
-      // Update agent_task
+      // 3. Add to SLOGAN_TYPOGRAPHY dynamically (runtime only — will be in DB for future)
+      const sloganKey = (prod.slogan as string) || '';
+      if (sloganKey && !SLOGAN_TYPOGRAPHY[sloganKey]) {
+        SLOGAN_TYPOGRAPHY[sloganKey] = {
+          small: (prod.typography_small as string) || '',
+          big: (prod.typography_big as string) || '',
+          after: (prod.typography_after as string) || '',
+          layout: (prod.typography_layout as string) || 'top-bottom',
+        };
+      }
+
+      // 4. Generate mockup image via Gemini
+      let mockupUrl = '';
+      const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+      if (geminiKey) {
+        try {
+          const clothType = (prod.clothing_type as string) || 't-shirt';
+          const typeLabel: Record<string, string> = { 't-shirt': 'T-shirt', 'hoodie': 'Hoodie', 'zip-hoodie': 'Zip Hoodie', 'long-sleeve': 'Long-sleeve shirt', 'cap': 'Cap' };
+          const imgPrompt = `Professional product photo of a person wearing a dark ${typeLabel[clothType] || 'T-shirt'} with the text "${sloganKey}" printed on the back. The word "${prod.typography_big}" is printed very large (3x bigger than the rest). White text on dark fabric. Casual urban setting, natural lighting. Person facing away showing the back print. Small "DUBIS" text at bottom of back. Photorealistic, high quality product photography.`;
+
+          const imgRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+            { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: imgPrompt }] }],
+                generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+              }),
+              signal: AbortSignal.timeout(60000) },
+          );
+          const imgData = await imgRes.json();
+          const parts = imgData?.candidates?.[0]?.content?.parts || [];
+          const imgPart = parts.find((p: Record<string, unknown>) => p.inlineData);
+          if (imgPart?.inlineData?.data) {
+            const imgBytes = Uint8Array.from(atob(imgPart.inlineData.data), (c: string) => c.charCodeAt(0));
+            const fileName = `product-${nextId}.jpg`;
+            const { error: upErr2 } = await sb.storage.from('ig-images').upload(fileName, imgBytes, {
+              contentType: imgPart.inlineData.mimeType || 'image/jpeg',
+              upsert: true,
+            });
+            if (!upErr2) {
+              mockupUrl = `${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '')}/storage/v1/object/public/ig-images/${fileName}`;
+            }
+          }
+        } catch { /* mockup generation is optional */ }
+      }
+
+      // 5. Update agent_task
+      const now = new Date().toISOString();
       await sb.from('agent_tasks')
-        .update({ status: 'approved', approved_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .update({ status: 'done', approved_at: now, updated_at: now,
+          notes: `✅ מוצר #${nextId} אושר — ${sloganKey}${mockupUrl ? '\n🖼 תמונה: ' + mockupUrl : ''}` })
         .eq('agent_id', 'product')
         .filter('content_data->>product_id', 'eq', String(product_id));
 
-      return json({ success: true, action: 'approved', product: updated });
+      return json({
+        success: true,
+        action: 'approved',
+        product_id_numeric: nextId,
+        product: updated,
+        mockup_url: mockupUrl || null,
+        next_steps: `Product #${nextId} approved! Run "node scripts/sync-products-to-js.js --write --commit" to add to the store.`,
+      });
     }
 
     return json({ error: 'Use GET to list or POST to approve/reject' }, 405);
