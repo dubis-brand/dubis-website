@@ -58,7 +58,7 @@ function buildFrontPrompt(garment, color, slogan) {
     return `Professional product photo of a ${g.name}, ${colorDesc}. Small embroidered "DUBIS™" text on the front center of the cap. Clean white studio background. Product photography, no person, just the garment laid flat or on invisible mannequin. Studio lighting, high quality, photorealistic. Square 1:1 format. No watermark.`;
   }
 
-  return `Professional product photo of a ${g.name}, ${colorDesc}, ${g.sleeves}, ${g.fit}. Small "DUBIS™" text/logo on the LEFT CHEST area (upper left, like a polo logo placement — NOT at the bottom, NOT centered). Clean white studio background. Product photography, no person, just the garment on invisible mannequin or laid flat. Studio lighting, high quality, photorealistic. Square 1:1 format. No watermark. No other text anywhere.`;
+  return `Professional product photo of a ${g.name}, ${colorDesc}, ${g.sleeves}, ${g.fit}. Small "DUBIS™" text/logo positioned on the VIEWER'S LEFT side of the chest (the garment's right breast area) — like a small polo-style logo on the left side of the image. NOT centered, NOT on the right side of the image, NOT at the bottom. Clean white studio background. Product photography, no person, just the garment on invisible mannequin or laid flat. Studio lighting, high quality, photorealistic. Square 1:1 format. No watermark. No other text anywhere.`;
 }
 
 function buildBackPrompt(garment, color, slogan, typography) {
@@ -208,7 +208,7 @@ const TYPOGRAPHY = {
   "More of me to love": { small: "more of me to", big: "LOVE", after: "" },
   "Napping is my cardio": { small: "NAPPING IS MY", big: "CARDIO", after: "" },
   "I survived. That's enough.": { small: "I survived.", big: "That's enough.", after: "" },
-  "Low maintenance, high value": { small: "low maintenance", big: "VALUE", after: "high" },
+  "Low maintenance, high value": { small: "low maintenance, high", big: "VALUE", after: "" },
   "Not a model. Never wanted to be.": { small: "Not a model.", big: "NEVER.", after: "wanted to be." },
   "DUBIS — For the rest of us": { small: "", big: "DUBIS", after: "For the rest of us" },
   "Born to nap, forced to work": { small: "Born to nap, forced to work", big: "NAP", after: "" },

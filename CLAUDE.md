@@ -63,7 +63,7 @@ Format: `small text` → **HUGE TEXT** → `small text` | Product type
 2. `more of me to` → **LOVE** | T-Shirt
 3. `NAPPING IS MY` → **CARDIO** | Hoodie
 4. `I survived.` (large) / `That's enough.` (medium below) | T-Shirt
-5. `low maintenance` → **VALUE** → `high` (below) | T-Shirt
+5. `low maintenance, high` → **VALUE** | T-Shirt
 6. `Not a model.` → **NEVER.** → `wanted to be.` | Hoodie
 7. **NAP** (huge top) → `Born to nap, forced to work` (small below) | T-Shirt
 8. `certified` → **OVER** → `thinker.` | Zip Hoodie
