@@ -9,7 +9,7 @@ const PAYPAL_SANDBOX_CLIENT_ID = 'AZj2dQOOGG3j_JixU4GuhgZhgmzMp6qWO8zzyPd6E5pV66
 const PAYPAL_CLIENT_ID = PAYPAL_ENV === 'live' ? PAYPAL_LIVE_CLIENT_ID : PAYPAL_SANDBOX_CLIENT_ID;
 
 const SHIPPING_FEE = 8.99;
-const FREE_SHIPPING_THRESHOLD = 120;
+const FREE_SHIPPING_THRESHOLD = 60;
 
 let paypalLoaded = false;
 let appliedCoupon = null; // { code, discount_amount, final_total, name }

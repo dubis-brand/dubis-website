@@ -401,10 +401,10 @@ body {
     object-position: top center;
     transition: opacity 0.35s ease;
 }
-.product-image .img-back  { opacity: 1; z-index: 1; }
-.product-image .img-front { opacity: 0; z-index: 2; }
-.product-card:hover .product-image .img-front { opacity: 1; }
-.product-card:hover .product-image .img-back  { opacity: 0; }
+.product-image .img-front { opacity: 1; z-index: 1; }
+.product-image .img-back  { opacity: 0; z-index: 2; }
+.product-card:hover .product-image .img-back  { opacity: 1; }
+.product-card:hover .product-image .img-front { opacity: 0; }
 
 .product-badge {
     position: absolute;

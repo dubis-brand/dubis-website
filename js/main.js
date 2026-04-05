@@ -16,7 +16,7 @@ function formatPrice(usdPrice) {
   return '$' + usdPrice;
 }
 function freeShippingThreshold() {
-  return currentLang === 'he' ? '₪444' : '$120';
+  return currentLang === 'he' ? '₪222' : '$60';
 }
 
 // ===== COMPREHENSIVE TRANSLATIONS =====
@@ -58,8 +58,8 @@ const translations = {
     modal_returns: '↩️ Defective? Wrong item? We fix it — no hassle.',
     modal_add: 'This Is Mine 🐾',
     tab_details: 'Details', tab_size: 'Size Guide', tab_care: 'Care',
-    shipping_note: '✈️ + shipping · free on $120+',
-    modal_ships: '🚚 Ships in 5–9 business days', modal_free_ship: 'Free shipping over $120',
+    shipping_note: '✈️ + shipping · free on $60+',
+    modal_ships: '🚚 Ships in 5–9 business days', modal_free_ship: 'Free shipping over $60',
     modal_dtg: 'DTG — Direct-to-Garment',
     modal_fabric: 'Fabric', modal_fit: 'Fit', modal_print: 'Print', modal_print_areas: 'Print areas',
     size_size: 'Size', size_chest: 'Chest (cm)', size_length: 'Length (cm)',
@@ -74,7 +74,7 @@ const translations = {
     faq_q1: 'What sizes do you offer?',
     faq_a1: 'Our products come in sizes S through 3XL. All sizes run comfortable and roomy — if you\'re between sizes, take the smaller one. A detailed size chart is available on every product page.',
     faq_q2: 'How long does shipping take?',
-    faq_a2: 'Shipping: $8.99 (free on orders over $120). Production: 3–5 business days (printed to order). Delivery: 5–12 business days. Total: 8–17 business days.',
+    faq_a2: 'Shipping: $8.99 (free on orders over $60). Production: 3–5 business days (printed to order). Delivery: 5–12 business days. Total: 8–17 business days.',
     faq_q3: 'What is your return policy?',
     faq_a3: 'Returns only for defective, wrong, or lost items. Email dubis.brand@gmail.com within 30 days of delivery with a photo and order number.',
     faq_q4: 'Will the print peel off?',
@@ -123,8 +123,8 @@ const translations = {
     modal_returns: '↩️ פגם? מוצר שגוי? מחזירים בלי סיבוכים.',
     modal_add: 'זה שלי 🐾',
     tab_details: 'פרטים', tab_size: 'מדריך מידות', tab_care: 'טיפול',
-    shipping_note: '✈️ + משלוח · חינם מ-₪444',
-    modal_ships: '🚚 משלוח תוך 5–9 ימי עסקים', modal_free_ship: 'משלוח חינם מעל ₪444',
+    shipping_note: '✈️ + משלוח · חינם מ-₪222',
+    modal_ships: '🚚 משלוח תוך 5–9 ימי עסקים', modal_free_ship: 'משלוח חינם מעל ₪222',
     modal_dtg: 'DTG — הדפסה ישירה על הבד',
     modal_fabric: 'בד', modal_fit: 'גזרה', modal_print: 'הדפסה', modal_print_areas: 'אזורי הדפסה',
     size_size: 'מידה', size_chest: 'חזה (ס"מ)', size_length: 'אורך (ס"מ)',
@@ -139,7 +139,7 @@ const translations = {
     faq_q1: 'אילו מידות יש לכם?',
     faq_a1: 'S עד 3XL. כל המידות רחבות ונוחות — אם אתה בין מידות, קח את הקטנה. טבלת מידות מפורטת בכל עמוד מוצר.',
     faq_q2: 'כמה זמן לוקח המשלוח?',
-    faq_a2: 'משלוח: $8.99 (חינם בהזמנה מעל $120). זמן הכנה: 3–5 ימי עסקים (מודפס לפי הזמנה). משלוח: 5–12 ימי עסקים לפי היעד. סה"כ: 8–17 ימי עסקים.',
+    faq_a2: 'משלוח: $8.99 (חינם בהזמנה מעל $60). זמן הכנה: 3–5 ימי עסקים (מודפס לפי הזמנה). משלוח: 5–12 ימי עסקים לפי היעד. סה"כ: 8–17 ימי עסקים.',
     faq_q3: 'מה מדיניות ההחזרות?',
     faq_a3: 'החזרות רק במקרה של פגם, מוצר שגוי, או אבדן במשלוח. שלחו מייל ל-dubis.brand@gmail.com תוך 30 יום מהמסירה עם תמונה ומספר הזמנה.',
     faq_q4: 'ההדפסה מחזיקה?',
@@ -428,19 +428,19 @@ function openProductModal(productId) {
     <div class="modal-left">
       <div class="modal-image" id="modal-img-${product.id}">
         <img id="modal-img-src-${product.id}" loading="lazy"
-             src="${productImg(product.id, product.colors[0], 'back')}"
+             src="${productImg(product.id, product.colors[0], 'front')}"
              alt="${product.phrase}"
              data-color="${product.colors[0]}"
-             data-view="back"
+             data-view="front"
              onerror="this.onerror=null;this.src='${product.image}'" />
       </div>
       <div class="modal-thumbnails" id="modal-thumbs-${product.id}">
-        <div class="thumb active" data-view="back" onclick="setModalThumb(event, ${product.id}, 'back')">
-          <img src="${productImg(product.id, product.colors[0], 'back')}" alt="Back view" loading="lazy"
+        <div class="thumb active" data-view="front" onclick="setModalThumb(event, ${product.id}, 'front')">
+          <img src="${productImg(product.id, product.colors[0], 'front')}" alt="Front view" loading="lazy"
                onerror="this.onerror=null;this.src='${product.image}'" />
         </div>
-        <div class="thumb" data-view="front" onclick="setModalThumb(event, ${product.id}, 'front')">
-          <img src="${productImg(product.id, product.colors[0], 'front')}" alt="Front view" loading="lazy"
+        <div class="thumb" data-view="back" onclick="setModalThumb(event, ${product.id}, 'back')">
+          <img src="${productImg(product.id, product.colors[0], 'back')}" alt="Back view" loading="lazy"
                onerror="this.onerror=null;this.src='${product.image}'" />
         </div>
       </div>
@@ -467,7 +467,7 @@ function openProductModal(productId) {
         <div class="modal-selected-color" id="modal-color-name-${product.id}">${product.colors[0]}</div>
       </div>
       <div class="modal-option">
-        <label>${t.modal_size}</label>
+        <label>${t.modal_size} <a href="javascript:void(0)" onclick="showSizeGuideTab(${product.id})" style="font-size:0.75rem;color:#c8a96e;margin-left:0.5rem;text-decoration:underline">${currentLang === 'he' ? '📏 טבלת מידות' : '📏 Size Guide'}</a></label>
         <div class="modal-sizes" id="modal-sizes-${product.id}">
           ${product.sizes.map((s, i) => `
             <button class="size-btn ${i === 0 ? 'selected' : ''}"
@@ -479,7 +479,7 @@ function openProductModal(productId) {
       </div>
       <div class="modal-trust-badges">
         <span>&#128274; ${currentLang === 'he' ? 'תשלום מאובטח' : 'Secure Checkout'}</span>
-        <span>&#128666; ${currentLang === 'he' ? 'משלוח $8.99 · חינם מעל $120' : '$8.99 Shipping · Free over $120'}</span>
+        <span>&#128666; ${currentLang === 'he' ? 'משלוח $8.99 · חינם מעל $60' : '$8.99 Shipping · Free over $60'}</span>
         <span>&#8617;&#65039; ${currentLang === 'he' ? 'החזרה על פגמים תוך 30 יום' : '30-Day Defect Returns'}</span>
       </div>
       <button class="btn-primary modal-add-btn" onclick="addToCartFromModal(${product.id})">
@@ -555,6 +555,15 @@ function switchTab(btn, tabId) {
   contents.forEach(c => c.classList.add('hidden'));
   btn.classList.add('active');
   document.getElementById(tabId).classList.remove('hidden');
+}
+
+function showSizeGuideTab(productId) {
+  const tabEl = document.getElementById(`tab-size-${productId}`);
+  if (!tabEl) return;
+  const tabBtns = tabEl.closest('.modal-info').querySelectorAll('.prod-tab');
+  const sizeBtn = [...tabBtns].find(b => b.textContent.includes('Size') || b.textContent.includes('טבלה'));
+  if (sizeBtn) { switchTab(sizeBtn, `tab-size-${productId}`); }
+  tabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function selectColor(btn, color, productId) {
