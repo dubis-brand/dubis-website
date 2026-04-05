@@ -81,7 +81,7 @@ function buildBackPrompt(garment, color, slogan, typography) {
     textDesc = `The back has "${slogan}" printed in bold ${inkColor} text with dramatic mixed-size typography.`;
   }
 
-  return `Professional product photo showing the BACK of a ${g.name}, ${colorDesc}, ${g.sleeves}. ${textDesc} Small "DUBIS" text at the very bottom of the back. Clean white studio background. Product photography, no person, just the garment back view on invisible mannequin. Studio lighting, high quality, photorealistic. Square 1:1 format. No watermark.`;
+  return `Professional product photo showing the BACK of a ${g.name}, ${colorDesc}, ${g.sleeves}. ${textDesc} No logo, no branding text — ONLY the slogan text. Clean white studio background. Product photography, no person, just the garment back view on invisible mannequin. Studio lighting, high quality, photorealistic. Square 1:1 format. No watermark.`;
 }
 
 async function generateImage(prompt, outputPath) {

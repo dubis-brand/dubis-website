@@ -78,8 +78,8 @@ Format: `small text` → **HUGE TEXT** → `small text` | Product type
 - The POWER WORD must be 3-5x larger than the surrounding text
 - All text is white on dark garments, dark on light garments
 - Bold sans-serif font (condensed/impact style)
-- Small "DUBIS" text at bottom of back print
 - Front: small "DUBIS™" on left chest only
+- Back: slogan ONLY — NO DUBIS logo or branding on back
 - NEVER write the full slogan in same-size letters — always use the hierarchy above
 
 ### Logo & Branding

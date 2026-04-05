@@ -505,7 +505,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
         else if (format === 'quote_card') imagePrompt = `Minimalist dark charcoal textured background, concrete wall, moody warm lighting, no people. ${brandRules}`;
         else if (phraseOnClothing) {
           const typoDesc = getSloganTypographyPrompt(phraseOnClothing);
-          imagePrompt = `${modelDesc} wearing a ${garmentDesc}. FRONT: small "DUBIS™" text on left chest only. BACK of garment shows MIXED-SIZE TYPOGRAPHY: ${typoDesc}. Small "DUBIS" at bottom hem of back. ${settingDesc}. ${brandRules}. The power word must be 3-5x larger than surrounding text. Bold condensed sans-serif font.`;
+          imagePrompt = `${modelDesc} wearing a ${garmentDesc}. FRONT: small "DUBIS™" text on left chest only. BACK of garment shows MIXED-SIZE TYPOGRAPHY: ${typoDesc}. No logo or branding on back — only the slogan text. ${settingDesc}. ${brandRules}. The power word must be 3-5x larger than surrounding text. Bold condensed sans-serif font.`;
         } else {
           imagePrompt = `${modelDesc} wearing a ${garmentDesc} with "DUBIS" small logo on chest, ${settingDesc}. ${brandRules}`;
         }
@@ -587,11 +587,11 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     const clothingName = clothingMap[p.clothing_type as string] || (p.clothing_type as string);
 
     const comps = [
-      `Create a photorealistic DSLR-quality diptych: LEFT=FRONT of ${color} ${clothingName} worn by ${models[modelKey] || models.man}, small "DUBIS™" on left chest only; RIGHT=BACK showing MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. Small "DUBIS" at bottom hem. SETTING: ${scenes[sceneKey] || scenes.street}`,
-      `Create a photorealistic DSLR-quality photo of ${models[modelKey] || models.man} from behind in a ${color} ${clothingName}. BACK shows MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. Small "DUBIS" at bottom hem. Person looking slightly over shoulder. SETTING: ${scenes[sceneKey] || scenes.street}. Shallow depth of field.`,
+      `Create a photorealistic DSLR-quality diptych: LEFT=FRONT of ${color} ${clothingName} worn by ${models[modelKey] || models.man}, small "DUBIS™" on left chest only; RIGHT=BACK showing MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. No logo on back, only slogan. SETTING: ${scenes[sceneKey] || scenes.street}`,
+      `Create a photorealistic DSLR-quality photo of ${models[modelKey] || models.man} from behind in a ${color} ${clothingName}. BACK shows MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. No logo on back, only slogan. Person looking slightly over shoulder. SETTING: ${scenes[sceneKey] || scenes.street}. Shallow depth of field.`,
       `Create a photorealistic DSLR-quality lifestyle photo of ${models[modelKey] || models.man} wearing ${color} ${clothingName}. BACK partially visible showing: ${sloganTypo}. SETTING: ${scenes[sceneKey] || scenes.street}. Candid, unposed, authentic.`,
-      `Create a photorealistic DSLR-quality flat-lay of ${color} ${clothingName} showing BACK with MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. Small "DUBIS" at bottom hem. Top-down angle, minimalist styling.`,
-      `Create a photorealistic DSLR-quality close-up of BACK of ${color} ${clothingName} worn by ${models[modelKey] || models.man}, focused on MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. Small "DUBIS" at bottom hem. Bokeh background. 85mm f/2.0.`,
+      `Create a photorealistic DSLR-quality flat-lay of ${color} ${clothingName} showing BACK with MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. No logo on back, only slogan. Top-down angle, minimalist styling.`,
+      `Create a photorealistic DSLR-quality close-up of BACK of ${color} ${clothingName} worn by ${models[modelKey] || models.man}, focused on MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. No logo on back, only slogan. Bokeh background. 85mm f/2.0.`,
     ];
     const compIdx = ((p.slogan as string).length + modelKey.length + sceneKey.length + color.length) % comps.length;
     const prompt = comps[compIdx] + `\n\nCRITICAL:\n- ${clothingName} MUST be ${color} color\n- Slogan MIXED-SIZE TYPOGRAPHY — power word 3-5x larger\n- Slogan on BACK only; front has ONLY small "DUBIS™" on left chest\n- Real diverse person, NOT a fashion model\n- Bold condensed sans-serif font (Impact/Helvetica Condensed)\n- Photorealistic DSLR, not illustration`;
@@ -999,7 +999,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
           const modelIdx = Math.floor(Date.now() / 7200000) % models.length;
           const fullPrompt = cd.format === 'quote_card'
             ? 'Minimalist dark charcoal textured background. Moody low-key lighting. No people. No text. Square 1:1.'
-            : `Create a photorealistic DSLR-quality lifestyle photo of ${models[modelIdx]} wearing a dark ${clothingName}. BACK of garment shows MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. Small "DUBIS" at bottom hem. SETTING: ${scenes[sceneIdx]}. Candid, authentic, NOT a fashion model. Bold condensed sans-serif font. Photorealistic DSLR. Square 1:1. Small "DUBIS™" watermark bottom-left.`;
+            : `Create a photorealistic DSLR-quality lifestyle photo of ${models[modelIdx]} wearing a dark ${clothingName}. BACK of garment shows MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. No logo on back, only slogan. SETTING: ${scenes[sceneIdx]}. Candid, authentic, NOT a fashion model. Bold condensed sans-serif font. Photorealistic DSLR. Square 1:1. No watermark.`;
 
           try {
             const gRes = await fetch(
@@ -1028,7 +1028,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
           try {
             const titleLower = (task.title as string).toLowerCase();
             const imgPromptText = gen.image_prompt || `${task.title}, authentic urban lifestyle, DUBIS streetwear, dark minimal aesthetic`;
-            const fullPrompt = imgPromptText + ". Fashion photography. Square 1:1. Photorealistic. Small 'DUBIS\u2122' text watermark in the bottom-left corner of the image.";
+            const fullPrompt = imgPromptText + ". Fashion photography. Square 1:1. Photorealistic. No watermark or branding overlay.";
             const prompt = encodeURIComponent(fullPrompt);
             const seed = parseInt((task.id as string).replace(/-/g, '').substring(0, 8), 16) % 999999 + 1;
             const imgRes = await fetch(`https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&model=flux&seed=${seed}&token=${polToken}`, { signal: AbortSignal.timeout(55000) });
