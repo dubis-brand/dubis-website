@@ -72,16 +72,20 @@ function buildBackPrompt(garment, color, slogan, typography) {
   }
 
   let textDesc = '';
+  let exactWords = '';
   if (typography && typography.big) {
     const before = typography.small || '';
     const big = typography.big;
     const after = typography.after || '';
-    textDesc = `The back print reads: "${before}" in small ${inkColor} text, then "${big}" in HUGE bold Impact font (3-5x larger than the other text), then "${after}" in small ${inkColor} text below. The word "${big}" dominates the design.`;
+    const allWords = [before, big, after].filter(Boolean).join(' ');
+    textDesc = `The back print contains EXACTLY these words and NOTHING ELSE: "${before}" in small ${inkColor} text, then "${big}" in HUGE bold Impact font (3-5x larger than the other text), then "${after}" in small ${inkColor} text below. The word "${big}" dominates the design.`;
+    exactWords = `CRITICAL: The ONLY text on the garment must be EXACTLY: "${allWords}" — do NOT add any extra words, symbols, dates, hashtags, decorative text, subtitles, taglines, or ANY other characters. If the text says "${big}" that is the ONLY large word — do not add related words.`;
   } else {
     textDesc = `The back has "${slogan}" printed in bold ${inkColor} text with dramatic mixed-size typography.`;
+    exactWords = `CRITICAL: The ONLY text must be EXACTLY: "${slogan}" — no extra words, symbols, or characters of any kind.`;
   }
 
-  return `Professional product photo showing the BACK of a ${g.name}, ${colorDesc}, ${g.sleeves}. ${textDesc} No logo, no branding text — ONLY the slogan text. Clean white studio background. Product photography, no person, just the garment back view on invisible mannequin. Studio lighting, high quality, photorealistic. Square 1:1 format. No watermark.`;
+  return `Professional product photo showing the BACK of a ${g.name}, ${colorDesc}, ${g.sleeves}. ${textDesc} ${exactWords} No logo, no branding, no copyright, no year numbers, no decorative text. ONLY the slogan. Clean white studio background. Product photography, no person, just the garment back view on invisible mannequin. Studio lighting, high quality, photorealistic. Square 1:1 format.`;
 }
 
 async function generateImage(prompt, outputPath) {
@@ -218,6 +222,8 @@ const TYPOGRAPHY = {
   "I run on coffee and sarcasm": { small: "I run on coffee and sarcasm.", big: "COFFEE", after: "" },
   "Zero Motivation Club": { small: "Zero Motivation", big: "CLUB", after: "" },
   "Emotionally attached to my couch": { small: "emotionally attached to my", big: "COUCH", after: "" },
+  "Fashion? I prefer comfort.": { small: "Fashion? I prefer", big: "COMFORT.", after: "" },
+  "My goal: minimal EXISTENCE.": { small: "My goal: minimal", big: "EXISTENCE.", after: "" },
 };
 
 const JS_TYPE_MAP = { 't-shirt': 'tshirt', 'hoodie': 'hoodie', 'zip-hoodie': 'ziphoodie', 'long-sleeve': 'longsleeve', 'cap': 'cap' };
