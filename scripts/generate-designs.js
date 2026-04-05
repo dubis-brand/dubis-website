@@ -53,7 +53,7 @@ const PRODUCTS = [
   { id: 4,  phrase: "I survived. That's enough.",         layout: 'top-bottom',
     small: "",                     big: "I survived.", after: "That\u2019s enough." },
   { id: 5,  phrase: "Low maintenance, high value",        layout: 'top-bottom',
-    small: "low maintenance",      big: "VALUE",      after: "high"              },
+    small: "low maintenance, high", big: "VALUE",      after: ""                 },
   { id: 6,  phrase: "Not a model. Never wanted to be.",   layout: 'top-bottom',
     small: "Not a model.",         big: "NEVER.",     after: "wanted to be."     },
   { id: 7,  phrase: "DUBIS — For the rest of us",         type:   'cap',
@@ -72,6 +72,10 @@ const PRODUCTS = [
     small: "Zero Motivation",      big: "CLUB",       after: ""                  },
   { id: 14, phrase: "Emotionally attached to my couch",  layout: 'top-bottom',
     small: "emotionally attached to my", big: "COUCH", after: ""                },
+  { id: 15, phrase: "Fashion? I prefer comfort.",        layout: 'top-bottom',
+    small: "Fashion? I prefer",    big: "COMFORT.",    after: ""                },
+  { id: 16, phrase: "My goal: minimal EXISTENCE.",       layout: 'top-bottom',
+    small: "My goal: minimal",     big: "EXISTENCE.",  after: ""                },
 ];
 
 // ---------------------------------------------------------------------------
@@ -207,13 +211,7 @@ function generateBack(product, color, outPath) {
     }
   }
 
-  // ---- DUBIS watermark — bottom-left corner ----
-  ctx.textAlign   = 'left';
-  ctx.textBaseline = 'alphabetic';
-  setFont(ctx, DUBIS_SIZE);
-  ctx.globalAlpha = 0.55;
-  ctx.fillText('DUBIS', 120, BACK_H - 120);
-  ctx.globalAlpha = 1.0;
+  // No DUBIS branding on back — slogan only (per brand rules)
 
   // Subtle noise to ensure file size > 200 KB (defeats PNG compression)
   addNoise(ctx, BACK_W, BACK_H, 1);
