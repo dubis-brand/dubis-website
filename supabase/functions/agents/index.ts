@@ -2335,7 +2335,30 @@ const CARE_CAP_HE = [
     return json(scanResult);
   }
 
+  // ── serve-image: serve IG images with clean headers (no X-Robots-Tag) ──
+  // Instagram's crawler is blocked by Supabase storage's X-Robots-Tag: none
+  // This route fetches from storage and returns with Facebook-friendly headers
+  if (type === 'serve-image') {
+    const filename = url.searchParams.get('f') || '';
+    if (!filename) return json({ error: 'Missing ?f= parameter' }, 400);
+    const storageUrl = `${Deno.env.get('SUPABASE_URL')}/storage/v1/object/public/ig-images/${filename}`;
+    try {
+      const imgRes = await fetch(storageUrl);
+      if (!imgRes.ok) return new Response('Image not found', { status: 404 });
+      const imgData = await imgRes.arrayBuffer();
+      const ct = imgRes.headers.get('content-type') || 'image/jpeg';
+      return new Response(imgData, {
+        status: 200,
+        headers: {
+          'Content-Type': ct,
+          'Cache-Control': 'public, max-age=86400',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    } catch { return new Response('Error fetching image', { status: 500 }); }
+  }
+
   return json({
-    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, qa-content, generate-slogan, approve-product, security-scan',
+    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, qa-content, generate-slogan, approve-product, security-scan, serve-image',
   }, 400);
 });

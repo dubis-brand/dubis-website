@@ -12,7 +12,7 @@
     { "source": "/admin",   "destination": "/admin.html"   },
     { "source": "/terms",   "destination": "/terms.html"   },
     { "source": "/returns", "destination": "/returns.html" },
-    { "source": "/ig-content/:path*", "destination": "https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/ig-images/:path*" }
+    { "source": "/ig-content/:path*", "destination": "https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=serve-image&f=:path*" }
   ],
   "headers": [
     {
