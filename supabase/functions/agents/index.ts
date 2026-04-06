@@ -1151,7 +1151,13 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       const lang = (cd.lang as string) || 'he';
       const shopLine = lang === 'he' ? '🛒 לחנות: www.dubis.net' : '🛒 Shop: www.dubis.net';
       const caption = `${(cd.caption_he as string) || (cd.caption_en as string) || task.title}\n\n${shopLine}\n\n${(cd.hashtags as string) || '#DUBIS #ForTheRestOfUs'}`;
-      const image_url = cd.generated_image_url as string;
+      // Proxy Supabase storage through dubis.net so Instagram can fetch images
+      // (Instagram's crawler is blocked by Supabase/Cloudflare — dubis.net works)
+      let image_url = cd.generated_image_url as string;
+      if (image_url?.includes('supabase.co/storage/v1/object/public/ig-images/')) {
+        const filename = image_url.split('/ig-images/').pop();
+        image_url = `https://www.dubis.net/ig-content/${filename}`;
+      }
       const videoUrl = cd.video_url as string;
       const isReel = !!(videoUrl && cd.reel_status === 'ready');
       try {

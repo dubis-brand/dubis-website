@@ -11,7 +11,8 @@
   "rewrites": [
     { "source": "/admin",   "destination": "/admin.html"   },
     { "source": "/terms",   "destination": "/terms.html"   },
-    { "source": "/returns", "destination": "/returns.html" }
+    { "source": "/returns", "destination": "/returns.html" },
+    { "source": "/ig-content/:path*", "destination": "https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/ig-images/:path*" }
   ],
   "headers": [
     {
