@@ -1151,12 +1151,13 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       const lang = (cd.lang as string) || 'he';
       const shopLine = lang === 'he' ? '🛒 לחנות: www.dubis.net' : '🛒 Shop: www.dubis.net';
       const caption = `${(cd.caption_he as string) || (cd.caption_en as string) || task.title}\n\n${shopLine}\n\n${(cd.hashtags as string) || '#DUBIS #ForTheRestOfUs'}`;
-      // Proxy Supabase storage through dubis.net so Instagram can fetch images
-      // (Instagram's crawler is blocked by Supabase/Cloudflare — dubis.net works)
+      // Serve images through edge function with clean headers for Instagram
+      // (Supabase Storage returns X-Robots-Tag:none which blocks FB crawler)
       let image_url = cd.generated_image_url as string;
       if (image_url?.includes('supabase.co/storage/v1/object/public/ig-images/')) {
         const filename = image_url.split('/ig-images/').pop();
-        image_url = `https://www.dubis.net/ig-content/${filename}`;
+        const edgeBase = `${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '')}/functions/v1/agents`;
+        image_url = `${edgeBase}?type=serve-image&f=${encodeURIComponent(filename || '')}`;
       }
       const videoUrl = cd.video_url as string;
       const isReel = !!(videoUrl && cd.reel_status === 'ready');
