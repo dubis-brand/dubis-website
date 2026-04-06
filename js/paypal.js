@@ -99,6 +99,12 @@ async function submitContactStep() {
     const phone = (phoneEl?.value || '').trim();
     const name  = (nameEl?.value  || '').trim();
 
+    if (!name || name.length < 2) {
+        errEl.textContent = 'Please enter your full name.';
+        errEl.style.display = 'block';
+        nameEl?.focus();
+        return;
+    }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         errEl.textContent = 'Please enter a valid email address.';
         errEl.style.display = 'block';

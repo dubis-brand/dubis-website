@@ -66,7 +66,7 @@ const translations = {
     size_vary: '*Measurements may vary ±2cm', size_cap_note: 'Adjustable strap, fits most',
     cookie_text: '🐾 We use cookies to improve your experience. We keep it minimal - just what\'s needed.',
     cookie_accept: 'Accept', cookie_decline: 'Decline', cookie_privacy: 'Privacy Policy',
-    footer_privacy: 'Privacy Policy', footer_contact: 'Contact', footer_shop: 'Shop',
+    footer_privacy: 'Privacy Policy', footer_terms: 'Terms', footer_returns: 'Returns', footer_contact: 'Contact', footer_shop: 'Shop',
     footer_rights: '© 2026 DUBIS. All rights reserved. Built for you.',
     lang_btn: 'עב',
     faq_title: 'Frequently Asked Questions',
@@ -131,7 +131,7 @@ const translations = {
     size_vary: '*מידות עשויות להשתנות ±2 ס"מ', size_cap_note: 'רצועה מתכווננת, מתאים לרוב הראשים',
     cookie_text: '🐾 אנחנו משתמשים בעוגיות. ממש מינימום, רק מה שצריך.',
     cookie_accept: 'אישור', cookie_decline: 'דחייה', cookie_privacy: 'מדיניות פרטיות',
-    footer_privacy: 'מדיניות פרטיות', footer_contact: 'צור קשר', footer_shop: 'חנות',
+    footer_privacy: 'מדיניות פרטיות', footer_terms: 'תנאי שימוש', footer_returns: 'החזרות', footer_contact: 'צור קשר', footer_shop: 'חנות',
     footer_rights: '© 2026 DUBIS. כל הזכויות שמורות.',
     lang_btn: 'EN',
     faq_title: 'שאלות נפוצות',
@@ -263,11 +263,13 @@ function translateUI(lang) {
   if (q('.btn-cookie-decline')) q('.btn-cookie-decline').textContent = t.cookie_decline;
   if (q('.cookie-link')) q('.cookie-link').textContent = t.cookie_privacy;
 
-  // Footer
+  // Footer (5 links: Privacy, Terms, Returns, Contact, Shop)
   const footerLinks = qa('.footer-links a');
   if (footerLinks[0]) footerLinks[0].textContent = t.footer_privacy;
-  if (footerLinks[1]) footerLinks[1].textContent = t.footer_contact;
-  if (footerLinks[2]) footerLinks[2].textContent = t.footer_shop;
+  if (footerLinks[1]) footerLinks[1].textContent = t.footer_terms;
+  if (footerLinks[2]) footerLinks[2].textContent = t.footer_returns;
+  if (footerLinks[3]) footerLinks[3].textContent = t.footer_contact;
+  if (footerLinks[4]) footerLinks[4].textContent = t.footer_shop;
   if (q('.footer > p')) q('.footer > p').textContent = t.footer_rights;
 
   // Lang toggle
