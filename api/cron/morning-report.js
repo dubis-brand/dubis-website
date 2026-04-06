@@ -113,30 +113,41 @@ async function runContentPipeline(supabase, res) {
         const autoData = await autoRes.json();
         console.log('[content-cron] Auto-content:', JSON.stringify(autoData));
 
-        // 2. If a new task was created, generate caption + image
-        if (autoData.task_id && !autoData.skipped) {
-            const runRes  = await fetch(`${agentsBase}?type=content-run`, {
-                method:  'GET',
-                headers: { 'Authorization': `Bearer ${authToken}` },
-            });
-            const runData = await runRes.json();
-            console.log('[content-cron] Content-run:', JSON.stringify(runData));
+        // 2. ALWAYS run content-run — processes any approved tasks missing images
+        // (not just newly created tasks — Cowork may create tasks without running content-run)
+        const runRes  = await fetch(`${agentsBase}?type=content-run`, {
+            method:  'GET',
+            headers: { 'Authorization': `Bearer ${authToken}` },
+        });
+        const runData = await runRes.json();
+        console.log('[content-cron] Content-run:', JSON.stringify(runData));
 
-            // 3. Run QA on the generated content
-            const qaRes  = await fetch(`${agentsBase}?type=qa-content`, {
-                method:  'POST',
-                headers: {
-                    'Authorization': `Bearer ${authToken}`,
-                    'Content-Type': 'application/json',
-                },
-            });
-            const qaData = await qaRes.json();
-            console.log('[content-cron] QA-content:', JSON.stringify(qaData));
+        // 3. ALWAYS run QA on any generated content
+        const qaRes  = await fetch(`${agentsBase}?type=qa-content`, {
+            method:  'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json',
+            },
+        });
+        const qaData = await qaRes.json();
+        console.log('[content-cron] QA-content:', JSON.stringify(qaData));
 
-            return res.status(200).json({ success: true, task_id: autoData.task_id, qa: qaData });
-        }
+        // 4. Auto-publish any ready content
+        const pubRes = await fetch(`${agentsBase}?type=publish-ready`, {
+            method:  'POST',
+            headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+        });
+        const pubData = await pubRes.json();
+        console.log('[content-cron] Publish-ready:', JSON.stringify(pubData));
 
-        return res.status(200).json({ success: true, skipped: autoData.skipped || false, message: autoData.message || 'No new content needed' });
+        return res.status(200).json({
+            success: true,
+            auto_content: { task_id: autoData.task_id || null, skipped: autoData.skipped || false },
+            content_run: runData,
+            qa: qaData,
+            publish: pubData,
+        });
     } catch (err) {
         console.error('[content-cron] Error:', err.message);
         return res.status(500).json({ success: false, error: err.message });
