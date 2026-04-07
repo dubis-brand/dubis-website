@@ -491,23 +491,119 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
           else if (searchText.includes('not a model')) phraseOnClothing = 'Not a model. Never wanted to be.';
         }
 
-        let settingDesc = 'urban street setting, warm city background, golden hour';
-        if (searchText.includes('behind') || searchText.includes('scenes')) settingDesc = 'clothing workshop or design studio, industrial space';
-        else if (searchText.includes('relax') || searchText.includes('couch') || searchText.includes('nap')) settingDesc = 'cozy home interior, relaxing on sofa, warm ambient lighting';
-        else if (searchText.includes('coffee') || searchText.includes('morning')) settingDesc = 'morning coffee scene, kitchen or cafe, warm sunlight';
+        // ── RANDOMIZED VARIETY POOLS — every post is visually different ──
+        const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
 
-        const modelDesc = cd.language === 'he'
-          ? 'Israeli man or woman aged 40-50, olive skin, natural body, genuine smile'
-          : 'diverse person aged 35-55, natural body type, authentic confidence';
-        const brandRules = 'Photorealistic lifestyle photo, square 1:1 format. DUBIS Israeli streetwear brand. Warm natural lighting. NOT a professional model. Candid authentic pose.';
+        const SETTINGS = [
+          'sunlit rooftop overlooking city skyline at golden hour',
+          'graffiti-covered concrete alley, dramatic side light',
+          'cozy café window seat with steam from coffee, soft morning light',
+          'minimalist modern apartment, white walls, big window light',
+          'industrial loft with exposed brick and Edison bulbs',
+          'beach boardwalk at sunset, ocean blur in background',
+          'busy crosswalk in urban downtown, motion blur of cars',
+          'public library reading room, warm wooden tables',
+          'subway platform with neon underground lighting',
+          'park bench under autumn trees, leaves on ground',
+          'art gallery with white walls and abstract paintings',
+          'rooftop pool deck at twilight',
+          'vintage record store crammed with vinyls',
+          'farmer\'s market with colorful produce stands',
+          'parking garage with dramatic geometric shadows',
+          'tel aviv beachfront promenade at dusk',
+          'jerusalem old city stone alley with arches',
+          'tattoo parlor with neon signs in background',
+          'open-plan co-working space with plants',
+          'brutalist architecture courtyard, harsh midday sun',
+        ];
+
+        const ANGLES = [
+          'front-facing medium shot, eye-level',
+          'three-quarter angle from the right side, slight low angle',
+          'over-the-shoulder shot showing back of garment in focus',
+          'full-body wide shot with environmental context',
+          'close-up upper body shot, shallow depth of field',
+          'dynamic action shot, subject mid-motion',
+          'side profile silhouette against bright window',
+          'high angle looking down, subject seated',
+          'low angle hero shot looking up at subject',
+          'extreme close-up of garment detail with subject partially visible',
+          'candid documentary style, subject unaware of camera',
+          'mirror selfie reflection style',
+        ];
+
+        const POSES = [
+          'laughing genuinely with head tilted back',
+          'leaning casually against a wall, arms crossed',
+          'walking confidently toward camera',
+          'sitting cross-legged on the floor with coffee mug',
+          'mid-stride with shopping bags',
+          'hands in pockets, soft smile, looking off-camera',
+          'stretching arms overhead, yawning',
+          'reading a book, totally absorbed',
+          'caught mid-conversation, animated hand gesture',
+          'sitting on stairs, elbows on knees',
+          'stretching tired after waking up',
+          'pointing at the slogan on their own shirt with a smirk',
+          'twirling, garment flowing',
+          'jumping in place, joyful',
+        ];
+
+        const MODELS = [
+          'plus-size woman aged 30-40, curly brown hair, freckles, warm olive skin',
+          'athletic man aged 35-45, full beard, tattoo sleeves, warm tan',
+          'curvy woman aged 25-35, short pixie cut, bright lipstick, brown skin',
+          'older man aged 50-60, salt-and-pepper hair, wireframe glasses, fair skin',
+          'young woman aged 22-28, long black hair, septum piercing, mediterranean features',
+          'middle-aged dad aged 40-50, dad-bod, ginger hair, freckled fair skin',
+          'tall lanky guy aged 28-35, messy brown hair, scruffy stubble, olive skin',
+          'mom aged 35-45, ponytail, no makeup, natural beauty, light tan',
+          'asian woman aged 30-40, straight black bob, minimal jewelry, fair skin',
+          'black man aged 35-45, shaved head, full beard, dark brown skin',
+          'latina woman aged 28-38, wavy auburn hair, big hoop earrings, golden tan',
+          'mature woman aged 55-65, gray bob, statement glasses, fair skin',
+        ];
+
+        const TIME_LIGHT = [
+          'golden hour warm orange light',
+          'overcast soft diffused daylight',
+          'bright midday sun with hard shadows',
+          'blue hour twilight, neon accents',
+          'window light from the left, dramatic side shadow',
+          'rim light from behind, glowing edge',
+          'morning sun streaming through blinds',
+          'rainy day flat moody light',
+        ];
+
+        // Use task_id (or current minute) as seed-ish for daily variety in addition to true random
+        const setting = pick(SETTINGS);
+        const angle = pick(ANGLES);
+        const pose = pick(POSES);
+        const modelDesc = pick(MODELS);
+        const lighting = pick(TIME_LIGHT);
+
+        // Allow context keywords to *bias* (not lock) setting
+        let settingDesc = setting;
+        if (searchText.includes('behind') || searchText.includes('scenes')) settingDesc = pick(['clothing workshop with sewing machines','design studio with mood boards','print shop with garments hanging']);
+        else if (searchText.includes('couch') || searchText.includes('nap')) settingDesc = pick(['cozy living room sofa with throw pillows','unmade bed with morning light','hammock on a balcony']);
+        else if (searchText.includes('coffee') || searchText.includes('morning')) settingDesc = pick(['hipster coffee shop with espresso machine','sunny kitchen counter with french press','outdoor café with steam rising']);
+
+        const brandRules = 'Photorealistic editorial lifestyle photo, square 1:1 format. DUBIS Israeli streetwear brand. NOT a professional model — real authentic person. Natural unposed candid moment. Cinematic composition. Sharp focus on subject, soft natural background blur.';
+
+        // Decide front vs back showcase randomly (60% back for slogan visibility, 40% front for variety)
+        const showBack = !!phraseOnClothing && Math.random() < 0.6;
 
         if (cd.image_prompt) imagePrompt = `${cd.image_prompt}. ${brandRules}`;
-        else if (format === 'quote_card') imagePrompt = `Minimalist dark charcoal textured background, concrete wall, moody warm lighting, no people. ${brandRules}`;
+        else if (format === 'quote_card') imagePrompt = `Minimalist textured background — pick from: ${pick(['dark charcoal concrete','warm beige plaster','dusty pink stucco','deep navy painted wood','burnt orange brick'])}, moody directional lighting, no people. ${brandRules}`;
         else if (phraseOnClothing) {
           const typoDesc = getSloganTypographyPrompt(phraseOnClothing);
-          imagePrompt = `${modelDesc} wearing a ${garmentDesc}. FRONT: small "DUBIS™" text on left chest only. BACK of garment shows MIXED-SIZE TYPOGRAPHY: ${typoDesc}. No logo or branding on back — only the slogan text. ${settingDesc}. ${brandRules}. The power word must be 3-5x larger than surrounding text. Bold condensed sans-serif font.`;
+          if (showBack) {
+            imagePrompt = `${modelDesc}, ${pose}, wearing a ${garmentDesc}. ${angle}, with the BACK of the garment clearly visible showing MIXED-SIZE TYPOGRAPHY: ${typoDesc}. The power word must be 3-5x larger than surrounding text. Bold condensed sans-serif font. No logo on back — only the slogan. Setting: ${settingDesc}. Lighting: ${lighting}. ${brandRules}`;
+          } else {
+            imagePrompt = `${modelDesc}, ${pose}, wearing a ${garmentDesc}. ${angle}, FRONT view. Small "DUBIS™" text on left chest only. The slogan "${phraseOnClothing}" subtly visible or implied (the front is mostly clean — focus on personality). Setting: ${settingDesc}. Lighting: ${lighting}. ${brandRules}`;
+          }
         } else {
-          imagePrompt = `${modelDesc} wearing a ${garmentDesc} with "DUBIS" small logo on chest, ${settingDesc}. ${brandRules}`;
+          imagePrompt = `${modelDesc}, ${pose}, wearing a ${garmentDesc} with small "DUBIS" logo on chest. ${angle}. Setting: ${settingDesc}. Lighting: ${lighting}. ${brandRules}`;
         }
       }
     }
