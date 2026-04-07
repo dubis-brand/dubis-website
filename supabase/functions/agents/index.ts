@@ -1149,8 +1149,17 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     for (const task of readyTasks) {
       const cd = (task.content_data as Task) || {};
       const lang = (cd.lang as string) || 'he';
-      const shopLine = lang === 'he' ? '🛒 לחנות: www.dubis.net' : '🛒 Shop: www.dubis.net';
-      const caption = `${(cd.caption_he as string) || (cd.caption_en as string) || task.title}\n\n${shopLine}\n\n${(cd.hashtags as string) || '#DUBIS #ForTheRestOfUs'}`;
+      // Instagram doesn't make URLs clickable in feed/Reel captions — only bio link works.
+      // Facebook DOES make URLs clickable, so we build two versions.
+      const shopLineIG = lang === 'he' ? '🛒 הקישור בביו ← dubis.net' : '🛒 Link in bio → dubis.net';
+      const shopLineFB = lang === 'he' ? '🛒 לחנות: https://www.dubis.net' : '🛒 Shop: https://www.dubis.net';
+      const baseBody = (cd.caption_he as string) || (cd.caption_en as string) || task.title;
+      const tags = (cd.hashtags as string) || '#DUBIS #ForTheRestOfUs';
+      // Strip any plain "www.dubis.net" the model may have added inside the body
+      const cleanBody = baseBody.replace(/https?:\/\/(www\.)?dubis\.net\/?/gi, '').replace(/www\.dubis\.net\/?/gi, '').replace(/\n{3,}/g, '\n\n').trim();
+      const captionIG = `${cleanBody}\n\n${shopLineIG}\n\n${tags}`;
+      const captionFB = `${cleanBody}\n\n${shopLineFB}\n\n${tags}`;
+      const caption = captionIG; // default for IG branch below
       // Serve images through edge function with clean headers for Instagram
       // (Supabase Storage returns X-Robots-Tag:none which blocks FB crawler)
       let image_url = cd.generated_image_url as string;
@@ -1175,14 +1184,14 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
           // Poll container status — videos take longer to process (up to 30s)
           const containerId = container.id as string;
           let ready = false;
-          for (let attempt = 0; attempt < 6; attempt++) {
+          for (let attempt = 0; attempt < 24; attempt++) {
             await new Promise((r) => setTimeout(r, 5000));
             const statusRes = await fetch(`https://graph.facebook.com/v19.0/${containerId}?fields=status_code&access_token=${igToken}`);
             const statusData = await statusRes.json() as Record<string, unknown>;
             if (statusData.status_code === 'FINISHED') { ready = true; break; }
             if (statusData.status_code === 'ERROR') { break; }
           }
-          if (!ready) { results.push({ id: task.id, title: task.title, status: 'error', error: 'Reel container not ready after 30s' }); continue; }
+          if (!ready) { results.push({ id: task.id, title: task.title, status: 'error', error: 'Reel container not ready after 120s' }); continue; }
         } else {
           // Image post
           const cRes = await fetch(`${igBase}/media`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url, caption, access_token: igToken }) });
@@ -1203,7 +1212,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
             const fbRes = await fetch(`https://graph.facebook.com/v19.0/${fbPageId}/photos`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ url: image_url, caption, access_token: fbToken }),
+              body: JSON.stringify({ url: image_url, caption: captionFB, access_token: fbToken }),
             });
             const fbData = await fbRes.json();
             if (fbRes.ok && fbData.id && !fbData.error) {
@@ -2337,6 +2346,636 @@ const CARE_CAP_HE = [
   }
 
   // ── serve-image: serve IG images with clean headers (no X-Robots-Tag) ──
+  // ══════════════════════════════════════════════════════════
+  // VIDEO PIPELINE — AI-generated promo videos
+  // ══════════════════════════════════════════════════════════
+
+  // ── Shared auth helper for video pipeline routes ──
+  function checkVideoAuth(r: Request, u: URL): boolean {
+    const svcKey2      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const cronSecret2  = Deno.env.get('CRON_SECRET') ?? '';
+    const agentSecret3 = Deno.env.get('AGENT_SECRET') ?? '';
+    const ah  = r.headers.get('authorization') ?? '';
+    const tok = u.searchParams.get('token') || ah.replace('Bearer ', '').trim() || r.headers.get('x-agent-secret') || '';
+    return !!((svcKey2 && tok === svcKey2) || (cronSecret2 && tok === cronSecret2) || (agentSecret3 && tok === agentSecret3));
+  }
+
+  // ── GENERATE-VIDEO-SCRIPT ─────────────────────────────────
+  if (type === 'generate-video-script') {
+    if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
+    const admin = await verifyAdmin(req);
+    if (!admin && !checkVideoAuth(req, url) && !isAgentSecret(req)) return json({ error: 'Unauthorized' }, 401);
+
+    const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+    if (!geminiKey) return json({ error: 'GEMINI_API_KEY not configured' }, 503);
+
+    const b = body as Record<string, string>;
+    const language = b.language || 'en';
+    const style = b.style || 'humor';
+    const duration = parseInt(b.duration || '15', 10);
+    const productSlogan = b.product_slogan || '';
+    const productType = b.product_type || 'tshirt';
+
+    // If no slogan provided, pick one randomly from our catalog
+    type ProductDef = { slogan: string; type: string; gender: string };
+    const VIDEO_PRODUCTS: ProductDef[] = [
+      { slogan: "I am not fat, I am a LIMITED edition.", type: 'tshirt', gender: 'unisex' },
+      { slogan: "more of me to LOVE", type: 'tshirt', gender: 'unisex' },
+      { slogan: "NAPPING IS MY CARDIO", type: 'hoodie', gender: 'unisex' },
+      { slogan: "I survived. That's enough.", type: 'tshirt', gender: 'unisex' },
+      { slogan: "low maintenance, high VALUE", type: 'tshirt', gender: 'unisex' },
+      { slogan: "Not a model. NEVER. wanted to be.", type: 'hoodie', gender: 'unisex' },
+      { slogan: "NAP — Born to nap, forced to work", type: 'tshirt', gender: 'unisex' },
+      { slogan: "certified OVER thinker", type: 'ziphoodie', gender: 'unisex' },
+      { slogan: "serial NAPPER", type: 'longsleeve', gender: 'unisex' },
+      { slogan: "Zero Motivation CLUB", type: 'hoodie', gender: 'women' },
+      { slogan: "emotionally attached to my COUCH", type: 'longsleeve', gender: 'women' },
+      { slogan: "COFFEE — I run on coffee and sarcasm.", type: 'tshirt', gender: 'women' },
+    ];
+    const picked = productSlogan
+      ? { slogan: productSlogan, type: productType, gender: b.gender || 'unisex' }
+      : VIDEO_PRODUCTS[Math.floor(Math.random() * VIDEO_PRODUCTS.length)];
+
+    const typo = SLOGAN_TYPOGRAPHY[Object.keys(SLOGAN_TYPOGRAPHY).find(
+      k => k.toLowerCase() === picked.slogan.replace(/\s+/g, ' ').toLowerCase()
+        || picked.slogan.toLowerCase().includes(k.toLowerCase().substring(0, 15))
+    ) || ''];
+
+    const garmentNames: Record<string, string> = { tshirt: 't-shirt', hoodie: 'hoodie', ziphoodie: 'zip hoodie', longsleeve: 'long sleeve', cap: 'cap' };
+    const garmentName = garmentNames[picked.type] || 't-shirt';
+
+    const numScenes = duration <= 15 ? 4 : 6;
+    const sceneDuration = Math.round(duration / numScenes);
+
+    const prompt = `You are a creative director making a ${duration}-second Instagram Reel ad for DUBIS — an Israeli body-positive humor apparel brand.
+
+Product: ${garmentName} with slogan "${picked.slogan}"
+${typo ? `Typography: small="${typo.small}" BIG="${typo.big}" after="${typo.after}"` : ''}
+Language: ${language === 'he' ? 'Hebrew' : 'English'}
+Style: ${style} (${style === 'humor' ? 'self-aware cynical humor' : style === 'promo' ? 'direct product promotion' : 'lifestyle/relatable'})
+Target: 25-45, body-positive, comfort-first
+
+Create EXACTLY ${numScenes} scenes. Each scene is ~${sceneDuration} seconds.
+
+CRITICAL VISUAL RULES — Every scene MUST follow these:
+1. The DUBIS ${garmentName} with the slogan "${picked.slogan}" MUST be CLEARLY VISIBLE in EVERY scene where a person appears
+2. The slogan text on the garment must use mixed-size typography: ${typo ? `small "${typo.small}", HUGE BOLD "${typo.big}", small "${typo.after}"` : `huge bold "${picked.slogan}"`}
+3. Power word is 3-5x larger than other text, white sans-serif on dark fabric
+4. Small "DUBIS™" logo on left chest
+5. The model should be wearing the ACTUAL ${garmentName} prominently — slogan readable
+6. Person: 25-45, body-positive, diverse, authentic (NOT a fashion model)
+7. Each visual_prompt must explicitly describe the garment text and typography
+
+Structure:
+${duration <= 15 ? `Scene 1: HOOK — relatable funny situation (person wearing the DUBIS ${garmentName} with slogan visible)
+Scene 2: SLOGAN CLOSE-UP — close-up of the ${garmentName} showing the slogan typography clearly
+Scene 3: PRODUCT WEAR — full view of person wearing the ${garmentName}, slogan visible, lifestyle setting
+Scene 4: CTA — close-up of garment with slogan + small text "dubis.net" overlay` :
+`Scene 1: HOOK — relatable funny situation (${language === 'he' ? 'Israeli humor' : 'universal humor'})
+Scene 2: PROBLEM — "you need this ${garmentName}"
+Scene 3: SLOGAN REVEAL — dramatic typography, power word "${typo?.big || picked.slogan.split(' ').reduce((a,b) => a.length > b.length ? a : b)}" huge
+Scene 4: PRODUCT SHOWCASE — the ${garmentName} in different colors
+Scene 5: SOCIAL PROOF — "${language === 'he' ? 'הצטרפו לקהילת DUBIS' : 'Join the DUBIS community'}"
+Scene 6: CTA — dubis.net + logo`}
+
+Return ONLY valid JSON (no markdown):
+{
+  "title": "short title",
+  "slogan": "${picked.slogan}",
+  "product_type": "${picked.type}",
+  "language": "${language}",
+  "total_duration": ${duration},
+  "scenes": [
+    {
+      "scene_number": 1,
+      "duration": ${sceneDuration},
+      "narration": "${language === 'he' ? 'Hebrew narration text' : 'English narration text'}",
+      "visual_prompt": "detailed image generation prompt for this scene (English, photorealistic)",
+      "text_overlay": "text to show on screen (max 5 words)",
+      "text_style": "large|medium|small",
+      "transition": "fade|slide|zoom"
+    }
+  ],
+  "music_prompt": "short description of background music mood",
+  "music_style": "lo-fi|upbeat|chill|dramatic",
+  "cta_text": "Shop now at dubis.net",
+  "color_palette": { "bg": "#1a1a2e", "text": "#ffffff", "accent": "#c9a84c" }
+}`;
+
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+          signal: AbortSignal.timeout(30000) },
+      );
+      const raw = (await res.json()).candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const cleaned = raw.replace(/```json|```/g, '').trim();
+      const script = JSON.parse(cleaned);
+
+      // Save to agent_tasks if requested
+      if (b.save_task === 'true') {
+        const { data: task } = await sb.from('agent_tasks').insert({
+          agent_id: 'content',
+          title: `Video — ${script.title || picked.slogan}`,
+          description: `סרטון ${duration} שניות: ${picked.slogan}`,
+          category: 'video',
+          status: 'approved',
+          priority: 'medium',
+          content_data: {
+            content_type: 'video',
+            format: 'reel',
+            video_script: script,
+            product_slogan: picked.slogan,
+            product_type: picked.type,
+            language,
+            style,
+            duration,
+            pipeline_step: 'script_ready',
+          },
+        }).select('id').single();
+        return json({ success: true, task_id: (task as Record<string, unknown>)?.id, script });
+      }
+
+      return json({ success: true, script });
+    } catch (e) {
+      return json({ error: 'Script generation failed: ' + (e as Error).message }, 500);
+    }
+  }
+
+  // ── GENERATE-VIDEO-ASSETS ─────────────────────────────────
+  if (type === 'generate-video-assets') {
+    if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
+    const admin = await verifyAdmin(req);
+    if (!admin && !checkVideoAuth(req, url) && !isAgentSecret(req)) return json({ error: 'Unauthorized' }, 401);
+
+    const falKey = Deno.env.get('FAL_API_KEY') ?? '';
+    const elevenKey = Deno.env.get('ELEVENLABS_API_KEY') ?? '';
+
+    const b = body as Record<string, unknown>;
+    const taskId = b.task_id as string;
+    let script = b.script as Record<string, unknown> | null;
+
+    // Load script from task if task_id provided
+    if (taskId && !script) {
+      const { data: taskRow } = await sb.from('agent_tasks').select('content_data').eq('id', taskId).single();
+      if (!taskRow) return json({ error: 'Task not found' }, 404);
+      script = ((taskRow as Record<string, unknown>).content_data as Record<string, unknown>)?.video_script as Record<string, unknown> || null;
+    }
+    if (!script || !script.scenes) return json({ error: 'script with scenes required (or task_id with video_script)' }, 400);
+
+    const scenes = script.scenes as Record<string, unknown>[];
+    const assets: Record<string, unknown>[] = [];
+
+    // Ensure video-assets bucket exists
+    await sb.storage.createBucket('video-assets', { public: true }).catch(() => {});
+
+    // ── Generate scene images via fal.ai FLUX ──
+    for (let i = 0; i < scenes.length; i++) {
+      const scene = scenes[i];
+      const assetData: Record<string, unknown> = { scene_number: i + 1 };
+
+      if (falKey && scene.visual_prompt) {
+        try {
+          const falRes = await fetch('https://fal.run/fal-ai/flux/schnell', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Key ${falKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              prompt: `${scene.visual_prompt}. Square format 1080x1080. Photorealistic. High quality. Cinematic lighting.`,
+              image_size: 'square_hd',
+              num_images: 1,
+              enable_safety_checker: true,
+            }),
+            signal: AbortSignal.timeout(60000),
+          });
+          const falData = await falRes.json();
+          const imageUrl = falData.images?.[0]?.url || falData.output?.images?.[0]?.url;
+
+          if (imageUrl) {
+            // Download and upload to Supabase Storage
+            const imgRes = await fetch(imageUrl);
+            if (imgRes.ok) {
+              const imgBytes = new Uint8Array(await imgRes.arrayBuffer());
+              const fname = `video-scene-${taskId || 'gen'}-${i + 1}-${Date.now()}.jpg`;
+              const { error: upErr } = await sb.storage.from('video-assets').upload(fname, imgBytes, { contentType: 'image/jpeg', upsert: true });
+              if (!upErr) {
+                const { data: { publicUrl } } = sb.storage.from('video-assets').getPublicUrl(fname);
+                assetData.image_url = publicUrl;
+              } else {
+                assetData.image_url = imageUrl; // fallback to fal.ai URL
+              }
+            }
+          } else {
+            assetData.image_error = falData.detail || 'No image returned';
+          }
+        } catch (e) {
+          assetData.image_error = (e as Error).message;
+        }
+      } else if (!falKey) {
+        assetData.image_error = 'FAL_API_KEY not configured';
+      }
+
+      // ── Generate narration audio via ElevenLabs TTS ──
+      if (elevenKey && scene.narration) {
+        try {
+          // Use a default voice - Rachel for English, default for Hebrew
+          const lang = (script.language as string) || 'en';
+          const voiceId = lang === 'he' ? 'pFZP5JQG7iQjIQuC4Bku' : 'EXAVITQu4vr4xnSDxMaL'; // Lily / Sarah
+          const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+            method: 'POST',
+            headers: {
+              'xi-api-key': elevenKey,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              text: scene.narration as string,
+              model_id: 'eleven_multilingual_v2',
+              voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+            }),
+            signal: AbortSignal.timeout(30000),
+          });
+
+          if (ttsRes.ok && ttsRes.headers.get('content-type')?.includes('audio')) {
+            const audioBytes = new Uint8Array(await ttsRes.arrayBuffer());
+            const fname = `video-audio-${taskId || 'gen'}-${i + 1}-${Date.now()}.mp3`;
+            const { error: upErr } = await sb.storage.from('video-assets').upload(fname, audioBytes, { contentType: 'audio/mpeg', upsert: true });
+            if (!upErr) {
+              const { data: { publicUrl } } = sb.storage.from('video-assets').getPublicUrl(fname);
+              assetData.audio_url = publicUrl;
+            }
+          } else {
+            const errData = await ttsRes.text();
+            assetData.audio_error = `ElevenLabs ${ttsRes.status}: ${errData.substring(0, 200)}`;
+          }
+        } catch (e) {
+          assetData.audio_error = (e as Error).message;
+        }
+      } else if (!elevenKey) {
+        assetData.audio_error = 'ELEVENLABS_API_KEY not configured';
+      }
+
+      // Text overlay data (for render step)
+      assetData.text_overlay = scene.text_overlay || '';
+      assetData.text_style = scene.text_style || 'large';
+      assetData.duration = scene.duration || 4;
+      assetData.transition = scene.transition || 'fade';
+
+      assets.push(assetData);
+    }
+
+    // ── Generate background music via ElevenLabs Sound Effects ──
+    let musicUrl: string | null = null;
+    if (elevenKey && script.music_prompt) {
+      try {
+        const sfxRes = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
+          method: 'POST',
+          headers: {
+            'xi-api-key': elevenKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: `${script.music_prompt}. ${script.music_style || 'lo-fi'} instrumental background music, ${script.total_duration || 15} seconds`,
+            duration_seconds: (script.total_duration as number) || 15,
+          }),
+          signal: AbortSignal.timeout(30000),
+        });
+        if (sfxRes.ok && sfxRes.headers.get('content-type')?.includes('audio')) {
+          const musicBytes = new Uint8Array(await sfxRes.arrayBuffer());
+          const fname = `video-music-${taskId || 'gen'}-${Date.now()}.mp3`;
+          const { error: upErr } = await sb.storage.from('video-assets').upload(fname, musicBytes, { contentType: 'audio/mpeg', upsert: true });
+          if (!upErr) {
+            const { data: { publicUrl } } = sb.storage.from('video-assets').getPublicUrl(fname);
+            musicUrl = publicUrl;
+          }
+        }
+      } catch { /* music is optional */ }
+    }
+
+    // Update task if task_id provided
+    if (taskId) {
+      const { data: taskRow } = await sb.from('agent_tasks').select('content_data').eq('id', taskId).single();
+      if (taskRow) {
+        const cd = (taskRow as Record<string, unknown>).content_data as Record<string, unknown>;
+        await sb.from('agent_tasks').update({
+          content_data: { ...cd, video_assets: assets, video_music_url: musicUrl, pipeline_step: 'assets_ready' },
+          updated_at: new Date().toISOString(),
+        }).eq('id', taskId);
+      }
+    }
+
+    const imagesGenerated = assets.filter(a => a.image_url).length;
+    const audiosGenerated = assets.filter(a => a.audio_url).length;
+
+    return json({
+      success: true,
+      task_id: taskId || null,
+      assets,
+      music_url: musicUrl,
+      summary: {
+        scenes: scenes.length,
+        images_generated: imagesGenerated,
+        audios_generated: audiosGenerated,
+        has_music: !!musicUrl,
+        missing_keys: [
+          ...(!falKey ? ['FAL_API_KEY'] : []),
+          ...(!elevenKey ? ['ELEVENLABS_API_KEY'] : []),
+        ],
+      },
+    });
+  }
+
+  // ── RENDER-VIDEO ──────────────────────────────────────────
+  if (type === 'render-video') {
+    if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
+    const admin = await verifyAdmin(req);
+    if (!admin && !checkVideoAuth(req, url) && !isAgentSecret(req)) return json({ error: 'Unauthorized' }, 401);
+
+    const falKey = Deno.env.get('FAL_API_KEY') ?? '';
+    if (!falKey) return json({ error: 'FAL_API_KEY not configured' }, 503);
+
+    const b = body as Record<string, unknown>;
+    const taskId = b.task_id as string;
+    if (!taskId) return json({ error: 'task_id required for webhook-based rendering' }, 400);
+
+    const { data: taskRow } = await sb.from('agent_tasks').select('content_data').eq('id', taskId).single();
+    if (!taskRow) return json({ error: 'Task not found' }, 404);
+    const cd = (taskRow as Record<string, unknown>).content_data as Record<string, unknown>;
+    const assets = (cd.video_assets as Record<string, unknown>[]) || [];
+    const script = (cd.video_script as Record<string, unknown>) || null;
+
+    if (!assets.length) return json({ error: 'No assets to render. Run generate-video-assets first.' }, 400);
+    const sceneAssets = assets.filter(a => a.image_url);
+    if (sceneAssets.length < 2) return json({ error: `Need at least 2 scene images, got ${sceneAssets.length}` }, 400);
+
+    // ── WEBHOOK-BASED RENDERING ──
+    // Submit all Kling jobs with fal_webhook → kling-callback updates task as each finishes
+    // When all done, kling-callback triggers compose with webhook → compose-callback saves final video
+    const cbSecret = Deno.env.get('CRON_SECRET') || Deno.env.get('AGENT_SECRET') || 'cb';
+    const baseUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/agents`;
+    const scenes = (script?.scenes as Record<string, unknown>[]) || [];
+
+    const sceneJobs: Record<string, unknown>[] = [];
+    for (let i = 0; i < sceneAssets.length; i++) {
+      const sc = scenes[i] || {};
+      const motion = `Subtle natural movement, slow camera zoom in, cinematic lifestyle ad shot. ${sc.visual_prompt || ''}`.substring(0, 480);
+      const cbUrl = `${baseUrl}?type=kling-callback&task_id=${taskId}&scene=${i}&secret=${cbSecret}`;
+      try {
+        const r = await fetch(`https://queue.fal.run/fal-ai/kling-video/v1.6/standard/image-to-video?fal_webhook=${encodeURIComponent(cbUrl)}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Key ${falKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: motion,
+            image_url: sceneAssets[i].image_url as string,
+            duration: '5',
+            aspect_ratio: '1:1',
+          }),
+        });
+        const d = await r.json();
+        sceneJobs.push({ idx: i, request_id: d.request_id || null, status: d.request_id ? 'pending' : 'submit_failed', error: d.request_id ? null : JSON.stringify(d).substring(0, 200) });
+      } catch (e) {
+        sceneJobs.push({ idx: i, request_id: null, status: 'submit_failed', error: (e as Error).message });
+      }
+    }
+
+    await sb.from('agent_tasks').update({
+      content_data: {
+        ...cd,
+        reel_status: 'rendering',
+        pipeline_step: 'kling_in_progress',
+        kling_jobs: sceneJobs,
+        scene_video_urls: new Array(sceneAssets.length).fill(null),
+        render_started_at: new Date().toISOString(),
+      },
+      updated_at: new Date().toISOString(),
+    }).eq('id', taskId);
+
+    return json({
+      success: true,
+      status: 'processing',
+      task_id: taskId,
+      scenes_submitted: sceneJobs.filter(j => j.request_id).length,
+      message: 'Kling jobs submitted with webhooks. Check task content_data.reel_status (rendering→ready/failed). Typical wait: 3-5 minutes.',
+    });
+  }
+
+  // ── KLING-CALLBACK ─── Webhook from fal.ai when each scene Kling completes ──
+  if (type === 'kling-callback') {
+    if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
+    const cbSecret = Deno.env.get('CRON_SECRET') || Deno.env.get('AGENT_SECRET') || 'cb';
+    if (url.searchParams.get('secret') !== cbSecret) return json({ error: 'Unauthorized' }, 401);
+
+    const taskId = url.searchParams.get('task_id') || '';
+    const sceneIdx = parseInt(url.searchParams.get('scene') || '0', 10);
+    const payload = body as Record<string, unknown>;
+    const status = payload.status as string;
+    const result = (payload.payload as Record<string, unknown>) || {};
+    const videoUrl = (result.video as Record<string, unknown>)?.url as string || null;
+
+    const { data: tr } = await sb.from('agent_tasks').select('content_data').eq('id', taskId).single();
+    if (!tr) return json({ ok: true, note: 'task not found' });
+    const cd = (tr as Record<string, unknown>).content_data as Record<string, unknown>;
+    const sceneVideos = ((cd.scene_video_urls as (string | null)[]) || []).slice();
+    const jobs = ((cd.kling_jobs as Record<string, unknown>[]) || []).slice();
+
+    if (status === 'OK' && videoUrl) {
+      sceneVideos[sceneIdx] = videoUrl;
+      if (jobs[sceneIdx]) jobs[sceneIdx] = { ...jobs[sceneIdx], status: 'done' };
+    } else {
+      if (jobs[sceneIdx]) jobs[sceneIdx] = { ...jobs[sceneIdx], status: 'failed', error: JSON.stringify(payload.error || payload).substring(0, 300) };
+    }
+
+    // Check if all scenes done (success or failed)
+    const allDone = jobs.every(j => j.status === 'done' || j.status === 'failed' || j.status === 'submit_failed');
+    const successCount = sceneVideos.filter(v => !!v).length;
+
+    const newCd: Record<string, unknown> = { ...cd, scene_video_urls: sceneVideos, kling_jobs: jobs };
+
+    if (allDone) {
+      if (successCount === 0) {
+        newCd.reel_status = 'failed';
+        newCd.render_error = 'All Kling animations failed';
+        await sb.from('agent_tasks').update({ content_data: newCd, updated_at: new Date().toISOString() }).eq('id', taskId);
+        return json({ ok: true, all_done: true, success_count: 0 });
+      }
+
+      // Build compose tracks
+      const sceneDurationMs = 5000;
+      const totalDurationMs = sceneVideos.length * sceneDurationMs;
+      const videoKeyframes: Record<string, unknown>[] = [];
+      const imageKeyframes: Record<string, unknown>[] = [];
+      const assets = (cd.video_assets as Record<string, unknown>[]) || [];
+      const sceneAssets = assets.filter(a => a.image_url);
+      for (let i = 0; i < sceneAssets.length; i++) {
+        const v = sceneVideos[i];
+        const kf = { timestamp: i * sceneDurationMs, duration: sceneDurationMs };
+        if (v) videoKeyframes.push({ ...kf, url: v });
+        else imageKeyframes.push({ ...kf, url: sceneAssets[i].image_url as string });
+      }
+      const tracks: Record<string, unknown>[] = [];
+      if (videoKeyframes.length) tracks.push({ id: 'v', type: 'video', keyframes: videoKeyframes });
+      if (imageKeyframes.length) tracks.push({ id: 'i', type: 'image', keyframes: imageKeyframes });
+
+      const audioAssets = assets.filter(a => a.audio_url);
+      if (audioAssets.length > 0) {
+        const audioKeyframes = audioAssets.map((a, i) => ({ url: a.audio_url as string, timestamp: i * sceneDurationMs, duration: sceneDurationMs }));
+        tracks.push({ id: 'a', type: 'audio', keyframes: audioKeyframes });
+      }
+      const musicUrl = (cd.video_music_url as string) || null;
+      if (musicUrl) tracks.push({ id: 'm', type: 'audio', keyframes: [{ url: musicUrl, timestamp: 0, duration: totalDurationMs }] });
+
+      // Submit compose with webhook
+      const falKey = Deno.env.get('FAL_API_KEY') ?? '';
+      const composeWebhook = `${Deno.env.get('SUPABASE_URL')}/functions/v1/agents?type=compose-callback&task_id=${taskId}&secret=${cbSecret}`;
+      try {
+        const r = await fetch(`https://queue.fal.run/fal-ai/ffmpeg-api/compose?fal_webhook=${encodeURIComponent(composeWebhook)}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Key ${falKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tracks }),
+        });
+        const d = await r.json();
+        newCd.pipeline_step = 'compose_in_progress';
+        newCd.compose_request_id = d.request_id || null;
+        if (!d.request_id) {
+          newCd.reel_status = 'failed';
+          newCd.render_error = `Compose submit failed: ${JSON.stringify(d).substring(0, 200)}`;
+        }
+      } catch (e) {
+        newCd.reel_status = 'failed';
+        newCd.render_error = `Compose submit error: ${(e as Error).message}`;
+      }
+    }
+
+    await sb.from('agent_tasks').update({ content_data: newCd, updated_at: new Date().toISOString() }).eq('id', taskId);
+    return json({ ok: true, scene: sceneIdx, all_done: allDone });
+  }
+
+  // ── COMPOSE-CALLBACK ─── Webhook from fal.ai when ffmpeg compose completes ──
+  if (type === 'compose-callback') {
+    if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
+    const cbSecret = Deno.env.get('CRON_SECRET') || Deno.env.get('AGENT_SECRET') || 'cb';
+    if (url.searchParams.get('secret') !== cbSecret) return json({ error: 'Unauthorized' }, 401);
+
+    const taskId = url.searchParams.get('task_id') || '';
+    const payload = body as Record<string, unknown>;
+    const status = payload.status as string;
+    const result = (payload.payload as Record<string, unknown>) || {};
+    const videoUrl = (result.video_url as string)
+      || ((result.video as Record<string, unknown>)?.url as string)
+      || null;
+
+    const { data: tr } = await sb.from('agent_tasks').select('content_data').eq('id', taskId).single();
+    if (!tr) return json({ ok: true, note: 'task not found' });
+    const cd = (tr as Record<string, unknown>).content_data as Record<string, unknown>;
+
+    if (status !== 'OK' || !videoUrl) {
+      await sb.from('agent_tasks').update({
+        content_data: { ...cd, reel_status: 'failed', render_error: `Compose failed: ${JSON.stringify(payload.error || payload).substring(0, 300)}` },
+        updated_at: new Date().toISOString(),
+      }).eq('id', taskId);
+      return json({ ok: true, status: 'failed' });
+    }
+
+    // Download to Supabase Storage
+    try {
+      const vidRes = await fetch(videoUrl);
+      if (!vidRes.ok) throw new Error(`fetch ${vidRes.status}`);
+      const vidBytes = new Uint8Array(await vidRes.arrayBuffer());
+      const fname = `dubis-video-${taskId}-${Date.now()}.mp4`;
+      await sb.storage.createBucket('videos', { public: true }).catch(() => {});
+      const { error: upErr } = await sb.storage.from('videos').upload(fname, vidBytes, { contentType: 'video/mp4', upsert: true });
+      if (upErr) throw upErr;
+      const { data: { publicUrl } } = sb.storage.from('videos').getPublicUrl(fname);
+      await sb.from('agent_tasks').update({
+        content_data: { ...cd, video_url: publicUrl, reel_status: 'ready', pipeline_step: 'render_ready', render_completed_at: new Date().toISOString() },
+        updated_at: new Date().toISOString(),
+      }).eq('id', taskId);
+      return json({ ok: true, video_url: publicUrl });
+    } catch (e) {
+      // Fallback: store fal.ai temporary URL
+      await sb.from('agent_tasks').update({
+        content_data: { ...cd, video_url: videoUrl, reel_status: 'ready', pipeline_step: 'render_ready', note: 'Stored on fal.ai (temp URL): ' + (e as Error).message },
+        updated_at: new Date().toISOString(),
+      }).eq('id', taskId);
+      return json({ ok: true, video_url: videoUrl, note: 'fallback fal url' });
+    }
+  }
+
+
+  // ── VIDEO-PIPELINE ─── Full orchestration ─────────────────
+  if (type === 'video-pipeline') {
+    if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
+    const admin = await verifyAdmin(req);
+    if (!admin && !checkVideoAuth(req, url) && !isAgentSecret(req)) return json({ error: 'Unauthorized' }, 401);
+
+    const b = body as Record<string, unknown>;
+    const language = (b.language as string) || 'en';
+    const style = (b.style as string) || 'humor';
+    const duration = parseInt((b.duration as string) || '15', 10);
+    const productSlogan = (b.product_slogan as string) || '';
+    const skipRender = b.skip_render === true; // For testing: only script + assets
+    const edgeBase = `${Deno.env.get('SUPABASE_URL')?.replace('/rest/v1', '')}/functions/v1/agents`;
+    const authHeaderVal = `Bearer ${svcKey}`;
+    const results: Record<string, unknown> = { steps: {} };
+
+    try {
+      // Step 1: Generate script + save as task
+      const scriptRes = await fetch(`${edgeBase}?type=generate-video-script`, {
+        method: 'POST',
+        headers: { 'Authorization': authHeaderVal, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language, style, duration, product_slogan: productSlogan, product_type: b.product_type || '', gender: b.gender || '', save_task: 'true' }),
+        signal: AbortSignal.timeout(45000),
+      });
+      const scriptData = await scriptRes.json();
+      (results.steps as Record<string, unknown>).script = { success: !!scriptData.success, task_id: scriptData.task_id };
+      results.task_id = scriptData.task_id;
+
+      if (!scriptData.success || !scriptData.task_id) {
+        return json({ ...results, success: false, error: 'Script generation failed', detail: scriptData });
+      }
+
+      // Step 2: Generate assets (images + audio)
+      const assetsRes = await fetch(`${edgeBase}?type=generate-video-assets`, {
+        method: 'POST',
+        headers: { 'Authorization': authHeaderVal, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: scriptData.task_id }),
+        signal: AbortSignal.timeout(120000),
+      });
+      const assetsData = await assetsRes.json();
+      (results.steps as Record<string, unknown>).assets = {
+        success: !!assetsData.success,
+        images: assetsData.summary?.images_generated || 0,
+        audios: assetsData.summary?.audios_generated || 0,
+        has_music: assetsData.summary?.has_music || false,
+      };
+
+      if (skipRender) {
+        return json({ ...results, success: true, note: 'Pipeline stopped after assets (skip_render=true)', script: scriptData.script });
+      }
+
+      // Step 3: Render video
+      const renderRes = await fetch(`${edgeBase}?type=render-video`, {
+        method: 'POST',
+        headers: { 'Authorization': authHeaderVal, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: scriptData.task_id }),
+        signal: AbortSignal.timeout(180000),
+      });
+      const renderData = await renderRes.json();
+      (results.steps as Record<string, unknown>).render = { success: !!renderData.success, video_url: renderData.video_url || null };
+
+      return json({
+        ...results,
+        success: !!renderData.video_url,
+        video_url: renderData.video_url || null,
+        script: scriptData.script,
+      });
+    } catch (e) {
+      return json({ ...results, success: false, error: (e as Error).message }, 500);
+    }
+  }
+
   // Instagram's crawler is blocked by Supabase storage's X-Robots-Tag: none
   // This route fetches from storage and returns with Facebook-friendly headers
   if (type === 'serve-image') {
@@ -2360,6 +2999,6 @@ const CARE_CAP_HE = [
   }
 
   return json({
-    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, qa-content, generate-slogan, approve-product, security-scan, serve-image',
+    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image',
   }, 400);
 });

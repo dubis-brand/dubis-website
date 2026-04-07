@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Vercel Dev (full stack)",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vercel", "dev", "--listen", "3000"],
+      "port": 3000
+    },
+    {
+      "name": "Static file server (HTML only)",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", ".", "--listen", "8080", "--no-clipboard"],
+      "port": 8080
+    }
+  ]
+}

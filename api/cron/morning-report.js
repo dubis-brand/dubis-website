@@ -214,6 +214,54 @@ module.exports = async function handler(req, res) {
         return runContentPipeline(supabase, res);
     }
 
+    // ── Route: ?type=video — weekly English Reel pipeline ───────────────
+    // Called by Vercel cron every Sunday 14:00 UTC
+    if (urlType === 'video') {
+        const agentsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1/agents';
+        const authToken  = process.env.CRON_SECRET || process.env.AGENT_SECRET || '';
+        const headers = { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' };
+        try {
+            // 1. Pick a product slogan to rotate (simple: random from a fixed list)
+            const slogans = [
+                'NAPPING IS MY CARDIO','more of me to LOVE','certified OVER thinker',
+                'serial NAPPER','Zero Motivation CLUB','low maintenance, high VALUE',
+                'I am not fat, I am a LIMITED edition','NAP - Born to nap, forced to work'
+            ];
+            const slogan = slogans[Math.floor(Date.now() / 86400000) % slogans.length];
+
+            // 2. Generate script
+            const scriptR = await fetch(`${agentsBase}?type=generate-video-script`, {
+                method: 'POST', headers,
+                body: JSON.stringify({ language: 'en', style: 'humor', product_slogan: slogan }),
+            });
+            const scriptData = await scriptR.json();
+            const taskId = scriptData.task_id;
+            if (!taskId) return res.status(500).json({ error: 'script failed', detail: scriptData });
+
+            // 3. Generate assets
+            const assetsR = await fetch(`${agentsBase}?type=generate-video-assets`, {
+                method: 'POST', headers, body: JSON.stringify({ task_id: taskId }),
+            });
+            const assetsData = await assetsR.json();
+
+            // 4. Render (webhook-based, returns immediately)
+            const renderR = await fetch(`${agentsBase}?type=render-video`, {
+                method: 'POST', headers, body: JSON.stringify({ task_id: taskId }),
+            });
+            const renderData = await renderR.json();
+
+            // Note: publishing happens later via separate cron or admin trigger
+            // because rendering takes 5-7 minutes via webhooks
+            return res.status(200).json({
+                success: true, task_id: taskId, slogan,
+                script: scriptData, assets: assetsData, render: renderData,
+                next_step: 'Wait ~6min then call publish-ready with task_id',
+            });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    }
+
     // ── Route: ?type=security — weekly security scan ──────────────────
     // Called by Vercel cron every Monday 03:00 UTC (05:00 Israel)
     if (urlType === 'security') {
