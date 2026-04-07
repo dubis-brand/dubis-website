@@ -643,12 +643,47 @@
     </script>
 
     <script>
-      // Page view tracking
-      fetch('/api/analytics/track', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: location.pathname, referrer: document.referrer || null })
-      }).catch(() => {});
+      // ── DUBIS Analytics — funnel event tracking ──
+      window.dubisTrack = function (event, meta) {
+        try {
+          fetch('/api/analytics/track', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              path: (location.pathname || '/') + (location.hash || ''),
+              referrer: document.referrer || null,
+              event: event || 'pageview',
+              meta: meta || null,
+            }),
+            keepalive: true,
+          }).catch(() => {});
+        } catch (e) {}
+      };
+      // Initial pageview
+      window.dubisTrack('pageview');
+
+      // Track product section reaching viewport (proxy for "saw products")
+      (function () {
+        var fired = false;
+        var section = document.getElementById('products') || document.querySelector('.products');
+        if (!section || !('IntersectionObserver' in window)) return;
+        var io = new IntersectionObserver(function (entries) {
+          entries.forEach(function (e) {
+            if (e.isIntersecting && !fired) { fired = true; window.dubisTrack('section_view', { section: 'products' }); io.disconnect(); }
+          });
+        }, { threshold: 0.3 });
+        io.observe(section);
+      })();
+
+      // Track CTA clicks on hero/buy buttons
+      document.addEventListener('click', function (ev) {
+        var t = ev.target.closest('a, button');
+        if (!t) return;
+        var label = (t.getAttribute('data-cta') || t.textContent || '').trim().substring(0, 60);
+        if (t.matches('[data-cta], .btn-hero, .btn-shop, a[href="#products"], a[href*="shop"]')) {
+          window.dubisTrack('cta_click', { label: label });
+        }
+      });
     </script>
 
     <script>

@@ -12,8 +12,10 @@ module.exports = async function handler(req, res) {
     // 60 page views per IP per minute
     if (rateLimit(req, res, { max: 60, windowMs: 60_000 })) return;
 
-    const { path, referrer } = req.body || {};
+    const { path, referrer, event, meta } = req.body || {};
     if (!path || typeof path !== 'string') return res.status(400).json({ error: 'Missing path' });
+    const ALLOWED_EVENTS = ['pageview','product_view','add_to_cart','remove_from_cart','checkout_open','checkout_start','purchase','cta_click','newsletter_signup','section_view'];
+    const evt = ALLOWED_EVENTS.includes(event) ? event : 'pageview';
 
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
         return res.status(200).json({ ok: false });
@@ -28,6 +30,8 @@ module.exports = async function handler(req, res) {
     await supabase.from('page_views').insert({
         path: String(path).substring(0, 200),
         referrer: referrer ? String(referrer).substring(0, 500) : null,
+        event: evt,
+        meta: meta && typeof meta === 'object' ? meta : null,
     });
 
     return res.status(200).json({ ok: true });

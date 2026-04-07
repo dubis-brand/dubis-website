@@ -414,6 +414,7 @@ function setGenderFilter(gender, btn) {
 // ===== PRODUCT MODAL =====
 function openProductModal(productId) {
   const product = products.find(p => p.id === productId);
+  if (window.dubisTrack && product) window.dubisTrack('product_view', { id: product.id, phrase: product.phrase, type: product.type, price: product.price });
   const t = translations[currentLang];
   const typeMap = {
     tshirt:     t.type_tshirt,
@@ -650,6 +651,7 @@ function addToCartFromModal(productId) {
   const selectedSize  = document.querySelector(`#modal-sizes-${productId} .size-btn.selected`)?.dataset.size  || product.sizes[0];
   cart.push({ ...product, selectedColor, selectedSize });
   saveCart();
+  if (window.dubisTrack) window.dubisTrack('add_to_cart', { id: product.id, phrase: product.phrase, type: product.type, price: product.price, color: selectedColor, size: selectedSize, source: 'modal' });
   // Meta Pixel — AddToCart event
   if (typeof fbq === 'function') {
     fbq('track', 'AddToCart', { value: product.price, currency: 'USD', content_name: product.phrase, content_type: 'product' });
@@ -665,6 +667,7 @@ function quickAddToCart(productId, btnEl) {
   const selectedColor = card?.dataset.selectedColor || product.colors[0];
   cart.push({ ...product, selectedColor, selectedSize: product.sizes[2] || 'L' });
   saveCart();
+  if (window.dubisTrack) window.dubisTrack('add_to_cart', { id: product.id, phrase: product.phrase, type: product.type, price: product.price, color: selectedColor, source: 'quick' });
   updateCartCount();
   showCartNotification(product.phrase);
   if (btnEl) animateAddToCart(btnEl);
@@ -690,6 +693,7 @@ function openCart() {
   document.getElementById('cart-modal').classList.add('open');
   document.getElementById('cart-overlay').classList.add('open');
   renderCart();
+  if (window.dubisTrack) window.dubisTrack('checkout_open', { items: cart.length, total: cart.reduce((s, i) => s + (i.price || 0), 0) });
 }
 
 function closeCart() {
@@ -726,6 +730,7 @@ function renderCart() {
 }
 
 function removeFromCart(index) {
+  if (window.dubisTrack && cart[index]) window.dubisTrack('remove_from_cart', { id: cart[index].id, phrase: cart[index].phrase });
   cart.splice(index, 1);
   saveCart();
   updateCartCount();

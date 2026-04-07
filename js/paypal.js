@@ -169,6 +169,7 @@ function loadPayPalSDK() {
 
 function renderPayPalButtons() {
     const createOrder = (data, actions) => {
+        if (window.dubisTrack) window.dubisTrack('checkout_start', { items: cart.length, total: cart.reduce((s,i)=>s+i.price,0) });
         const itemTotal = cart.reduce((sum, i) => sum + i.price, 0);
         const shipping  = itemTotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
         const discountedTotal = appliedCoupon ? appliedCoupon.final_total : itemTotal;
@@ -199,6 +200,7 @@ function renderPayPalButtons() {
             try {
                 const details  = await actions.order.capture();
                 const shipping = details.purchase_units[0]?.shipping;
+                if (window.dubisTrack) window.dubisTrack('purchase', { paypal_id: details.id, items: cart.length, total: cart.reduce((s,i)=>s+i.price,0) });
 
                 // Meta Pixel — Purchase event
                 if (typeof fbq === 'function') {
