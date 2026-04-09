@@ -8,7 +8,20 @@ let _activeFilter = 'all';
 let _activeGender = 'all';
 
 // ── Currency by language ──
-const USD_TO_ILS = 3.7;
+let USD_TO_ILS = 3.63; // fallback — updated daily from API
+(async function fetchRate() {
+  try {
+    const r = await fetch('https://open.er-api.com/v6/latest/USD');
+    if (r.ok) {
+      const d = await r.json();
+      if (d.rates && d.rates.ILS) {
+        USD_TO_ILS = d.rates.ILS;
+        // re-render if products already shown
+        if (document.querySelector('.product-card')) renderProducts();
+      }
+    }
+  } catch(e) { /* keep fallback */ }
+})();
 function formatPrice(usdPrice) {
   if (currentLang === 'he') {
     return '₪' + Math.round(usdPrice * USD_TO_ILS);
@@ -16,7 +29,8 @@ function formatPrice(usdPrice) {
   return '$' + usdPrice;
 }
 function freeShippingThreshold() {
-  return currentLang === 'he' ? '₪222' : '$60';
+  const ilsThreshold = Math.round(60 * USD_TO_ILS);
+  return currentLang === 'he' ? '₪' + ilsThreshold : '$60';
 }
 
 // ===== COMPREHENSIVE TRANSLATIONS =====
