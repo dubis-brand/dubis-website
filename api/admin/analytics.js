@@ -53,7 +53,7 @@ module.exports = async function handler(req, res) {
         // Page views — today
         supabase.from('page_views').select('*', { count: 'exact', head: true }).gte('created_at', today),
         // Page views — last 30 days raw
-        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', since30).order('created_at', { ascending: true }),
+        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', since30).order('created_at', { ascending: true }).limit(10000),
         // All orders (include buyer_email for sandbox filtering)
         supabase.from('orders').select('id, status, total_amount, currency, coupon_code, discount_amount, items, buyer_email, created_at'),
         // Recent orders (30 days)
