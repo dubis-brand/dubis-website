@@ -85,7 +85,14 @@ module.exports = async function handler(req, res) {
     }
 
     // ── Compute summary stats ─────────────────────────────────────
-    const activeOrders = orders.filter(o => o.status !== 'cancelled');
+    // Filter out sandbox/test orders and reprints for revenue stats
+    const isRealOrder = (o) => {
+        if (o.status === 'cancelled' || o.status === 'refunded') return false;
+        if (o.buyer_email && o.buyer_email.includes('example.com')) return false;
+        if (o.coupon_code === 'GELATO-REPRINT') return false;
+        return true;
+    };
+    const activeOrders = orders.filter(isRealOrder);
     const totalRevenue  = activeOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
     const today = new Date().toISOString().slice(0, 10);
     const todayRevenue  = activeOrders
