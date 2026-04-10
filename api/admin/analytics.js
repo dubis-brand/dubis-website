@@ -36,13 +36,15 @@ module.exports = async function handler(req, res) {
     const since7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     // ── Run all queries in parallel for speed ──
-    // Use two page_views queries to work around Supabase 1000-row REST limit
-    const midpoint = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
+    // Split page_views into 3 chunks of 10 days to stay under Supabase 1000-row REST limit
+    const split1 = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
+    const split2 = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
     const [
         totalViewsRes,
         todayViewsRes,
-        recentViewsOlder,
-        recentViewsNewer,
+        viewsChunk1,
+        viewsChunk2,
+        viewsChunk3,
         allOrdersRes,
         recentOrdersRes,
         subscribersRes,
@@ -55,10 +57,12 @@ module.exports = async function handler(req, res) {
         supabase.from('page_views').select('*', { count: 'exact', head: true }),
         // Page views — today
         supabase.from('page_views').select('*', { count: 'exact', head: true }).gte('created_at', today),
-        // Page views — days 16-30 (older half)
-        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', since30).lt('created_at', midpoint).order('created_at', { ascending: true }).limit(5000),
-        // Page views — days 1-15 (newer half, includes today)
-        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', midpoint).order('created_at', { ascending: true }).limit(5000),
+        // Page views — days 21-30
+        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', since30).lt('created_at', split1).order('created_at', { ascending: true }).limit(1000),
+        // Page views — days 11-20
+        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', split1).lt('created_at', split2).order('created_at', { ascending: true }).limit(1000),
+        // Page views — days 1-10 (most recent, includes today)
+        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', split2).order('created_at', { ascending: true }).limit(1000),
         // All orders (include buyer_email for sandbox filtering)
         supabase.from('orders').select('id, status, total_amount, currency, coupon_code, discount_amount, items, buyer_email, created_at'),
         // Recent orders (30 days)
@@ -75,8 +79,8 @@ module.exports = async function handler(req, res) {
         supabase.from('product_reviews').select('*', { count: 'exact', head: true }),
     ]);
 
-    // ── PAGE VIEWS ── (merge both halves)
-    const rows = [...(recentViewsOlder.data || []), ...(recentViewsNewer.data || [])];
+    // ── PAGE VIEWS ── (merge all three chunks)
+    const rows = [...(viewsChunk1.data || []), ...(viewsChunk2.data || []), ...(viewsChunk3.data || [])];
     const byDay = {};
     rows.forEach(r => {
         const day = r.created_at.slice(0, 10);

@@ -8,7 +8,7 @@ git add api/admin/analytics.js
 git add push-now.bat
 
 echo === Committing ===
-git commit -m "fix: revert RPC, split page_views query to bypass 1000-row limit"
+git commit -m "fix: split page_views into 3 chunks (10 days each) to handle 1940 rows"
 
 echo === Push to origin ===
 git push origin main
