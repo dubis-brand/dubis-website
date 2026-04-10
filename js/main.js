@@ -810,10 +810,32 @@ function toggleMobileMenu() {
 
 // ===== SCROLL ANIMATIONS =====
 function initScrollAnimations() {
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-  }, { threshold: 0.08 });
-  document.querySelectorAll('.fade-in-section').forEach(el => observer.observe(el));
+  const sections = document.querySelectorAll('.fade-in-section');
+
+  // Fallback: if IntersectionObserver fails (e.g. in-app browsers like Facebook/Instagram),
+  // force all sections visible after 1.5s so content is never hidden
+  const fallbackTimer = setTimeout(() => {
+    sections.forEach(el => el.classList.add('visible'));
+  }, 1500);
+
+  if ('IntersectionObserver' in window) {
+    let revealed = 0;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          revealed++;
+          // If all sections revealed via observer, cancel fallback
+          if (revealed >= sections.length) clearTimeout(fallbackTimer);
+        }
+      });
+    }, { threshold: 0.05 }); // lowered from 0.08 for better mobile trigger
+    sections.forEach(el => observer.observe(el));
+  } else {
+    // No IntersectionObserver support — show everything immediately
+    clearTimeout(fallbackTimer);
+    sections.forEach(el => el.classList.add('visible'));
+  }
 }
 
 // ===== ADD-TO-CART MICRO-ANIMATION =====

@@ -1661,6 +1661,15 @@ body {
     opacity: 1;
     transform: translateY(0);
 }
+/* Fallback: if JS hasn't added .visible after 2s, CSS animation kicks in.
+   Prevents invisible sections in in-app browsers (Facebook, Instagram, etc.) */
+@keyframes fade-in-safety {
+    to { opacity: 1; transform: translateY(0); }
+}
+.fade-in-section:not(.visible) {
+    animation: fade-in-safety 0.6s ease forwards;
+    animation-delay: 2s;
+}
 
 /* ===========================
    2025 DESIGN — SKELETON LOADING
