@@ -230,10 +230,15 @@ module.exports = async function handler(req, res) {
 
     const campaigns = (campaignsRes.data || []);
     const activeCampaigns = campaigns.filter(c => c.status === 'active');
-    const totalAdSpend = campaigns.reduce((s, c) => s + (parseFloat(c.spend_to_date) || 0), 0);
-    const totalBudget = campaigns.reduce((s, c) => s + (parseFloat(c.budget) || 0), 0);
-    const roas = totalAdSpend > 0 ? Math.round((totalRevenue / totalAdSpend) * 100) / 100 : 0;
-    const roi = totalAdSpend > 0 ? Math.round(((totalRevenue - totalAdSpend) / totalAdSpend) * 10000) / 100 : 0;
+    const ILS_TO_USD = 3.7;
+    // Normalize all spend/budget to ILS for display (ILS is base currency)
+    const toILS = (amount, currency) => currency === 'USD' ? amount * ILS_TO_USD : amount;
+    const totalAdSpend = campaigns.reduce((s, c) => s + toILS(parseFloat(c.spend_to_date) || 0, c.budget_currency), 0);
+    const totalBudget = campaigns.reduce((s, c) => s + toILS(parseFloat(c.budget) || 0, c.budget_currency), 0);
+    // Convert total spend to USD for ROAS/ROI (revenue is in USD)
+    const totalAdSpendUSD = totalAdSpend / ILS_TO_USD;
+    const roas = totalAdSpendUSD > 0 ? Math.round((totalRevenue / totalAdSpendUSD) * 100) / 100 : 0;
+    const roi = totalAdSpendUSD > 0 ? Math.round(((totalRevenue - totalAdSpendUSD) / totalAdSpendUSD) * 10000) / 100 : 0;
 
     // Content performance
     const contentTasks = (contentTasksRes.data || []);

@@ -3403,7 +3403,7 @@
     document.getElementById('goal-amt').textContent = `$${monthlyRevenue.toLocaleString()} / $${goalTarget.toLocaleString()}`;
 
     // Goal timeline — show start date, days elapsed, days remaining
-    const GOAL_START = new Date('2025-03-23'); // Date goal was set
+    const GOAL_START = new Date('2026-03-23'); // Date goal was set
     const GOAL_DAYS = 60;
     const now = new Date();
     const daysElapsed = Math.floor((now - GOAL_START) / 86400000);
@@ -3418,28 +3418,30 @@
     }
 
     // Budget tracking — ALL campaigns (budget allocated + actual spend)
+    // Normalize everything to ILS (base currency), then convert to USD for display
     let totalBudgetILS = 0;
     let totalSpentILS = 0;
     let allCampaigns = [];
+    const ILS_TO_USD = 3.7;
+    const toILS = (amt, cur) => cur === 'USD' ? amt * ILS_TO_USD : amt;
     try {
       const { data: campaigns } = await _sb.from('ad_campaigns').select('*');
       allCampaigns = campaigns || [];
-      // Total budget = sum of all campaign budgets (active + completed)
-      const activeCamps = allCampaigns.filter(c => c.status === 'active' || c.status === 'completed');
-      totalBudgetILS = activeCamps.reduce((s, c) => s + Number(c.budget || 0), 0);
-      // Actual spend = spend_to_date if tracked, otherwise estimate based on days passed
-      totalSpentILS = activeCamps.reduce((s, c) => {
+      // Include active, completed, AND paused campaigns (paused still had spend)
+      const trackCamps = allCampaigns.filter(c => c.status === 'active' || c.status === 'completed' || c.status === 'paused');
+      totalBudgetILS = trackCamps.reduce((s, c) => s + toILS(Number(c.budget || 0), c.budget_currency), 0);
+      // Use spend_to_date directly (now all campaigns have accurate spend data)
+      totalSpentILS = trackCamps.reduce((s, c) => {
         const spent = Number(c.spend_to_date || 0);
-        if (spent > 0) return s + spent;
-        // Estimate: (budget / duration_days) * days_elapsed
+        if (spent > 0) return s + toILS(spent, c.budget_currency);
+        // Fallback estimate for campaigns without spend data
         const startDate = c.start_date ? new Date(c.start_date) : new Date(c.created_at);
         const daysElapsed = Math.max(0, Math.floor((Date.now() - startDate.getTime()) / 86400000));
-        const dailyBudget = Number(c.budget || 0) / Math.max(1, c.duration_days || 7);
-        return s + Math.min(Number(c.budget || 0), dailyBudget * daysElapsed);
+        const dailyBudget = toILS(Number(c.budget || 0), c.budget_currency) / Math.max(1, c.duration_days || 7);
+        return s + Math.min(toILS(Number(c.budget || 0), c.budget_currency), dailyBudget * daysElapsed);
       }, 0);
     } catch(e) { console.error('Campaigns spend error:', e); }
 
-    const ILS_TO_USD = 3.7;
     const budgetAllocatedUSD = Math.round((totalBudgetILS / ILS_TO_USD) * 100) / 100;
     const spentUSD = Math.round((totalSpentILS / ILS_TO_USD) * 100) / 100;
     const masterBudget = 500; // Total budget cap in USD
