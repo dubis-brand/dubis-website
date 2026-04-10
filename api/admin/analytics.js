@@ -35,16 +35,14 @@ module.exports = async function handler(req, res) {
     const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const since7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const prev7Start = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-
     // ── Run all queries in parallel for speed ──
-    // NOTE: Using RPC functions for page_views to avoid Supabase 1000-row REST limit
+    // Use two page_views queries to work around Supabase 1000-row REST limit
+    const midpoint = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
     const [
         totalViewsRes,
         todayViewsRes,
-        dailyViewsRes,
-        topPagesRes,
-        topReferrersRes,
+        recentViewsOlder,
+        recentViewsNewer,
         allOrdersRes,
         recentOrdersRes,
         subscribersRes,
@@ -57,12 +55,10 @@ module.exports = async function handler(req, res) {
         supabase.from('page_views').select('*', { count: 'exact', head: true }),
         // Page views — today
         supabase.from('page_views').select('*', { count: 'exact', head: true }).gte('created_at', today),
-        // Page views — daily counts via RPC (no row limit issue)
-        supabase.rpc('get_daily_view_counts', { since_ts: since30 }),
-        // Top pages via RPC
-        supabase.rpc('get_top_pages', { since_ts: since30, lim: 10 }),
-        // Top referrers via RPC
-        supabase.rpc('get_top_referrers', { since_ts: since30, lim: 10 }),
+        // Page views — days 16-30 (older half)
+        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', since30).lt('created_at', midpoint).order('created_at', { ascending: true }).limit(5000),
+        // Page views — days 1-15 (newer half, includes today)
+        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', midpoint).order('created_at', { ascending: true }).limit(5000),
         // All orders (include buyer_email for sandbox filtering)
         supabase.from('orders').select('id, status, total_amount, currency, coupon_code, discount_amount, items, buyer_email, created_at'),
         // Recent orders (30 days)
@@ -79,32 +75,49 @@ module.exports = async function handler(req, res) {
         supabase.from('product_reviews').select('*', { count: 'exact', head: true }),
     ]);
 
-    // ── PAGE VIEWS (from RPC results) ──
-    const dailyRows = dailyViewsRes.data || [];
+    // ── PAGE VIEWS ── (merge both halves)
+    const rows = [...(recentViewsOlder.data || []), ...(recentViewsNewer.data || [])];
     const byDay = {};
-    dailyRows.forEach(r => { byDay[r.day] = Number(r.views); });
+    rows.forEach(r => {
+        const day = r.created_at.slice(0, 10);
+        byDay[day] = (byDay[day] || 0) + 1;
+    });
     const viewsPerDay = [];
     for (let i = 29; i >= 0; i--) {
         const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
         viewsPerDay.push({ date: d, views: byDay[d] || 0 });
     }
 
-    // Top pages from RPC
-    const topPages = (topPagesRes.data || []).map(p => ({ path: p.path, views: Number(p.views) }));
+    // Top pages
+    const pageCounts = {};
+    rows.forEach(r => { pageCounts[r.path] = (pageCounts[r.path] || 0) + 1; });
+    const topPages = Object.entries(pageCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([path, views]) => ({ path, views }));
 
-    // Top referrers from RPC (hostname already extracted in SQL)
-    const topReferrers = (topReferrersRes.data || []).map(r => ({
-        source: (r.source || 'Direct').replace('www.', ''),
-        count: Number(r.count)
-    }));
+    // Top referrers
+    const refCounts = {};
+    rows.forEach(r => {
+        const ref = r.referrer || 'Direct';
+        let source = 'Direct';
+        if (ref !== 'Direct') {
+            try {
+                const u = new URL(ref);
+                source = u.hostname.replace('www.', '');
+            } catch { source = ref.slice(0, 40); }
+        }
+        refCounts[source] = (refCounts[source] || 0) + 1;
+    });
+    const topReferrers = Object.entries(refCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([source, count]) => ({ source, count }));
 
     // Views last 7 days vs previous 7 days for trend
-    const views7 = dailyRows
-        .filter(r => r.day >= since7.slice(0, 10))
-        .reduce((s, r) => s + Number(r.views), 0);
-    const views7prev = dailyRows
-        .filter(r => r.day >= prev7Start.slice(0, 10) && r.day < since7.slice(0, 10))
-        .reduce((s, r) => s + Number(r.views), 0);
+    const views7 = rows.filter(r => r.created_at >= since7).length;
+    const prev7Start = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const views7prev = rows.filter(r => r.created_at >= prev7Start && r.created_at < since7).length;
 
     // ── ORDERS ──
     // Helper: filter out test/sandbox orders, reprints, and cancelled
