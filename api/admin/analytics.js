@@ -126,6 +126,7 @@ module.exports = async function handler(req, res) {
     // ── ORDERS ──
     // Helper: filter out test/sandbox orders, reprints, and cancelled
     const isRealOrder = (o) => {
+        if (o.is_test === true) return false;
         if (o.status === 'cancelled' || o.status === 'refunded') return false;
         if (o.buyer_email && o.buyer_email.includes('example.com')) return false; // PayPal Sandbox
         if (o.coupon_code === 'GELATO-REPRINT') return false; // Reprints (not a new sale)

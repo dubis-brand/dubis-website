@@ -2093,16 +2093,22 @@
   <!-- ══ CAMPAIGNS SECTION ════════════════════════════════ -->
   <div id="section-campaigns" style="display:none;padding:1.5rem" dir="rtl">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem">
-      <h2 style="font-size:1rem;color:#c8a96e;letter-spacing:2px;text-transform:uppercase;font-weight:700">📣 קמפיינים פרסומיים</h2>
-      <button class="btn-sm" style="color:#c8a96e;border-color:rgba(200,169,110,.4)" onclick="openAddCampaignModal()">+ הוסף קמפיין</button>
+      <h2 style="font-size:1rem;color:#c8a96e;letter-spacing:2px;text-transform:uppercase;font-weight:700">📣 קמפיינים והוצאות</h2>
+      <div style="display:flex;gap:.5rem">
+        <button class="btn-sm" style="color:#9a9080;border-color:rgba(154,144,128,.3);font-size:.75rem" onclick="updateExchangeRate()">💱 שער</button>
+        <button class="btn-sm" style="color:#c8a96e;border-color:rgba(200,169,110,.4)" onclick="openAddCampaignModal()">+ קמפיין</button>
+      </div>
     </div>
 
     <!-- Summary stats -->
-    <div id="campaigns-stats" class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:1.5rem">
-      <div class="stat-card"><div class="stat-label">פעילים</div><div class="stat-value" id="cstat-active">—</div></div>
+    <div id="campaigns-stats" class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));margin-bottom:1.5rem">
+      <div class="stat-card"><div class="stat-label">קמפיינים פעילים</div><div class="stat-value" id="cstat-active">—</div></div>
       <div class="stat-card"><div class="stat-label">הושלמו</div><div class="stat-value" id="cstat-done">—</div></div>
-      <div class="stat-card"><div class="stat-label">סה״כ תקציב (₪)</div><div class="stat-value" id="cstat-budget">—</div></div>
-      <div class="stat-card"><div class="stat-label">הוצא עד היום (₪)</div><div class="stat-value" id="cstat-spend">—</div></div>
+      <div class="stat-card"><div class="stat-label">תקציב פרסום (₪)</div><div class="stat-value" id="cstat-budget">—</div></div>
+      <div class="stat-card"><div class="stat-label">הוצא פרסום (₪)</div><div class="stat-value" id="cstat-spend">—</div></div>
+      <div class="stat-card"><div class="stat-label">הוצאות תפעול (₪)</div><div class="stat-value" id="cstat-expenses" style="color:#e0c990">—</div></div>
+      <div class="stat-card"><div class="stat-label">סה״כ הכל (₪)</div><div class="stat-value" id="cstat-total" style="color:#e05050">—</div></div>
+      <div class="stat-card"><div class="stat-label">שער דולר</div><div class="stat-value" id="cstat-rate" style="font-size:.9rem;color:#9a9080">—</div></div>
     </div>
 
     <!-- Campaigns table -->
@@ -2136,8 +2142,15 @@
             </select>
           </div>
           <div class="form-group">
-            <label>תקציב (₪)</label>
+            <label>תקציב</label>
             <input type="number" id="c-budget" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none" placeholder="78">
+          </div>
+          <div class="form-group">
+            <label>מטבע</label>
+            <select id="c-currency" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none">
+              <option value="ILS">ILS (₪)</option>
+              <option value="USD">USD ($)</option>
+            </select>
           </div>
           <div class="form-group">
             <label>משך (ימים)</label>
@@ -2165,6 +2178,47 @@
           <button class="btn-sm" style="flex:0 0 auto" onclick="closeCampaignModal()">ביטול</button>
         </div>
         <div id="campaign-modal-error" class="error-msg"></div>
+      </div>
+    </div>
+
+    <!-- Add Expense modal -->
+    <div id="expense-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center">
+      <div style="background:#1a1a1a;border-radius:12px;padding:2rem;width:100%;max-width:420px;margin:1rem" dir="rtl">
+        <h3 style="color:#e0c990;margin-bottom:1.25rem;font-size:.95rem;letter-spacing:1px">🔧 הוספת הוצאה תפעולית</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+          <div class="form-group" style="grid-column:1/-1">
+            <label>שירות / ספק</label>
+            <input type="text" id="exp-platform" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none" placeholder="heygen, elevenlabs, fal.ai...">
+          </div>
+          <div class="form-group">
+            <label>סכום</label>
+            <input type="number" id="exp-amount" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none" placeholder="29">
+          </div>
+          <div class="form-group">
+            <label>מטבע</label>
+            <select id="exp-currency" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none">
+              <option value="USD">USD ($)</option>
+              <option value="ILS">ILS (₪)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>תאריך</label>
+            <input type="date" id="exp-date" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none">
+          </div>
+          <div class="form-group">
+            <label>אמצעי תשלום</label>
+            <input type="text" id="exp-payment" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none" placeholder="Credit Card">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>הערות</label>
+            <input type="text" id="exp-notes" style="width:100%;padding:.7rem 1rem;background:#111;border:1px solid #2a2a2a;border-radius:6px;color:#e8e0d5;font-size:.9rem;outline:none">
+          </div>
+        </div>
+        <div style="display:flex;gap:.75rem;margin-top:1.25rem">
+          <button class="btn-gold" style="flex:1" onclick="saveExpense()">שמור הוצאה</button>
+          <button class="btn-sm" style="flex:0 0 auto" onclick="closeExpenseModal()">ביטול</button>
+        </div>
+        <div id="expense-modal-error" class="error-msg"></div>
       </div>
     </div>
   </div><!-- /section-campaigns -->
@@ -2330,6 +2384,7 @@
   let _allUsers  = [];
   let _allOrders = [];
   let _currentFilter = 'all';
+  let _ILS_USD   = 3.7; // default, overridden by site_settings
 
   // ── Init ──────────────────────────────────────────────────
   window.addEventListener('DOMContentLoaded', async () => {
@@ -2388,6 +2443,11 @@
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('dashboard').style.display = 'block';
     window._supabase = _sb;
+    // Load dynamic exchange rate from site_settings
+    try {
+      const { data } = await _sb.from('site_settings').select('value').eq('key', 'ils_usd_rate').single();
+      if (data?.value) _ILS_USD = parseFloat(data.value) || 3.7;
+    } catch(e) { console.warn('Failed to load exchange rate, using default', e); }
     await loadOrders(token);
   }
 
@@ -5308,24 +5368,28 @@
   async function loadCampaigns() {
     const wrap = document.getElementById('campaigns-table-wrap');
     try {
-      const { data: campaigns, error } = await _sb
+      const { data: allItems, error } = await _sb
         .from('ad_campaigns')
         .select('*')
         .order('start_date', { ascending: false });
 
       if (error) throw error;
-      if (!campaigns || !campaigns.length) {
+      if (!allItems || !allItems.length) {
         wrap.innerHTML = '<div class="empty">אין קמפיינים עדיין</div>';
         return;
       }
 
-      // Update stats — normalize all to ILS
-      const ILS_USD = 3.7;
-      const toILS = (amt, cur) => cur === 'USD' ? amt * ILS_USD : amt;
+      // Split by type
+      const campaigns = allItems.filter(c => c.type !== 'expense');
+      const expenses  = allItems.filter(c => c.type === 'expense');
+
+      // Normalize to ILS using dynamic rate
+      const toILS = (amt, cur) => cur === 'USD' ? amt * _ILS_USD : amt;
+
+      // Campaign stats (ads only)
       const active   = campaigns.filter(c => c.status === 'active').length;
       const done     = campaigns.filter(c => c.status === 'completed').length;
       const budgetIL = campaigns.reduce((s, c) => s + toILS(Number(c.budget || 0), c.budget_currency), 0);
-      // Estimated spend: spend_to_date if > 0, else (budget/days)*daysElapsed
       const spendIL  = campaigns.reduce((s, c) => {
         const tracked = Number(c.spend_to_date || 0);
         if (tracked > 0) return s + toILS(tracked, c.budget_currency);
@@ -5336,19 +5400,27 @@
         const daily = budgetILS / Math.max(1, c.duration_days || 7);
         return s + Math.min(budgetILS, daily * elapsed);
       }, 0);
+
+      // Expense stats
+      const expenseTotal = expenses.reduce((s, c) => s + toILS(Number(c.spend_to_date || c.budget || 0), c.budget_currency), 0);
+
       document.getElementById('cstat-active').textContent  = active;
       document.getElementById('cstat-done').textContent    = done;
       document.getElementById('cstat-budget').textContent  = '₪' + budgetIL.toFixed(0);
-      document.getElementById('cstat-spend').textContent   = '₪' + spendIL.toFixed(0) + (spendIL > 0 && campaigns.every(c => !Number(c.spend_to_date)) ? ' (מוערך)' : '');
+      document.getElementById('cstat-spend').textContent   = '₪' + spendIL.toFixed(0);
+      document.getElementById('cstat-expenses').textContent = '₪' + expenseTotal.toFixed(0);
+      document.getElementById('cstat-total').textContent    = '₪' + (spendIL + expenseTotal).toFixed(0);
+      // Show rate indicator
+      const rateEl = document.getElementById('cstat-rate');
+      if (rateEl) rateEl.textContent = '1$ = ₪' + _ILS_USD.toFixed(2);
 
-      // Build table
-      const goalLabel = { website_visits:'Website visits', reach:'Reach', engagement:'Engagement', sales:'Sales', page_likes:'Page likes' };
-      const rows = campaigns.map(c => {
+      // Build campaigns table
+      const goalLabel = { website_visits:'Website visits', reach:'Reach', engagement:'Engagement', sales:'Sales', page_likes:'Page likes', landing_page_views:'Landing page views' };
+      const buildCampaignRow = (c) => {
         const statusCls = c.status === 'active' ? 'status-in_production' : c.status === 'completed' ? 'status-delivered' : 'status-pending';
         const statusLbl = c.status === 'active' ? '🟢 פעיל' : c.status === 'completed' ? '✅ הסתיים' : '⏸ מושהה';
         const endDate   = c.end_date ? new Date(c.end_date).toLocaleDateString('he-IL') : '—';
         const startDate = c.start_date ? new Date(c.start_date).toLocaleDateString('he-IL') : '—';
-        // Estimated spend for display — normalize to ILS
         const budgetILS_r = toILS(Number(c.budget || 0), c.budget_currency);
         let rowSpend = Number(c.spend_to_date || 0);
         if (rowSpend > 0) { rowSpend = toILS(rowSpend, c.budget_currency); }
@@ -5385,22 +5457,50 @@
             </button>
           </td>
         </tr>`;
-      }).join('');
+      };
 
-      wrap.innerHTML = `<table>
+      // Build expenses table
+      const buildExpenseRow = (c) => {
+        const spendILS = toILS(Number(c.spend_to_date || c.budget || 0), c.budget_currency);
+        const curLabel = c.budget_currency === 'USD' ? `$${Number(c.budget).toFixed(0)} (₪${spendILS.toFixed(0)})` : `₪${Number(c.budget).toFixed(0)}`;
+        const dateStr = c.start_date ? new Date(c.start_date).toLocaleDateString('he-IL') : (c.created_at ? new Date(c.created_at).toLocaleDateString('he-IL') : '—');
+        return `<tr>
+          <td style="color:#c8a96e;font-weight:600">${c.platform}</td>
+          <td>${c.notes || '—'}</td>
+          <td style="color:#e8e0d5">${curLabel}</td>
+          <td style="font-size:.8rem">${dateStr}</td>
+          <td style="font-size:.78rem;color:#666">${c.payment_method || '—'}</td>
+          <td>
+            <button class="btn-sm" onclick="openUpdateSpend('${c.id}',${c.spend_to_date||0})">עדכן</button>
+            <button class="btn-sm" style="margin-top:2px;color:#e05050;border-color:rgba(224,80,80,.4)" onclick="deleteExpense('${c.id}')">מחק</button>
+          </td>
+        </tr>`;
+      };
+
+      const campaignRows = campaigns.map(buildCampaignRow).join('');
+      const expenseRows  = expenses.map(buildExpenseRow).join('');
+
+      wrap.innerHTML = `
+        <h3 style="color:#c8a96e;font-size:.9rem;margin-bottom:.75rem;letter-spacing:1px">📣 קמפיינים פרסומיים (${campaigns.length})</h3>
+        ${campaigns.length ? `<table>
         <thead><tr>
-          <th>סטטוס</th>
-          <th>פלטפורמה</th>
-          <th>מטרה</th>
-          <th>תקציב / משך</th>
-          <th>קהל</th>
-          <th>תאריכים</th>
-          <th>עלות עד היום</th>
-          <th>תשלום</th>
-          <th>פעולות</th>
+          <th>סטטוס</th><th>פלטפורמה</th><th>מטרה</th><th>תקציב / משך</th>
+          <th>קהל</th><th>תאריכים</th><th>עלות עד היום</th><th>תשלום</th><th>פעולות</th>
         </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
+        <tbody>${campaignRows}</tbody>
+        </table>` : '<div class="empty">אין קמפיינים פעילים</div>'}
+        <div style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid #2a2a2a">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+            <h3 style="color:#e0c990;font-size:.9rem;letter-spacing:1px">🔧 הוצאות תפעוליות (${expenses.length})</h3>
+            <button class="btn-sm" style="color:#e0c990;border-color:rgba(224,201,144,.4)" onclick="openAddExpenseModal()">+ הוסף הוצאה</button>
+          </div>
+          ${expenses.length ? `<table>
+          <thead><tr>
+            <th>שירות</th><th>פירוט</th><th>סכום</th><th>תאריך</th><th>תשלום</th><th>פעולות</th>
+          </tr></thead>
+          <tbody>${expenseRows}</tbody>
+          </table>` : '<div class="empty">אין הוצאות תפעוליות</div>'}
+        </div>`;
     } catch(e) {
       wrap.innerHTML = `<div class="empty" style="color:#ef4444">שגיאה: ${e.message}</div>`;
     }
@@ -5420,6 +5520,7 @@
     const platform = document.getElementById('c-platform').value;
     const goal     = document.getElementById('c-goal').value;
     const budget   = parseFloat(document.getElementById('c-budget').value);
+    const currency = document.getElementById('c-currency')?.value || 'ILS';
     const duration = parseInt(document.getElementById('c-duration').value);
     const audience = document.getElementById('c-audience').value.trim();
     const start    = document.getElementById('c-start').value;
@@ -5433,7 +5534,8 @@
     endDate.setDate(endDate.getDate() + duration);
 
     const { error } = await _sb.from('ad_campaigns').insert({
-      platform, goal, budget, duration_days: duration, audience, status: 'active',
+      platform, goal, budget, budget_currency: currency, type: 'campaign',
+      duration_days: duration, audience, status: 'active',
       start_date: start, end_date: endDate.toISOString().slice(0,10),
       payment_method: payment, notes
     });
@@ -5459,6 +5561,59 @@
     const newStatus = currentStatus === 'active' ? 'completed' : 'active';
     const { error } = await _sb.from('ad_campaigns').update({ status: newStatus }).eq('id', id);
     if (error) return alert('שגיאה: ' + error.message);
+    _campaignsLoaded = false;
+    loadCampaigns();
+  }
+
+  // ── Expense Functions ─────────────────────────────────────
+  function openAddExpenseModal() {
+    document.getElementById('expense-modal').style.display = 'flex';
+    document.getElementById('exp-date').value = new Date().toISOString().slice(0,10);
+    document.getElementById('expense-modal-error').textContent = '';
+  }
+  function closeExpenseModal() {
+    document.getElementById('expense-modal').style.display = 'none';
+  }
+  async function saveExpense() {
+    const platform = document.getElementById('exp-platform').value.trim();
+    const budget   = parseFloat(document.getElementById('exp-amount').value);
+    const currency = document.getElementById('exp-currency').value;
+    const date     = document.getElementById('exp-date').value;
+    const payment  = document.getElementById('exp-payment').value.trim();
+    const notes    = document.getElementById('exp-notes').value.trim();
+    const errEl    = document.getElementById('expense-modal-error');
+
+    if (!platform || !budget) { errEl.textContent = 'נא למלא שירות וסכום'; return; }
+
+    const { error } = await _sb.from('ad_campaigns').insert({
+      platform, goal: 'operational_expense', type: 'expense',
+      budget, budget_currency: currency, spend_to_date: budget,
+      status: 'completed', start_date: date || null,
+      duration_days: 1, payment_method: payment, notes
+    });
+
+    if (error) { errEl.textContent = 'שגיאה: ' + error.message; return; }
+    closeExpenseModal();
+    _campaignsLoaded = false;
+    loadCampaigns();
+  }
+  async function deleteExpense(id) {
+    if (!confirm('למחוק הוצאה זו?')) return;
+    const { error } = await _sb.from('ad_campaigns').delete().eq('id', id);
+    if (error) return alert('שגיאה: ' + error.message);
+    _campaignsLoaded = false;
+    loadCampaigns();
+  }
+
+  // ── Exchange Rate Update ──────────────────────────────────
+  async function updateExchangeRate() {
+    const newRate = prompt('שער דולר חדש (לדוגמה: 3.7):', _ILS_USD);
+    if (!newRate) return;
+    const val = parseFloat(newRate);
+    if (isNaN(val) || val < 1 || val > 10) return alert('שער לא תקין');
+    const { error } = await _sb.from('site_settings').upsert({ key: 'ils_usd_rate', value: String(val), updated_at: new Date().toISOString() });
+    if (error) return alert('שגיאה: ' + error.message);
+    _ILS_USD = val;
     _campaignsLoaded = false;
     loadCampaigns();
   }

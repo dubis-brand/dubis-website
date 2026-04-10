@@ -6,10 +6,11 @@ del /f /q ".git\HEAD.lock" 2>nul
 echo === Adding changed files ===
 git add admin.html
 git add api/admin/orders.js
+git add api/admin/analytics.js
 git add push-now.bat
 
 echo === Committing ===
-git commit -m "fix: admin dashboard - stat-pending ID collision, campaigns currency mixing, orders sandbox filtering"
+git commit -m "feat: dynamic exchange rate, campaigns/expenses split, is_test filter on orders"
 
 echo === Push to origin ===
 git push origin main

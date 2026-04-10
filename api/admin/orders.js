@@ -85,8 +85,10 @@ module.exports = async function handler(req, res) {
     }
 
     // ── Compute summary stats ─────────────────────────────────────
-    // Filter out sandbox/test orders and reprints for revenue stats
+    // Filter out sandbox/test orders using the DB-level is_test flag
+    // Fallback to JS heuristics for any orders not yet flagged
     const isRealOrder = (o) => {
+        if (o.is_test === true) return false;
         if (o.status === 'cancelled' || o.status === 'refunded') return false;
         if (o.buyer_email && o.buyer_email.includes('example.com')) return false;
         if (o.coupon_code === 'GELATO-REPRINT') return false;
