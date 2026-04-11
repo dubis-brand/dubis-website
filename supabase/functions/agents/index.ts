@@ -3124,4 +3124,68 @@ Return ONLY valid JSON (no markdown):
       }
 
       // Step 2: Generate assets (images + audio)
-      const assetsRes = await fetch(`${edgeBase}?type=generate-vid
+      const assetsRes = await fetch(`${edgeBase}?type=generate-video-assets`, {
+        method: 'POST',
+        headers: { 'Authorization': authHeaderVal, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: scriptData.task_id }),
+        signal: AbortSignal.timeout(120000),
+      });
+      const assetsData = await assetsRes.json();
+      (results.steps as Record<string, unknown>).assets = {
+        success: !!assetsData.success,
+        images: assetsData.summary?.images_generated || 0,
+        audios: assetsData.summary?.audios_generated || 0,
+        has_music: assetsData.summary?.has_music || false,
+      };
+
+      if (skipRender) {
+        return json({ ...results, success: true, note: 'Pipeline stopped after assets (skip_render=true)', script: scriptData.script });
+      }
+
+      // Step 3: Render video
+      const renderRes = await fetch(`${edgeBase}?type=render-video`, {
+        method: 'POST',
+        headers: { 'Authorization': authHeaderVal, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: scriptData.task_id }),
+        signal: AbortSignal.timeout(180000),
+      });
+      const renderData = await renderRes.json();
+      (results.steps as Record<string, unknown>).render = { success: !!renderData.success, video_url: renderData.video_url || null };
+
+      return json({
+        ...results,
+        success: !!renderData.video_url,
+        video_url: renderData.video_url || null,
+        script: scriptData.script,
+      });
+    } catch (e) {
+      return json({ ...results, success: false, error: (e as Error).message }, 500);
+    }
+  }
+
+  // Instagram's crawler is blocked by Supabase storage's X-Robots-Tag: none
+  // This route fetches from storage and returns with Facebook-friendly headers
+  if (type === 'serve-image') {
+    const filename = url.searchParams.get('f') || '';
+    if (!filename) return json({ error: 'Missing ?f= parameter' }, 400);
+    const storageUrl = `${Deno.env.get('SUPABASE_URL')}/storage/v1/object/public/ig-images/${filename}`;
+    try {
+      const imgRes = await fetch(storageUrl);
+      if (!imgRes.ok) return new Response('Image not found', { status: 404 });
+      const imgData = await imgRes.arrayBuffer();
+      const ct = imgRes.headers.get('content-type') || 'image/jpeg';
+      return new Response(imgData, {
+        status: 200,
+        headers: {
+          'Content-Type': ct,
+          'Cache-Control': 'public, max-age=86400',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    } catch { return new Response('Error fetching image', { status: 500 }); }
+  }
+
+  return json({
+    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image',
+  }, 400);
+});
