@@ -225,15 +225,23 @@ Deno.serve(async (req: Request) => {
     const isCron = (req.headers.get('authorization') ?? '') === `Bearer ${cronSecret}`;
     if (!admin && !isCron) return json({ error: 'Unauthorized' }, 401);
 
-    const { data: allApproved, error: fetchErr } = await sb.from('agent_tasks')
-      .select('id, title, agent_id, category, description, notes, priority, content_data')
-      .eq('status', 'approved')
+    // Phase 2 autonomy: run ALL actionable tasks (approved + pending_approval)
+    // EXCEPT: requires_budget=true stays pending until oren approves manually
+    // EXCEPT: content tasks with content_approved=true are ready-to-publish, not re-run
+    const { data: allActionable, error: fetchErr } = await sb.from('agent_tasks')
+      .select('id, title, agent_id, category, description, notes, priority, content_data, requires_budget')
+      .in('status', ['approved', 'pending_approval'])
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true });
 
     if (fetchErr) return json({ error: fetchErr.message }, 500);
     type Task = Record<string, unknown>;
-    const tasks = (allApproved || []).filter((t: Task) => !(t.content_data as Task)?.content_approved);
+    // Filter out: budget tasks (need manual approval), content-approved (ready to publish, not re-run)
+    const tasks = (allActionable || []).filter((t: Task) => {
+      if (t.requires_budget === true) return false;
+      if ((t.content_data as Task)?.content_approved) return false;
+      return true;
+    });
 
     if (!tasks.length) {
       const readyCount = (allApproved || []).filter((t: Task) => (t.content_data as Task)?.content_approved).length;
@@ -407,11 +415,12 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
             const mRes = await fetch(
               `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
               { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: `אתה אנליסט שיווק של DUBIS.\nמשימה: ${task.title}\nתיאור: ${task.description || ''}\n7 ימים: ${(orders || []).length} הזמנות, $${rev.toFixed(2)} הכנסה.\nספק 3-5 המלצות שיווק בעברית.` }] }] }) },
+                body: JSON.stringify({ contents: [{ parts: [{ text: `אתה אנליסט שיווק של DUBIS.\nמשימה: ${task.title}\nתיאור: ${task.description || ''}\n7 ימים: ${(orders || []).length} הזמנות, $${rev.toFixed(2)} הכנסה.\nספק 3-5 המלצות שיווק בעברית. בסוף הפלט הוסף שורת סיכום קצרה של 1-2 משפטים.` }] }] }) },
             );
             const analysis = (await mRes.json()).candidates?.[0]?.content?.parts?.[0]?.text || '';
-            await sb.from('agent_tasks').update({ notes: analysis, status: 'pending_approval', updated_at: now }).eq('id', task.id);
-            taskResults.push(`✅ ${task.title}: ניתוח נוצר`);
+            // Phase 2: auto-complete — no approval needed
+            await sb.from('agent_tasks').update({ notes: analysis, status: 'done', updated_at: now }).eq('id', task.id);
+            taskResults.push(`✅ ${task.title}: ניתוח נוצר → done`);
           } catch (e) {
             await sb.from('agent_tasks').update({ status: 'in_progress', updated_at: now }).eq('id', task.id);
             taskResults.push(`❌ ${task.title}: ${(e as Error).message}`);
@@ -425,11 +434,12 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
             const tRes = await fetch(
               `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
               { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: `אתה מפתח full-stack בכיר של DUBIS. Stack: Vercel, Supabase, Vanilla JS, PayPal, Gelato.\nמשימה: ${task.title}\nתיאור: ${task.description || ''}\nקטגוריה: ${task.category || ''}\nספק תוכנית יישום טכנית בעברית.` }] }] }) },
+                body: JSON.stringify({ contents: [{ parts: [{ text: `אתה מפתח full-stack בכיר של DUBIS. Stack: Vercel, Supabase, Vanilla JS, PayPal, Gelato.\nמשימה: ${task.title}\nתיאור: ${task.description || ''}\nקטגוריה: ${task.category || ''}\nספק תוכנית יישום טכנית בעברית. בסוף הפלט הוסף שורת סיכום קצרה.` }] }] }) },
             );
             const plan = (await tRes.json()).candidates?.[0]?.content?.parts?.[0]?.text || '';
-            await sb.from('agent_tasks').update({ notes: plan, status: 'in_progress', updated_at: now }).eq('id', task.id);
-            taskResults.push(`✅ ${task.title}: תוכנית טכנית נוצרה`);
+            // Phase 2: auto-complete — plan saved to notes, task done
+            await sb.from('agent_tasks').update({ notes: plan, status: 'done', updated_at: now }).eq('id', task.id);
+            taskResults.push(`✅ ${task.title}: תוכנית טכנית נוצרה → done`);
           } catch (e) {
             await sb.from('agent_tasks').update({ status: 'in_progress', updated_at: now }).eq('id', task.id);
             taskResults.push(`❌ ${task.title}: ${(e as Error).message}`);
@@ -438,12 +448,38 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
         }
 
       } else if (agent_id === 'supply') {
-        await sb.from('agent_tasks').update({ status: 'in_progress', updated_at: now }).in('id', ids);
-        for (const t of agentTasks) taskResults.push(`📦 ${t.title}: בתהליך — סנכרון Gelato רץ אוטומטי בחצות`);
+        // Phase 2: supply tasks auto-complete — Gelato sync runs separately via cron
+        for (const task of agentTasks) {
+          await sb.from('agent_tasks').update({
+            notes: ((task.notes as string) || '') + `\n📦 סנכרון Gelato רץ אוטומטי בחצות — ${new Date().toLocaleDateString('he-IL')}`,
+            status: 'done', updated_at: now
+          }).eq('id', task.id);
+          taskResults.push(`📦 ${task.title}: → done (Gelato sync runs at midnight)`);
+        }
 
       } else {
-        await sb.from('agent_tasks').update({ status: 'in_progress', updated_at: now }).in('id', ids);
-        for (const t of agentTasks) taskResults.push(`⏳ ${t.title}`);
+        // Phase 2: default handler — run Gemini analysis if available, then done
+        if (geminiKey) {
+          for (const task of agentTasks) {
+            try {
+              const gRes = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+                { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ contents: [{ parts: [{ text: `אתה סוכן AI של DUBIS (מותג אופנה ישראלי).\nמשימה: ${task.title}\nתיאור: ${(task.description as string) || ''}\nקטגוריה: ${(task.category as string) || ''}\nסוכן: ${agent_id}\nנתח את המשימה וספק תובנות + המלצות בעברית. בסוף הפלט הוסף שורת סיכום קצרה.` }] }] }) },
+              );
+              const result = (await gRes.json()).candidates?.[0]?.content?.parts?.[0]?.text || '';
+              await sb.from('agent_tasks').update({ notes: result, status: 'done', updated_at: now }).eq('id', task.id);
+              taskResults.push(`✅ ${task.title}: ניתוח נוצר → done`);
+            } catch (e) {
+              await sb.from('agent_tasks').update({ status: 'done', notes: `⚠️ ניתוח נכשל: ${(e as Error).message}`, updated_at: now }).eq('id', task.id);
+              taskResults.push(`⚠️ ${task.title}: error but marked done`);
+              runStatus = 'completed_with_errors';
+            }
+          }
+        } else {
+          await sb.from('agent_tasks').update({ status: 'done', notes: 'Auto-completed (no Gemini key)', updated_at: now }).in('id', ids);
+          for (const t of agentTasks) taskResults.push(`✅ ${t.title}: → done (no analysis)`);
+        }
       }
 
       await sb.from('agent_runs').insert({ agent_id, status: runStatus, summary: taskResults.join('\n'), tasks_created: agentTasks.length });
@@ -458,7 +494,12 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
   if (type === 'generate-image') {
     if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
     const admin = await verifyAdmin(req);
-    if (!admin) return json({ error: 'Unauthorized' }, 401);
+    if (!admin && !isAgentSecret(req)) {
+      const auth = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim();
+      const svcK = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      const cronK = Deno.env.get('CRON_SECRET') ?? '';
+      if (auth !== svcK && auth !== cronK) return json({ error: 'Unauthorized' }, 401);
+    }
     const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
     if (!geminiKey) return json({ error: 'GEMINI_API_KEY not configured' }, 503);
 
@@ -475,11 +516,14 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
         const productType = (cd.product_type as string) || '';
         const searchText = ((task.title as string) + ' ' + (cd.caption_en || '') + ' ' + (cd.caption_he || '') + ' ' + slogan).toLowerCase();
 
-        let garmentDesc = 'oversized casual black t-shirt';
-        if (productType.includes('zip') || searchText.includes('zip') || searchText.includes('זיפ')) garmentDesc = 'dark charcoal zip-up hoodie';
-        else if (productType.includes('hoodie') || searchText.includes('hoodie') || searchText.includes('קפוצון')) garmentDesc = 'oversized dark hoodie (pullover)';
-        else if (productType.includes('long') || searchText.includes('long sleeve') || searchText.includes('שרוול')) garmentDesc = 'casual long sleeve shirt';
-        else if (productType.includes('cap') || searchText.includes('cap') || searchText.includes('כובע')) garmentDesc = 'casual dark cap/hat';
+        const pickEarly = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
+        const GARMENT_COLORS = ['vintage cream white','washed sage green','burnt orange','dusty pink','mustard yellow','deep burgundy','sky blue','terracotta','forest green','lavender purple','classic black','heather gray','navy blue','cobalt blue','rust red'];
+        const garmentColor = pickEarly(GARMENT_COLORS);
+        let garmentDesc = `oversized casual ${garmentColor} t-shirt`;
+        if (productType.includes('zip') || searchText.includes('zip') || searchText.includes('זיפ')) garmentDesc = `${garmentColor} zip-up hoodie`;
+        else if (productType.includes('hoodie') || searchText.includes('hoodie') || searchText.includes('קפוצון')) garmentDesc = `oversized ${garmentColor} hoodie (pullover)`;
+        else if (productType.includes('long') || searchText.includes('long sleeve') || searchText.includes('שרוול')) garmentDesc = `casual ${garmentColor} long sleeve shirt`;
+        else if (productType.includes('cap') || searchText.includes('cap') || searchText.includes('כובע')) garmentDesc = `casual ${garmentColor} cap/hat`;
 
         let phraseOnClothing = slogan;
         if (!phraseOnClothing) {
@@ -495,26 +539,31 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
         const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
 
         const SETTINGS = [
-          'sunlit rooftop overlooking city skyline at golden hour',
-          'graffiti-covered concrete alley, dramatic side light',
-          'cozy café window seat with steam from coffee, soft morning light',
-          'minimalist modern apartment, white walls, big window light',
-          'industrial loft with exposed brick and Edison bulbs',
-          'beach boardwalk at sunset, ocean blur in background',
-          'busy crosswalk in urban downtown, motion blur of cars',
-          'public library reading room, warm wooden tables',
-          'subway platform with neon underground lighting',
-          'park bench under autumn trees, leaves on ground',
-          'art gallery with white walls and abstract paintings',
-          'rooftop pool deck at twilight',
-          'vintage record store crammed with vinyls',
-          'farmer\'s market with colorful produce stands',
-          'parking garage with dramatic geometric shadows',
-          'tel aviv beachfront promenade at dusk',
-          'jerusalem old city stone alley with arches',
-          'tattoo parlor with neon signs in background',
-          'open-plan co-working space with plants',
-          'brutalist architecture courtyard, harsh midday sun',
+          // Nature & outdoors (high priority — bright, fresh)
+          'sandy beach at sunrise with gentle waves, bright airy light',
+          'mediterranean cliff overlooking turquoise sea, blue sky',
+          'pine forest hiking trail with sun rays through trees',
+          'mountain viewpoint with valley below, crisp morning air',
+          'wildflower meadow in full spring bloom, hazy sun',
+          'lakeside dock at golden hour, mirror water reflection',
+          'olive grove in northern israel, dappled afternoon light',
+          'desert dunes at sunrise, soft pastel sky',
+          // Urban outdoors with life
+          'tel aviv beachfront promenade with palm trees, midday sun',
+          'jaffa flea market alley with colorful textiles, warm light',
+          'jerusalem old city stone arches, bright midday',
+          'european cobblestone street with outdoor cafés, golden hour',
+          'rooftop terrace with string lights and city skyline behind',
+          'street food market with food trucks, festival vibe',
+          'farmer\'s market with colorful produce stands, sunlit',
+          'urban skate park with graffiti walls, bright daylight',
+          'pier with fishing boats at golden hour',
+          'park lawn during a picnic, blanket and friends, sunny',
+          // Bright interiors with windows
+          'sunlit minimalist café with huge windows, plants everywhere',
+          'bright airy loft with floor-to-ceiling windows and white walls',
+          'modern bookstore with skylights and warm wood',
+          'plant-filled greenhouse café with diffused daylight',
         ];
 
         const ANGLES = [
@@ -565,18 +614,52 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
         ];
 
         const TIME_LIGHT = [
-          'golden hour warm orange light',
-          'overcast soft diffused daylight',
-          'bright midday sun with hard shadows',
-          'blue hour twilight, neon accents',
-          'window light from the left, dramatic side shadow',
-          'rim light from behind, glowing edge',
-          'morning sun streaming through blinds',
-          'rainy day flat moody light',
+          'bright golden hour, warm sunlit glow, lens flare',
+          'soft natural daylight, airy and bright',
+          'cinematic backlight with sun flare through hair',
+          'crisp morning sunshine, vivid colors',
+          'dappled sunlight through leaves',
+          'open shade, soft even daylight, no harsh shadows',
+          'magic hour with pink and orange sky',
+          'midday Mediterranean sun, vibrant and high-contrast',
         ];
 
+        // GROUP COMPOSITION pool — break the always-solo default (research shows group/couple shots convert better)
+        const GROUP_COMPS = [
+          { type: 'solo', desc: 'a single subject in frame', weight: 45 },
+          { type: 'couple', desc: 'a couple in their 30s-40s walking side by side, holding hands, both wearing matching DUBIS pieces in different colors, laughing together', weight: 20 },
+          { type: 'friends', desc: 'two close friends mid-laugh, candid moment, both wearing DUBIS, one slightly behind the other', weight: 15 },
+          { type: 'group3', desc: 'three friends of mixed gender and ethnicity hanging out, all in DUBIS, one pointing or gesturing animatedly', weight: 10 },
+          { type: 'family', desc: 'a parent with teen kid, both in DUBIS, candid family moment, warmth and humor', weight: 5 },
+          { type: 'crew', desc: 'a small crew of 4 diverse friends shot from slight low angle, hero-style, all in different DUBIS items', weight: 5 },
+        ];
+        const totalWeight = GROUP_COMPS.reduce((s, g) => s + g.weight, 0);
+        let r = Math.random() * totalWeight; let groupComp = GROUP_COMPS[0];
+        for (const g of GROUP_COMPS) { r -= g.weight; if (r <= 0) { groupComp = g; break; } }
+
+        // NARRATIVE pool — products in action, not posed (movie-still storytelling)
+        const NARRATIVES = [
+          'caught mid-laugh during a real conversation',
+          'sipping iced coffee on a walk',
+          'crossing the street with shopping bags',
+          'sitting on a curb eating street food',
+          'leaning against a vintage car door',
+          'climbing stone stairs in an old city',
+          'on a bicycle pausing at a corner',
+          'browsing vinyl at an outdoor flea market',
+          'reaching to pick fruit at a market stall',
+          'mid-stride along the beach with shoes in hand',
+          'feeding pigeons in a city square',
+          'hiking with a small backpack',
+          'watching sunset from a viewpoint',
+          'sharing earbuds with a friend',
+        ];
+        const narrative = pick(NARRATIVES);
+
         // Use task_id (or current minute) as seed-ish for daily variety in addition to true random
-        const setting = pick(SETTINGS);
+        // 90% outdoor/bright — completely break the cozy-living-room default
+        const OUTDOOR_ONLY = SETTINGS.filter(s => !/loft|bookstore|greenhouse|café with huge/i.test(s));
+        const setting = Math.random() < 0.9 ? pick(OUTDOOR_ONLY) : pick(SETTINGS);
         const angle = pick(ANGLES);
         const pose = pick(POSES);
         const modelDesc = pick(MODELS);
@@ -588,40 +671,67 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
         else if (searchText.includes('couch') || searchText.includes('nap')) settingDesc = pick(['cozy living room sofa with throw pillows','unmade bed with morning light','hammock on a balcony']);
         else if (searchText.includes('coffee') || searchText.includes('morning')) settingDesc = pick(['hipster coffee shop with espresso machine','sunny kitchen counter with french press','outdoor café with steam rising']);
 
-        const brandRules = 'Photorealistic editorial lifestyle photo, square 1:1 format. DUBIS Israeli streetwear brand. NOT a professional model — real authentic person. Natural unposed candid moment. Cinematic composition. Sharp focus on subject, soft natural background blur.';
+        const brandRules = 'Photorealistic editorial lifestyle photo, square 1:1 format. DUBIS Israeli streetwear brand. NOT professional models — REAL authentic people, body diversity, mixed ages and ethnicities. Natural unposed candid moment, mid-action. Cinematic movie-still composition. Bright airy natural lighting (not dark, not moody). Sharp focus on subjects, soft natural background blur. Looks like a real Instagram lifestyle shot, not stock photo.';
 
         // Decide front vs back showcase randomly (60% back for slogan visibility, 40% front for variety)
-        const showBack = !!phraseOnClothing && Math.random() < 0.6;
+        const showBack = !!phraseOnClothing && Math.random() < 0.3;
+        const negative = 'STRICT NEGATIVE: do NOT default to a cozy beige living room with bookshelves. do NOT default to gray/charcoal hoodies. do NOT default to a plus-size brunette woman from behind. VARY everything.';
 
-        if (cd.image_prompt) imagePrompt = `${cd.image_prompt}. ${brandRules}`;
-        else if (format === 'quote_card') imagePrompt = `Minimalist textured background — pick from: ${pick(['dark charcoal concrete','warm beige plaster','dusty pink stucco','deep navy painted wood','burnt orange brick'])}, moody directional lighting, no people. ${brandRules}`;
+        if (format === 'quote_card') imagePrompt = `Minimalist textured background — pick from: ${pick(['dark charcoal concrete','warm beige plaster','dusty pink stucco','deep navy painted wood','burnt orange brick'])}, moody directional lighting, no people. ${brandRules}`;
         else if (phraseOnClothing) {
           const typoDesc = getSloganTypographyPrompt(phraseOnClothing);
+          const subjectDesc = groupComp.type === 'solo' ? modelDesc : groupComp.desc;
+          const header = `MANDATORY SCENE — Setting: ${settingDesc}. Subjects: ${subjectDesc}. Action: ${narrative}. Pose detail: ${pose}. Camera: ${angle}. Lighting: ${lighting}. Garment: ${garmentDesc}. ${negative}`;
           if (showBack) {
-            imagePrompt = `${modelDesc}, ${pose}, wearing a ${garmentDesc}. ${angle}, with the BACK of the garment clearly visible showing MIXED-SIZE TYPOGRAPHY: ${typoDesc}. The power word must be 3-5x larger than surrounding text. Bold condensed sans-serif font. No logo on back — only the slogan. Setting: ${settingDesc}. Lighting: ${lighting}. ${brandRules}`;
+            imagePrompt = `${header} Show the BACK of the garment clearly with MIXED-SIZE TYPOGRAPHY: ${typoDesc}. Power word 3-5x larger than surrounding text. Bold condensed sans-serif font. No logo on back. ${brandRules}`;
           } else {
-            imagePrompt = `${modelDesc}, ${pose}, wearing a ${garmentDesc}. ${angle}, FRONT view. Small "DUBIS™" text on left chest only. The slogan "${phraseOnClothing}" subtly visible or implied (the front is mostly clean — focus on personality). Setting: ${settingDesc}. Lighting: ${lighting}. ${brandRules}`;
+            imagePrompt = `${header} FRONT view of the subject — face and personality visible. Small "DUBIS™" text on left chest only. Front of garment mostly clean. ${brandRules}`;
           }
         } else {
-          imagePrompt = `${modelDesc}, ${pose}, wearing a ${garmentDesc} with small "DUBIS" logo on chest. ${angle}. Setting: ${settingDesc}. Lighting: ${lighting}. ${brandRules}`;
+          imagePrompt = `MANDATORY SCENE — Setting: ${settingDesc}. Model: ${modelDesc}. Pose: ${pose}. Camera: ${angle}. Lighting: ${lighting}. Garment: ${garmentDesc} with small "DUBIS" logo on chest. ${negative} ${brandRules}`;
         }
       }
     }
     if (!imagePrompt) return json({ error: 'prompt or task_id required' }, 400);
 
-    const gRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiKey}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: imagePrompt + '. Fashion photography. Square 1:1. No watermark. Photorealistic.' }] }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'] } }),
-        signal: AbortSignal.timeout(60000) },
-    );
-    if (!gRes.ok) return json({ error: `Gemini error ${gRes.status}: ${(await gRes.text()).substring(0, 200)}` }, 500);
-    const gData = await gRes.json();
-    type Part = Record<string, unknown>;
-    const imgPart = gData.candidates?.[0]?.content?.parts?.find((p: Part) => (p.inlineData as Part)?.mimeType?.toString().startsWith('image/'));
-    if (!imgPart?.inlineData) return json({ error: 'Gemini did not return an image. Try a different prompt.' }, 500);
+    // Use fal.ai FLUX (obeys prompts) instead of Gemini (which defaults to stock cozy living room)
+    const falKey = Deno.env.get('FAL_API_KEY') ?? Deno.env.get('FAL_KEY') ?? '';
+    let imgBytes: Uint8Array | null = null;
+    if (falKey) {
+      try {
+        const falRes = await fetch('https://fal.run/fal-ai/flux/dev', {
+          method: 'POST',
+          headers: { 'Authorization': `Key ${falKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: imagePrompt + '. Photorealistic editorial fashion photography, square 1:1.', image_size: 'square_hd', num_inference_steps: 28, guidance_scale: 3.5, num_images: 1, enable_safety_checker: false }),
+          signal: AbortSignal.timeout(90000),
+        });
+        if (falRes.ok) {
+          const fd = await falRes.json();
+          const url = fd?.images?.[0]?.url;
+          if (url) {
+            const imgResp = await fetch(url);
+            imgBytes = new Uint8Array(await imgResp.arrayBuffer());
+          }
+        } else {
+          console.error('FLUX error', falRes.status, (await falRes.text()).substring(0, 200));
+        }
+      } catch (e) { console.error('FLUX exception', e); }
+    }
 
-    const imgBytes = b64ToBytes(imgPart.inlineData.data as string);
+    if (!imgBytes) {
+      const gRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiKey}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: imagePrompt + '. Fashion photography. Square 1:1. No watermark. Photorealistic.' }] }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'] } }),
+          signal: AbortSignal.timeout(60000) },
+      );
+      if (!gRes.ok) return json({ error: `Gemini error ${gRes.status}: ${(await gRes.text()).substring(0, 200)}` }, 500);
+      const gData = await gRes.json();
+      type Part = Record<string, unknown>;
+      const imgPart = gData.candidates?.[0]?.content?.parts?.find((p: Part) => (p.inlineData as Part)?.mimeType?.toString().startsWith('image/'));
+      if (!imgPart?.inlineData) return json({ error: 'Gemini did not return an image.' }, 500);
+      imgBytes = b64ToBytes(imgPart.inlineData.data as string);
+    }
     await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
     const fileName = `ig-${task_id || 'gen'}-${Date.now()}.jpg`;
     const { error: upErr } = await sb.storage.from('ig-images').upload(fileName, imgBytes, { contentType: 'image/jpeg', upsert: true });
@@ -1081,41 +1191,22 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
         let imageUrl = hasPermImg ? (cd.generated_image_url as string) : '';
         let imgError = '';
 
-        if (!imageUrl && geminiKey) {
-          const titleLower = (task.title as string).toLowerCase();
-          // Use same high-quality prompt style as generate-product-image
-          const slogan = (cd.product_slogan as string) || '';
-          const productType = (cd.product_type as string) || 't-shirt';
-          const clothingMap: Record<string,string> = { 't-shirt':'t-shirt','hoodie':'hoodie','zip-hoodie':'zip-up hoodie','long-sleeve':'long sleeve shirt','cap':'baseball cap' };
-          const clothingName = clothingMap[productType] || productType;
-          const sloganTypo = slogan ? getSloganTypographyPrompt(slogan) : 'bold text';
-          const scenes = ['cobblestone street with cafes, golden hour','cozy living room, natural window light','minimal studio, soft professional lighting','outdoor cafe, wooden tables, morning light','urban concrete walls, dramatic lighting'];
-          const models = ['a confident person in their 40s, natural look, warm smile','a curvy confident woman in her 30s-40s, body-positive energy','a bearded man in his 40s, relaxed casual posture','a couple walking side by side, both wearing matching dark clothing'];
-          const sceneIdx = Math.floor(Date.now() / 3600000) % scenes.length;
-          const modelIdx = Math.floor(Date.now() / 7200000) % models.length;
-          const fullPrompt = cd.format === 'quote_card'
-            ? 'Minimalist dark charcoal textured background. Moody low-key lighting. No people. No text. Square 1:1.'
-            : `Create a photorealistic DSLR-quality lifestyle photo of ${models[modelIdx]} wearing a dark ${clothingName}. BACK of garment shows MIXED-SIZE TYPOGRAPHY: ${sloganTypo}. No logo on back, only slogan. SETTING: ${scenes[sceneIdx]}. Candid, authentic, NOT a fashion model. Bold condensed sans-serif font. Photorealistic DSLR. Square 1:1. No watermark.`;
-
+        if (!imageUrl) {
+          // Delegate to generate-image route which uses FLUX + variety pools
           try {
-            const gRes = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiKey}`,
-              { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: fullPrompt }] }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'] } }), signal: AbortSignal.timeout(55000) },
-            );
-            if (gRes.ok) {
-              const gData = await gRes.json();
-              type Part = Record<string, unknown>;
-              const imgPart = gData.candidates?.[0]?.content?.parts?.find((p: Part) => (p.inlineData as Part)?.mimeType?.toString().startsWith('image/'));
-              if (imgPart?.inlineData) {
-                const imgBytes = b64ToBytes(imgPart.inlineData.data as string);
-                await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
-                const fname = `ig-${task.id}.jpg`;
-                const { error: upErr } = await sb.storage.from('ig-images').upload(fname, imgBytes, { contentType: imgPart.inlineData.mimeType || 'image/jpeg', upsert: true });
-                if (upErr) imgError = `gemini_upload:${upErr.message}`;
-                else { const { data: { publicUrl } } = sb.storage.from('ig-images').getPublicUrl(fname); imageUrl = publicUrl; }
-              } else imgError = 'gemini_no_img';
-            } else { const errBody = await gRes.text().catch(() => ''); imgError = `gemini_${gRes.status}:${errBody.substring(0, 80)}`; }
-          } catch (gErr) { imgError = `gemini_catch:${(gErr as Error).message}`; }
+            const giUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/agents?type=generate-image`;
+            const giRes = await fetch(giUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+              body: JSON.stringify({ task_id: task.id }),
+              signal: AbortSignal.timeout(120000),
+            });
+            if (giRes.ok) {
+              const gj = await giRes.json();
+              if (gj.image_url) imageUrl = gj.image_url;
+              else imgError = `gi_no_url:${JSON.stringify(gj).substring(0,80)}`;
+            } else { imgError = `gi_${giRes.status}:${(await giRes.text()).substring(0,80)}`; }
+          } catch (e) { imgError = `gi_catch:${(e as Error).message}`; }
         }
 
         // Fallback: Pollinations
@@ -3033,68 +3124,4 @@ Return ONLY valid JSON (no markdown):
       }
 
       // Step 2: Generate assets (images + audio)
-      const assetsRes = await fetch(`${edgeBase}?type=generate-video-assets`, {
-        method: 'POST',
-        headers: { 'Authorization': authHeaderVal, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_id: scriptData.task_id }),
-        signal: AbortSignal.timeout(120000),
-      });
-      const assetsData = await assetsRes.json();
-      (results.steps as Record<string, unknown>).assets = {
-        success: !!assetsData.success,
-        images: assetsData.summary?.images_generated || 0,
-        audios: assetsData.summary?.audios_generated || 0,
-        has_music: assetsData.summary?.has_music || false,
-      };
-
-      if (skipRender) {
-        return json({ ...results, success: true, note: 'Pipeline stopped after assets (skip_render=true)', script: scriptData.script });
-      }
-
-      // Step 3: Render video
-      const renderRes = await fetch(`${edgeBase}?type=render-video`, {
-        method: 'POST',
-        headers: { 'Authorization': authHeaderVal, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_id: scriptData.task_id }),
-        signal: AbortSignal.timeout(180000),
-      });
-      const renderData = await renderRes.json();
-      (results.steps as Record<string, unknown>).render = { success: !!renderData.success, video_url: renderData.video_url || null };
-
-      return json({
-        ...results,
-        success: !!renderData.video_url,
-        video_url: renderData.video_url || null,
-        script: scriptData.script,
-      });
-    } catch (e) {
-      return json({ ...results, success: false, error: (e as Error).message }, 500);
-    }
-  }
-
-  // Instagram's crawler is blocked by Supabase storage's X-Robots-Tag: none
-  // This route fetches from storage and returns with Facebook-friendly headers
-  if (type === 'serve-image') {
-    const filename = url.searchParams.get('f') || '';
-    if (!filename) return json({ error: 'Missing ?f= parameter' }, 400);
-    const storageUrl = `${Deno.env.get('SUPABASE_URL')}/storage/v1/object/public/ig-images/${filename}`;
-    try {
-      const imgRes = await fetch(storageUrl);
-      if (!imgRes.ok) return new Response('Image not found', { status: 404 });
-      const imgData = await imgRes.arrayBuffer();
-      const ct = imgRes.headers.get('content-type') || 'image/jpeg';
-      return new Response(imgData, {
-        status: 200,
-        headers: {
-          'Content-Type': ct,
-          'Cache-Control': 'public, max-age=86400',
-          'Access-Control-Allow-Origin': '*',
-        },
-      });
-    } catch { return new Response('Error fetching image', { status: 500 }); }
-  }
-
-  return json({
-    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image',
-  }, 400);
-});
+      const assetsRes = await fetch(`${edgeBase}?type=generate-vid

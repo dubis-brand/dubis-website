@@ -181,6 +181,23 @@ module.exports = async function handler(req, res) {
 
     const urlType = new URL(req.url, `https://${req.headers.host}`).searchParams.get('type');
 
+    // ── Route: ?type=auto-run — Phase 2 autonomy: auto-execute all non-budget tasks ──
+    // Called by Vercel cron at 06:00 + 12:00 UTC (08:00 + 14:00 Israel)
+    if (urlType === 'auto-run') {
+        const agentsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1/agents';
+        const authToken  = process.env.CRON_SECRET || process.env.AGENT_SECRET || '';
+        try {
+            const r = await fetch(`${agentsBase}?type=run`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+            });
+            const data = await r.json();
+            return res.status(200).json({ success: true, auto_run: data });
+        } catch (e) {
+            return res.status(500).json({ success: false, error: e.message });
+        }
+    }
+
     // ── Route: ?type=agents — run email-monitor + site-audit via Edge Function ──
     // Called by Vercel cron at 04:00 UTC (06:00 Israel) — replaces Cowork scheduled tasks
     if (urlType === 'agents') {
@@ -341,6 +358,23 @@ module.exports = async function handler(req, res) {
         .order('created_at', { ascending: false })
         .limit(10);
 
+    // ── 4. Agent runs in last 24h (Phase 2 autonomy report) ────────
+    const { data: recentRuns } = await supabase
+        .from('agent_runs')
+        .select('agent_id, status, summary, tasks_created, created_at')
+        .gte('created_at', new Date(Date.now() - 24 * 3600000).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+    // Also get tasks completed in last 24h
+    const { data: recentDone } = await supabase
+        .from('agent_tasks')
+        .select('title, agent_id, category, notes, updated_at')
+        .eq('status', 'done')
+        .gte('updated_at', new Date(Date.now() - 24 * 3600000).toISOString())
+        .order('updated_at', { ascending: false })
+        .limit(20);
+
     // ── Calculate stats ─────────────────────────────────────────────
     const todayRevenue  = (todayOrders  || []).reduce((s, o) => s + Number(o.total_amount || 0), 0);
     const weekRevenue   = (weekOrders   || []).reduce((s, o) => s + Number(o.total_amount || 0), 0);
@@ -477,6 +511,41 @@ module.exports = async function handler(req, res) {
           📧 תובנות מהמייל
         </h2>
         ${gmailHtml}
+      </td></tr>
+
+      <tr><td style="height:12px"></td></tr>
+
+      <!-- Agent Activity (Phase 2 Autonomy) -->
+      <tr><td style="background:#fff;border-radius:12px;padding:24px 28px">
+        <h2 style="margin:0 0 16px;font-size:15px;color:#2c2c2c;border-bottom:2px solid #f5f0e8;padding-bottom:10px">
+          🤖 פעולות סוכנים (24 שעות אחרונות)
+        </h2>
+        ${(recentRuns || []).length === 0 && (recentDone || []).length === 0
+          ? `<p style="color:#999;font-size:13px">לא היו הרצות סוכנים ב-24 שעות האחרונות.</p>`
+          : `
+          ${(recentRuns || []).length > 0 ? `
+          <div style="margin-bottom:16px">
+            <strong style="color:#555;font-size:13px">📊 הרצות:</strong>
+            ${(recentRuns || []).map(r => `
+              <div style="background:#f8f6f0;border-radius:6px;padding:10px 14px;margin:6px 0;border-right:3px solid ${r.status === 'completed' ? '#27ae60' : '#e67e22'}">
+                <strong style="color:#333;font-size:13px">${r.agent_id}</strong>
+                <span style="color:#888;font-size:11px;margin-right:8px">${new Date(r.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' })}</span>
+                <span style="color:${r.status === 'completed' ? '#27ae60' : '#e67e22'};font-size:11px;font-weight:600">${r.status}</span>
+                ${r.summary ? `<p style="color:#666;font-size:12px;margin:4px 0 0;white-space:pre-line">${r.summary.substring(0, 300)}</p>` : ''}
+              </div>`).join('')}
+          </div>` : ''}
+          ${(recentDone || []).length > 0 ? `
+          <div>
+            <strong style="color:#555;font-size:13px">✅ משימות שהושלמו (${(recentDone || []).length}):</strong>
+            ${(recentDone || []).slice(0, 10).map(t => `
+              <div style="background:#f0f8f0;border-radius:4px;padding:8px 12px;margin:4px 0">
+                <strong style="color:#333;font-size:12px">${t.title}</strong>
+                <span style="color:#888;font-size:11px;margin-right:6px">[${t.agent_id}]</span>
+                ${t.notes ? `<p style="color:#666;font-size:11px;margin:2px 0 0;max-height:60px;overflow:hidden">${t.notes.substring(0, 200)}${t.notes.length > 200 ? '...' : ''}</p>` : ''}
+              </div>`).join('')}
+            ${(recentDone || []).length > 10 ? `<p style="color:#999;font-size:11px;margin-top:6px">+ עוד ${(recentDone || []).length - 10} משימות</p>` : ''}
+          </div>` : ''}
+          `}
       </td></tr>
 
       <!-- Footer -->

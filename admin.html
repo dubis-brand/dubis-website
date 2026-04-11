@@ -3906,11 +3906,22 @@
         </div>`;
       }
     } else if (wfType === 'execute') {
-      // EXECUTE workflow — marketing, site, technical
+      // EXECUTE workflow — Phase 2 autonomy
+      const needsBudget = t.requires_budget === true;
       if (isPending || t.status === 'backlog') {
-        actions = `<div class="task-card-actions">
-          <button class="btn-approve" style="background:#16a34a" onclick="updateTaskStatus('${t.id}','approved');event.stopPropagation()">✅ אשר לביצוע</button>
-        </div>`;
+        if (needsBudget) {
+          // Budget tasks still need manual approval
+          actions = `<div class="task-card-actions">
+            <button class="btn-approve" style="background:#e67e22" onclick="updateTaskStatus('${t.id}','approved');event.stopPropagation()">💰 אשר הוצאה</button>
+            <button class="btn-reject" onclick="updateTaskStatus('${t.id}','rejected');event.stopPropagation()">✕ דחה</button>
+          </div>`;
+        } else {
+          // Non-budget: auto-executes on next cron run
+          actions = `<div class="task-card-actions">
+            <button class="btn-approve" style="background:#16a34a;opacity:0.7;cursor:default" onclick="event.stopPropagation()">🤖 ירוץ אוטומטית</button>
+            <button class="btn-done" onclick="updateTaskStatus('${t.id}','done');event.stopPropagation()">✓ בוצע ידנית</button>
+          </div>`;
+        }
       } else if (isApproved) {
         actions = `<div class="task-card-actions">
           <button class="btn-approve" style="background:#1d4ed8" onclick="event.stopPropagation()">⏳ ממתין להרצת סוכן</button>
@@ -4050,11 +4061,19 @@
           <button class="btn-approve" style="flex:1;background:#374151" onclick="updateTaskStatus('${data.id}','backlog');closeTaskDetail()">↩ חזרה ל-Backlog</button>`;
       }
     } else if (wfType === 'execute') {
-      // EXECUTE workflow
+      // EXECUTE workflow — Phase 2 autonomy
+      const needsBudget = data.requires_budget === true;
       if (data.status === 'backlog' || data.status === 'pending_approval') {
-        buttonsHtml = `
-          <button class="btn-approve" style="flex:1;background:#16a34a" onclick="updateTaskStatus('${data.id}','approved');closeTaskDetail()">✅ אשר לביצוע</button>
-          <button class="btn-reject" style="flex:1" onclick="updateTaskStatus('${data.id}','rejected');closeTaskDetail()">✕ לא רלוונטי</button>`;
+        if (needsBudget) {
+          buttonsHtml = `
+            <button class="btn-approve" style="flex:1;background:#e67e22" onclick="updateTaskStatus('${data.id}','approved');closeTaskDetail()">💰 אשר הוצאה</button>
+            <button class="btn-reject" style="flex:1" onclick="updateTaskStatus('${data.id}','rejected');closeTaskDetail()">✕ דחה</button>`;
+        } else {
+          buttonsHtml = `
+            <span style="flex:1;text-align:center;color:#4caf50;font-size:.85rem">🤖 ירוץ אוטומטית בהרצה הבאה</span>
+            <button class="btn-done" style="flex:1" onclick="updateTaskStatus('${data.id}','done');closeTaskDetail()">✓ בוצע ידנית</button>
+            <button class="btn-reject" style="flex:1" onclick="updateTaskStatus('${data.id}','rejected');closeTaskDetail()">✕ לא רלוונטי</button>`;
+        }
       } else if (data.status === 'approved') {
         buttonsHtml = `
           <span style="flex:1;text-align:center;color:#4caf50;font-size:.85rem">⏳ ממתין להרצת סוכן</span>

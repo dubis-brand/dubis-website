@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DUBIS — תוכנית מעבר לאוטונומיה מלאה של סוכנים</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 32px; line-height: 1.7; }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { color: #c8a96e; font-size: 28px; margin-bottom: 8px; border-bottom: 2px solid #c8a96e; padding-bottom: 12px; }
+  .subtitle { color: #888; font-size: 14px; margin-bottom: 32px; }
+  h2 { color: #c8a96e; font-size: 20px; margin: 32px 0 16px; padding: 8px 12px; background: #16213e; border-radius: 8px; border-right: 4px solid #c8a96e; }
+  h3 { color: #e8c87a; font-size: 16px; margin: 20px 0 10px; }
+  p { margin-bottom: 12px; font-size: 14px; }
+  .card { background: #16213e; border-radius: 10px; padding: 20px 24px; margin-bottom: 16px; }
+  .card-red { border-right: 4px solid #e74c3c; }
+  .card-green { border-right: 4px solid #27ae60; }
+  .card-yellow { border-right: 4px solid #f1c40f; }
+  .card-blue { border-right: 4px solid #3498db; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 13px; }
+  th { background: #0f3460; color: #c8a96e; padding: 10px 12px; text-align: right; font-weight: 600; }
+  td { padding: 10px 12px; border-bottom: 1px solid #1a1a3e; }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .tag-manual { background: #e74c3c; color: #fff; }
+  .tag-auto { background: #27ae60; color: #fff; }
+  .tag-broken { background: #e67e22; color: #fff; }
+  .tag-new { background: #3498db; color: #fff; }
+  .arrow { color: #c8a96e; font-size: 20px; margin: 0 8px; }
+  .flow { background: #0f3460; border-radius: 8px; padding: 16px 20px; margin: 12px 0; font-family: monospace; font-size: 13px; direction: ltr; text-align: left; color: #8bc6fc; }
+  .highlight { color: #f1c40f; font-weight: 700; }
+  .danger { color: #e74c3c; font-weight: 700; }
+  .success { color: #27ae60; font-weight: 700; }
+  .section-intro { color: #aaa; font-size: 14px; margin-bottom: 16px; font-style: italic; }
+  ul { margin: 8px 0 16px 20px; font-size: 14px; }
+  li { margin-bottom: 6px; }
+  .summary-box { background: linear-gradient(135deg, #0f3460, #16213e); border: 1px solid #c8a96e; border-radius: 12px; padding: 24px; margin: 24px 0; }
+  .phase { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+  .phase-num { background: #c8a96e; color: #1a1a2e; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+  .effort { color: #888; font-size: 12px; }
+  .impact-high { background: #27ae60; color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+  .impact-med { background: #f39c12; color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🤖 תוכנית מעבר לאוטונומיה מלאה של סוכנים</h1>
+<p class="subtitle">DUBIS Agent System — מצב קיים → מצב רצוי | 11 באפריל 2026</p>
+
+<!-- ═══════════════════════════════════════════════ -->
+<h2>1. המצב הקיים — מה שבור</h2>
+
+<div class="card card-red">
+<h3>🔴 הבעיה המרכזית: "הרץ סוכנים" לא באמת מריץ</h3>
+<p>כפתור "הרץ סוכנים" באדמין קורא ל-route <code>?type=run</code> שרץ <strong>רק על משימות עם status=approved</strong>. זה אומר:</p>
+<ul>
+  <li>כל משימה חדשה נוצרת בסטטוס <code>pending_approval</code> ← <span class="danger">מחכה לאישור ידני שלך</span></li>
+  <li>אתה לוחץ "אשר לביצוע" ← הסטטוס הופך ל-<code>approved</code></li>
+  <li>אתה לוחץ "הרץ סוכנים" ← ה-run route שולף את ה-approved ומעבד</li>
+  <li><span class="danger">אבל:</span> הסוכן marketing מחזיר את המשימה ל-<code>pending_approval</code> אחרי עיבוד (כי הוא מייצר תוצאה שדורשת "אישור שלך")</li>
+</ul>
+<p><strong>התוצאה:</strong> לולאה אינסופית — אשר → הרץ → חוזר לאישור → אשר שוב → ...</p>
+</div>
+
+<div class="card card-yellow">
+<h3>📊 מפת סטטוסים לכל סוכן — מה באמת קורה</h3>
+<table>
+  <tr>
+    <th>סוכן</th>
+    <th>מה הוא עושה ב-run</th>
+    <th>סטטוס אחרי run</th>
+    <th>בעיה</th>
+  </tr>
+  <tr>
+    <td><strong>content</strong></td>
+    <td>מייצר קופי + תמונה via Gemini</td>
+    <td><code>pending_approval</code></td>
+    <td><span class="tag tag-auto">עובד</span> — אבל דורש אישור לפרסום</td>
+  </tr>
+  <tr>
+    <td><strong>marketing</strong></td>
+    <td>מייצר ניתוח SEO/שיווק via Gemini</td>
+    <td><code>pending_approval</code></td>
+    <td><span class="tag tag-broken">לולאה</span> — מחזיר לאישור אחרי כל run</td>
+  </tr>
+  <tr>
+    <td><strong>cto</strong></td>
+    <td>מייצר תוכנית טכנית via Gemini</td>
+    <td><code>in_progress</code></td>
+    <td><span class="tag tag-broken">תקוע</span> — נשאר in_progress לנצח</td>
+  </tr>
+  <tr>
+    <td><strong>supply</strong></td>
+    <td>מעביר ל-in_progress (סנכרון Gelato נפרד)</td>
+    <td><code>in_progress</code></td>
+    <td><span class="tag tag-broken">תקוע</span> — אף פעם לא מגיע ל-done</td>
+  </tr>
+  <tr>
+    <td><strong>כל השאר</strong></td>
+    <td>מעביר ל-in_progress בלי פעולה אמיתית</td>
+    <td><code>in_progress</code></td>
+    <td><span class="tag tag-manual">ריק</span> — לא עושה כלום מעבר לשנות סטטוס</td>
+  </tr>
+</table>
+</div>
+
+<div class="card card-yellow">
+<h3>⏱ תזמון הריצות — מה בכלל רץ אוטומטי</h3>
+<table>
+  <tr><th>שעה (ישראל)</th><th>מה רץ</th><th>אוטומטי?</th><th>עובד?</th></tr>
+  <tr><td>02:00</td><td>Gelato sync</td><td><span class="tag tag-auto">✅</span></td><td>✅</td></tr>
+  <tr><td>05:00 (שני)</td><td>Security scan</td><td><span class="tag tag-auto">✅</span></td><td>✅</td></tr>
+  <tr><td>06:00</td><td>Agent run (email + site audit)</td><td><span class="tag tag-auto">✅</span></td><td>⚠️ קורא ל-run אבל אין משימות approved</td></tr>
+  <tr><td>07:00</td><td>Morning report (Boss Agent)</td><td><span class="tag tag-auto">✅</span></td><td>✅ שולח מייל</td></tr>
+  <tr><td>10:00</td><td>Review requests email</td><td><span class="tag tag-auto">✅</span></td><td>✅</td></tr>
+  <tr><td>12:00</td><td>Content pipeline HE</td><td><span class="tag tag-auto">✅</span></td><td>✅ auto-content → content-run → QA → publish</td></tr>
+  <tr><td>18:00</td><td>Content pipeline EN</td><td><span class="tag tag-auto">✅</span></td><td>✅ same flow</td></tr>
+</table>
+<p><strong>שים לב:</strong> ה-Content pipeline (12:00 + 18:00) הוא <strong>היחיד שבאמת עובד end-to-end</strong> — יוצר משימה, מייצר תוכן, מריץ QA, ומנסה לפרסם. כל השאר תקוע.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<h2>2. המצב הרצוי — מה אתה רוצה</h2>
+
+<div class="card card-green">
+<h3>✅ העקרונות</h3>
+<ul>
+  <li><strong>אוטונומיה מלאה:</strong> כל המשימות רצות בלי אישור ידני שלך</li>
+  <li><strong>חריג יחיד:</strong> משימות שדורשות הוצאת כסף (קמפיינים, רכישות) — דורשות אישור</li>
+  <li><strong>דוח יומי מפורט:</strong> מה רץ, מה נעשה, מה הצליח, מה נכשל — במייל הבוקר</li>
+  <li><strong>לוג פעולות:</strong> כל סוכן מתעד מה עשה ב-notes של המשימה</li>
+</ul>
+</div>
+
+<div class="card card-blue">
+<h3>📋 הפלו החדש</h3>
+<div class="flow">
+Task created → <span style="color:#27ae60">AUTO-EXECUTE</span> (no approval needed)<br>
+  ├── content agent  → generate caption + image → QA → <span style="color:#f1c40f">auto-publish</span> → done<br>
+  ├── marketing agent → generate analysis → save to notes → <span style="color:#27ae60">done</span><br>
+  ├── cto agent       → generate tech plan → save to notes → <span style="color:#27ae60">done</span><br>
+  ├── supply agent    → sync Gelato → save results → <span style="color:#27ae60">done</span><br>
+  └── any agent       → run Gemini analysis → save → <span style="color:#27ae60">done</span><br>
+<br>
+<span style="color:#e74c3c">EXCEPTION: category === 'campaign' || has_budget === true</span><br>
+  └── stays in <span style="color:#e67e22">pending_approval</span> → requires oren's OK
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<h2>3. השינויים הנדרשים</h2>
+
+<div class="card card-green">
+<h3>שינוי 1: Edge Function — <code>?type=run</code> route</h3>
+<p><strong>מה:</strong> שינוי ה-run route כך שירוץ על משימות <code>pending_approval</code> ישירות (לא רק <code>approved</code>)</p>
+<p><strong>חריג:</strong> משימות עם <code>category='campaign'</code> או <code>requires_budget=true</code> — נשארות ב-pending_approval</p>
+<p><strong>סטטוסים חדשים:</strong></p>
+<ul>
+  <li><code>marketing</code> agent → אחרי ניתוח → status=<strong>done</strong> (לא pending_approval)</li>
+  <li><code>cto</code> agent → אחרי תוכנית טכנית → status=<strong>done</strong></li>
+  <li><code>supply</code> agent → אחרי סנכרון → status=<strong>done</strong></li>
+  <li>Default agents → לא רק שינוי סטטוס, אלא ניתוח Gemini + done</li>
+</ul>
+<p class="effort">⏱ מאמץ: בינוני | <span class="impact-high">השפעה: גבוהה</span></p>
+</div>
+
+<div class="card card-green">
+<h3>שינוי 2: Cron חדש — הרצת משימות אוטומטית</h3>
+<p><strong>מה:</strong> הוספת route חדש ל-<code>morning-report.js</code>: <code>?type=auto-run</code></p>
+<p>ירוץ פעמיים ביום (08:00 + 14:00 ישראל) ויקרא ל-<code>?type=run</code> אוטומטית — בלי שתלחץ כפתור</p>
+<p><strong>הפלו:</strong></p>
+<div class="flow">
+cron 06:00 UTC → morning-report?type=auto-run<br>
+  → fetch Edge Function ?type=run (with CRON_SECRET)<br>
+  → processes all non-budget tasks automatically<br>
+  → logs results to agent_runs table<br>
+<br>
+cron 12:00 UTC → same (catches afternoon tasks)
+</div>
+<p class="effort">⏱ מאמץ: נמוך (route חדש בקובץ קיים) | <span class="impact-high">השפעה: גבוהה</span></p>
+</div>
+
+<div class="card card-green">
+<h3>שינוי 3: דוח בוקר מורחב — פירוט פעולות סוכנים</h3>
+<p><strong>מה:</strong> הרחבת ה-Morning Report Email עם סקשן חדש: <strong>"🤖 פעולות סוכנים ב-24 שעות האחרונות"</strong></p>
+<p>יישלף מטבלת <code>agent_runs</code> ויציג:</p>
+<ul>
+  <li>שם הסוכן + כמות משימות שטיפל</li>
+  <li>סטטוס (הצלחה / שגיאה)</li>
+  <li>סיכום מה נעשה (מ-summary)</li>
+  <li>משימות שנכשלו + סיבה</li>
+</ul>
+<p class="effort">⏱ מאמץ: בינוני | <span class="impact-med">השפעה: בינונית</span></p>
+</div>
+
+<div class="card card-green">
+<h3>שינוי 4: Admin UI — עדכון מסך משימות</h3>
+<p><strong>מה:</strong></p>
+<ul>
+  <li>הסרת כפתור "אשר לביצוע" ממשימות שלא דורשות תקציב</li>
+  <li>הוספת תגית <span class="tag tag-auto">אוטומטי</span> למשימות שירוצו אוטומטית</li>
+  <li>השארת "אשר לביצוע" רק למשימות עם <code>requires_budget=true</code></li>
+  <li>כפתור "הרץ סוכנים" נשאר — כאפשרות ידנית מהירה</li>
+</ul>
+<p class="effort">⏱ מאמץ: בינוני | <span class="impact-med">השפעה: בינונית</span></p>
+</div>
+
+<div class="card card-green">
+<h3>שינוי 5: CLAUDE.md — הסרת מגבלת "Nothing publishes without oren's approval"</h3>
+<p><strong>מה:</strong> עדכון ה-CLAUDE.md וה-agents-system.md כך ש:</p>
+<ul>
+  <li>Phase 1 autonomy → <strong>Phase 2 autonomy</strong> (full auto, budget exceptions only)</li>
+  <li>הסרת "Nothing publishes without oren's approval"</li>
+  <li>הוספת "Budget-related tasks require oren's approval"</li>
+</ul>
+<p class="effort">⏱ מאמץ: נמוך | <span class="impact-high">השפעה: גבוהה</span></p>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<h2>4. DB Schema — שינוי קטן</h2>
+
+<div class="card card-blue">
+<p>הוספת עמודה <code>requires_budget BOOLEAN DEFAULT false</code> לטבלת <code>agent_tasks</code></p>
+<p>משימות שדורשות כסף (קמפיינים ממומנים, רכישות) יסומנו <code>requires_budget=true</code> ← רק אלה יצטרכו אישור.</p>
+<p>כל משימה שנוצרת אוטומטית ← <code>requires_budget=false</code> ← רצה ישר.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<h2>5. Cron Schedule חדש</h2>
+
+<table>
+  <tr><th>שעה (ישראל)</th><th>מה רץ</th><th>חדש?</th></tr>
+  <tr><td>02:00</td><td>Gelato sync</td><td>—</td></tr>
+  <tr><td>05:00 (שני)</td><td>Security scan</td><td>—</td></tr>
+  <tr><td>06:00</td><td>Agent run (email + site audit)</td><td>—</td></tr>
+  <tr><td>07:00</td><td>Morning report + <strong>דוח סוכנים מורחב</strong></td><td>🔄 מורחב</td></tr>
+  <tr style="background: rgba(39,174,96,0.15);">
+    <td>08:00</td><td><strong>Auto-run — הרצת כל המשימות</strong></td><td><span class="tag tag-new">חדש</span></td></tr>
+  <tr><td>10:00</td><td>Review requests email</td><td>—</td></tr>
+  <tr><td>12:00</td><td>Content pipeline HE</td><td>—</td></tr>
+  <tr style="background: rgba(39,174,96,0.15);">
+    <td>14:00</td><td><strong>Auto-run — הרצה שנייה</strong></td><td><span class="tag tag-new">חדש</span></td></tr>
+  <tr><td>18:00</td><td>Content pipeline EN</td><td>—</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════ -->
+<h2>6. תוכנית יישום — סדר פעולות</h2>
+
+<div class="summary-box">
+<div class="phase">
+  <div class="phase-num">1</div>
+  <div>
+    <strong>DB: הוספת requires_budget</strong><br>
+    <span style="color:#888">ALTER TABLE agent_tasks ADD COLUMN requires_budget BOOLEAN DEFAULT false</span><br>
+    <span class="effort">⏱ 2 דקות</span>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-num">2</div>
+  <div>
+    <strong>Edge Function: שדרוג ?type=run</strong><br>
+    <span style="color:#888">שינוי הפילטר מ-approved-only ל-pending+approved, חריג requires_budget. שינוי סטטוסים סופיים ל-done.</span><br>
+    <span class="effort">⏱ 30 דקות</span>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-num">3</div>
+  <div>
+    <strong>Cron: הוספת auto-run route</strong><br>
+    <span style="color:#888">route חדש ב-morning-report.js + 2 cron entries ב-vercel.json</span><br>
+    <span class="effort">⏱ 15 דקות</span>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-num">4</div>
+  <div>
+    <strong>Morning Report: דוח סוכנים מורחב</strong><br>
+    <span style="color:#888">שליפה מ-agent_runs ל-24 שעות + סקשן HTML חדש במייל</span><br>
+    <span class="effort">⏱ 20 דקות</span>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-num">5</div>
+  <div>
+    <strong>Admin UI: עדכון מסך משימות</strong><br>
+    <span style="color:#888">הסרת "אשר לביצוע" ממשימות ללא תקציב, הוספת תגיות אוטומטי</span><br>
+    <span class="effort">⏱ 20 דקות</span>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-num">6</div>
+  <div>
+    <strong>Docs: עדכון CLAUDE.md + agents rules</strong><br>
+    <span style="color:#888">Phase 2 autonomy, הסרת מגבלת אישור</span><br>
+    <span class="effort">⏱ 5 דקות</span>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="phase-num">7</div>
+  <div>
+    <strong>Deploy + Test</strong><br>
+    <span style="color:#888">deploy edge function + push vercel + בדיקה ידנית</span><br>
+    <span class="effort">⏱ 10 דקות</span>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ -->
+<h2>7. סיכונים ומענה</h2>
+
+<table>
+  <tr><th>סיכון</th><th>רמה</th><th>מענה</th></tr>
+  <tr>
+    <td>סוכן מפרסם תוכן לא טוב לאינסטגרם</td>
+    <td>🟡 בינוני</td>
+    <td>ה-Content pipeline כבר כולל QA step + IG token פג תוקף (לא מפרסם בפועל). כשתחדש token — תוכל להוסיף פילטר איכות מינימלי</td>
+  </tr>
+  <tr>
+    <td>סוכן מוציא כסף בלי אישור</td>
+    <td>🔴 גבוה</td>
+    <td>requires_budget flag + הלוגיקה חוסמת הרצה של משימות תקציביות</td>
+  </tr>
+  <tr>
+    <td>Gemini API costs מצטברים</td>
+    <td>🟡 בינוני</td>
+    <td>Gemini Flash הוא כמעט חינם. 2 auto-runs ביום × ~5 משימות = ~10 calls/day = זניח</td>
+  </tr>
+  <tr>
+    <td>משימות "מתערמות" ללא טיפול אמיתי</td>
+    <td>🟡 בינוני</td>
+    <td>סוכנים שלא יודעים לטפל (supply, אחרים) יקבלו לפחות ניתוח Gemini + done. הדוח היומי יראה לך מה באמת נעשה</td>
+  </tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════ -->
+<h2>8. הדעה המקצועית שלי</h2>
+
+<div class="card card-green" style="border-right-color: #c8a96e;">
+<p>אתה צודק ב-100%. המצב הנוכחי של מסך המשימות הוא <strong>תיאטרון אוטומציה</strong> — נראה כאילו יש סוכנים, אבל בפועל רוב הזמן אתה מאשר ידנית משימות שחוזרות לאותו מקום.</p>
+
+<p>הפתרון פשוט יחסית: <strong>לתת לסוכנים לעבוד ולדווח אחורה</strong>, במקום לבקש רשות קדימה. ה-Content pipeline כבר עובד ככה (auto-content → generate → QA → publish). רק צריך להחיל את אותו עיקרון על כל שאר הסוכנים.</p>
+
+<p><strong>זמן יישום כולל:</strong> ~2 שעות עבודה.</p>
+
+<p><strong>ממתין לאישורך להתחיל.</strong></p>
+</div>
+
+</div>
+</body>
+</html>
