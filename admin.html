@@ -3076,7 +3076,12 @@
     return 'https://www.gelato.com/custom';
   }
 
-  function _gelatoCost(type) {
+  // Per-product Gelato cost overrides (when actual differs from type default)
+  const _gelatoCostOverrides = {
+    17: 32.94,  // Zip Hoodie — verified from Gelato 10/04/2026
+  };
+  function _gelatoCost(type, productId) {
+    if (productId && _gelatoCostOverrides[productId] !== undefined) return _gelatoCostOverrides[productId];
     return { tshirt: 12.50, hoodie: 24.00, ziphoodie: 28.00, longsleeve: 15.00, cap: 12.00 }[type] || null;
   }
 
@@ -3091,7 +3096,7 @@
 
     try {
       if (typeof products === 'undefined' || !products.length) throw new Error('products.js לא נטען');
-      _allProducts = products.map(p => ({ ...p, gelatoUrl: _gelatoUrl(p.type, p.gender), gelatoCost: _gelatoCost(p.type) }));
+      _allProducts = products.map(p => ({ ...p, gelatoUrl: _gelatoUrl(p.type, p.gender), gelatoCost: _gelatoCost(p.type, p.id) }));
     } catch (err) {
       loadingEl.textContent = 'Error loading catalog: ' + err.message;
       return;
