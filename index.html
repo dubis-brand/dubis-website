@@ -15,6 +15,18 @@
     </script>
     <noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1000453189108953&ev=PageView&noscript=1"/></noscript>
 
+    <!-- Urgency + Stock styles -->
+    <style>
+    .urgency-bar{background:linear-gradient(90deg,#1a1a1a,#2a1a00,#1a1a1a);color:#c8a96e;text-align:center;padding:10px 16px;font-size:13px;font-weight:700;letter-spacing:1px;border-bottom:1px solid #c8a96e33;position:relative;z-index:1001}
+    .urgency-bar .urgency-emoji{margin:0 6px}
+    .stock-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:#e05555;margin-top:6px}
+    .stock-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:#e05555;animation:pulse-dot 1.5s infinite}
+    .stock-badge.ok{color:#c8a96e}.stock-badge.ok::before{background:#c8a96e;animation:none}
+    @keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.3}}
+    .modal-urgency{display:flex;align-items:center;gap:8px;background:#2a1a0066;border:1px solid #c8a96e44;border-radius:8px;padding:8px 14px;margin:10px 0;font-size:12px;color:#c8a96e}
+    .modal-urgency .fire{font-size:16px}
+    </style>
+
     <!-- SEO -->
     <title>DUBIS — Clothes Built for the Body You Actually Live In</title>
     <meta name="description" content="DUBIS — fashion that finally sees you. Real fit, real quality, real people. T-shirts, hoodies and caps built for the life you actually live.">
@@ -86,6 +98,13 @@
                 <a href="#privacy" class="cookie-link">Privacy · Terms</a>
             </div>
         </div>
+    </div>
+
+    <!-- URGENCY BAR -->
+    <div class="urgency-bar" id="urgency-bar">
+        <span class="urgency-emoji">🔥</span>
+        <span id="urgency-text">Limited Drop — Once they're gone, they're gone</span>
+        <span class="urgency-emoji">🔥</span>
     </div>
 
     <!-- NAVIGATION -->
@@ -706,3 +725,4 @@
     </script>
 </body>
 </html>
+                                                                                                                                                                                                                        

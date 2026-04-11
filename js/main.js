@@ -7,6 +7,12 @@ let currentLang  = 'en';
 let _activeFilter = 'all';
 let _activeGender = 'all';
 
+// ── Stock urgency (deterministic per product) ──
+function getStockNum(id) {
+  const seed = (id * 7 + 3) % 19;
+  return seed < 4 ? seed + 3 : seed < 10 ? seed + 2 : seed;
+}
+
 // ── Currency by language ──
 let USD_TO_ILS = 3.63; // fallback — updated daily from API
 (async function fetchRate() {
@@ -211,6 +217,10 @@ function translateUI(lang) {
   if (heroDesc) heroDesc.textContent = t.hero_desc;
   if (heroBtn) heroBtn.textContent = t.hero_btn;
 
+  // Urgency bar
+  const urgText = document.getElementById('urgency-text');
+  if (urgText) urgText.textContent = lang === 'he' ? 'מהדורה מוגבלת — כשנגמר, נגמר' : 'Limited Drop — Once they\'re gone, they\'re gone';
+
   // Real People section
   const rpTitle = q('#real-people .section-header h2');
   const rpSub = q('#real-people .section-header p');
@@ -379,6 +389,7 @@ function renderProducts(filter, gender) {
         <div class="product-bottom">
           <div class="product-price">${formatPrice(product.price)}</div>
           <div class="product-shipping-note">${(translations[currentLang]||translations.en).shipping_note}</div>
+          <div class="stock-badge${getStockNum(product.id) > 10 ? ' ok' : ''}">${currentLang === 'he' ? `נשארו ${getStockNum(product.id)} יחידות` : `Only ${getStockNum(product.id)} left`}</div>
         </div>
       </div>
     </div>
@@ -429,6 +440,10 @@ function setGenderFilter(gender, btn) {
 function openProductModal(productId) {
   const product = products.find(p => p.id === productId);
   if (window.dubisTrack && product) window.dubisTrack('product_view', { id: product.id, phrase: product.phrase, type: product.type, price: product.price });
+  // Meta Pixel — ViewContent event
+  if (typeof fbq === 'function' && product) {
+    fbq('track', 'ViewContent', { content_name: product.phrase, content_type: 'product', value: product.price, currency: 'USD', content_ids: [String(product.id)] });
+  }
   const t = translations[currentLang];
   const typeMap = {
     tshirt:     t.type_tshirt,
@@ -498,6 +513,10 @@ function openProductModal(productId) {
         <span>&#128274; ${currentLang === 'he' ? 'תשלום מאובטח' : 'Secure Checkout'}</span>
         <span>&#128666; ${currentLang === 'he' ? 'משלוח $8.99 · חינם מעל $60' : '$8.99 Shipping · Free over $60'}</span>
         <span>&#8617;&#65039; ${currentLang === 'he' ? 'החזרה על פגמים תוך 30 יום' : '30-Day Defect Returns'}</span>
+      </div>
+      <div class="modal-urgency">
+        <span class="fire">🔥</span>
+        <span>${currentLang === 'he' ? `נשארו רק ${getStockNum(product.id)} יחידות — הזמינו לפני שנגמר` : `Only ${getStockNum(product.id)} left — order before it's gone`}</span>
       </div>
       <button class="btn-primary modal-add-btn" onclick="addToCartFromModal(${product.id})">
         ${t.modal_add}
@@ -893,29 +912,4 @@ async function loadProductReviews() {
       const name = (r.product_name || '').toLowerCase();
       if (!productReviews[name]) productReviews[name] = { count: 0, total: 0 };
       productReviews[name].count++;
-      productReviews[name].total += r.rating;
-    });
-    // Update badges on cards
-    document.querySelectorAll('[id^="badge-"]').forEach(badge => {
-      const id = badge.id.replace('badge-', '');
-      const product = products.find(p => p.id == id);
-      if (!product) return;
-      const key = product.phrase.toLowerCase();
-      const rev = productReviews[key];
-      if (rev && rev.count > 0) {
-        const avg = (rev.total / rev.count).toFixed(1);
-        badge.textContent = `★ ${avg} (${rev.count})`;
-        badge.classList.add('has-reviews');
-      }
-    });
-  } catch { /* non-critical */ }
-}
-
-document.addEventListener('DOMContentLoaded', async () => {
-  loadCart();
-  checkCookieConsent();
-  await loadPriceOverrides();
-  detectLanguage(); // IP-based language detection → renders products after
-  initScrollAnimations();
-  loadProductReviews(); // Load reviews for badges (non-blocking)
-});
+      productReview
