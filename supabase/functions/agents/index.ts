@@ -603,13 +603,13 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
           'athletic man aged 35-45, full beard, tattoo sleeves, warm tan',
           'curvy woman aged 25-35, short pixie cut, bright lipstick, brown skin',
           'older man aged 50-60, salt-and-pepper hair, wireframe glasses, fair skin',
-          'young woman aged 22-28, long black hair, septum piercing, mediterranean features',
+          'young woman aged 22-28, long black hair, bright smile, mediterranean features',
           'middle-aged dad aged 40-50, dad-bod, ginger hair, freckled fair skin',
           'tall lanky guy aged 28-35, messy brown hair, scruffy stubble, olive skin',
           'mom aged 35-45, ponytail, no makeup, natural beauty, light tan',
           'asian woman aged 30-40, straight black bob, minimal jewelry, fair skin',
           'black man aged 35-45, shaved head, full beard, dark brown skin',
-          'latina woman aged 28-38, wavy auburn hair, big hoop earrings, golden tan',
+          'latina woman aged 28-38, wavy auburn hair, warm smile, golden tan',
           'mature woman aged 55-65, gray bob, statement glasses, fair skin',
         ];
 
@@ -673,9 +673,9 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
 
         const brandRules = 'Photorealistic editorial lifestyle photo, square 1:1 format. DUBIS Israeli streetwear brand. NOT professional models — REAL authentic people, body diversity, mixed ages and ethnicities. Natural unposed candid moment, mid-action. Cinematic movie-still composition. Bright airy natural lighting (not dark, not moody). Sharp focus on subjects, soft natural background blur. Looks like a real Instagram lifestyle shot, not stock photo.';
 
-        // Decide front vs back showcase randomly (60% back for slogan visibility, 40% front for variety)
-        const showBack = !!phraseOnClothing && Math.random() < 0.3;
-        const negative = 'STRICT NEGATIVE: do NOT default to a cozy beige living room with bookshelves. do NOT default to gray/charcoal hoodies. do NOT default to a plus-size brunette woman from behind. VARY everything.';
+        // Decide front vs back showcase randomly (50% back for slogan visibility, 50% front)
+        const showBack = !!phraseOnClothing && Math.random() < 0.5;
+        const negative = 'STRICT NEGATIVE: do NOT default to a cozy beige living room with bookshelves. do NOT default to gray/charcoal hoodies. do NOT default to a plus-size brunette woman from behind. NO nose rings, NO facial piercings, NO face jewelry, NO septum piercings. VARY everything.';
 
         if (format === 'quote_card') imagePrompt = `Minimalist textured background — pick from: ${pick(['dark charcoal concrete','warm beige plaster','dusty pink stucco','deep navy painted wood','burnt orange brick'])}, moody directional lighting, no people. ${brandRules}`;
         else if (phraseOnClothing) {
@@ -685,7 +685,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
           if (showBack) {
             imagePrompt = `${header} Show the BACK of the garment clearly with MIXED-SIZE TYPOGRAPHY: ${typoDesc}. Power word 3-5x larger than surrounding text. Bold condensed sans-serif font. No logo on back. ${brandRules}`;
           } else {
-            imagePrompt = `${header} FRONT view of the subject — face and personality visible. Small "DUBIS™" text on left chest only. Front of garment mostly clean. ${brandRules}`;
+            imagePrompt = `${header} FRONT view of the subject — face and personality visible. Garment is clean with NO visible text or logo (brand mark too small to read). ${brandRules}`;
           }
         } else {
           imagePrompt = `MANDATORY SCENE — Setting: ${settingDesc}. Model: ${modelDesc}. Pose: ${pose}. Camera: ${angle}. Lighting: ${lighting}. Garment: ${garmentDesc} with small "DUBIS" logo on chest. ${negative} ${brandRules}`;
@@ -1170,6 +1170,8 @@ Slogan on product: "${(cd.product_slogan as string) || ''}"
 Product type: "${(cd.product_type as string) || ''}"
 Format: ${isStory ? 'STORY — 1-2 punchy sentences max.' : (cd.format || 'feed_post')}
 
+MANDATORY RULE for caption_he: The product's English slogan MUST appear in the Hebrew caption exactly as written in English (e.g. "NAPPING IS MY CARDIO", "more of me to LOVE"). Do NOT translate the slogan to Hebrew. The slogan is on the actual garment — keeping it in English makes the connection to the product clear.
+
 Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs ...5-10 tags","image_prompt":"..."}`;
           const cRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
@@ -1338,7 +1340,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       const lang = (cd.lang as string) || 'he';
       // Instagram doesn't make URLs clickable in feed/Reel captions — only bio link works.
       // Facebook DOES make URLs clickable, so we build two versions.
-      const shopLineIG = lang === 'he' ? '🛒 הקישור בביו ← dubis.net' : '🛒 Link in bio → dubis.net';
+      const shopLineIG = lang === 'he' ? '🛒 לקנייה: לחצו על הקישור בביו ← @dubis.brand' : '🛒 Shop now → link in bio @dubis.brand';
       const shopLineFB = lang === 'he' ? '🛒 לחנות: https://www.dubis.net' : '🛒 Shop: https://www.dubis.net';
       const baseBody = (cd.caption_he as string) || (cd.caption_en as string) || task.title;
       const tags = (cd.hashtags as string) || '#DUBIS #ForTheRestOfUs';
@@ -1822,6 +1824,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     let failed = 0;
 
     for (const task of unscored) {
+     try {
       const cd = (task.content_data as Task) || {};
       const captionHe  = (cd.caption_he as string) || '';
       const hashtags   = (cd.hashtags as string) || '';
@@ -2006,6 +2009,11 @@ Score the total 0-30. Return ONLY valid JSON:
         details: qaDetails,
         fail_reasons: failReasons,
       });
+     } catch (taskErr) {
+      // Catch per-task errors so one failure doesn't crash the entire QA run
+      results.push({ id: task.id, title: task.title, score: 0, qa_pass: false, details: {}, fail_reasons: [`QA error: ${(taskErr as Error).message}`] });
+      failed++;
+     }
     }
 
     return json({ checked: unscored.length, passed, failed, results });
