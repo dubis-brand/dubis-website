@@ -1194,57 +1194,63 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
         let imgError = '';
 
         if (!imageUrl) {
-          // Delegate to generate-image route which uses FLUX + variety pools
-          try {
-            const giUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/agents?type=generate-image`;
-            const giRes = await fetch(giUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
-              body: JSON.stringify({ task_id: task.id }),
-              signal: AbortSignal.timeout(120000),
-            });
-            if (giRes.ok) {
-              const gj = await giRes.json();
-              if (gj.image_url) imageUrl = gj.image_url;
-              else imgError = `gi_no_url:${JSON.stringify(gj).substring(0,80)}`;
-            } else { imgError = `gi_${giRes.status}:${(await giRes.text()).substring(0,80)}`; }
-          } catch (e) { imgError = `gi_catch:${(e as Error).message}`; }
-        }
+          // Use real product photos from dubis_images — AI cannot render readable text on garments
+          const productSlogan = ((cd.product_slogan as string) || '').toLowerCase().trim();
+          const productId = (cd.product_id as string) || '';
 
-        // Fallback: Pollinations
-        const polToken = Deno.env.get('POLLINATIONS_TOKEN') ?? '';
-        if (!imageUrl && polToken) {
           try {
-            const titleLower = (task.title as string).toLowerCase();
-            const imgPromptText = gen.image_prompt || `${task.title}, authentic urban lifestyle, DUBIS streetwear, dark minimal aesthetic`;
-            const fullPrompt = imgPromptText + ". Fashion photography. Square 1:1. Photorealistic. No watermark or branding overlay.";
-            const prompt = encodeURIComponent(fullPrompt);
-            const seed = parseInt((task.id as string).replace(/-/g, '').substring(0, 8), 16) % 999999 + 1;
-            const imgRes = await fetch(`https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&model=flux&seed=${seed}&token=${polToken}`, { signal: AbortSignal.timeout(55000) });
-            if (imgRes.ok) {
-              const imgBytes = new Uint8Array(await imgRes.arrayBuffer());
-              await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
-              const fname = `ig-${task.id}.jpg`;
-              const { error: upErr } = await sb.storage.from('ig-images').upload(fname, imgBytes, { contentType: 'image/jpeg', upsert: true });
-              if (upErr) imgError += ` pol_upload:${upErr.message}`;
-              else { const { data: { publicUrl } } = sb.storage.from('ig-images').getPublicUrl(fname); imageUrl = publicUrl; }
-            } else imgError += ` pol_${imgRes.status}`;
-          } catch (polErr) { imgError += ` pol_catch:${(polErr as Error).message}`; }
-        }
+            type ImgRow = { image_url: string; quality_score: number; dubis_products?: { slogan?: string } | null };
+            let matchImg: ImgRow | null = null;
 
-        // Save to gallery (dubis_images) for future reuse
-        if (imageUrl && imageUrl.includes('supabase.co')) {
-          try {
-            await sb.from('dubis_images').insert({
-              image_url: imageUrl,
-              scene_type: 'urban',
-              model_type: 'man',
-              prompt_used: `Content pipeline: ${task.title}`,
-              quality_score: 3,
-              approved: false,
-              tags: ['content', 'auto-generated', cd.product_type || 'unknown'],
-            });
-          } catch { /* non-critical — don't fail if gallery save fails */ }
+            // 1) Match by product_id (most precise)
+            if (productId) {
+              const { data } = await sb.from('dubis_images')
+                .select('image_url, quality_score, dubis_products(slogan)')
+                .eq('product_id', productId)
+                .eq('approved', true)
+                .order('quality_score', { ascending: false })
+                .limit(1);
+              if (data?.length) matchImg = (data as ImgRow[])[0];
+            }
+
+            // 2) Match by slogan keywords against dubis_products.slogan
+            if (!matchImg && productSlogan) {
+              const { data: allApproved } = await sb.from('dubis_images')
+                .select('image_url, quality_score, dubis_products(slogan)')
+                .eq('approved', true)
+                .order('quality_score', { ascending: false })
+                .limit(80);
+              if (allApproved?.length) {
+                const sloganWords = productSlogan.split(' ').filter((w: string) => w.length > 3).slice(0, 4);
+                const hit = (allApproved as ImgRow[]).find(img => {
+                  const s = (img.dubis_products?.slogan || '').toLowerCase();
+                  return sloganWords.some((w: string) => s.includes(w));
+                });
+                if (hit) matchImg = hit;
+              }
+            }
+
+            // 3) Fallback: any approved image with score ≥ 4, rotated by task id
+            if (!matchImg) {
+              const { data: best } = await sb.from('dubis_images')
+                .select('image_url, quality_score')
+                .eq('approved', true)
+                .gte('quality_score', 4)
+                .order('quality_score', { ascending: false })
+                .limit(20);
+              if (best?.length) {
+                const idx = parseInt((task.id as string).replace(/-/g, '').substring(0, 6), 16) % best.length;
+                matchImg = (best as ImgRow[])[idx];
+                imgError = 'fallback_any_approved';
+              } else {
+                imgError = 'no_approved_images_in_gallery';
+              }
+            }
+
+            if (matchImg) imageUrl = matchImg.image_url;
+          } catch (imgLookupErr) {
+            imgError = `img_lookup:${(imgLookupErr as Error).message}`;
+          }
         }
 
         const finalCapHe = gen.caption_he || (cd.caption_he as string) || '';
@@ -1827,7 +1833,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
      try {
       const cd = (task.content_data as Task) || {};
       const captionHe  = (cd.caption_he as string) || '';
-      const hashtags   = (cd.hashtags as string) || '';
+      const hashtags   = Array.isArray(cd.hashtags) ? (cd.hashtags as string[]).join(' ') : ((cd.hashtags as string) || '');
       const imageUrl   = (cd.generated_image_url as string) || '';
       const format     = (cd.format as string) || 'feed_post';
       const qaDetails: Record<string, unknown> = {};
