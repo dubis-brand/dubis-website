@@ -5,7 +5,8 @@
 - Admin: https://www.dubis.net/admin
 - Supabase project: ntzwvqtpdmvvavbhuyeb
 - Deploy: push to `main` → auto-deploy via Vercel
-- Edge Function deploy: `npx supabase functions deploy agents --project-ref ntzwvqtpdmvvavbhuyeb`
+- Edge Function deploy: run `deploy.bat` via computer-use File Explorer (handles HEAD.lock + push + deploy + pipeline trigger)
+- Autonomous ops playbook: `../agents/skills/autonomous-ops/SKILL.md`
 - Dev server: `npx vercel dev --listen 3000`
 
 ## Critical Constraints

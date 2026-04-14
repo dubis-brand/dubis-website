@@ -1330,7 +1330,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     const batchSize = parseInt(url.searchParams.get('batch') || '1', 10);
     const readyTasks = (candidates || []).filter((t: Task) => {
       const cd = (t.content_data as Task) || {};
-      const hasImage = (cd.generated_image_url as string)?.includes('supabase.co');
+      const hasImage = !!(cd.generated_image_url as string); // accept dubis.net OR supabase.co images
       const hasReel  = !!(cd.video_url && cd.reel_status === 'ready');
       return cd.content_approved && (hasImage || hasReel);
     }).slice(0, batchSize);
@@ -1936,8 +1936,8 @@ Score the total 0-30. Return ONLY valid JSON:
 
       // ── 4. Image exists (20pts) ──────────────────────────────────────
       let imageScore = 0;
-      if (imageUrl && imageUrl.includes('supabase.co')) {
-        imageScore = 20;
+      if (imageUrl && (imageUrl.includes('supabase.co') || imageUrl.includes('dubis.net'))) {
+        imageScore = 20; // full score for both supabase.co AI images and dubis.net real photos
       } else if (imageUrl) {
         imageScore = 10;
       }

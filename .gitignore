@@ -1,13 +1,35 @@
+# API Keys — NEVER commit
+*.key.txt
 gemini.key.txt
 rave.key.txt
 PayPal.key.txt
-*.key.txt
+printful.key.txt
 
+# Environment
+.env*.local
+.env
+
+# Vercel
 .vercel
-.env*.local
-node_modules/
-*.bak
-images/test-*.jpg
-supabase-migration-*.sql
 
-.env*.local
+# Node
+node_modules/
+
+# Backups and temp files
+*.bak
+*.tmp
+*_tmp.*
+preview-tmp.*
+
+# Test images
+images/test-*.jpg
+
+# Local Claude config (personal, not shared)
+CLAUDE.local.md
+
+# Archive (old files kept for safety)
+_archive/
+
+# OS files
+.DS_Store
+Thumbs.db

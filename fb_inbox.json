@@ -1,0 +1,1 @@
+{"error":{"message":"(#200) Requires permission: pages_messaging or User associated with the Page access token does not have an appropriate role on the Page.","type":"OAuthException","code":200,"fbtrace_id":"Ab2rU_Y8NsHcBTWyAGffckI"}}

@@ -1,0 +1,6 @@
+{
+  "autoMemoryEnabled": true,
+  "claudeMdExcludes": [
+    "node_modules/**/CLAUDE.md"
+  ]
+}
