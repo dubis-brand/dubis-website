@@ -912,4 +912,29 @@ async function loadProductReviews() {
       const name = (r.product_name || '').toLowerCase();
       if (!productReviews[name]) productReviews[name] = { count: 0, total: 0 };
       productReviews[name].count++;
-      productReview
+      productReviews[name].total += r.rating;
+    });
+    // Update badges on cards
+    document.querySelectorAll('[id^="badge-"]').forEach(badge => {
+      const id = badge.id.replace('badge-', '');
+      const product = products.find(p => p.id == id);
+      if (!product) return;
+      const key = product.phrase.toLowerCase();
+      const rev = productReviews[key];
+      if (rev && rev.count > 0) {
+        const avg = (rev.total / rev.count).toFixed(1);
+        badge.textContent = `★ ${avg} (${rev.count})`;
+        badge.classList.add('has-reviews');
+      }
+    });
+  } catch { /* non-critical */ }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  loadCart();
+  checkCookieConsent();
+  await loadPriceOverrides();
+  detectLanguage(); // IP-based language detection → renders products after
+  initScrollAnimations();
+  loadProductReviews(); // Load reviews for badges (non-blocking)
+});
