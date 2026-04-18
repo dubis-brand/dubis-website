@@ -174,13 +174,15 @@ const translations = {
 };
 
 // ===== LANGUAGE DETECTION =====
+// US Pivot (2026-04-18): Default to EN for all new visitors (US audience focus).
+// Hebrew is NOT removed — full translations preserved in `translations.he` and
+// accessible via the manual lang-toggle button ("עב"). Returning users keep
+// whatever they chose last via localStorage.
 function detectLanguage() {
   const saved = localStorage.getItem('dubis-lang');
   if (saved) { setLanguage(saved); return; }
-
-  // Use browser language preference — fast, free, no external request
-  const lang = navigator.language || navigator.languages?.[0] || 'en';
-  setLanguage(lang.startsWith('he') ? 'he' : 'en');
+  // New visitors → always EN (targeted US campaign audience)
+  setLanguage('en');
 }
 
 function setLanguage(lang) {
@@ -818,6 +820,57 @@ function checkCookieConsent() {
   if (localStorage.getItem('dubis-cookies'))
     document.getElementById('cookie-banner').style.display = 'none';
 }
+
+// ===== CLIENT-SIDE ANALYTICS TRACKER =====
+// POSTs to /api/analytics/track. Respects cookie consent.
+window.dubisTrack = function(event, meta) {
+  try {
+    if (localStorage.getItem('dubis-cookies') === 'declined') return;
+    const body = JSON.stringify({
+      path: (window.location.pathname || '/') + (window.location.hash || ''),
+      referrer: document.referrer || '',
+      event: event,
+      meta: meta || null,
+    });
+    if (navigator.sendBeacon) {
+      const blob = new Blob([body], { type: 'application/json' });
+      navigator.sendBeacon('/api/analytics/track', blob);
+    } else {
+      fetch('/api/analytics/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body,
+        keepalive: true,
+      }).catch(() => {});
+    }
+  } catch (e) { /* non-critical, never throw */ }
+};
+
+// ===== SPA NAVIGATION TRACKING =====
+// Site uses #product-{id} hash routing — track as pageviews + product_view events
+(function initSpaTracking() {
+  let __dubisLastHash = window.location.hash || '';
+  // Initial pageview (fires once the user has consented; before consent, it's a no-op)
+  setTimeout(() => window.dubisTrack('pageview', { initial: true, hash: __dubisLastHash }), 500);
+
+  window.addEventListener('hashchange', () => {
+    const newHash = window.location.hash || '';
+    if (newHash !== __dubisLastHash) {
+      window.dubisTrack('pageview', { from: __dubisLastHash, to: newHash });
+      // If it's a product hash, also fire product_view
+      const m = newHash.match(/^#product-(\d+)/);
+      if (m) {
+        const pid = Number(m[1]);
+        window.dubisTrack('product_view', { product_id: pid, hash: newHash });
+        // Meta Pixel ViewContent
+        if (typeof fbq !== 'undefined') {
+          try { fbq('track', 'ViewContent', { content_ids: [String(pid)], content_type: 'product' }); } catch(e) {}
+        }
+      }
+      __dubisLastHash = newHash;
+    }
+  });
+})();
 
 // ===== MOBILE MENU =====
 function toggleMobileMenu() {

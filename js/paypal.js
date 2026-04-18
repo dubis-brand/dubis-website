@@ -160,7 +160,9 @@ function loadPayPalSDK() {
         }
         const script    = document.createElement('script');
         script.id       = 'paypal-sdk';
-        script.src      = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD&intent=capture`;
+        // enable-funding=card → renders separate "Debit or Credit Card" Guest Checkout button
+        // components=buttons → explicit; disable-funding=credit removes "Pay Later" clutter
+        script.src      = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD&intent=capture&enable-funding=card&disable-funding=credit&components=buttons`;
         script.onload   = () => { paypalLoaded = true; resolve(); };
         script.onerror  = () => reject(new Error('PayPal SDK unavailable'));
         document.head.appendChild(script);
@@ -174,6 +176,21 @@ function renderPayPalButtons() {
         const shipping  = itemTotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
         const discountedTotal = appliedCoupon ? appliedCoupon.final_total : itemTotal;
         const total = discountedTotal + shipping;
+        // Meta Pixel — InitiateCheckout event (fires when customer actually clicks PayPal/Card button)
+        if (typeof fbq === 'function') {
+            try {
+                fbq('track', 'InitiateCheckout', {
+                    value: total,
+                    currency: 'USD',
+                    num_items: cart.length,
+                    content_ids: cart.map(i => String(i.id)),
+                    content_type: 'product',
+                });
+            } catch (e) { /* pixel not critical */ }
+        }
+        // Stash for Purchase event in onApprove
+        window.__dubisCheckoutTotal = total;
+        window.__dubisCheckoutIds   = cart.map(i => String(i.id));
         return actions.order.create({
         purchase_units: [{
             description: 'DUBIS Clothing Order',
@@ -202,14 +219,19 @@ function renderPayPalButtons() {
                 const shipping = details.purchase_units[0]?.shipping;
                 if (window.dubisTrack) window.dubisTrack('purchase', { paypal_id: details.id, items: cart.length, total: cart.reduce((s,i)=>s+i.price,0) });
 
-                // Meta Pixel — Purchase event
+                // Meta Pixel — Purchase event (fixed: totalAmount was undefined)
                 if (typeof fbq === 'function') {
-                    fbq('track', 'Purchase', {
-                        value: totalAmount,
-                        currency: 'USD',
-                        content_type: 'product',
-                        num_items: cart.length,
-                    });
+                    try {
+                        const purchaseTotal = window.__dubisCheckoutTotal
+                            || cart.reduce((s,i)=>s+i.price,0);
+                        fbq('track', 'Purchase', {
+                            value: purchaseTotal,
+                            currency: 'USD',
+                            content_type: 'product',
+                            num_items: cart.length,
+                            content_ids: window.__dubisCheckoutIds || cart.map(i => String(i.id)),
+                        });
+                    } catch (e) { /* pixel not critical */ }
                 }
 
                 const shippingAddress = {
@@ -336,13 +358,46 @@ function renderPayPalButtons() {
         showPaymentError('Payment failed. Please try again or contact support.');
     };
 
-    // PayPal button
+    // Messaging above the buttons — makes Guest Checkout visible to the 60%+ of US users who don't have PayPal
+    const container = document.getElementById('paypal-button-container');
+    if (container && !container.querySelector('.cc-messaging')) {
+        const msg = document.createElement('div');
+        msg.className = 'cc-messaging';
+        msg.style.cssText = 'text-align:center;margin:0 0 12px;padding:10px 12px;background:#f5f1e8;border:1px solid #e2d9c4;border-radius:8px;font-size:13px;color:#2b2b2b;';
+        msg.innerHTML = `
+            <div style="font-weight:600;margin-bottom:4px;">💳 Pay with any credit or debit card</div>
+            <div style="font-size:12px;color:#666;">No PayPal account required. We accept Visa, Mastercard, Amex, and Discover.</div>
+            <div style="margin-top:8px;font-size:18px;letter-spacing:2px;color:#0f1a2e;">
+                <span title="Visa">💳</span>
+                <span title="Mastercard">💳</span>
+                <span title="Amex">💳</span>
+                <span title="Discover">💳</span>
+                <span style="font-size:12px;color:#999;margin-inline-start:8px;">& PayPal</span>
+            </div>
+        `;
+        container.parentNode.insertBefore(msg, container);
+    }
+
+    // PayPal button (for users with PayPal accounts)
     paypal.Buttons({
         fundingSource: paypal.FUNDING.PAYPAL,
         style: { color: 'black', shape: 'rect', label: 'pay', height: 50 },
         createOrder, onApprove, onError, onCancel: () => {}
     }).render('#paypal-button-container');
 
+    // Credit/Debit card button (Guest Checkout — no PayPal account needed)
+    // This is critical for US customers who don't use PayPal.
+    if (paypal.FUNDING && paypal.FUNDING.CARD) {
+        try {
+            paypal.Buttons({
+                fundingSource: paypal.FUNDING.CARD,
+                style: { color: 'black', shape: 'rect', label: 'pay', height: 50 },
+                createOrder, onApprove, onError, onCancel: () => {}
+            }).render('#paypal-button-container');
+        } catch (e) {
+            console.warn('Card funding button not available:', e);
+        }
+    }
 }
 
 // ===== ORDER SUMMARY =====

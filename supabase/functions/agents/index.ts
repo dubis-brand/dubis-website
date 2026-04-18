@@ -1345,9 +1345,11 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       const cd = (task.content_data as Task) || {};
       const lang = (cd.lang as string) || 'he';
       // Instagram doesn't make URLs clickable in feed/Reel captions — only bio link works.
-      // Facebook DOES make URLs clickable, so we build two versions.
+      // Facebook DOES make URLs clickable, so we link directly to the specific product page.
+      // product_url is set by auto-content from dubis_products (active=true only).
+      const productUrl = (cd.product_url as string) || 'https://www.dubis.net';
       const shopLineIG = lang === 'he' ? '🛒 לקנייה: לחצו על הקישור בביו ← @dubis.brand' : '🛒 Shop now → link in bio @dubis.brand';
-      const shopLineFB = lang === 'he' ? '🛒 לחנות: https://www.dubis.net' : '🛒 Shop: https://www.dubis.net';
+      const shopLineFB = lang === 'he' ? `🛒 לחנות: ${productUrl}` : `🛒 Shop this → ${productUrl}`;
       const baseBody = (cd.caption_he as string) || (cd.caption_en as string) || task.title;
       const tags = (cd.hashtags as string) || '#DUBIS #ForTheRestOfUs';
       // Strip any plain "www.dubis.net" the model may have added inside the body
@@ -1694,23 +1696,36 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     const adminOk = await verifyAdmin(req);
     if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
 
-    // Product catalog for rotation (matches Typography Map in CLAUDE.md)
-    type ProductDef = { slogan: string; type: string; gender: string; format: string };
-    const PRODUCTS: ProductDef[] = [
-      { slogan: "I am not fat, I am a LIMITED edition.",       type: 'tshirt',     gender: 'unisex', format: 'feed_post'  },
-      { slogan: "more of me to LOVE",                          type: 'tshirt',     gender: 'unisex', format: 'feed_post'  },
-      { slogan: "NAPPING IS MY CARDIO",                        type: 'hoodie',     gender: 'unisex', format: 'feed_post'  },
-      { slogan: "I survived. That's enough.",                  type: 'tshirt',     gender: 'unisex', format: 'feed_post'  },
-      { slogan: "low maintenance, high VALUE",                  type: 'tshirt',     gender: 'unisex', format: 'quote_card' },
-      { slogan: "Not a model. NEVER. wanted to be.",           type: 'hoodie',     gender: 'unisex', format: 'feed_post'  },
-      { slogan: "NAP — Born to nap, forced to work",           type: 'tshirt',     gender: 'unisex', format: 'feed_post'  },
-      { slogan: "certified OVER thinker",                      type: 'ziphoodie',  gender: 'unisex', format: 'feed_post'  },
-      { slogan: "serial NAPPER",                               type: 'longsleeve', gender: 'unisex', format: 'feed_post'  },
-      { slogan: "She believed she could, so she took a NAP.",  type: 'tshirt',     gender: 'women',  format: 'feed_post'  },
-      { slogan: "COFFEE — I run on coffee and sarcasm.",       type: 'tshirt',     gender: 'women',  format: 'feed_post'  },
-      { slogan: "Zero Motivation CLUB",                        type: 'hoodie',     gender: 'women',  format: 'feed_post'  },
-      { slogan: "emotionally attached to my COUCH",            type: 'longsleeve', gender: 'women',  format: 'feed_post'  },
-    ];
+    // Product catalog — pull ONLY from live dubis_products (active=true)
+    // This guarantees every post links to a product that actually exists on the site.
+    type ProductDef = { product_id: number; slogan: string; type: string; gender: string; format: string };
+    const clothingTypeMap: Record<string, string> = {
+      't-shirt': 'tshirt',
+      'hoodie': 'hoodie',
+      'zip-hoodie': 'ziphoodie',
+      'long-sleeve': 'longsleeve',
+      'cap': 'cap',
+    };
+    const { data: liveProducts, error: prodErr } = await sb
+      .from('dubis_products')
+      .select('product_id_numeric, slogan, clothing_type, gender')
+      .eq('active', true)
+      .order('product_id_numeric', { ascending: true });
+    if (prodErr || !liveProducts?.length) {
+      return json({ error: 'No active products found in dubis_products', details: prodErr?.message }, 500);
+    }
+    const PRODUCTS: ProductDef[] = (liveProducts as Array<Record<string, unknown>>)
+      .filter(p => p.product_id_numeric && p.slogan)
+      .map(p => ({
+        product_id: p.product_id_numeric as number,
+        slogan:     p.slogan as string,
+        type:       clothingTypeMap[(p.clothing_type as string) || ''] || 'tshirt',
+        gender:     (p.gender as string) || 'unisex',
+        format:     'feed_post',
+      }));
+    if (!PRODUCTS.length) {
+      return json({ error: 'No active products with slogan in dubis_products' }, 500);
+    }
 
     // Allow up to 2 content tasks per day (1 HE + 1 EN)
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
@@ -1769,6 +1784,8 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       priority:     'medium',
       content_data: {
         format:         todayPlan.format,
+        product_id:     picked.product_id,
+        product_url:    `https://www.dubis.net/#product-${picked.product_id}`,
         product_type:   picked.type,
         product_slogan: picked.slogan,
         product_gender: picked.gender,

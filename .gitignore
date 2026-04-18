@@ -21,6 +21,10 @@ node_modules/
 *_tmp.*
 preview-tmp.*
 
+# Pipeline debug artifacts
+pipeline_step*.json
+run_pipeline.bat
+
 # Test images
 images/test-*.jpg
 

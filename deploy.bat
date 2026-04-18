@@ -8,7 +8,7 @@ if exist ".git\index.lock" del ".git\index.lock"
 
 :: Commit changes
 git add -A
-git commit -m "fix: content-run uses dubis_images instead of AI generation"
+git commit -m "feat: US pivot — Gelato cap fix, Pixel events, Guest Checkout, SPA tracker, EN default"
 
 :: Push to GitHub
 git push origin main

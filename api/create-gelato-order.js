@@ -271,7 +271,7 @@ module.exports = async function handler(req, res) {
       return {
         itemReferenceId: `item-${i + 1}`,
         productUid:      buildProductUid(item.type, gelatoColor, gelatoSize, item.gender),
-        files:           getDesignFiles(item.id, item.selectedColor, item.designRef),
+        files:           getDesignFiles(item.id, item.selectedColor, item.designRef, item.type),
         quantity:        1,
       };
     }),
