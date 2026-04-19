@@ -8,3 +8,7 @@ Disallow: /api/
 
 # Sitemap
 Sitemap: https://www.dubis.net/sitemap.xml
+
+# Google Merchant Center product feed
+# Submitted to Merchant Center for Google Shopping; no need to crawl publicly.
+Disallow: /shopping-feed.xml

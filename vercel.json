@@ -14,7 +14,8 @@
     { "source": "/admin",   "destination": "/admin.html"   },
     { "source": "/terms",   "destination": "/terms.html"   },
     { "source": "/returns", "destination": "/returns.html" },
-    { "source": "/ig-content/:path*", "destination": "https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=serve-image&f=:path*" }
+    { "source": "/ig-content/:path*", "destination": "https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=serve-image&f=:path*" },
+    { "source": "/shopping-feed.xml", "destination": "https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=shopping-feed" }
   ],
   "headers": [
     {
