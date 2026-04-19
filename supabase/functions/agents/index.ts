@@ -1097,14 +1097,66 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       try {
         const cd = (task.content_data as Task) || {};
         const hasPermImg = (cd.generated_image_url as string)?.includes('supabase.co');
-        if (cd.caption_he && hasPermImg) {
-          await sb.from('agent_tasks').update({ status: 'pending_approval', updated_at: now }).eq('id', task.id);
-          taskResults.push(`✅ ${task.title}: content קיים → pending_approval`);
+
+        // PRODUCT-LINK RULE (2026-04-18): every post must link a real active product.
+        // If product_url is missing OR the linked product isn't active, hydrate from dubis_products.
+        // If we can't match to an active product at all, block the task.
+        let productUrl = (cd.product_url as string) || '';
+        let productId  = (cd.product_id  as string) || '';
+        let productPriceUsd: number | null = (cd.product_price_usd as number) ?? null;
+        let productType = (cd.product_type as string) || '';
+        const productSloganRaw = (cd.product_slogan as string) || '';
+
+        // Look up the canonical active product by id (preferred) or slogan
+        try {
+          type ActiveProduct = { product_id_numeric: number; slogan: string; clothing_type: string; price_usd: number | null };
+          let hit: ActiveProduct | null = null;
+          if (productId) {
+            const { data } = await sb.from('dubis_products')
+              .select('product_id_numeric, slogan, clothing_type, price_usd')
+              .eq('active', true)
+              .eq('product_id_numeric', productId)
+              .limit(1);
+            if (data?.length) hit = (data as ActiveProduct[])[0];
+          }
+          if (!hit && productSloganRaw) {
+            const { data } = await sb.from('dubis_products')
+              .select('product_id_numeric, slogan, clothing_type, price_usd')
+              .eq('active', true)
+              .ilike('slogan', productSloganRaw);
+            if (data?.length) hit = (data as ActiveProduct[])[0];
+          }
+          if (hit) {
+            productId  = String(hit.product_id_numeric);
+            productUrl = `https://www.dubis.net/#product-${hit.product_id_numeric}`;
+            productPriceUsd = hit.price_usd;
+            if (!productType) productType = hit.clothing_type || productType;
+          }
+        } catch (_lookupErr) { /* continue — validated below */ }
+
+        if (!productUrl || !productId) {
+          await sb.from('agent_tasks').update({
+            status: 'in_progress',
+            notes: ((task.notes as string) || '') + `\n⚠️ PRODUCT-LINK RULE: no active product matched (product_id="${productId}", slogan="${productSloganRaw}") — cannot advance`,
+            updated_at: now,
+          }).eq('id', task.id);
+          taskResults.push(`❌ ${task.title}: no active product match — blocked by product-link rule`);
+          continue;
+        }
+
+        // US-PIVOT (2026-04-18): gate on caption_en only. HE captions fully retired.
+        if (cd.caption_en && hasPermImg) {
+          await sb.from('agent_tasks').update({
+            status: 'pending_approval',
+            content_data: { ...cd, product_url: productUrl, product_id: productId, product_price_usd: productPriceUsd, product_type: productType },
+            updated_at: now,
+          }).eq('id', task.id);
+          taskResults.push(`✅ ${task.title}: content ready → pending_approval (linked → ${productUrl})`);
           continue;
         }
 
         let gen: Record<string, string> = {};
-        if (!cd.caption_he && geminiKey) {
+        if (!cd.caption_en && geminiKey) {
           // Pick a random content angle to ensure variety
           const CONTENT_ANGLES = [
             'comfort — clothes that work for you, not the other way around',
@@ -1122,57 +1174,54 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
           const todayAngle = CONTENT_ANGLES[angleIdx];
 
           const dubisPrompt = `[Your Role]
-You are the Senior Copywriter for "DUBIS" – an Israeli anti-fashion apparel brand. Tagline: "For the rest of us."
+You are the Senior Copywriter for "DUBIS" — an anti-fashion apparel brand targeting the US market. Tagline: "For the rest of us."
 
-[Target Audience] Age 40+, all genders. Real lives, real bodies. They love comfort, good food, and are exhausted by fake social media culture. They refuse to apologize for who they are.
+[Target Audience — US PIVOT 2026-04-18]
+Americans aged 35-55, all genders. Real bodies, real lives. They're exhausted by gym-culture, influencer-speak, and clothes that only look good on 22-year-olds. They want comfort that doesn't apologize, and clothes built for the bodies they actually live in. All DUBIS content is in ENGLISH ONLY — no Hebrew, no translations. This is a US-only brand voice.
 
-[Brand DNA] DUBIS breaks the false choice between "fashionable but uncomfortable" and "comfortable but invisible." We offer clothes that fit real bodies, feel amazing, and feature witty quotes that declare: "This is who I am."
+[Brand DNA]
+DUBIS breaks the false choice between "fashionable but uncomfortable" and "comfortable but invisible." We make clothes that fit real bodies, feel amazing, and carry witty one-liners that say: "This is who I am."
 
 [Content Angle for THIS post]
 Focus on: ${todayAngle}
-IMPORTANT: Do NOT always talk about body weight or being fat. DUBIS is about MUCH MORE — comfort, humor, anti-fashion rebellion, real life after 40, quality, community.
+IMPORTANT: Do NOT only talk about body weight or being fat. DUBIS is about MUCH MORE — comfort, humor, anti-fashion rebellion, real life after 35, quality, community.
 
 [Tone Rules]
-- First-person plural ("אנחנו") — tribe mentality
-- Cynical, witty, dry humor — like a sharp Israeli friend over a beer
-- BANNED WORDS (Hebrew): מושלם, מהמם, חובה, מטורף, סייל, הנחה
-- NEVER imply customer needs to "improve" or "fix" themselves
-- Use "קפוצון" NOT "הודי"
-- Short punchy sentences. No fluff.
-
-[CRITICAL — Hebrew Writing Rules]
-- Write caption_he in NATURAL ISRAELI HEBREW — like a real Israeli speaks, not translated English
-- Use slang where appropriate: "יאללה", "אחי/אחותי", "סבבה", "תכל'ס"
-- Short sentences. Street-level language. NOT literary or formal.
-- Think: how would a 45-year-old Israeli write this to their WhatsApp group?
-
-[CRITICAL — English Writing Rules]
-- Write caption_en as ORIGINAL English copy, NOT a translation of the Hebrew
-- Different hook, different angle — but same brand voice
-- Target: global English-speaking audience who gets dry humor
+- First-person plural ("we", "us") — tribe mentality, "for the rest of us"
+- Cynical, witty, dry humor — like a sharp friend over coffee
+- BANNED words: perfect, stunning, must-have, insane, sale, discount, luxurious, premium, exclusive
+- NEVER imply the customer needs to "improve" or "fix" themselves
+- Short punchy sentences. No fluff. Conversational — not literary.
+- Think: how would a 45-year-old American write this to a smart friend over text?
 
 [Protocol]
-1. Hook: relatable observation matching today's content angle
-2. Product connection: how this DUBIS item fits that moment
-3. CTA: casual and confident
+1. Hook — relatable observation matching today's angle
+2. Product connection — how this DUBIS piece fits that moment
+3. CTA — casual, confident, NO urgency-language
 
-[Examples of GOOD Hebrew voice]
-- "אחרי 40 יש לך שתי אופציות: להתלבש בשביל אחרים, או להתלבש בשביל הספה. אנחנו בחרנו."
-- "קפוצון שלא צריך להוכיח כלום לאף אחד. בדיוק כמונו."
-- "תכל'ס, הבגד הכי יקר שיש לך בארון הוא זה שאתה אף פעם לא לובש. DUBIS זה ההפך."`;
+[Examples of GOOD voice]
+- "After 40 you have two options: dress for other people, or dress for your couch. We chose."
+- "Built for the body you actually live in. Not the one in the ad."
+- "The most expensive thing in your closet is the one you never wear. DUBIS is the opposite."
+- "Your cardio is horizontal. Ours too. Welcome to the club."`;
 
           const isStory = cd.format === 'story';
           const captionPrompt = `${dubisPrompt}
 
 --- TASK ---
 Task: "${task.title}"
-Slogan on product: "${(cd.product_slogan as string) || ''}"
-Product type: "${(cd.product_type as string) || ''}"
+Slogan on product: "${productSloganRaw}"
+Product type: "${productType}"
+Product URL: "${productUrl}"
+Product price: ${productPriceUsd != null ? `$${productPriceUsd}` : 'see product page'}
 Format: ${isStory ? 'STORY — 1-2 punchy sentences max.' : (cd.format || 'feed_post')}
 
-MANDATORY RULE for caption_he: The product's English slogan MUST appear in the Hebrew caption exactly as written in English (e.g. "NAPPING IS MY CARDIO", "more of me to LOVE"). Do NOT translate the slogan to Hebrew. The slogan is on the actual garment — keeping it in English makes the connection to the product clear.
+MANDATORY:
+1. The product's slogan (e.g. "NAPPING IS MY CARDIO", "more of me to LOVE") MUST appear in the caption exactly as written. The slogan is on the actual garment — echoing it in the caption makes the connection to the product clear.
+2. Do NOT invent a URL or add any fake link inside the caption body. The publish pipeline appends the real URL "${productUrl}" to the end automatically. Keep your caption body URL-free.
+3. Do NOT include the price inside the caption body either. The shop line appends it.
 
-Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs ...5-10 tags","image_prompt":"..."}`;
+Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs ...5-10 US-relevant tags","image_prompt":"..."}`;
           const cRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
             { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1184,10 +1233,11 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
           const raw = cData.candidates?.[0]?.content?.parts?.[0]?.text || '';
           if (!raw) throw new Error('Gemini returned empty caption');
           try { gen = JSON.parse(raw.replace(/```json|```/g, '').trim()); } catch { gen = { caption_en: raw.substring(0, 200) }; }
-          if (gen.caption_he) gen.caption_he = fixHebrew(gen.caption_he);
-          if (!gen.caption_he && !gen.caption_en) throw new Error('Caption generation empty');
+          // US-PIVOT: drop any stray HE content if Gemini returns it
+          delete gen.caption_he;
+          if (!gen.caption_en) throw new Error('Caption generation empty');
         } else {
-          gen = { caption_he: cd.caption_he as string, caption_en: cd.caption_en as string, hashtags: cd.hashtags as string };
+          gen = { caption_en: cd.caption_en as string, hashtags: cd.hashtags as string };
         }
 
         let imageUrl = hasPermImg ? (cd.generated_image_url as string) : '';
@@ -1253,18 +1303,31 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
           }
         }
 
-        const finalCapHe = gen.caption_he || (cd.caption_he as string) || '';
+        // US-PIVOT (2026-04-18): caption_en is the only caption we store/publish.
         const finalCapEn = gen.caption_en || (cd.caption_en as string) || '';
-        const hasCaption = !!(finalCapHe || finalCapEn);
+        const hasCaption = !!finalCapEn;
         const newStatus = hasCaption ? 'pending_approval' : 'in_progress';
         await sb.from('agent_tasks').update({
           status: newStatus,
-          content_data: { ...cd, caption_he: finalCapHe, caption_en: finalCapEn, hashtags: gen.hashtags || (cd.hashtags as string) || '', image_prompt: gen.image_prompt || '', generated_image_url: imageUrl || (cd.generated_image_url as string) || '' },
+          // Strip any legacy caption_he that may have been saved before the US pivot.
+          // Persist the hydrated product link fields so publish + QA can rely on them.
+          content_data: {
+            ...cd,
+            caption_he: '',
+            caption_en: finalCapEn,
+            hashtags: gen.hashtags || (cd.hashtags as string) || '',
+            image_prompt: gen.image_prompt || '',
+            generated_image_url: imageUrl || (cd.generated_image_url as string) || '',
+            product_url:       productUrl,
+            product_id:        productId,
+            product_price_usd: productPriceUsd,
+            product_type:      productType,
+          },
           notes: ((task.notes as string) || '') + (hasCaption ? '' : `\n⚠️ Caption empty — retry needed`),
           updated_at: now,
         }).eq('id', task.id);
         taskResults.push(hasCaption
-          ? `✅ ${task.title}: ${imageUrl ? '🖼 תמונה+כיתוב' : `⚠️ כיתוב בלבד [${imgError}]`} → pending_approval`
+          ? `✅ ${task.title}: ${imageUrl ? 'image+caption' : `caption only [${imgError}]`} → pending_approval`
           : `⚠️ ${task.title}: caption empty — stays in_progress`);
       } catch (e) {
         taskResults.push(`❌ ${task.title}: ${(e as Error).message}`);
@@ -1348,9 +1411,15 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       // Facebook DOES make URLs clickable, so we link directly to the specific product page.
       // product_url is set by auto-content from dubis_products (active=true only).
       const productUrl = (cd.product_url as string) || 'https://www.dubis.net';
-      const shopLineIG = lang === 'he' ? '🛒 לקנייה: לחצו על הקישור בביו ← @dubis.brand' : '🛒 Shop now → link in bio @dubis.brand';
-      const shopLineFB = lang === 'he' ? `🛒 לחנות: ${productUrl}` : `🛒 Shop this → ${productUrl}`;
-      const baseBody = (cd.caption_he as string) || (cd.caption_en as string) || task.title;
+      const priceUsd   = (cd.product_price_usd as number | null) ?? null;
+      // PRODUCT-LINK RULE (2026-04-18): both IG + FB must show the specific product URL.
+      // IG won't make it clickable in feed/Reel captions, but the user can still see and copy it.
+      // Pair with "link in bio" because that bio link IS clickable.
+      const priceTag   = priceUsd != null ? ` — $${priceUsd}` : '';
+      const shortUrl   = productUrl.replace(/^https?:\/\/(www\.)?/, '');
+      const shopLineIG = `🛒 Shop this${priceTag} → ${shortUrl}\n🔗 Tap link in bio @dubis.brand`;
+      const shopLineFB = `🛒 Shop this${priceTag} → ${productUrl}`;
+      const baseBody = (cd.caption_en as string) || (cd.caption_he as string) || task.title;
       const tags = (cd.hashtags as string) || '#DUBIS #ForTheRestOfUs';
       // Strip any plain "www.dubis.net" the model may have added inside the body
       const cleanBody = baseBody.replace(/https?:\/\/(www\.)?dubis\.net\/?/gi, '').replace(/www\.dubis\.net\/?/gi, '').replace(/\n{3,}/g, '\n\n').trim();
@@ -1727,7 +1796,9 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       return json({ error: 'No active products with slogan in dubis_products' }, 500);
     }
 
-    // Allow up to 2 content tasks per day (1 HE + 1 EN)
+    // US-PIVOT (2026-04-18): ALL posts are EN-only. HE auto-content fully retired.
+    // Audience = US 35-55 from Meta campaign 120244081546680267. Site default = EN.
+    // Cron 10:00 UTC (06:00 ET) + 16:00 UTC (12:00 ET) — both optimal for US feed engagement.
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const { data: todayTasks } = await sb.from('agent_tasks')
       .select('id, content_data')
@@ -1737,9 +1808,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     if ((todayTasks?.length ?? 0) >= MAX_DAILY_POSTS) {
       return json({ skipped: true, reason: `Already ${todayTasks?.length} content tasks today (max ${MAX_DAILY_POSTS})`, task_ids: (todayTasks || []).map((t: Record<string, unknown>) => t.id) });
     }
-    // Determine which language to use — first call = HE, second = EN
-    const todayLangs = new Set((todayTasks || []).map((t: Record<string, unknown>) => ((t.content_data as Record<string, unknown>)?.language as string) || ''));
-    const nextLang = !todayLangs.has('he') ? 'he' : 'en';
+    const nextLang = 'en'; // US-PIVOT: EN only. No HE generation.
 
     // Find product not recently featured (check last N tasks)
     type TaskRow = Record<string, unknown>;
@@ -1825,7 +1894,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
     if (!geminiKey) return json({ error: 'GEMINI_API_KEY not configured' }, 503);
 
-    // Fetch pending_approval content tasks that have caption_he but no qa_score
+    // US-PIVOT: QA gate on caption_en. Legacy caption_he rows skipped.
     type Task = Record<string, unknown>;
     const { data: tasks, error: fetchErr } = await sb.from('agent_tasks')
       .select('id, title, notes, content_data')
@@ -1836,10 +1905,10 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
 
     const unscored = ((tasks || []) as Task[]).filter((t) => {
       const cd = (t.content_data as Task) || {};
-      return cd.caption_he && !cd.qa_score;
+      return cd.caption_en && !cd.qa_score;
     });
 
-    if (!unscored.length) return json({ checked: 0, passed: 0, failed: 0, results: [], summary: 'כל משימות התוכן כבר עברו QA' });
+    if (!unscored.length) return json({ checked: 0, passed: 0, failed: 0, results: [], summary: 'All content tasks already passed QA' });
 
     const now = new Date().toISOString();
     const results: unknown[] = [];
@@ -1849,7 +1918,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     for (const task of unscored) {
      try {
       const cd = (task.content_data as Task) || {};
-      const captionHe  = (cd.caption_he as string) || '';
+      // US-PIVOT: QA reviews EN caption only.
       const hashtags   = Array.isArray(cd.hashtags) ? (cd.hashtags as string[]).join(' ') : ((cd.hashtags as string) || '');
       const imageUrl   = (cd.generated_image_url as string) || '';
       const format     = (cd.format as string) || 'feed_post';
@@ -1874,23 +1943,24 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
         qaDetails.slogan_completeness = true;
       }
 
-      // ── 1. Hebrew brand voice + English grammar (30pts) — Gemini ────
+      // ── 1. English brand voice + grammar (30pts) — Gemini (US-PIVOT) ────
       let voiceScore = 0;
       const captionEn = (cd.caption_en as string) || '';
       try {
-        const voicePrompt = `You are a DUBIS brand QA reviewer. DUBIS is an Israeli body-positive humor apparel brand.
+        const voicePrompt = `You are a DUBIS brand QA reviewer. DUBIS is a US anti-fashion apparel brand for people aged 35-55, tagline "For the rest of us."
 Brand voice rules:
-- Uses "קפוצון" NOT "הודי" or "הודיז"
-- Tone: self-aware, cynical humor, body-positive, relatable
-- Not generic, ties to the brand personality
+- Tone: self-aware dry humor, body-positive, conversational, anti-hype
+- Banned words: perfect, stunning, must-have, insane, sale, discount, luxurious, premium, exclusive
+- Short punchy sentences, first-person plural ("we", "us")
+- No urgency-language, no salesy CTAs
+- Ties to the product slogan and brand personality
 
-Caption to review (Hebrew): "${captionHe}"
-${captionEn ? `English caption: "${captionEn}"` : ''}
+English caption to review: "${captionEn}"
 Product slogan on garment: "${productSlogan}"
 
 Check:
-1. Hebrew caption brand voice quality (0-20)
-2. English caption grammar correctness — if present (0-5, or 5 if no English caption)
+1. English brand voice quality — is it on-brand, witty, anti-hype? (0-20)
+2. Grammar correctness (0-5)
 3. Does the product slogan read as grammatically correct English? (0-5)
 
 Score the total 0-30. Return ONLY valid JSON:
@@ -3194,6 +3264,211 @@ Return ONLY valid JSON (no markdown):
     }
   }
 
+  // ── META ADS MANAGE ──────────────────────────────────────────────────
+  // One-stop route for managing Meta Ads campaigns from agents/Boss.
+  // Actions (via ?action=): check-token, list-campaigns, toggle-campaign, orchestrate-us-pivot
+  // Auth: admin JWT OR x-agent-secret
+  if (type === 'meta-ads-manage') {
+    const admin = await verifyAdmin(req);
+    if (!admin && !isAgentSecret(req)) return json({ error: 'Unauthorized' }, 401);
+
+    const action = url.searchParams.get('action') || '';
+    const metaToken = Deno.env.get('META_ACCESS_TOKEN') || '';
+    const adAccountId = Deno.env.get('META_AD_ACCOUNT_ID') || 'act_26201135546175057';
+    const pixelId = Deno.env.get('META_PIXEL_ID') || '1000453189108953';
+    const pageId = Deno.env.get('FACEBOOK_PAGE_ID') || '';
+    const igAccountId = Deno.env.get('INSTAGRAM_ACCOUNT_ID') || '';
+    const graphBase = 'https://graph.facebook.com/v21.0';
+
+    if (!metaToken) return json({ error: 'META_ACCESS_TOKEN not configured in Supabase secrets' }, 500);
+
+    // Helper: call Meta Graph API
+    async function metaCall(path: string, method: 'GET' | 'POST' | 'DELETE' = 'GET', fields?: Record<string, unknown>): Promise<Record<string, unknown>> {
+      const u = new URL(`${graphBase}${path.startsWith('/') ? path : '/' + path}`);
+      if (method === 'GET' && fields) {
+        for (const [k, v] of Object.entries(fields)) u.searchParams.set(k, typeof v === 'string' ? v : JSON.stringify(v));
+      }
+      u.searchParams.set('access_token', metaToken);
+      const init: RequestInit = { method };
+      if (method === 'POST') {
+        const form = new URLSearchParams();
+        if (fields) for (const [k, v] of Object.entries(fields)) form.set(k, typeof v === 'string' ? v : JSON.stringify(v));
+        init.body = form;
+        init.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+      }
+      const res = await fetch(u.toString(), init);
+      return await res.json();
+    }
+
+    // ── ACTION: check-token ─────────────────────────────────────────────
+    if (action === 'check-token') {
+      const dbg = await metaCall('/debug_token', 'GET', { input_token: metaToken });
+      const me = await metaCall('/me', 'GET', { fields: 'id,name' });
+      const acct = await metaCall(`/${adAccountId}`, 'GET', { fields: 'id,name,account_status,currency,business,capabilities' });
+      const hasAdsManagement = Array.isArray((dbg as { data?: { scopes?: string[] } }).data?.scopes)
+        && (dbg as { data?: { scopes?: string[] } }).data!.scopes!.includes('ads_management');
+      return json({ has_ads_management: hasAdsManagement, debug_token: dbg, me, ad_account: acct, pixel_id: pixelId, page_id: pageId, ig_account_id: igAccountId });
+    }
+
+    // ── ACTION: list-campaigns ──────────────────────────────────────────
+    if (action === 'list-campaigns') {
+      const campaigns = await metaCall(`/${adAccountId}/campaigns`, 'GET', {
+        fields: 'id,name,status,effective_status,objective,created_time,daily_budget,lifetime_budget',
+        limit: 100,
+      });
+      return json({ campaigns });
+    }
+
+    // ── ACTION: toggle-campaign ─────────────────────────────────────────
+    // body: { campaign_id, status: 'ACTIVE' | 'PAUSED' }
+    if (action === 'toggle-campaign') {
+      const campaignId = (body.campaign_id as string) || '';
+      const newStatus = ((body.status as string) || 'PAUSED').toUpperCase();
+      if (!campaignId) return json({ error: 'Missing campaign_id in body' }, 400);
+      const result = await metaCall(`/${campaignId}`, 'POST', { status: newStatus });
+      return json({ campaign_id: campaignId, new_status: newStatus, result });
+    }
+
+    // ── ACTION: orchestrate-us-pivot ────────────────────────────────────
+    // One-shot: pause old HE campaign + create new US Conversions campaign + 2 ad sets + 2 ads
+    // body: { pause_campaign_id?, daily_budget_ils?, image_url?, landing_url? }
+    if (action === 'orchestrate-us-pivot') {
+      const results: Record<string, unknown> = { steps: [] };
+      const steps = results.steps as Record<string, unknown>[];
+      const dailyBudgetILS = Number(body.daily_budget_ils) || 25; // ₪25/day per ad set = ₪50 total ≈ $14
+      const dailyBudgetMinor = Math.round(dailyBudgetILS * 100); // minor units (אגורות)
+      const pauseCampaignId = (body.pause_campaign_id as string) || '';
+      const landingUrl = (body.landing_url as string) || 'https://www.dubis.net/?utm_source=facebook&utm_medium=paid&utm_campaign=us_w3';
+
+      // Step 1: Pause old campaign if requested
+      if (pauseCampaignId) {
+        try {
+          const r = await metaCall(`/${pauseCampaignId}`, 'POST', { status: 'PAUSED' });
+          steps.push({ step: 'pause_old', campaign_id: pauseCampaignId, result: r });
+        } catch (e) { steps.push({ step: 'pause_old', error: (e as Error).message }); }
+      }
+
+      // Step 2: Create campaign
+      let campaignId = '';
+      try {
+        const createCamp = await metaCall(`/${adAccountId}/campaigns`, 'POST', {
+          name: `DUBIS US Conversions — W3 — ${new Date().toISOString().slice(0, 10)}`,
+          objective: 'OUTCOME_SALES',
+          status: 'PAUSED', // start paused for review
+          special_ad_categories: [],
+          buying_type: 'AUCTION',
+        });
+        campaignId = (createCamp as { id?: string }).id || '';
+        steps.push({ step: 'create_campaign', campaign_id: campaignId, result: createCamp });
+        if (!campaignId) { results.success = false; return json(results, 500); }
+      } catch (e) { steps.push({ step: 'create_campaign', error: (e as Error).message }); return json({ ...results, success: false }, 500); }
+
+      // Step 3: Get a real product image from dubis_images for the creative
+      let imageUrl = (body.image_url as string) || '';
+      if (!imageUrl) {
+        try {
+          const { data: imgs } = await sb.from('dubis_images').select('image_url').eq('approved', true).limit(1);
+          if (imgs && imgs[0]) imageUrl = imgs[0].image_url as string;
+        } catch (_e) { /* ignore */ }
+      }
+
+      // Step 4: Create 2 Ad Sets (Women + Men)
+      const genders: { label: string; genders: number[] }[] = [
+        { label: 'Women', genders: [2] },
+        { label: 'Men',   genders: [1] },
+      ];
+      const adSetIds: Record<string, string> = {};
+      for (const g of genders) {
+        try {
+          const startTime = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // start in 1 hour
+          const createAS = await metaCall(`/${adAccountId}/adsets`, 'POST', {
+            name: `US ${g.label} 35-55 — Body Positive`,
+            campaign_id: campaignId,
+            daily_budget: dailyBudgetMinor,
+            billing_event: 'IMPRESSIONS',
+            optimization_goal: 'OFFSITE_CONVERSIONS',
+            bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+            status: 'PAUSED',
+            start_time: startTime,
+            destination_type: 'WEBSITE',
+            targeting: {
+              geo_locations: { countries: ['US'] },
+              age_min: 35,
+              age_max: 55,
+              genders: g.genders,
+              locales: [6], // English (US)
+              publisher_platforms: ['facebook', 'instagram'],
+              facebook_positions: ['feed', 'story', 'video_feeds'],
+              instagram_positions: ['stream', 'story', 'explore', 'reels'],
+            },
+            promoted_object: { pixel_id: pixelId, custom_event_type: 'PURCHASE' },
+            attribution_spec: [{ event_type: 'CLICK_THROUGH', window_days: 7 }],
+          });
+          const adsetId = (createAS as { id?: string }).id || '';
+          adSetIds[g.label] = adsetId;
+          steps.push({ step: 'create_adset', gender: g.label, adset_id: adsetId, result: createAS });
+        } catch (e) { steps.push({ step: 'create_adset', gender: g.label, error: (e as Error).message }); }
+      }
+
+      // Step 5: Create Ad Creatives + Ads (if we have a pageId + image)
+      if (pageId && imageUrl) {
+        const creativeBodyWomen = `Built for the body you actually live in.\n\nPlus-size comfort wear that doesn't apologize. Bold prints. Soft fabrics. Real sizes up to 5XL.\n\nFree shipping on orders over $50. Made-to-order in the USA.`;
+        const creativeBodyMen = `Built for the body you actually live in.\n\nComfort-first clothing that doesn't judge. Bold statements. Soft cotton blends. Sizes up to 5XL.\n\nMade-to-order in the USA. Ships fast, fits right.`;
+
+        for (const g of genders) {
+          const adsetId = adSetIds[g.label];
+          if (!adsetId) continue;
+          const msg = g.label === 'Women' ? creativeBodyWomen : creativeBodyMen;
+          try {
+            // Create creative
+            const creative = await metaCall(`/${adAccountId}/adcreatives`, 'POST', {
+              name: `DUBIS US ${g.label} — Body Positive creative`,
+              object_story_spec: {
+                page_id: pageId,
+                ...(igAccountId ? { instagram_actor_id: igAccountId } : {}),
+                link_data: {
+                  link: `${landingUrl}&utm_content=${g.label.toLowerCase()}`,
+                  message: msg,
+                  name: g.label === 'Women' ? 'Real Comfort for Real Bodies' : 'The Fit That Gets You',
+                  description: 'Plus-size fashion with a sense of humor. Ships from US.',
+                  picture: imageUrl,
+                  call_to_action: { type: 'SHOP_NOW', value: { link: `${landingUrl}&utm_content=${g.label.toLowerCase()}` } },
+                },
+              },
+              degrees_of_freedom_spec: { creative_features_spec: { standard_enhancements: { enroll_status: 'OPT_OUT' } } },
+            });
+            const creativeId = (creative as { id?: string }).id || '';
+            steps.push({ step: 'create_creative', gender: g.label, creative_id: creativeId, result: creative });
+
+            // Create ad
+            if (creativeId) {
+              const ad = await metaCall(`/${adAccountId}/ads`, 'POST', {
+                name: `DUBIS US ${g.label} — Body Positive ad`,
+                adset_id: adsetId,
+                creative: { creative_id: creativeId },
+                status: 'PAUSED',
+              });
+              steps.push({ step: 'create_ad', gender: g.label, ad_id: (ad as { id?: string }).id || '', result: ad });
+            }
+          } catch (e) { steps.push({ step: 'create_creative_or_ad', gender: g.label, error: (e as Error).message }); }
+        }
+      } else {
+        steps.push({ step: 'create_creative_or_ad', skipped: true, reason: `missing pageId (${!!pageId}) or imageUrl (${!!imageUrl})` });
+      }
+
+      results.success = true;
+      results.campaign_id = campaignId;
+      results.adset_ids = adSetIds;
+      results.currency = 'ILS';
+      results.daily_budget_per_adset_ils = dailyBudgetILS;
+      results.total_daily_budget_ils = dailyBudgetILS * genders.length;
+      results.note = 'All created in PAUSED state. Review in Ads Manager and manually activate, or call /meta-ads-manage?action=toggle-campaign to activate.';
+      return json(results);
+    }
+
+    return json({ error: 'Invalid action. Valid: check-token, list-campaigns, toggle-campaign, orchestrate-us-pivot' }, 400);
+  }
+
   // Instagram's crawler is blocked by Supabase storage's X-Robots-Tag: none
   // This route fetches from storage and returns with Facebook-friendly headers
   if (type === 'serve-image') {
@@ -3217,6 +3492,6 @@ Return ONLY valid JSON (no markdown):
   }
 
   return json({
-    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image',
+    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image, meta-ads-manage',
   }, 400);
 });

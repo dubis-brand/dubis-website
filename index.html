@@ -15,10 +15,17 @@
     </script>
     <noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1000453189108953&ev=PageView&noscript=1"/></noscript>
 
-    <!-- Urgency + Stock styles -->
+    <!-- Trust Bar + legacy modal styles (stock/urgency kept for any dynamic modal callouts) -->
     <style>
-    .urgency-bar{background:linear-gradient(90deg,#1a1a1a,#2a1a00,#1a1a1a);color:#c8a96e;text-align:center;padding:10px 16px;font-size:13px;font-weight:700;letter-spacing:1px;border-bottom:1px solid #c8a96e33;position:relative;z-index:1001}
-    .urgency-bar .urgency-emoji{margin:0 6px}
+    .trust-bar{background:#F5EFE4;color:#1A1A1A;border-bottom:1px solid #D4CFC4;position:relative;z-index:1001}
+    .trust-bar-inner{max-width:1280px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:center;padding:10px 24px}
+    .trust-item{display:flex;align-items:center;justify-content:center;gap:8px;font-family:'Inter',-apple-system,sans-serif;font-size:12px;font-weight:500;letter-spacing:0.04em;color:#3D3D3D;white-space:nowrap}
+    .trust-icon{font-size:14px;line-height:1;color:#C17E3A}
+    @media (max-width:768px){
+        .trust-bar-inner{grid-template-columns:none;grid-auto-flow:column;overflow-x:auto;scroll-snap-type:x mandatory;padding:10px 16px;gap:20px;-webkit-overflow-scrolling:touch}
+        .trust-item{scroll-snap-align:start;font-size:11.5px}
+        .trust-bar-inner::-webkit-scrollbar{display:none}
+    }
     .stock-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:#e05555;margin-top:6px}
     .stock-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:#e05555;animation:pulse-dot 1.5s infinite}
     .stock-badge.ok{color:#c8a96e}.stock-badge.ok::before{background:#c8a96e;animation:none}
@@ -65,7 +72,9 @@
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
 
     <link rel="stylesheet" href="css/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Supabase JS client (auth + DB queries from browser) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -91,7 +100,7 @@
     <!-- COOKIE CONSENT BANNER -->
     <div class="cookie-banner" id="cookie-banner">
         <div class="cookie-content">
-            <span>🐾 We use cookies to improve your experience. We keep it minimal - just what's needed.</span>
+            <span>We use cookies to improve your experience. We keep it minimal — just what's needed.</span>
             <div class="cookie-buttons">
                 <button class="btn-cookie-accept" onclick="acceptCookies()">Accept</button>
                 <button class="btn-cookie-decline" onclick="declineCookies()">Decline</button>
@@ -100,11 +109,26 @@
         </div>
     </div>
 
-    <!-- URGENCY BAR -->
-    <div class="urgency-bar" id="urgency-bar">
-        <span class="urgency-emoji">🔥</span>
-        <span id="urgency-text">Limited Drop — Once they're gone, they're gone</span>
-        <span class="urgency-emoji">🔥</span>
+    <!-- TRUST BAR — real signals, no fake urgency -->
+    <div class="trust-bar" id="trust-bar" role="region" aria-label="Shipping and returns">
+        <div class="trust-bar-inner">
+            <div class="trust-item">
+                <span class="trust-icon" aria-hidden="true">🚚</span>
+                <span class="trust-text" data-en="Free US shipping over $60" data-he="משלוח חינם לארה״ב מעל $60">Free US shipping over $60</span>
+            </div>
+            <div class="trust-item">
+                <span class="trust-icon" aria-hidden="true">↩</span>
+                <span class="trust-text" data-en="30-day easy returns" data-he="החזרות 30 יום ללא דרמה">30-day easy returns</span>
+            </div>
+            <div class="trust-item">
+                <span class="trust-icon" aria-hidden="true">🧵</span>
+                <span class="trust-text" data-en="Printed fresh, made to order" data-he="מודפס טרי לפי הזמנה">Printed fresh, made to order</span>
+            </div>
+            <div class="trust-item">
+                <span class="trust-icon" aria-hidden="true">★</span>
+                <span class="trust-text" data-en="Real bodies. Real fit. Real reviews." data-he="גופים אמיתיים. גזרה אמיתית. ביקורות אמיתיות.">Real bodies. Real fit. Real reviews.</span>
+            </div>
+        </div>
     </div>
 
     <!-- NAVIGATION -->
@@ -142,41 +166,52 @@
         </div>
     </nav>
 
-    <!-- HERO SECTION -->
-    <section id="home" class="hero">
+    <!-- HERO SECTION — image-first editorial -->
+    <section id="home" class="hero hero-v2">
+        <picture class="hero-bg">
+            <source media="(max-width: 768px)" srcset="images/real6.jpg">
+            <img src="images/real6.jpg" alt="Real people wearing DUBIS — fashion built for the body you actually live in" loading="eager" fetchpriority="high">
+        </picture>
+        <div class="hero-overlay" aria-hidden="true"></div>
         <div class="hero-content">
-            <p class="hero-tagline">Fashion that doesn't ask you to suck your stomach in.</p>
-            <h1 class="hero-title">DUBIS<sup style="font-size:0.45em;vertical-align:super">™</sup></h1>
-            <p class="hero-subtitle">Built for the body you actually live in.</p>
-            <p class="hero-desc">For years, the fashion industry made clothes for someone else — younger, thinner, and constantly apologizing. DUBIS was born to break the equation. Clothes for real people who refuse to choose between looking great and feeling completely comfortable.</p>
-            <a href="#shop" class="btn-primary">Shop the Collection</a>
+            <p class="hero-tagline" data-en="Fashion that doesn't ask you to suck your stomach in." data-he="אופנה שלא מבקשת ממך להכניס את הבטן.">Fashion that doesn't ask you to suck your stomach in.</p>
+            <h1 class="hero-title">DUBIS<sup class="hero-tm">™</sup></h1>
+            <p class="hero-subtitle" data-en="Built for the body you actually live in." data-he="מעוצב לגוף שאת/ה באמת חי/ה בו.">Built for the body you actually live in.</p>
+            <p class="hero-desc" data-en="Real clothes, real fit, real people. No apologies. No fake sizes. Made fresh to order — because you deserve something made for you." data-he="בגדים אמיתיים, גזרה אמיתית, אנשים אמיתיים. בלי התנצלויות. מודפס לפי הזמנה — כי מגיע לך משהו שנעשה עבורך.">Real clothes, real fit, real people. No apologies. No fake sizes. Made fresh to order — because you deserve something made for you.</p>
+            <div class="hero-cta-row">
+                <a href="#shop" class="btn-primary" data-en="Shop the Drop — from $28" data-he="לחנות — החל מ-$28">Shop the Drop — from $28</a>
+            </div>
+            <div class="hero-trust-row" aria-label="Customer trust">
+                <span class="hero-stars" aria-hidden="true">★★★★★</span>
+                <span class="hero-trust-text" data-en="Loved by real people who refuse to apologize for their bodies." data-he="אהוב על אנשים אמיתיים שמסרבים להתנצל על הגוף שלהם.">Loved by real people who refuse to apologize for their bodies.</span>
+            </div>
         </div>
-        <div class="hero-paw">🐾</div>
     </section>
 
     <!-- MARQUEE STRIP -->
     <section class="brand-strip" aria-hidden="true">
         <div class="marquee">
             <span>"Built different. That's the point."</span>
-            <span class="sep">🐾</span>
+            <span class="sep">·</span>
             <span>"Low maintenance, high value."</span>
-            <span class="sep">🐾</span>
+            <span class="sep">·</span>
             <span>"Dressed for the life I actually built."</span>
-            <span class="sep">🐾</span>
+            <span class="sep">·</span>
             <span>"Not a model. Never wanted to be."</span>
-            <span class="sep">🐾</span>
+            <span class="sep">·</span>
             <span>"Comfortable in my skin. And my hoodie."</span>
-            <span class="sep">🐾</span>
+            <span class="sep">·</span>
             <span>"Fashion finally caught up."</span>
-            <span class="sep">🐾</span>
+            <span class="sep">·</span>
         </div>
     </section>
 
     <!-- REAL PEOPLE SECTION -->
     <section id="real-people" class="real-people fade-in-section">
         <div class="section-header">
-            <h2>The DUBIS Crew 🐻</h2>
-            <p>Real people. Real bodies. No explanations needed.</p>
+            <p class="section-eyebrow" data-en="Real DUBIS customers — not paid models" data-he="לקוחות אמיתיים של DUBIS — לא דוגמנים בתשלום">Real DUBIS customers — not paid models</p>
+            <h2 data-en="The DUBIS Crew" data-he="החבר׳ה של DUBIS">The DUBIS Crew</h2>
+            <p data-en="Real people. Real bodies. No explanations needed." data-he="אנשים אמיתיים. גופים אמיתיים. בלי הסברים.">Real people. Real bodies. No explanations needed.</p>
         </div>
         <div class="crew-carousel-wrapper">
             <button class="carousel-btn carousel-prev" aria-label="Previous">&#8249;</button>
@@ -190,8 +225,8 @@
                     </div>
                     <div class="avatar-card avatar-quote">
                         <div class="quote-inner">
-                            <span class="quote-icon">🐾</span>
-                            <p>"Real people.<br>Real bodies.<br>Real style."</p>
+                            <span class="quote-icon" aria-hidden="true">"</span>
+                            <p>Real people.<br>Real bodies.<br>Real style.</p>
                             <span class="quote-tag">DUBIS — Built for you.</span>
                         </div>
                     </div>
@@ -238,7 +273,8 @@
     <!-- QUALITY PROMISE -->
     <section class="quality-promise fade-in-section">
         <div class="promise-container">
-            <h2>What You See Is What You Get 🐾</h2>
+            <p class="section-eyebrow" data-en="Our promise to you" data-he="ההבטחה שלנו">Our promise to you</p>
+            <h2 data-en="What You See Is What You Get" data-he="מה שאת/ה רואה — זה מה שמגיע">What You See Is What You Get</h2>
             <p>We know the worry — ordering online and getting something that looks nothing like the photo. Here's our promise:</p>
             <div class="promise-grid">
                 <div class="promise-item">
@@ -273,10 +309,10 @@
                 <p>Sometime after 40, it hits you: Life is way too short for clothes that make you feel bad about your body. We've been around, built lives worth waking up for, and we absolutely refuse to apologize for enjoying them.</p>
                 <p>But when it comes to fashion? Suddenly it feels like we're expected to change ourselves. DUBIS was created to stop this nonsense. We stopped waiting for fashion brands to notice us — and made exactly what we were looking for.</p>
                 <p>Clothes for real people. No fake models, just maximum comfort, fits that flatter your actual body, and cynical quotes that tell the world: "This is me, and I own it."</p>
-                <p class="about-tagline">If you're tired of choosing between looking good and feeling comfortable — welcome home. 🐾</p>
+                <p class="about-tagline">If you're tired of choosing between looking good and feeling comfortable — welcome home.</p>
             </div>
             <div class="about-paw">
-                <div class="big-paw">🐾</div>
+                <div class="about-mark" aria-hidden="true">D</div>
             </div>
         </div>
     </section>
@@ -412,17 +448,38 @@
 
     <!-- FOOTER -->
     <footer class="footer">
-        <div class="footer-logo">
-            <span>🐾</span> DUBIS™
+        <!-- Trust strip — payment + security -->
+        <div class="footer-trust-strip">
+            <div class="footer-trust-item">
+                <span aria-hidden="true">🔒</span>
+                <span data-en="SSL secured checkout" data-he="תשלום מאובטח SSL">SSL secured checkout</span>
+            </div>
+            <div class="footer-trust-item">
+                <span data-en="PayPal · Visa · Mastercard · Amex" data-he="PayPal · Visa · Mastercard · Amex">PayPal · Visa · Mastercard · Amex</span>
+            </div>
+            <div class="footer-trust-item">
+                <span data-en="Your data is never sold or shared" data-he="המידע שלך לעולם לא נמכר או משותף">Your data is never sold or shared</span>
+            </div>
         </div>
+
+        <div class="footer-logo">DUBIS<sup style="font-size:0.4em;vertical-align:super;margin-left:2px">™</sup></div>
+        <p class="footer-tagline" data-en="Built for the body you actually live in." data-he="מעוצב לגוף שאת/ה באמת חי/ה בו.">Built for the body you actually live in.</p>
+
         <div class="footer-social" style="margin-bottom:0.8rem;display:flex;gap:1rem;justify-content:center">
-            <a href="https://www.instagram.com/dubis.brand/" target="_blank" rel="noopener" aria-label="Instagram" style="color:#c8a96e;font-size:1.4rem;text-decoration:none" title="Instagram">&#x1F4F7;</a>
-            <a href="https://www.facebook.com/profile.php?id=61577669910761" target="_blank" rel="noopener" aria-label="Facebook" style="color:#c8a96e;font-size:1.4rem;text-decoration:none" title="Facebook">&#x1F310;</a>
+            <a href="https://www.instagram.com/dubis.brand/" target="_blank" rel="noopener" aria-label="Instagram" class="footer-social-link" title="Instagram">Instagram</a>
+            <span style="color:var(--gray-500)">·</span>
+            <a href="https://www.facebook.com/profile.php?id=61577669910761" target="_blank" rel="noopener" aria-label="Facebook" class="footer-social-link" title="Facebook">Facebook</a>
         </div>
         <div class="footer-links">
             <a href="#contact">Contact</a>
             <span>·</span>
             <a href="#shop">Shop</a>
+            <span>·</span>
+            <a href="#privacy">Privacy</a>
+            <span>·</span>
+            <a href="/terms">Terms</a>
+            <span>·</span>
+            <a href="/returns">Returns</a>
         </div>
         <p>© 2026 DUBIS. All rights reserved. Built for you.</p>
     </footer>
@@ -433,11 +490,11 @@
     <div class="cart-modal" id="cart-modal" role="dialog" aria-label="Shopping Cart">
         <div class="cart-content">
             <div class="cart-header">
-                <h3>Your Cart 🐾</h3>
+                <h3>Your Cart</h3>
                 <button onclick="closeCart()" aria-label="Close cart">✕</button>
             </div>
             <div class="cart-items" id="cart-items">
-                <p class="cart-empty">Nothing here yet. The right things are one click away. 🐾</p>
+                <p class="cart-empty">Nothing here yet. The right things are one click away.</p>
             </div>
             <div class="cart-footer">
                 <div class="cart-total">Total: $<span id="cart-total">0</span></div>
@@ -465,8 +522,8 @@
         <div class="auth-modal-content">
             <button class="modal-close" onclick="closeAuthModal()" aria-label="Close">✕</button>
             <div class="auth-modal-header">
-                <div class="logo-paw" style="font-size:1.8rem">🐾</div>
                 <h2>Welcome to DUBIS</h2>
+                <p class="auth-sub">Save your address for faster checkout.</p>
             </div>
             <div class="auth-tabs">
                 <button class="auth-tab active" id="tab-login"    onclick="showAuthTab('login')">Sign In</button>
@@ -513,7 +570,7 @@
     <!-- MY ORDERS MODAL -->
     <div class="orders-modal" id="orders-modal" role="dialog" aria-label="My Orders">
         <div class="orders-modal-header">
-            <h2>My Orders 🐾</h2>
+            <h2>My Orders</h2>
             <button class="modal-close" onclick="closeMyOrders()" aria-label="Close">✕</button>
         </div>
         <div id="orders-list">
@@ -527,7 +584,6 @@
         <div class="paypal-modal-content">
             <button class="modal-close" onclick="closePaypalModal()" aria-label="Close">✕</button>
             <div class="paypal-modal-header">
-                <span class="logo-paw">🐾</span>
                 <h2>Complete Your Order</h2>
             </div>
             <div class="paypal-order-summary" id="paypal-order-summary"></div>

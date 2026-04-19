@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DUBIS — Sample Instagram Post · US Pivot</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=Inter:wght@400;500;600;700;800&family=Heebo:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --charcoal:#2C2C2C; --charcoal-soft:#3D3D3D; --honey:#C17E3A; --honey-deep:#9A6528;
+  --honey-light:#E3C9A8; --cream:#F5F0E8; --cream-deep:#EDE5D4; --white:#fff;
+  --gray-900:#1A1A1A; --gray-700:#4A4A4A; --gray-500:#8B8478; --gray-300:#D4CFC4; --gray-100:#F0ECE3;
+  --success:#2E7D32; --success-bg:#E8F5E9; --warning:#B8860B; --warning-bg:#FFF8E1;
+  --font-logo:'Anton',Impact,sans-serif; --font-display:'Fraunces',Georgia,serif;
+  --font-body-en:'Inter',system-ui,sans-serif; --font-body-he:'Heebo',system-ui,sans-serif;
+  --shadow-md:0 8px 24px rgba(44,44,44,0.12); --shadow-lg:0 20px 40px rgba(44,44,44,0.18);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--font-body-he);background:var(--cream);color:var(--charcoal);line-height:1.6;padding:32px 20px;direction:rtl;text-align:right}
+.wrap{max-width:1180px;margin:0 auto}
+h1.page-title{font-family:var(--font-display);font-weight:700;font-size:36px;color:var(--charcoal);margin-bottom:8px;letter-spacing:-0.02em}
+.subtitle{color:var(--gray-700);font-size:16px;margin-bottom:12px}
+.pivot-banner{background:linear-gradient(135deg,#1a1a1a,#2C2C2C);color:var(--honey-light);padding:16px 22px;border-radius:12px;margin-bottom:28px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.pivot-banner .flag{font-size:28px}
+.pivot-banner .txt{flex:1;min-width:240px}
+.pivot-banner .t1{font-family:var(--font-display);font-size:18px;color:var(--white);font-weight:600;margin-bottom:3px}
+.pivot-banner .t2{font-size:13px;color:var(--honey-light);opacity:0.9}
+
+/* Fix panel */
+.audit{background:var(--white);border:1px solid var(--gray-300);border-radius:16px;padding:28px;margin-bottom:32px;box-shadow:var(--shadow-md)}
+.audit h2{font-family:var(--font-display);font-size:24px;margin-bottom:20px;color:var(--charcoal);display:flex;align-items:center;gap:10px}
+.audit h2::before{content:'';width:6px;height:24px;background:var(--honey);border-radius:3px}
+.audit-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.audit-item{background:var(--cream);border-right:4px solid var(--success);padding:14px 18px;border-radius:10px}
+.audit-item.warn{border-right-color:var(--warning);background:var(--warning-bg)}
+.audit-item .label{font-size:13px;color:var(--gray-700);margin-bottom:4px;font-weight:600}
+.audit-item .verdict{font-family:var(--font-display);font-size:17px;color:var(--charcoal);font-weight:600}
+.audit-item.warn .verdict{color:var(--warning)}
+.audit-item .detail{font-size:13px;color:var(--gray-700);margin-top:6px;line-height:1.55}
+.audit-item .code{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12px;background:var(--white);padding:2px 8px;border-radius:4px;display:inline-block;margin-top:4px;border:1px solid var(--gray-300)}
+
+/* Two column */
+.preview-row{display:grid;grid-template-columns:420px 1fr;gap:32px;align-items:start}
+@media(max-width:900px){.preview-row{grid-template-columns:1fr}}
+
+/* Instagram card — forced LTR because it's US-facing */
+.ig-card{background:var(--white);border-radius:12px;overflow:hidden;box-shadow:var(--shadow-lg);border:1px solid var(--gray-300);direction:ltr;text-align:left;font-family:var(--font-body-en)}
+.ig-header{display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid var(--gray-300);gap:12px}
+.ig-avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--charcoal),var(--honey));display:flex;align-items:center;justify-content:center;color:var(--white);font-family:var(--font-logo);font-size:18px;letter-spacing:1px}
+.ig-name{font-weight:600;font-size:14px;color:var(--charcoal)}
+.ig-location{font-size:12px;color:var(--gray-500)}
+.ig-image{width:100%;aspect-ratio:1/1;background:var(--charcoal);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.ig-image img{width:100%;height:100%;object-fit:cover}
+.ig-actions{display:flex;padding:10px 14px;gap:14px;font-size:22px;color:var(--charcoal)}
+.ig-likes{padding:0 14px 6px;font-weight:600;font-size:14px;color:var(--charcoal)}
+.ig-caption{padding:0 14px 10px;font-size:14px;color:var(--charcoal)}
+.ig-caption .handle{font-weight:600;margin-right:6px}
+.ig-caption .text{white-space:pre-line;line-height:1.55}
+.ig-hashtags{padding:6px 14px 0;font-size:13px;color:var(--honey-deep);line-height:1.6}
+.ig-time{padding:10px 14px 14px;font-size:11px;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;border-top:1px solid var(--gray-100);margin-top:8px}
+
+/* Details card — stays Hebrew RTL for oren */
+.details{background:var(--white);border-radius:16px;padding:28px;box-shadow:var(--shadow-md);border:1px solid var(--gray-300)}
+.details h3{font-family:var(--font-display);font-size:22px;margin-bottom:16px;color:var(--charcoal)}
+.spec{display:grid;grid-template-columns:140px 1fr;gap:8px 16px;font-size:14px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px dashed var(--gray-300)}
+.spec .k{color:var(--gray-700);font-weight:600}
+.spec .v{color:var(--charcoal)}
+.mono{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:13px;background:var(--cream);padding:2px 8px;border-radius:4px;display:inline-block;direction:ltr}
+
+.voice-check{background:var(--cream);padding:16px;border-radius:10px;margin-top:16px}
+.voice-check h4{font-size:14px;margin-bottom:10px;color:var(--charcoal);text-transform:uppercase;letter-spacing:0.08em;font-weight:700}
+.voice-check ul{list-style:none;padding:0}
+.voice-check li{font-size:13px;padding:6px 0;color:var(--gray-700);display:flex;gap:8px}
+.voice-check li::before{content:'✓';color:var(--success);font-weight:700;flex-shrink:0}
+.voice-check li.x::before{content:'✗';color:#C62828}
+
+.cta-bar{background:var(--charcoal);color:var(--white);padding:24px 28px;border-radius:14px;margin-top:32px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+.cta-bar .txt{font-family:var(--font-display);font-size:20px;font-weight:600}
+.cta-bar .sub{font-size:14px;color:var(--gray-300);margin-top:4px}
+.cta-bar .badge{background:var(--honey);color:var(--white);padding:10px 20px;border-radius:100px;font-weight:700;font-size:14px;letter-spacing:0.04em}
+
+.section-h{font-family:var(--font-display);font-size:28px;margin:40px 0 18px;color:var(--charcoal)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1 class="page-title">פוסט לדוגמה — US/EN + Product-link rule</h1>
+  <p class="subtitle">אחרי יישור לפי הפיווט האמריקאי (2026-04-18) וחוק קישור המוצר (2026-04-18): כל פוסט חייב להפנות למוצר אמיתי עם URL ישיר</p>
+
+  <div class="pivot-banner">
+    <div class="flag">🇺🇸</div>
+    <div class="txt">
+      <div class="t1">DUBIS is US-only content now</div>
+      <div class="t2">עברית הוסרה מהפייפליין. כל פוסט = אנגלית בלבד. קהל יעד: אמריקאים 35-55. קמפיין פעיל $50/יום.</div>
+    </div>
+  </div>
+
+  <div class="audit" style="border-right:4px solid var(--warning);background:#FFF8E1">
+    <h2 style="color:var(--warning)">מצב אמת — מה באמת עלה היום</h2>
+    <div class="audit-grid">
+      <div class="audit-item warn">
+        <div class="label">10:29 UTC · עלה אוטומטית</div>
+        <div class="verdict">"I survived. That's enough." — EN+HE ❌</div>
+        <div class="detail">הקוד הישן עוד רץ בפרודקשן. ה-caption_he כן נשלח לפייסבוק (IG post 18123460381620979). התמונה: <span class="mono">dubis_photo_08.jpg</span> — בחור מבוגר עם הסלוגן על הגב — <b>match מושלם לסלוגן</b>.</div>
+      </div>
+      <div class="audit-item warn">
+        <div class="label">16:00 UTC · לא ירה</div>
+        <div class="verdict">cron 16:00 UTC = missed</div>
+        <div class="detail">אין רשומת content agent בין 10:29 ל-20:16 UTC. ה-Vercel cron לא עלה היום, או עלה ונפל בשקט. צריך לבדוק Vercel deploy logs.</div>
+      </div>
+      <div class="audit-item">
+        <div class="label">ספריית תמונות</div>
+        <div class="verdict">10 תמונות אמיתיות, slogans על הגב</div>
+        <div class="detail">יש לנו צילומים אמיתיים עם סלוגני DUBIS קריאים על הגב (<span class="mono">dubis_photo_01</span> עד <span class="mono">_10</span>). לא צריך AI gen. מה שנפל זה לא התמונות — זה ה-caption.</div>
+      </div>
+      <div class="audit-item warn">
+        <div class="label">התיקון שלי לא בפרודקשן</div>
+        <div class="verdict">השינויים לוקאליים בלבד</div>
+        <div class="detail">הקוד ב-<span class="mono">index.ts</span> עודכן לוקאלית ל-EN-only אבל לא הופעל <span class="mono">supabase functions deploy</span>. עד שלא רץ deploy.bat — הקרון הבא ידפיס שוב דו-לשוני.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="audit">
+    <h2>מה שינינו עכשיו</h2>
+    <div class="audit-grid">
+      <div class="audit-item">
+        <div class="label">auto-content route</div>
+        <div class="verdict">nextLang = 'en' hardcoded</div>
+        <div class="detail">הוסר הלוגיקה של HE→EN לסירוגין. שני הפוסטים היומיים עכשיו EN.</div>
+        <div class="code">index.ts:1742</div>
+      </div>
+      <div class="audit-item">
+        <div class="label">content-run prompt</div>
+        <div class="verdict">US audience 35-55, EN only</div>
+        <div class="detail">הפרומפט של Gemini מחזיר רק caption_en. caption_he נמחק אם חוזר בטעות.</div>
+        <div class="code">index.ts:1124-1181</div>
+      </div>
+      <div class="audit-item">
+        <div class="label">Publish logic</div>
+        <div class="verdict">CTA באנגלית קבוע</div>
+        <div class="detail">הוסר "לחצו על הקישור בביו" העברי. רק "Shop now → link in bio".</div>
+        <div class="code">index.ts:1346</div>
+      </div>
+      <div class="audit-item">
+        <div class="label">QA-content</div>
+        <div class="verdict">בודק רק EN</div>
+        <div class="detail">הפרומפט מחפש US brand voice, banned words באנגלית, דקדוק אנגלי.</div>
+        <div class="code">index.ts:1876</div>
+      </div>
+      <div class="audit-item">
+        <div class="label">memory/MEMORY.md</div>
+        <div class="verdict">US PIVOT banner בראש</div>
+        <div class="detail">באנר גדול שלא מתפספס. פותח את הזיכרון של כל סשן עתידי.</div>
+      </div>
+      <div class="audit-item">
+        <div class="label">.claude/rules</div>
+        <div class="verdict">brand-content + agents-system עודכנו</div>
+        <div class="detail">כלל פורמלי: כל תוכן customer-facing = אנגלית. הכללים נטענים אוטומטית בכל סשן.</div>
+      </div>
+      <div class="audit-item">
+        <div class="label">auto-memory</div>
+        <div class="verdict">Feedback memory נשמר</div>
+        <div class="detail">הטעות של הפוסט העברי נרשמה כ-feedback כך שזה לא יחזור.</div>
+      </div>
+      <div class="audit-item">
+        <div class="label">🔗 PRODUCT-LINK RULE (חדש, 2026-04-18)</div>
+        <div class="verdict">כל פוסט = מוצר אמיתי + URL ישיר</div>
+        <div class="detail"><span class="mono">content-run</span> עכשיו מאמת <span class="mono">product_id</span> מול <span class="mono">dubis_products WHERE active=true</span>, hydrate את <span class="mono">product_url</span> = <span class="mono">dubis.net/#product-{id}</span>, ושומר <span class="mono">product_price_usd</span>. בלי זה — הפוסט נחסם מ-<span class="mono">pending_approval</span>.</div>
+        <div class="code">index.ts:1096-1155</div>
+      </div>
+      <div class="audit-item">
+        <div class="label">Publish — IG + FB שניהם חושפים URL</div>
+        <div class="verdict">"link in bio" בלבד = לא מספיק</div>
+        <div class="detail">שורת ה-Shop בשני הערוצים מציגה עכשיו: <span class="mono">🛒 Shop this — $41 → dubis.net/#product-6</span>. ב-IG זה לא קליקבילי אבל קריא; ב-FB זה קליקבילי ישירות.</div>
+        <div class="code">index.ts:1346-1354</div>
+      </div>
+      <div class="audit-item warn">
+        <div class="label">דורש פריסה</div>
+        <div class="verdict">Edge Function לא פרוס עדיין</div>
+        <div class="detail">השינויים קיימים רק לוקאלית. deploy.bat יריץ supabase functions deploy אחרי ה-git push. עד אז — הקרון הבא ידפיס בלי ה-URL בגוף הפוסט.</div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="section-h">הסטנדרט החדש — איך פוסט DUBIS צריך להיראות (caption + אדם אמיתי עם סלוגן תואם)</h2>
+
+  <div class="preview-row">
+    <div>
+      <div class="ig-card">
+        <div class="ig-header">
+          <div class="ig-avatar">D</div>
+          <div>
+            <div class="ig-name">dubis.brand</div>
+            <div class="ig-location">For the rest of us</div>
+          </div>
+        </div>
+        <div class="ig-image">
+          <img src="images/dubis_photo_06.jpg" alt="Two men in Edinburgh wearing DUBIS navy hoodies — back slogan NOT A MODEL NEVER WANTED TO BE" onerror="this.parentElement.innerHTML='<div style=color:#F5F0E8;font-family:Anton;font-size:44px;text-align:center;padding:40px;line-height:0.95>NOT A MODEL.<br><span style=color:#C17E3A;font-size:56px>NEVER WANTED<br>TO BE.</span></div>'">
+        </div>
+        <div class="ig-actions">♥ 💬 ↗</div>
+        <div class="ig-likes">1,247 likes</div>
+        <div class="ig-caption">
+          <span class="handle">dubis.brand</span>
+          <span class="text">Models sell clothes. We make clothes for the people who were never going to model them.
+
+This hoodie fits the way it'll fit you — like it was made for a human who wasn't trying to pose. Turns out most of us weren't. The back just says what your face has been saying for years.
+
+Not a model. Never wanted to be. Built for the body you actually live in.
+
+🛒 Shop this — $41 → dubis.net/#product-6
+🔗 Tap link in bio @dubis.brand</span>
+        </div>
+        <div class="ig-hashtags">
+          #DUBIS #ForTheRestOfUs #NotAModel #RealPeople #HumanNotInfluencer #MensStyle #HoodieSeason #MidlifeStyle #AntiHype
+        </div>
+        <div class="ig-time">April 19 · 10:00 AM UTC</div>
+      </div>
+    </div>
+
+    <div class="details">
+      <h3>מפרט הפוסט</h3>
+      <div class="spec">
+        <div class="k">Product ID</div><div class="v"><span class="mono">#6</span> · מוצר פעיל ב-<span class="mono">dubis_products</span></div>
+        <div class="k">Slogan</div><div class="v"><span class="mono">NOT A MODEL. NEVER WANTED TO BE.</span></div>
+        <div class="k">סוג</div><div class="v">Hoodie · Navy · Unisex · S-3XL</div>
+        <div class="k">מחיר</div><div class="v"><b>$41 USD</b> (DTG print, heavyweight fleece)</div>
+        <div class="k">תמונה</div><div class="v"><span class="mono">dubis_photo_06.jpg</span> — שני גברים באדינבורו, הסלוגן על הגב</div>
+        <div class="k">קהל יעד</div><div class="v">US 35-55, all genders</div>
+        <div class="k">Angle</div><div class="v">anti-influencer · realness over poses</div>
+        <div class="k">זמן פרסום</div><div class="v">10:00 UTC = 06:00 ET morning scroll</div>
+        <div class="k">פלטפורמות</div><div class="v">Instagram + Facebook (feed, auto-cross-post)</div>
+        <div class="k">Direct URL</div><div class="v"><a href="https://www.dubis.net/#product-6" target="_blank" style="color:var(--honey-deep);font-weight:600"><span class="mono">https://www.dubis.net/#product-6</span> ↗</a></div>
+        <div class="k">Pixel event</div><div class="v"><span class="mono">ViewContent</span> on click · <span class="mono">product_view</span> on hash route · value=$41 USD</div>
+      </div>
+
+      <div class="voice-check">
+        <h4>Voice checklist</h4>
+        <ul>
+          <li>תמונה אמיתית של שני גברים לובשים את ההודי — הסלוגן על הגב נקרא ברור (lockstep עם ה-caption)</li>
+          <li>US-English native phrasing — "was never going to model them" — לא תרגום</li>
+          <li>Dry humor, anti-hype, tribe voice ("we", "us")</li>
+          <li>Slogan מופיע מילה במילה בקפשן + על החולצה בתמונה = product clarity מקסימלי</li>
+          <li>Tagline reference ("Built for the body you actually live in")</li>
+          <li>Zero banned words (perfect / stunning / must-have / sale / premium — לא קיימים)</li>
+          <li>No urgency-language, no countdown, no "limited time"</li>
+          <li>9 US-relevant hashtags, all English</li>
+          <li><b>URL ישיר למוצר</b> נראה בגוף הפוסט (<span class="mono">dubis.net/#product-6</span>) + מחיר $41 — גם ב-IG (לא-קליקבילי אבל קריא) וגם ב-FB (קליקבילי)</li>
+          <li>המוצר קיים ופעיל ב-<span class="mono">dubis_products</span> (ID 6) — לא פיקטיבי</li>
+          <li class="x">לא עברית בשום מקום ❌ (by design)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="section-h">פוסט שני — 16:00 UTC slot (שיעלה כשהקרון יחזור לעבוד + קוד ה-US pivot יהיה בפרוד)</h2>
+
+  <div class="preview-row">
+    <div>
+      <div class="ig-card">
+        <div class="ig-header">
+          <div class="ig-avatar">D</div>
+          <div>
+            <div class="ig-name">dubis.brand</div>
+            <div class="ig-location">Built for the body you actually live in</div>
+          </div>
+        </div>
+        <div class="ig-image">
+          <img src="images/dubis_photo_02.jpg" alt="Man walking in London wearing DUBIS black t-shirt with back slogan I'M NOT FAT I'M A LIMITED EDITION" onerror="this.parentElement.innerHTML='<div style=color:#F5F0E8;font-family:Anton;font-size:36px;text-align:center;padding:40px;line-height:1>I&#39;M NOT FAT,<br>I&#39;M A<br><span style=color:#C17E3A;font-size:72px>LIMITED</span><br>EDITION</div>'">
+        </div>
+        <div class="ig-actions">♥ 💬 ↗</div>
+        <div class="ig-likes">892 likes</div>
+        <div class="ig-caption">
+          <span class="handle">dubis.brand</span>
+          <span class="text">Mass production is cheap. Limited editions aren't.
+
+We stopped apologizing for the size the algorithm didn't plan for. The world kept spinning. Our skin fit better. Turns out, so do our t-shirts.
+
+This one says what you've been thinking. Wear it and people are going to read it out loud. Consider yourself warned.
+
+Not fat. Not a size. A limited edition — like everyone you actually like.
+
+🛒 Shop this — $28 → dubis.net/#product-1
+🔗 Tap link in bio @dubis.brand</span>
+        </div>
+        <div class="ig-hashtags">
+          #DUBIS #ForTheRestOfUs #LimitedEdition #BodyPositive #PlusSizeStyle #MidlifeStyle #RealBodies #NoApologies #AntiHype
+        </div>
+        <div class="ig-time">April 19 · 4:00 PM UTC</div>
+      </div>
+    </div>
+
+    <div class="details">
+      <h3>מפרט הפוסט + הכלל החדש</h3>
+      <div class="spec">
+        <div class="k">Product ID</div><div class="v"><span class="mono">#1</span> · מוצר פעיל ב-<span class="mono">dubis_products</span></div>
+        <div class="k">Slogan</div><div class="v"><span class="mono">I'M NOT FAT, I'M A LIMITED EDITION</span></div>
+        <div class="k">סוג</div><div class="v">T-Shirt · Black · Unisex · S-3XL</div>
+        <div class="k">מחיר</div><div class="v"><b>$28 USD</b> (DTG print, combed ring-spun cotton)</div>
+        <div class="k">תמונה</div><div class="v"><span class="mono">dubis_photo_02.jpg</span> — בחור בלונדון, הסלוגן על הגב</div>
+        <div class="k">Angle</div><div class="v">body-positive · size rebellion · no apologies</div>
+        <div class="k">זמן פרסום</div><div class="v">16:00 UTC = 12:00 ET noon feed</div>
+        <div class="k">Direct URL</div><div class="v"><a href="https://www.dubis.net/#product-1" target="_blank" style="color:var(--honey-deep);font-weight:600"><span class="mono">https://www.dubis.net/#product-1</span> ↗</a></div>
+        <div class="k">Pixel event</div><div class="v"><span class="mono">ViewContent</span> + <span class="mono">product_view</span> · value=$28 USD</div>
+      </div>
+
+      <p style="font-size:13px;color:var(--gray-700);margin:4px 0 14px;line-height:1.7;padding:12px 14px;background:var(--cream);border-radius:8px;border-right:3px solid var(--honey)">
+        <b>הכלל הנעול (2026-04-18):</b> כל פוסט DUBIS מציג מוצר אמיתי מ-<span class="mono">dubis_products WHERE active=true</span>, כולל URL ישיר <span class="mono">dubis.net/#product-{id}</span>, סלוגן מילה במילה, ומחיר ב-USD — בגוף הקפשן עצמו. זה לא "link in bio" בלבד — זה קישור ישיר לדף המוצר.
+      </p>
+
+      <div class="voice-check" style="margin-top:0">
+        <h4>Quality control — מה אכפת לנו שיעבור</h4>
+        <ul>
+          <li>Product ID + URL ישיר גלויים בגוף הפוסט (גם ב-IG, גם ב-FB — לא רק "link in bio")</li>
+          <li>המוצר קיים ב-<span class="mono">dubis_products</span> עם <span class="mono">active=true</span> — <span class="mono">content-run</span> חוסם פוסט אם לא</li>
+          <li>המחיר USD מופיע בשורת ה-Shop — המשתמש לא צריך להגיע לדף המוצר רק כדי לראות כמה זה עולה</li>
+          <li>הסלוגן על החולצה בתמונה = הסלוגן בקפשן (match ויזואלי/מילולי)</li>
+          <li>שני פוסטים ביום = שני מוצרים שונים: בוקר Hoodie #6 ($41), אחר"צ T-Shirt #1 ($28)</li>
+          <li>Both posts English-only — zero HE leak</li>
+          <li>תמונות מהספרייה האמיתית (<span class="mono">dubis_photo_*</span>) — לא AI-generated</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="cta-bar">
+    <div>
+      <div class="txt">לפני שמשחררים — deploy + cron + product-link rule</div>
+      <div class="sub">1) double-click על <span style="color:var(--honey-light)">deploy.bat</span> כדי להעלות את קוד ה-EN-only + ה-product-link rule לפרוד (Edge Function + git push). 2) בדוק למה 16:00 UTC cron לא עלה אתמול (Vercel deployments log). 3) הפוסט מ-10:29 UTC 2026-04-18 שכבר באוויר = חסר לו URL בגוף הקפשן — ה-pipeline החדש יטפל בכל הפוסטים מכאן והלאה; הישן יישאר כפי שהוא.</div>
+    </div>
+    <div class="badge" style="background:var(--warning);color:#fff">DEPLOY FIRST</div>
+  </div>
+
+</div>
+</body>
+</html>

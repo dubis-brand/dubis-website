@@ -8,7 +8,7 @@ if exist ".git\index.lock" del ".git\index.lock"
 
 :: Commit changes
 git add -A
-git commit -m "feat: US pivot — Gelato cap fix, Pixel events, Guest Checkout, SPA tracker, EN default"
+git commit -m "design: 10x upgrade — typography system, WCAG AA buttons, hero v2, trust bar, premium footer"
 
 :: Push to GitHub
 git push origin main
