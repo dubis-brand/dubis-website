@@ -244,7 +244,7 @@ Deno.serve(async (req: Request) => {
     });
 
     if (!tasks.length) {
-      const readyCount = (allApproved || []).filter((t: Task) => (t.content_data as Task)?.content_approved).length;
+      const readyCount = (allActionable || []).filter((t: Task) => (t.content_data as Task)?.content_approved).length;
       return json({ queued: 0, ready_to_publish: readyCount, summary: readyCount > 0
         ? `✅ ${readyCount} משימות מוכנות לפרסום (תוכן אושר). אין משימות חדשות לעיבוד.`
         : 'אין משימות approved הממתינות לעיבוד.' });
@@ -1984,25 +1984,31 @@ Score the total 0-30. Return ONLY valid JSON:
       qaDetails.voice_score = voiceScore;
       if (voiceScore < 15) failReasons.push('קול המותג חלש');
 
-      // ── 2. Caption quality (25pts) ───────────────────────────────────
+      // ── 2. Caption quality (25pts) — US-PIVOT: EN caption only ────
       let captionScore = 0;
-      const captionLen = captionHe.length;
+      const captionLen = captionEn.length;
       const minLen = format === 'story' ? 10 : 50;
-      const maxLen = format === 'story' ? 150 : 300;
+      const maxLen = format === 'story' ? 150 : 500; // EN captions can run a bit longer than the old HE limit
       if (captionLen >= minLen && captionLen <= maxLen) {
         captionScore = 20;
-        // Check it's not generic: if it contains product slogan keyword or brand reference, +5
-        const slogan = ((cd.product_slogan as string) || '').toLowerCase();
-        const sloganWords = slogan.split(/\s+/).filter((w: string) => w.length > 3);
-        const hasRef = sloganWords.some((w: string) => captionHe.toLowerCase().includes(w));
-        if (hasRef || captionHe.includes('DUBIS') || captionHe.includes('דוביס')) captionScore = 25;
+        // +5 if caption references the slogan or brand mark
+        const slogan2 = ((cd.product_slogan as string) || '').toLowerCase();
+        const sloganWords2 = slogan2.split(/\s+/).filter((w: string) => w.length > 3);
+        const hasRef = sloganWords2.some((w: string) => captionEn.toLowerCase().includes(w));
+        if (hasRef || captionEn.includes('DUBIS') || captionEn.toLowerCase().includes('dubis')) captionScore = 25;
       } else if (captionLen > 0) {
         captionScore = 10; // has content but wrong length
+      }
+      // PRODUCT-LINK RULE: caption must include product_url or fail outright
+      const productUrlCd = (cd.product_url as string) || '';
+      if (productUrlCd && !captionEn.includes(productUrlCd)) {
+        captionScore = Math.min(captionScore, 8);
+        failReasons.push(`caption missing product_url (${productUrlCd})`);
       }
       score += captionScore;
       qaDetails.caption_score = captionScore;
       qaDetails.caption_length = captionLen;
-      if (captionScore < 10) failReasons.push(`כיתוב לא מתאים (${captionLen} תווים)`);
+      if (captionScore < 10) failReasons.push(`caption out of range (${captionLen} chars)`);
 
       // ── 3. Hashtags (15pts) ──────────────────────────────────────────
       let hashtagScore = 0;
@@ -2033,13 +2039,15 @@ Score the total 0-30. Return ONLY valid JSON:
       qaDetails.image_url = imageUrl || null;
       if (imageScore === 0) failReasons.push('חסרה תמונה');
 
-      // ── 5. No forbidden words (10pts) ────────────────────────────────
-      const forbidden = ['הודי', 'הודיז', 'זיפ הודי'];
-      const foundForbidden = forbidden.filter((w) => captionHe.includes(w));
+      // ── 5. No forbidden words (10pts) — US-PIVOT: EN banned list ────
+      // Anti-hype brand voice — these are banned in any DUBIS customer-facing copy.
+      const forbidden = ['perfect', 'stunning', 'must-have', 'insane', 'sale', 'discount', 'luxurious', 'premium', 'exclusive'];
+      const captionEnLower = captionEn.toLowerCase();
+      const foundForbidden = forbidden.filter((w) => captionEnLower.includes(w));
       const forbiddenScore = foundForbidden.length === 0 ? 10 : 0;
       score += forbiddenScore;
       qaDetails.forbidden_score = forbiddenScore;
-      if (foundForbidden.length > 0) failReasons.push(`מילים אסורות: ${foundForbidden.join(', ')}`);
+      if (foundForbidden.length > 0) failReasons.push(`banned words: ${foundForbidden.join(', ')}`);
 
       // ── Final verdict ────────────────────────────────────────────────
       const qaPass = score >= 60;
