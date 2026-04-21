@@ -76,6 +76,10 @@ const PRODUCTS = [
     small: "Fashion? I prefer",    big: "COMFORT.",    after: ""                },
   { id: 16, phrase: "My goal: minimal EXISTENCE.",       layout: 'top-bottom',
     small: "My goal: minimal",     big: "EXISTENCE.",  after: ""                },
+  { id: 17, phrase: "Experienced in EXHAUSTION.",        layout: 'top-bottom',
+    small: "Experienced in",       big: "EXHAUSTION",  after: "."                },
+  { id: 18, phrase: "Unfashionably COMFORTABLE.",        layout: 'top-bottom',
+    small: "Unfashionably",        big: "COMFORTABLE", after: "."                },
 ];
 
 // ---------------------------------------------------------------------------
@@ -224,10 +228,14 @@ function generateBack(product, color, outPath) {
 
 // ---------------------------------------------------------------------------
 // Front logo generator  (3600 × 4200 px)
+// Oren directive 2026-04-21: "מקדימה אמור להיות הברנד שלנו עם (TM)".
+// Chest-area DUBIS™, centered, large enough to pass Gelato's non-transparent-
+// pixel coverage validator (~5% of canvas). Prior 130px corner logo was <1%
+// coverage → Gelato silently substituted JB default → 3 broken orders.
 // ---------------------------------------------------------------------------
 const FRONT_W = 3600;
 const FRONT_H = 4200;
-const LOGO_FONT_SIZE = 130;
+const LOGO_FONT_SIZE = 900;  // was 130 — now passes Gelato coverage check
 
 function generateFrontLogo(color, outPath) {
   const canvas = createCanvas(FRONT_W, FRONT_H);
@@ -237,12 +245,12 @@ function generateFrontLogo(color, outPath) {
 
   const textColor = color === 'white' ? '#ffffff' : '#1a1a1a';
   ctx.fillStyle    = textColor;
-  ctx.textAlign    = 'left';
-  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
 
-  // Left-chest area: ~30% from left, ~25% from top
-  const x = FRONT_W * 0.30;
-  const y = FRONT_H * 0.25;
+  // Upper-chest zone: horizontally centered, ~28% from top
+  const x = FRONT_W / 2;
+  const y = FRONT_H * 0.28;
 
   setFont(ctx, LOGO_FONT_SIZE);
   ctx.fillText('DUBIS\u2122', x, y);

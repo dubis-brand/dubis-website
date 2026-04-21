@@ -10,6 +10,11 @@
 
 const GELATO_API_BASE = 'https://order.gelatoapis.com';
 const DESIGN_BASE_URL = 'https://www.dubis.net/designs';
+// Cache-busting version — bump whenever designs are regenerated.
+// Gelato CDN caches by full URL; same URL = same cached file. Without this
+// param, re-uploading a fixed PNG has no effect — Gelato keeps serving the
+// broken cached version. Set via env or hardcode to a date tag.
+const DESIGN_VERSION = process.env.DESIGN_VERSION || '2026042101';
 
 // ─────────────────────────────────────────────────────────────────
 // COLOR MAP — DUBIS display name → Gelato color code
@@ -111,14 +116,15 @@ function getDesignFiles(productId, color, designRef, productType) {
   const variant  = DARK_COLORS.has(color) ? 'white' : 'dark';
   const designId = designRef || productId;
   // Caps use different file naming: cap_design_*.png (front only, no back)
+  const v = `?v=${DESIGN_VERSION}`;
   if (productType === 'cap') {
     return [
-      { type: 'front', url: `${DESIGN_BASE_URL}/cap_design_${variant}.png` },
+      { type: 'front', url: `${DESIGN_BASE_URL}/cap_design_${variant}.png${v}` },
     ];
   }
   return [
-    { type: 'back',  url: `${DESIGN_BASE_URL}/back_design_${designId}_${variant}.png` },
-    { type: 'front', url: `${DESIGN_BASE_URL}/front_logo_${variant}.png` },
+    { type: 'back',  url: `${DESIGN_BASE_URL}/back_design_${designId}_${variant}.png${v}` },
+    { type: 'front', url: `${DESIGN_BASE_URL}/front_logo_${variant}.png${v}` },
   ];
 }
 
@@ -156,21 +162,55 @@ function parseName(fullName = '') {
 //     The broken 600×200px file was only ~10 KB.
 // ─────────────────────────────────────────────────────────────────
 const MIN_DESIGN_BYTES = 200 * 1024; // 200 KB minimum
+const MIN_DESIGN_W     = 1800;       // Gelato rejects below this
+const MIN_DESIGN_H     = 1800;
+
+// Parse a PNG's IHDR chunk to extract width/height without a decoder library.
+// IHDR layout: bytes 8-15 are PNG signature tail, 16-19 = IHDR length, 20-23 = "IHDR",
+// 24-27 = width (big-endian uint32), 28-31 = height.
+function parsePngDimensions(buf) {
+  if (!buf || buf.length < 32) return null;
+  if (buf[0] !== 0x89 || buf[1] !== 0x50 || buf[2] !== 0x4E || buf[3] !== 0x47) return null;
+  const w = (buf[16] << 24) | (buf[17] << 16) | (buf[18] << 8) | buf[19];
+  const h = (buf[20] << 24) | (buf[21] << 16) | (buf[22] << 8) | buf[23];
+  return { w, h };
+}
 
 async function validateDesignFile(url) {
   try {
-    const res = await fetch(url, { method: 'HEAD' });
-    if (!res.ok) {
+    // Single GET with Range: bytes=0-31 — fetch only the IHDR bytes and also
+    // verify the file is reachable. Some CDNs ignore Range and return full body;
+    // either way we get the IHDR.
+    const res = await fetch(url, { headers: { 'Range': 'bytes=0-31' } });
+    if (!res.ok && res.status !== 206) {
       return { ok: false, reason: `HTTP ${res.status} for ${url}` };
     }
-    const contentLength = parseInt(res.headers.get('content-length') || '0', 10);
-    if (contentLength > 0 && contentLength < MIN_DESIGN_BYTES) {
+    const buf = Buffer.from(await res.arrayBuffer());
+    // Full length comes from content-range header on 206, or content-length on 200.
+    let totalLen = 0;
+    const cr = res.headers.get('content-range');
+    if (cr) {
+      const m = cr.match(/\/(\d+)$/);
+      if (m) totalLen = parseInt(m[1], 10);
+    }
+    if (!totalLen) totalLen = parseInt(res.headers.get('content-length') || '0', 10);
+    if (totalLen > 0 && totalLen < MIN_DESIGN_BYTES) {
       return {
         ok: false,
-        reason: `Design file too small: ${url} is only ${Math.round(contentLength / 1024)}KB (min ${MIN_DESIGN_BYTES / 1024}KB). Gelato will silently reject it.`,
+        reason: `Design file too small: ${url} is only ${Math.round(totalLen / 1024)}KB (min ${MIN_DESIGN_BYTES / 1024}KB). Gelato will silently reject it → JB default template.`,
       };
     }
-    return { ok: true };
+    const dims = parsePngDimensions(buf.slice(0, 32));
+    if (!dims) {
+      return { ok: false, reason: `Not a valid PNG (missing IHDR): ${url}` };
+    }
+    if (dims.w < MIN_DESIGN_W || dims.h < MIN_DESIGN_H) {
+      return {
+        ok: false,
+        reason: `Design dimensions too small: ${url} is ${dims.w}×${dims.h} (min ${MIN_DESIGN_W}×${MIN_DESIGN_H}). Gelato will reject → JB default.`,
+      };
+    }
+    return { ok: true, width: dims.w, height: dims.h, bytes: totalLen };
   } catch (err) {
     return { ok: false, reason: `Cannot reach design file: ${url} — ${err.message}` };
   }
