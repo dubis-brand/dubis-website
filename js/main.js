@@ -880,10 +880,32 @@ window.dubisTrack = function(event, meta) {
     tryOpen();
   }
 
+  // Query-param deep link: `?p=N` — used for Instagram captions where `#product-N`
+  // gets parsed as an IG hashtag. If present, normalize to hash so openFromHash works
+  // and the URL also looks clean (replaceState so the back button isn't polluted).
+  function openFromQueryParam() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const p = params.get('p');
+      if (p && /^\d+$/.test(p)) {
+        const pid = Number(p);
+        const newUrl = window.location.pathname + '#product-' + pid;
+        window.history.replaceState({}, '', newUrl);
+        __dubisLastHash = '#product-' + pid;
+        openFromHash(__dubisLastHash, 'query-p');
+        return true;
+      }
+    } catch (e) { console.error('openFromQueryParam failed:', e); }
+    return false;
+  }
+
   // Initial pageview + deep-link open (fires after consent gate + a moment for products.js)
   setTimeout(() => {
     window.dubisTrack('pageview', { initial: true, hash: __dubisLastHash });
-    openFromHash(__dubisLastHash, 'initial');
+    // `?p=N` takes precedence over hash (IG-safe URL format)
+    if (!openFromQueryParam()) {
+      openFromHash(__dubisLastHash, 'initial');
+    }
   }, 500);
 
   window.addEventListener('hashchange', () => {
