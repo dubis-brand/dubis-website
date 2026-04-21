@@ -846,27 +846,51 @@ window.dubisTrack = function(event, meta) {
   } catch (e) { /* non-critical, never throw */ }
 };
 
-// ===== SPA NAVIGATION TRACKING =====
+// ===== SPA NAVIGATION TRACKING + DEEP-LINK ROUTING =====
 // Site uses #product-{id} hash routing — track as pageviews + product_view events
+// AND auto-open the product modal when landing on or navigating to such a hash.
+// (Historically this only fired tracking; the modal never opened, so Instagram/Facebook
+//  deep links landed on the homepage instead of the product. Fixed 2026-04-21.)
 (function initSpaTracking() {
   let __dubisLastHash = window.location.hash || '';
-  // Initial pageview (fires once the user has consented; before consent, it's a no-op)
-  setTimeout(() => window.dubisTrack('pageview', { initial: true, hash: __dubisLastHash }), 500);
+
+  // Helper — open product modal from a hash, safely (waits for modal code to load)
+  function openFromHash(hash, context) {
+    const m = (hash || '').match(/^#product-(\d+)/);
+    if (!m) return;
+    const pid = Number(m[1]);
+    // Tracking
+    window.dubisTrack('product_view', { product_id: pid, hash: hash, src: context || 'hashchange' });
+    if (typeof fbq !== 'undefined') {
+      try { fbq('track', 'ViewContent', { content_ids: [String(pid)], content_type: 'product' }); } catch(e) {}
+    }
+    // Modal — retry while products[] / openProductModal are still loading
+    let attempts = 0;
+    const tryOpen = () => {
+      attempts++;
+      if (typeof window.openProductModal === 'function' &&
+          typeof products !== 'undefined' &&
+          Array.isArray(products) &&
+          products.length > 0) {
+        try { window.openProductModal(pid); } catch(e) { console.error('openProductModal failed:', e); }
+        return;
+      }
+      if (attempts < 40) setTimeout(tryOpen, 150); // up to 6s total
+    };
+    tryOpen();
+  }
+
+  // Initial pageview + deep-link open (fires after consent gate + a moment for products.js)
+  setTimeout(() => {
+    window.dubisTrack('pageview', { initial: true, hash: __dubisLastHash });
+    openFromHash(__dubisLastHash, 'initial');
+  }, 500);
 
   window.addEventListener('hashchange', () => {
     const newHash = window.location.hash || '';
     if (newHash !== __dubisLastHash) {
       window.dubisTrack('pageview', { from: __dubisLastHash, to: newHash });
-      // If it's a product hash, also fire product_view
-      const m = newHash.match(/^#product-(\d+)/);
-      if (m) {
-        const pid = Number(m[1]);
-        window.dubisTrack('product_view', { product_id: pid, hash: newHash });
-        // Meta Pixel ViewContent
-        if (typeof fbq !== 'undefined') {
-          try { fbq('track', 'ViewContent', { content_ids: [String(pid)], content_type: 'product' }); } catch(e) {}
-        }
-      }
+      openFromHash(newHash, 'hashchange');
       __dubisLastHash = newHash;
     }
   });

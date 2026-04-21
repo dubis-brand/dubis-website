@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DUBIS — למה לא ראית את פגישת הצוות | אבחון ותיקון</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Heebo','Segoe UI',Tahoma,Arial,sans-serif;background:#0d0d0d;color:#e0e0e0;padding:40px 20px;line-height:1.75}
+  .wrap{max-width:900px;margin:0 auto}
+  .hero{background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);border:1px solid #2a2a4a;border-radius:16px;padding:40px 32px;margin-bottom:28px;text-align:center}
+  .brand{color:#c8a96e;font-size:12px;letter-spacing:4px;margin-bottom:10px}
+  h1{color:#fff;font-size:28px;margin-bottom:10px;font-weight:800}
+  .sub{color:#9ca3af;font-size:14px}
+  .verdict{display:inline-block;margin-top:20px;padding:10px 22px;background:rgba(92,184,92,.14);border:1px solid rgba(92,184,92,.5);border-radius:10px;color:#86efac;font-weight:700;font-size:13px;letter-spacing:1px}
+  .section{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:14px;padding:28px;margin-bottom:22px}
+  .section h2{color:#c8a96e;font-size:20px;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid #333}
+  .section p{margin-bottom:10px;font-size:14.5px;color:#ccc}
+  .section strong{color:#fff}
+  .timeline{list-style:none;padding:0}
+  .timeline li{position:relative;padding:14px 0 14px 0;padding-right:28px;border-right:2px solid #2a2a2a;margin-right:8px}
+  .timeline li:before{content:"";position:absolute;right:-7px;top:20px;width:12px;height:12px;border-radius:50%;background:#c8a96e}
+  .timeline li.done:before{background:#5cb85c}
+  .timeline li.fail:before{background:#e05555}
+  .timeline .t{color:#888;font-size:12px;letter-spacing:1px}
+  .timeline .w{color:#fff;font-size:15px;margin-top:2px;font-weight:600}
+  .timeline .d{color:#bbb;font-size:13.5px;margin-top:4px}
+  .box-red{background:#2a1010;border:2px solid #e05555;border-radius:12px;padding:22px;margin:18px 0}
+  .box-red h3{color:#ff6b6b;font-size:16px;margin-bottom:10px}
+  .box-red p{color:#ffd7d7}
+  .box-green{background:#0f2a18;border:2px solid #5cb85c;border-radius:12px;padding:22px;margin:18px 0}
+  .box-green h3{color:#86efac;font-size:16px;margin-bottom:10px}
+  .box-green p{color:#d1fae5}
+  .cta{display:block;background:#c8a96e;color:#0d0d0d;padding:18px 24px;border-radius:12px;text-decoration:none;font-weight:800;font-size:15px;text-align:center;margin:20px 0;transition:background .2s}
+  .cta:hover{background:#d4b87a}
+  .cta-sub{display:block;background:#232323;border:1px solid #444;color:#e0e0e0;padding:14px 22px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;text-align:center;margin:10px 0}
+  code{background:#232323;padding:2px 8px;border-radius:4px;color:#ffd166;font-family:'SF Mono','Monaco',monospace;font-size:13px}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{padding:10px 12px;text-align:right;border-bottom:1px solid #2a2a2a;font-size:13.5px}
+  th{color:#c8a96e;font-weight:700;background:#161616}
+  td{color:#ccc}
+  .foot{text-align:center;color:#555;font-size:12px;margin-top:30px;padding-top:20px;border-top:1px solid #222}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div class="brand">DUBIS · AGENT OPS · DIAGNOSIS</div>
+    <h1>הפגישה כן הייתה. פשוט לא ראית אותה.</h1>
+    <div class="sub">יום ראשון · 19 באפריל 2026 · 23:50 שעון ישראל</div>
+    <div class="verdict">✓ אובחן · ✓ תוקן · ✓ מתועד</div>
+  </div>
+
+  <div class="section">
+    <h2>TL;DR</h2>
+    <p>הפגישה השבועית <strong>רצה בדיוק בזמן</strong> ב-07:06 שעון ישראל (Sunday cron). הסוכן ניתח את הנתונים, כתב דוח מלא 45KB, והציג אותו דרך <code>present_files</code>.</p>
+    <p><strong>הבעיה:</strong> הדוח הוצג רק בחלון ה-Cowork הספציפי של המשימה המתוזמנת — לא נשלח למייל, לא הופיע אצלך בצ'אט הראשי, ולא נרשם ב-<code>agent_runs</code>. בפועל, אתה <strong>לא היית בחלון הזה</strong>, אז מבחינתך זה לא קרה.</p>
+    <p><strong>התיקון:</strong> עדכנתי את ה-prompt של המשימה. מהפגישה הבאה והלאה — אתה תקבל את הדוח במייל (ליד ה-Daily Briefing), ונתעד ב-<code>agent_runs</code>.</p>
+  </div>
+
+  <div class="section">
+    <h2>מה באמת קרה היום (Timeline)</h2>
+    <ul class="timeline">
+      <li class="done">
+        <div class="t">07:06:31 IDT · Sunday cron</div>
+        <div class="w">✓ scheduled-tasks MCP ירה את המשימה</div>
+        <div class="d">taskId: <code>dubis-weekly-team-meeting</code> · cron <code>0 7 * * 0</code> · lastRunAt מאשר</div>
+      </li>
+      <li class="done">
+        <div class="t">07:06 → 07:14 IDT</div>
+        <div class="w">✓ סוכן נפתח בסשן <code>blissful-dazzling-turing</code></div>
+        <div class="d">12 קריאות SQL ל-Supabase · ניתוח אמיתי של <code>orders</code> / <code>page_views</code> / <code>agent_runs</code> / <code>agent_tasks</code> לשבוע 12-19/4</div>
+      </li>
+      <li class="done">
+        <div class="t">07:14 IDT</div>
+        <div class="w">✓ קובץ HTML נכתב לדיסק שלך</div>
+        <div class="d"><code>docs/plans/DUBIS_WEEKLY_2026-04-19.html</code> · 45KB · RTL Hebrew · אסתטיקת DUBIS מלאה</div>
+      </li>
+      <li class="fail">
+        <div class="t">07:14 IDT</div>
+        <div class="w">✗ השליחה למייל לא קרתה</div>
+        <div class="d">ה-prompt המקורי לא כלל שלב של <code>Gmail.send</code>. ה-<code>present_files</code> רק מציג את הקובץ בתוך חלון הסשן של המשימה — שאתה לא פתחת</div>
+      </li>
+      <li class="fail">
+        <div class="t">07:14 IDT</div>
+        <div class="w">✗ ה-run לא נרשם ב-<code>agent_runs</code></div>
+        <div class="d">בגלל זה בפרונט-אנד שלך זה נראה כאילו שום boss agent לא רץ השבוע</div>
+      </li>
+      <li class="done">
+        <div class="t">23:45 IDT (עכשיו)</div>
+        <div class="w">✓ תוקן: prompt עודכן, רשומה רטרואקטיבית הוזנה</div>
+        <div class="d">הפעם הבאה ב-26/4 תקבל את הדוח במייל ל-<code>dubis.brand@gmail.com</code></div>
+      </li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>הדוח המלא — עבור השבוע שהיה</h2>
+    <p>הפגישה הזאת <strong>הייתה אמיתית</strong>. הסוכן סקר את כל ה-11 סוכנים, שלף 12 שאילתות SQL, וזיהה את הבאגים שעוד פתוחים. זה לא mock — זה הפלט האמיתי מהבוקר:</p>
+    <a href="computer://C%3A%5CUsers%5Ctehar%5COneDrive%5CCladue%20Projects%5CDubis%5Cdocs%5Cplans%5CDUBIS_WEEKLY_2026-04-19.html" class="cta">📊 פתח את פגישת הצוות השבועית (45KB)</a>
+
+    <div class="box-red">
+      <h3>⚠️ הדגל האדום שהדוח תפס</h3>
+      <p>ה-<code>CSP</code> ב-<code>vercel.json</code> חוסם את <code>googletagmanager.com</code> ו-<code>connect.facebook.net</code>. המשמעות: <strong>Meta Pixel וה-conversion tracking שבורים בפרוד כבר שבוע</strong>, גם אחרי התיקון של 18/4. כל ה-data שאתה רואה לגבי אדים הוא לא מדויק.</p>
+      <p>זה דורש תיקון היום — משימה #27 בפרונט-אנד תלויה בזה.</p>
+    </div>
+
+    <div class="box-red">
+      <h3>⚠️ מה שהדוח אמר על השבוע</h3>
+      <p>0 הזמנות · 185 מבקרים · 16 product_view (כולם עם <code>product_id=null</code> — באג tracking) · 12 cta_click · <strong>0 add-to-cart</strong>. 6/11 סוכנים לא רצו בכלל. 3 משימות תקועות <code>in_progress</code> מ-4/4. Content Agent רץ 15 פעמים אבל בלולאה חסרת-טעם של פוסטים בעברית שאסורים לפרסום מאז ה-US pivot.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>התיקון שביצעתי עכשיו</h2>
+
+    <div class="box-green">
+      <h3>✓ 1. עדכון ה-prompt של המשימה המתוזמנת</h3>
+      <p>ה-prompt של <code>dubis-weekly-team-meeting</code> עודכן כעת לכלול:</p>
+      <p style="margin-right:18px">• שלב <strong>4 (CRITICAL):</strong> שליחה למייל <code>dubis.brand@gmail.com</code> עם הכותרת <code>📊 DUBIS Weekly — &lt;date&gt; — &lt;top-line&gt;</code>, גוף HTML inline (כמו ה-Daily Briefing של <code>orders@dubis.net</code>)</p>
+      <p style="margin-right:18px">• שלב <strong>5:</strong> רישום <code>INSERT</code> ל-<code>agent_runs</code> עם <code>agent_id='boss'</code> כדי שתראה את זה בדשבורד</p>
+      <p style="margin-right:18px">• שלב <strong>6:</strong> <code>present_files</code> כ-fallback (לא במקום — בנוסף)</p>
+    </div>
+
+    <div class="box-green">
+      <h3>✓ 2. רישום רטרואקטיבי ל-agent_runs</h3>
+      <p>הכנסתי שורה עם <code>id=7963691c-06a3-4b7e-a0f7-fcab3b9ace8b</code> כך שה-Boss Agent לא נראה "נעדר" בדשבורד של השבוע הזה. השורה מציינת במפורש שהדוח הופק ב-07:14 ושהבעיה הייתה בשלב השליחה — לא בשלב הביצוע.</p>
+    </div>
+
+    <div class="box-green">
+      <h3>✓ 3. תיקון Path של קובץ אחר</h3>
+      <p>דוח ה-Shopping Feed שנכתב קודם (<code>2026-04-19-shopping-feed-LIVE.html</code>) נכתב בטעות לנתיב כפול <code>Dubis/Dubis/dubis-website/docs/plans/</code>. העברתי אותו למיקום הנכון.</p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>מה קורה מכאן</h2>
+    <table>
+      <thead>
+        <tr><th>מתי</th><th>מה</th><th>איפה יופיע</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>26/4 07:06 IDT</strong></td>
+          <td>פגישה שבועית הבאה</td>
+          <td style="color:#86efac">Gmail + docs/plans/ + agent_runs</td>
+        </tr>
+        <tr>
+          <td>מחר 09:07 IDT</td>
+          <td>CTO Agent — ירוץ גם 4 פעמים ביום</td>
+          <td style="color:#86efac">Gmail (כשיש משימות) + agent_runs</td>
+        </tr>
+        <tr>
+          <td>מחר 09:54 IDT</td>
+          <td>Email Monitor יומי</td>
+          <td style="color:#86efac">agent_runs (כבר עובד)</td>
+        </tr>
+        <tr>
+          <td>רביעי 09:57 IDT</td>
+          <td>Site Audit שבועי</td>
+          <td style="color:#ffd166">present_files (עוד לא מייל)</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin-top:16px">שים לב — גם Site Audit עוד לא שולח מייל. אם אתה רוצה שאני אחיל את אותו fix גם עליו תגיד לי ואעדכן את ה-prompt.</p>
+  </div>
+
+  <div class="section">
+    <h2>האמת הקשה</h2>
+    <p>מערכת Cowork עובדת נהדר — המשימה רצה, הסוכן ניתח, הקובץ נכתב. <strong>הבעיה לא הייתה טכנית, היא הייתה UX: הנחתי שה-present_files מספיק.</strong> זה לא. הסוכן שרץ בסשן מתוזמן הוא "סוכן יתום" — יש לו MCPs אבל אין לו אותך. אם הוא לא דוחף את הפלט לערוץ שאתה מסתכל עליו (מייל, Slack, טלגרם), הוא מדבר לחלל הריק.</p>
+    <p><strong>כלל שעכשיו פנימי אצלי:</strong> כל scheduled task שאמור להעביר אליך תוצר סופי — חייב לכלול <code>Gmail.send</code> כ-<strong>סטפ אחרון חובה</strong>. לא "אופציונלי". לא "fallback". חובה. כבר עדכנתי את ה-prompt בהתאם.</p>
+  </div>
+
+  <a href="computer://C%3A%5CUsers%5Ctehar%5COneDrive%5CCladue%20Projects%5CDubis%5Cdocs%5Cplans%5CDUBIS_WEEKLY_2026-04-19.html" class="cta">📊 צפה בפגישת הצוות של 19/4 (הקובץ המקורי)</a>
+  <a href="computer://C%3A%5CUsers%5Ctehar%5COneDrive%5CCladue%20Projects%5CDubis%5Cdubis-website%5Cdocs%5Cplans%5C2026-04-19-shopping-feed-LIVE.html" class="cta-sub">📦 דוח Google Shopping Feed (גם מהיום)</a>
+
+  <div class="foot">DUBIS · Agent Ops · Autonomous Infrastructure · אבחון + תיקון תוך 15 דקות</div>
+
+</div>
+</body>
+</html>

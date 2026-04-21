@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shopping Feed — LIVE • DUBIS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700;800&family=Anton&family=JetBrains+Mono&display=swap" rel="stylesheet">
+<style>
+:root {
+  --charcoal: #2C2C2C;
+  --honey: #C17E3A;
+  --honey-dark: #9A6229;
+  --cream: #F5F0E8;
+  --cream-dark: #E8DFD0;
+  --success: #2E7D32;
+  --ok-bg: #E8F5E9;
+  --warn: #EF6C00;
+  --warn-bg: #FFF3E0;
+  --text-muted: #5a5a5a;
+  --card-shadow: 0 4px 20px rgba(44,44,44,.08);
+}
+* { box-sizing: border-box; }
+body {
+  font-family: 'Assistant', sans-serif;
+  background: var(--cream);
+  color: var(--charcoal);
+  margin: 0;
+  padding: 32px 16px 80px;
+  line-height: 1.7;
+  direction: rtl;
+  text-align: right;
+}
+.wrap { max-width: 960px; margin: 0 auto; }
+
+header.hero {
+  background: var(--charcoal);
+  color: var(--cream);
+  padding: 40px 32px;
+  border-radius: 16px;
+  margin-bottom: 28px;
+  position: relative;
+  overflow: hidden;
+}
+header.hero::before {
+  content: "";
+  position: absolute;
+  top: -40px; left: -40px;
+  width: 160px; height: 160px;
+  background: var(--honey);
+  border-radius: 50%;
+  opacity: .15;
+}
+header.hero h1 {
+  font-family: 'Anton', sans-serif;
+  font-size: 48px;
+  line-height: 1.05;
+  margin: 0 0 8px;
+  letter-spacing: .5px;
+}
+header.hero .badge {
+  display: inline-block;
+  background: var(--success);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  margin-bottom: 16px;
+  letter-spacing: .5px;
+}
+header.hero .meta {
+  font-size: 14px;
+  color: rgba(245,240,232,.75);
+  margin-top: 12px;
+}
+header.hero .meta code {
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(255,255,255,.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  direction: ltr;
+  display: inline-block;
+}
+
+section {
+  background: #fff;
+  border-radius: 14px;
+  padding: 28px 32px;
+  margin-bottom: 20px;
+  box-shadow: var(--card-shadow);
+}
+section h2 {
+  font-family: 'Anton', sans-serif;
+  font-size: 26px;
+  color: var(--charcoal);
+  margin: 0 0 16px;
+  padding-bottom: 10px;
+  border-bottom: 3px solid var(--honey);
+  letter-spacing: .3px;
+}
+section h3 {
+  font-size: 17px;
+  color: var(--honey-dark);
+  margin: 18px 0 8px;
+  font-weight: 700;
+}
+p { margin: 0 0 12px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin: 12px 0;
+}
+.stat {
+  background: var(--cream);
+  border-right: 4px solid var(--honey);
+  padding: 14px 16px;
+  border-radius: 8px;
+}
+.stat .n {
+  font-family: 'Anton', sans-serif;
+  font-size: 34px;
+  color: var(--charcoal);
+  line-height: 1;
+  display: block;
+  margin-bottom: 4px;
+}
+.stat .l {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.done {
+  background: var(--ok-bg);
+  border-right: 4px solid var(--success);
+  padding: 14px 18px;
+  border-radius: 8px;
+  margin: 10px 0;
+}
+.done .title {
+  color: var(--success);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.warn {
+  background: var(--warn-bg);
+  border-right: 4px solid var(--warn);
+  padding: 14px 18px;
+  border-radius: 8px;
+  margin: 10px 0;
+}
+
+code, kbd, .code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  background: #F0EAE0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  direction: ltr;
+  display: inline-block;
+}
+pre {
+  background: var(--charcoal);
+  color: var(--cream);
+  padding: 18px 22px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12.5px;
+  direction: ltr;
+  text-align: left;
+  line-height: 1.55;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 14px;
+}
+table th, table td {
+  padding: 10px 14px;
+  text-align: right;
+  border-bottom: 1px solid var(--cream-dark);
+}
+table th {
+  background: var(--cream);
+  color: var(--charcoal);
+  font-weight: 700;
+  font-size: 13px;
+}
+table tr:last-child td { border-bottom: none; }
+table td.ltr { direction: ltr; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+a.cta {
+  display: inline-block;
+  background: var(--honey);
+  color: #fff;
+  padding: 11px 22px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 15px;
+  margin-top: 8px;
+  transition: background .15s;
+}
+a.cta:hover { background: var(--honey-dark); }
+
+.step {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 14px 0;
+  border-bottom: 1px dashed var(--cream-dark);
+}
+.step:last-child { border-bottom: none; }
+.step .num {
+  font-family: 'Anton', sans-serif;
+  font-size: 26px;
+  background: var(--honey);
+  color: #fff;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.step .body { flex: 1; }
+.step .body .h { font-weight: 700; margin-bottom: 4px; font-size: 16px; }
+
+footer.foot {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: 32px;
+  padding: 20px 0;
+  border-top: 1px solid var(--cream-dark);
+}
+
+.hint { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
+.chk { color: var(--success); font-weight: 700; }
+.xx  { color: #C62828; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <span class="badge">✓ LIVE • באוויר</span>
+  <h1>Google Shopping Feed —<br>המשימה בוצעה, פידים באוויר</h1>
+  <p>חזרתי לפני שחזרת. זמן שעבד: ~40 דקות. משימה ראשונה של CTO Agent בוצעה דרך המערכת האוטונומית החדשה.</p>
+  <div class="meta">
+    <code>https://www.dubis.net/shopping-feed.xml</code> • 79 items • 14 products • XML RSS 2.0 תקין
+  </div>
+</header>
+
+<section>
+  <h2>TL;DR — 90 שניות</h2>
+  <div class="done">
+    <div class="title">✅ Feed באוויר</div>
+    ה-URL <code>https://www.dubis.net/shopping-feed.xml</code> מחזיר XML תקין של Google Merchant Center. ראיתי את הפלט בעיניים (107KB, 79 פריטים). <strong>אתה יכול מחר להגיש לגוגל.</strong>
+  </div>
+  <div class="done">
+    <div class="title">✅ הפקודה הראשונה של CTO Agent הושלמה</div>
+    משימת Supabase <code>0c54221e</code> שמרה את ההחלטות הארכיטקטוניות וקפצה ל-<strong>done</strong>. המשימה הבאה בתור (Stripe כגיבוי, priority=low) תרוץ מחר 09:07 אוטומטית.
+  </div>
+  <div class="warn">
+    <div class="title">⚠️ פיבוט ארכיטקטוני באמצע הדרך</div>
+    בתוכנית המקורית הוספתי route חדש בתוך <code>agents/index.ts</code>. זה קובץ של 212KB — ה-MCP של Supabase לא יכול לקבל כזה payload בקריאה אחת. עברתי לפתרון נקי יותר: <strong>edge function עצמאי</strong> בשם <code>shopping-feed</code>. תוצאה זהה, deploy מיידי.
+  </div>
+</section>
+
+<section>
+  <h2>המספרים</h2>
+  <div class="grid">
+    <div class="stat"><span class="n">18</span><span class="l">מוצרים פעילים ב-DB</span></div>
+    <div class="stat"><span class="n">14</span><span class="l">נכנסו לפיד (יש תמונה)</span></div>
+    <div class="stat"><span class="n">4</span><span class="l">דולגו (חסרה תמונה)</span></div>
+    <div class="stat"><span class="n">79</span><span class="l">פריטים סה"כ בפיד</span></div>
+    <div class="stat"><span class="n">6×13</span><span class="l">variants לבגדים (S-XXXL)</span></div>
+    <div class="stat"><span class="n">1×1</span><span class="l">cap (One Size)</span></div>
+    <div class="stat"><span class="n">107KB</span><span class="l">גודל הפיד</span></div>
+    <div class="stat"><span class="n">6h</span><span class="l">cache ב-CDN</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>מה בדיוק רץ עכשיו</h2>
+
+  <h3>1. Supabase Edge Function — <code>shopping-feed</code></h3>
+  <table>
+    <tr><th>שם</th><td class="ltr">shopping-feed</td></tr>
+    <tr><th>גרסה</th><td>v1</td></tr>
+    <tr><th>סטטוס</th><td><span class="chk">ACTIVE</span></td></tr>
+    <tr><th>verify_jwt</th><td>false (ציבורי — גוגל חייב גישה חופשית)</td></tr>
+    <tr><th>גודל קוד</th><td>5KB (137 שורות)</td></tr>
+    <tr><th>URL ישיר</th><td class="ltr">supabase.co/functions/v1/shopping-feed</td></tr>
+  </table>
+
+  <h3>2. Vercel Rewrite — <code>vercel.json</code></h3>
+  <pre>{ "source": "/shopping-feed.xml",
+  "destination": "https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/shopping-feed" }</pre>
+  <p class="hint">Vercel בנה deployment אוטומטי אחרי ה-push (commit <code>5ce7ad3</code>). אימתתי שהכתובת החיצונית עובדת דרך Vercel MCP.</p>
+
+  <h3>3. robots.txt</h3>
+  <pre>Disallow: /shopping-feed.xml</pre>
+  <p class="hint">הפיד מוגש ל-Google Merchant (שיש לו גישה מיוחדת), לא לקרולרים הרגילים. מונע דאבל-index מול דף הקטגוריה.</p>
+</section>
+
+<section>
+  <h2>דוגמה של פריט אמיתי בפיד</h2>
+  <pre>&lt;item&gt;
+  &lt;g:id&gt;DUBIS-1-S&lt;/g:id&gt;
+  &lt;g:item_group_id&gt;DUBIS-1&lt;/g:item_group_id&gt;
+  &lt;g:title&gt;DUBIS — I'm not fat, I'm a limited edition T-Shirt (S)&lt;/g:title&gt;
+  &lt;g:description&gt;I'm not fat... Body-positive humor apparel for the rest of us...&lt;/g:description&gt;
+  &lt;g:link&gt;https://www.dubis.net/#product-1&lt;/g:link&gt;
+  &lt;g:image_link&gt;https://dubis.net/images/dubis_photo_03.jpg&lt;/g:image_link&gt;
+  &lt;g:availability&gt;in_stock&lt;/g:availability&gt;
+  &lt;g:price&gt;28.00 USD&lt;/g:price&gt;
+  &lt;g:brand&gt;DUBIS&lt;/g:brand&gt;
+  &lt;g:condition&gt;new&lt;/g:condition&gt;
+  &lt;g:google_product_category&gt;212&lt;/g:google_product_category&gt;
+  &lt;g:product_type&gt;Apparel &amp;amp; Accessories &amp;gt; Clothing &amp;gt; T-Shirt&lt;/g:product_type&gt;
+  &lt;g:gender&gt;unisex&lt;/g:gender&gt;
+  &lt;g:age_group&gt;adult&lt;/g:age_group&gt;
+  &lt;g:color&gt;Black/White/Cream/Navy/Red&lt;/g:color&gt;
+  &lt;g:size&gt;S&lt;/g:size&gt;
+  &lt;g:size_system&gt;US&lt;/g:size_system&gt;
+  &lt;g:identifier_exists&gt;no&lt;/g:identifier_exists&gt;
+  &lt;g:mpn&gt;DUBIS-1-S&lt;/g:mpn&gt;
+  &lt;g:shipping&gt;
+    &lt;g:country&gt;US&lt;/g:country&gt;
+    &lt;g:service&gt;Standard&lt;/g:service&gt;
+    &lt;g:price&gt;0.00 USD&lt;/g:price&gt;
+  &lt;/g:shipping&gt;
+&lt;/item&gt;</pre>
+</section>
+
+<section>
+  <h2>מה שאתה צריך לעשות מחר (10 דקות)</h2>
+
+  <div class="step">
+    <div class="num">1</div>
+    <div class="body">
+      <div class="h">תכנס ל-Google Merchant Center</div>
+      <div><a class="cta" href="https://merchants.google.com" target="_blank">פתח את Merchant Center ←</a></div>
+      <p class="hint">אם אין לך חשבון — תפתח דרך הכתובת dubis.brand@gmail.com. בחינם. מוצרים חינמיים ב-Google Shopping זה אחת המכרות הלא-מנוצלות ביותר של אקוםרס קטן.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">2</div>
+    <div class="body">
+      <div class="h">Settings → Data sources → Add feed</div>
+      <table>
+        <tr><th>Feed name</th><td>DUBIS Main Feed</td></tr>
+        <tr><th>Country</th><td>United States</td></tr>
+        <tr><th>Language</th><td>English</td></tr>
+        <tr><th>Currency</th><td>USD</td></tr>
+        <tr><th>Method</th><td>Scheduled fetch</td></tr>
+        <tr><th>URL</th><td class="ltr">https://www.dubis.net/shopping-feed.xml</td></tr>
+        <tr><th>Fetch frequency</th><td>Daily (גוגל יבקש את הפיד פעם ביום אוטומטית)</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">3</div>
+    <div class="body">
+      <div class="h">אישור (1-3 ימי עסקים)</div>
+      <p>גוגל יעבור על הפיד, יוודא שהלינקים (dubis.net/#product-X) נותנים מחיר נכון, זמינות ותמונה. אחרי האישור — המוצרים מופיעים ב-<strong>Google Shopping חינמיים</strong> (Free product listings) באינדקס חיפושים אורגני של גוגל.</p>
+      <p class="hint">אם יש rejections (שגיאות) — תפתח את הפיד ב-Merchant Center → Diagnostics. רוב השגיאות נפוצות: "invalid price", "missing image". לנו זה אמור לעבור בלי בעיה (כל פריט יש לו מחיר USD תקני ותמונה).</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">4</div>
+    <div class="body">
+      <div class="h">אחרי אישור — Performance Max (רק אם אתה רוצה לשלם על traffic)</div>
+      <p>כשהפיד מאושר, אפשר להקים Performance Max campaign ב-Google Ads עם budget קטן ($5-10/day) כדי להתחיל לאסוף נתונים. אבל זה צעד נפרד — הפיד החינמי לבד כבר נותן חשיפה.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Git — מה נדחף ל-main</h2>
+  <table>
+    <tr><th>Commit</th><th>Files</th><th>מטרה</th></tr>
+    <tr>
+      <td class="ltr">79a171a</td>
+      <td class="ltr">agents/index.ts<br>vercel.json<br>robots.txt</td>
+      <td>תוכנית מקורית (route בתוך agents/index.ts). הקוד ב-agents/ הוא dead code כרגע — לא יזיק, יתנקה בדחיפה הבאה של agents.</td>
+    </tr>
+    <tr>
+      <td class="ltr">5ce7ad3</td>
+      <td class="ltr">shopping-feed/index.ts ⭐<br>shopping-feed/deno.json ⭐<br>vercel.json (עדכון)</td>
+      <td>הפתרון הסופי — edge function עצמאי + rewrite עודכן. זה מה שחי עכשיו.</td>
+    </tr>
+  </table>
+  <p class="hint">רק 3 קבצים בדחיפה הראשונה + 3 בשנייה = 6 קבצים סה"כ. לא פוצצתי את ה-.claude/rules או CLAUDE.md שאתה ערכת.</p>
+</section>
+
+<section>
+  <h2>מה שלמדתי — שמור כ-memory לפעם הבאה</h2>
+  <h3>agents/index.ts — כבד מדי ל-MCP deploy</h3>
+  <p>הקובץ כרגע 212KB / 3630 שורות. ה-<code>deploy_edge_function</code> MCP לא יכול לקבל את הקוד בקריאה אחת (חורג מ-output budget). <strong>הסקנטי-פתרון:</strong> לפצל routes חדשים לפונקציות עצמאיות, או להריץ <code>deploy.bat</code> דרך computer-use (הנתיב הרשמי ב-CLAUDE.md). Computer-use לא פעל הפעם כי הדיאלוג המתין לאישור ואתה היית מול הטלויזיה — timeout.</p>
+
+  <h3>Git lock במסכמך</h3>
+  <p>ב-<code>/sessions/.../dubis-website/.git/index.lock</code> יש lock תקוע שלא ניתן למחוק (read-only FUSE). הפתרון: עבדתי מ-<code>/tmp/dubis-work</code> (עותק מסשן קודם). Push הצליח ישר ל-GitHub.</p>
+
+  <h3>המלצה לרמת מוצר</h3>
+  <p>כדאי בזמן פנוי לפצל את <code>agents/index.ts</code> ל-4-5 קבצי route מודולריים (tasks.ts, content.ts, publish.ts, etc.). זה יחזיר את היכולת לעשות deploy דרך MCP ויהפוך את האוטונומיה לחלקה יותר. כרגע כל שינוי ב-agents דורש <code>deploy.bat</code> ידני — מה שחוסם את ה-scheduled-tasks CTO agent מלטפל במשימות שדורשות מגע בקבצי agents. פצל → כל route נפרד, כל אחד נפרסה מה-MCP ישירות, האוטונומיה האמיתית נכנסת.</p>
+</section>
+
+<section>
+  <h2>סטטוס CTO Agent — Scheduled Task</h2>
+  <table>
+    <tr><th>Task פנימי Claude</th><td class="ltr">dubis-cto-agent</td></tr>
+    <tr><th>מועד הרצה הבא</th><td>מחר, יום א' 2026-04-20, <strong>09:07 שעון ישראל</strong></td></tr>
+    <tr><th>תור משימות CTO Supabase</th><td>1 משימה בתור (Stripe integration, priority=low)</td></tr>
+    <tr><th>זה מה שיקרה מחר</th><td>הסוכן יסרוק את <code>agent_tasks</code> של CTO ו-requires_budget=false → יריץ אותן. הוא לא ינסה deploy לא הגיוני (agents/index.ts 212KB), יעדכן notes ו-status=done, ייצור דו"ח.</td></tr>
+  </table>
+  <p class="hint">המשימה של Stripe היא low-priority — הסוכן פשוט יתעד שזה משימה שדורשת deploy ידני של agents/index.ts ויחכה לאישורך. בינתיים ה-pipeline עצמו עובד.</p>
+</section>
+
+<section>
+  <h2>Next steps (לא הערב — מחר)</h2>
+  <div class="step">
+    <div class="num">A</div>
+    <div class="body">
+      <div class="h">הגש feed ל-Merchant Center</div>
+      <p>5-10 דקות. תותח פוטנציאלי לחשיפה חינמית של 14 מוצרים באינדקס גוגל.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="num">B</div>
+    <div class="body">
+      <div class="h">תסתכל על הדו"ח של scheduled task CTO מחר</div>
+      <p>אחרי 09:07 — תראה email/Slack/log איך הסוכן ריצה אוטומטית, מה הוא ניסה, ומה נחסם.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="num">C</div>
+    <div class="body">
+      <div class="h">החלטה: לפצל את agents/index.ts או לא</div>
+      <p>אם אתה רוצה שה-CTO agent יוכל באמת לפרוס קוד לבד (ולא רק להמליץ) — צריך לפצל את הקובץ הגדול. עבודה של ~2-3 שעות שלי במפגש הבא. אם לא כדאי בעיניך, הסוכן פשוט ייצר PRs ויחכה לאישורך.</p>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  DUBIS CTO Agent • Execution Report • 2026-04-19 23:45 UTC<br>
+  Commits: <code>79a171a</code> + <code>5ce7ad3</code> → origin/main<br>
+  Edge Function: <code>shopping-feed v1 ACTIVE</code> • Feed: <code>LIVE @ dubis.net/shopping-feed.xml</code>
+</footer>
+
+</div>
+</body>
+</html>

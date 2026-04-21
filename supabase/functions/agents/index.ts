@@ -116,6 +116,49 @@ function b64ToBytes(base64: string): Uint8Array {
   return bytes;
 }
 
+// ── Uint8Array → base64 (chunked to avoid stack overflow on big images) ──
+function bytesToB64(bytes: Uint8Array): string {
+  let bin = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+// ── Fetch a real product front image from the live site so Gemini
+// can use it as a reference (preserves slogan/logo exactly).
+// Returns { b64, mimeType } on success, null if every candidate URL 404s.
+// Prefers dark colorways for better Gemini compositing.
+async function fetchProductReferenceImage(
+  productIdNumeric: number | string,
+  colors?: string[],
+): Promise<{ b64: string; mimeType: string } | null> {
+  const id = String(productIdNumeric);
+  const preferred = ['Black', 'Charcoal', 'Navy', 'Cream', 'White', 'Honey Brown', 'Forest Green', 'Red'];
+  const ordered = colors && colors.length
+    ? [...preferred.filter(c => colors.includes(c)), ...colors.filter(c => !preferred.includes(c))]
+    : preferred;
+  const candidates: string[] = [];
+  // Generic fallback (exists for products 1–6)
+  candidates.push(`https://www.dubis.net/images/product-${id}-front.jpg`);
+  // Color variants
+  for (const c of ordered) {
+    candidates.push(`https://www.dubis.net/images/product-${id}-${c.replace(/ /g, '-')}-front.jpg`);
+  }
+  for (const url of candidates) {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) continue;
+      const mime = r.headers.get('content-type') || 'image/jpeg';
+      const buf = new Uint8Array(await r.arrayBuffer());
+      if (buf.byteLength < 5000) continue; // skip tiny/empty responses
+      return { b64: bytesToB64(buf), mimeType: mime };
+    } catch { /* try next */ }
+  }
+  return null;
+}
+
 // ═══════════════════════════════════════════════════════
 // MAIN HANDLER
 // ═══════════════════════════════════════════════════════
@@ -333,22 +376,61 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
             }
 
             let imageUrl = hasPermImg ? (cd.generated_image_url as string) : '';
-            // Try Gemini first for brand-accurate images
+            // Try Gemini first — using a REAL product photo as reference so the
+            // generated image shows the actual garment (correct slogan/logo).
             if (!imageUrl && geminiKey) {
-              const dubisRule = 'Israeli streetwear brand. Real diverse body types 40+, authentic candid look. Dark oversized clothing. Dark minimal urban aesthetic. Do NOT render any text, words, letters, or logos anywhere in the image.';
+              // Resolve product_id_numeric + colors so we can fetch the reference.
+              let refPid: string = (cd.product_id as string) || '';
+              let refColors: string[] = Array.isArray(cd.product_colors) ? (cd.product_colors as string[]) : [];
+              const refSlogan = (cd.product_slogan as string) || '';
+              if (!refPid && refSlogan) {
+                try {
+                  const { data: hit } = await sb.from('dubis_products')
+                    .select('product_id_numeric, colors')
+                    .eq('active', true)
+                    .ilike('slogan', refSlogan)
+                    .limit(1);
+                  if (hit?.length) {
+                    refPid = String((hit[0] as Record<string, unknown>).product_id_numeric);
+                    const c = (hit[0] as Record<string, unknown>).colors;
+                    if (Array.isArray(c)) refColors = c as string[];
+                  }
+                } catch { /* ignore */ }
+              }
+              const ref = refPid ? await fetchProductReferenceImage(refPid, refColors) : null;
+
+              // Scene description (no slogan text — Gemini will copy it from the reference).
               const titleLower = (task.title as string).toLowerCase();
-              const defaultImgPrompt = (cd.format as string) === 'quote_card'
-                ? 'Minimalist dark charcoal textured background. Moody low-key lighting. No people. No text. Square 1:1.'
+              const sceneBase = (cd.format as string) === 'quote_card'
+                ? 'Product laid flat on a moody dark charcoal textured surface, low-key directional lighting'
                 : titleLower.includes('nap') || titleLower.includes('cardio')
-                ? `Person relaxing on couch wearing oversized dark hoodie. Cozy apartment, soft warm lighting. ${dubisRule}`
-                : `Authentic people wearing dark DUBIS streetwear, urban minimal setting, dark aesthetic, natural lighting, square 1:1. ${dubisRule}`;
-              const fullPrompt = (gen.image_prompt || defaultImgPrompt) + '. Fashion photography. Square 1:1. No watermark. Photorealistic.';
+                ? 'Real person 35-55 relaxing on a couch in a cozy apartment, soft warm window light, authentic unposed moment'
+                : 'Real person 35-55 (all body types welcome, not a fashion model) in an urban minimal setting, natural daylight, authentic candid moment';
+              const scene = (gen.image_prompt && gen.image_prompt.trim().length > 10) ? gen.image_prompt : sceneBase;
+
+              const refPrompt = `You are given a reference photograph of the EXACT DUBIS garment for this post.
+
+HARD CONSTRAINTS (non-negotiable):
+- Reproduce the garment from the reference EXACTLY: same color, same cut, same slogan text on the back in the same typography, same small "DUBIS™" chest logo on the front. Do NOT invent, translate, rephrase, or redesign any text or logo on the garment.
+- This is a photorealistic DSLR photograph — not an illustration, not a render, not a painting.
+- Square 1:1 framing. No watermarks. No borders. No captions overlaid on the image.
+- Do not add any additional text to the frame that is not already on the garment.
+
+SCENE: ${scene}.
+
+The goal: a real-world lifestyle photo of a real person 35-55 wearing this exact garment from the reference, as if photographed on a modern DSLR with a 50mm lens.`;
+
+              const textOnlyPrompt = `${scene}. The person is wearing a DUBIS anti-fashion garment (dark minimal streetwear aesthetic). Photorealistic DSLR, square 1:1, no watermark, no overlaid text.`;
+
               try {
+                const parts: unknown[] = [];
+                if (ref) parts.push({ inlineData: { mimeType: ref.mimeType, data: ref.b64 } });
+                parts.push({ text: ref ? refPrompt : textOnlyPrompt });
                 const gRes = await fetch(
                   `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiKey}`,
                   { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ contents: [{ parts: [{ text: fullPrompt }] }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'] } }),
-                    signal: AbortSignal.timeout(50000) },
+                    body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'] } }),
+                    signal: AbortSignal.timeout(60000) },
                 );
                 if (gRes.ok) {
                   const gData = await gRes.json();
@@ -1244,16 +1326,87 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
         let imgError = '';
 
         if (!imageUrl) {
-          // Use real product photos from dubis_images — AI cannot render readable text on garments
+          // Priority 1: Generate with Gemini using the REAL product photo as
+          // reference — preserves the exact slogan and logo on the garment.
+          // Priority 2: Fall back to dubis_images gallery (pre-approved photos).
           const productSlogan = ((cd.product_slogan as string) || '').toLowerCase().trim();
           const productId = (cd.product_id as string) || '';
+
+          // Resolve colors from dubis_products so we pick a real front image.
+          let productColors: string[] = [];
+          try {
+            if (productId) {
+              const { data: pr } = await sb.from('dubis_products')
+                .select('colors')
+                .eq('active', true)
+                .eq('product_id_numeric', productId)
+                .limit(1);
+              if (pr?.length) {
+                const c = (pr[0] as Record<string, unknown>).colors;
+                if (Array.isArray(c)) productColors = c as string[];
+              }
+            }
+          } catch { /* ignore */ }
+
+          if (geminiKey && productId) {
+            try {
+              const ref = await fetchProductReferenceImage(productId, productColors);
+              if (ref) {
+                const titleLower = (task.title as string).toLowerCase();
+                const scene = titleLower.includes('nap') || titleLower.includes('couch') || titleLower.includes('cardio')
+                  ? 'Real person 35-55 relaxing on a couch in a cozy apartment, soft warm window light, authentic unposed moment'
+                  : 'Real person 35-55 (real body, not a fashion model) in a clean urban minimal setting, natural daylight, authentic candid moment';
+                const refPrompt = `You are given a reference photograph of the EXACT DUBIS garment for this post.
+
+HARD CONSTRAINTS (non-negotiable):
+- Reproduce the garment from the reference EXACTLY: same color, same cut, same slogan text on the back in the same typography, same small "DUBIS™" chest logo on the front. Do NOT invent, translate, rephrase, or redesign any text or logo on the garment.
+- Photorealistic DSLR photograph, 50mm lens feel. Not an illustration, not a render.
+- Square 1:1. No watermarks. No borders. No overlaid captions.
+
+SCENE: ${scene}.
+
+Goal: a real-world lifestyle photo of a real person 35-55 wearing this exact garment, as photographed on a DSLR.`;
+                const gRes = await fetch(
+                  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiKey}`,
+                  { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      contents: [{ parts: [
+                        { inlineData: { mimeType: ref.mimeType, data: ref.b64 } },
+                        { text: refPrompt },
+                      ] }],
+                      generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+                    }),
+                    signal: AbortSignal.timeout(60000) },
+                );
+                if (gRes.ok) {
+                  const gData = await gRes.json();
+                  type GemPart = Record<string, unknown>;
+                  const imgPart = gData.candidates?.[0]?.content?.parts?.find((p: GemPart) => (p.inlineData as GemPart)?.mimeType?.toString().startsWith('image/'));
+                  if (imgPart?.inlineData) {
+                    const imgBytes = b64ToBytes(imgPart.inlineData.data as string);
+                    await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
+                    const fname = `ig-${task.id}.jpg`;
+                    await sb.storage.from('ig-images').upload(fname, imgBytes, { contentType: 'image/jpeg', upsert: true });
+                    const { data: { publicUrl } } = sb.storage.from('ig-images').getPublicUrl(fname);
+                    imageUrl = publicUrl;
+                  }
+                } else {
+                  imgError = `gemini_ref_http_${gRes.status}`;
+                }
+              } else {
+                imgError = 'no_product_reference_image';
+              }
+            } catch (e) {
+              imgError = `gemini_ref:${(e as Error).message}`;
+            }
+          }
 
           try {
             type ImgRow = { image_url: string; quality_score: number; dubis_products?: { slogan?: string } | null };
             let matchImg: ImgRow | null = null;
 
-            // 1) Match by product_id (most precise)
-            if (productId) {
+            // 1) Match by product_id (most precise) — only if Gemini didn't succeed
+            if (!imageUrl && productId) {
               const { data } = await sb.from('dubis_images')
                 .select('image_url, quality_score, dubis_products(slogan)')
                 .eq('product_id', productId)
@@ -1264,7 +1417,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
             }
 
             // 2) Match by slogan keywords against dubis_products.slogan
-            if (!matchImg && productSlogan) {
+            if (!imageUrl && !matchImg && productSlogan) {
               const { data: allApproved } = await sb.from('dubis_images')
                 .select('image_url, quality_score, dubis_products(slogan)')
                 .eq('approved', true)
@@ -1281,7 +1434,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
             }
 
             // 3) Fallback: any approved image with score ≥ 4, rotated by task id
-            if (!matchImg) {
+            if (!imageUrl && !matchImg) {
               const { data: best } = await sb.from('dubis_images')
                 .select('image_url, quality_score')
                 .eq('approved', true)
@@ -1297,7 +1450,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
               }
             }
 
-            if (matchImg) imageUrl = matchImg.image_url;
+            if (!imageUrl && matchImg) imageUrl = matchImg.image_url;
           } catch (imgLookupErr) {
             imgError = `img_lookup:${(imgLookupErr as Error).message}`;
           }
@@ -1333,6 +1486,22 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
         taskResults.push(`❌ ${task.title}: ${(e as Error).message}`);
       }
     }
+
+    // Log this run so autonomy/activity feeds show content agent is alive.
+    try {
+      const successes = taskResults.filter(r => r.startsWith('✅')).length;
+      const failures  = taskResults.filter(r => r.startsWith('❌'));
+      const startedMs = new Date(now).getTime();
+      await sb.from('agent_runs').insert({
+        agent_id: 'content',
+        run_date: now.slice(0, 10),
+        status: failures.length && successes === 0 ? 'error' : 'success',
+        tasks_created: successes,
+        duration_ms: Date.now() - startedMs,
+        summary: `content-run processed ${batch.length}/${tasks.length}: ${taskResults.slice(0, 5).join(' | ')}`,
+        error_message: failures.length ? failures.slice(0, 3).join(' | ') : null,
+      });
+    } catch (_logErr) { /* non-fatal */ }
 
     return json({ queued: taskResults.length, remaining: tasks.length - batch.length, results: taskResults });
   }
