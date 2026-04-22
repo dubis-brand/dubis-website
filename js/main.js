@@ -13,6 +13,51 @@ function getStockNum(id) {
   return seed < 4 ? seed + 3 : seed < 10 ? seed + 2 : seed;
 }
 
+// ── Real-time variant stock (from product_variant_stock, synced daily from Gelato) ──
+// Shape: { [productId]: { [color]: { [size]: boolean } } }
+// Missing key → optimistic in-stock (matches edge-function default).
+window.__DUBIS_STOCK_MAP = window.__DUBIS_STOCK_MAP || null;
+(async function loadStockMap() {
+  try {
+    const url  = window.DUBIS_SUPABASE_URL;
+    const anon = window.DUBIS_SUPABASE_ANON;
+    if (!url || !anon) return;
+    const res = await fetch(`${url}/rest/v1/product_variant_stock?select=product_id_numeric,color,size,in_stock`, {
+      headers: { 'apikey': anon, 'Authorization': `Bearer ${anon}` }
+    });
+    if (!res.ok) return;
+    const rows = await res.json();
+    const map = {};
+    for (const r of rows) {
+      const pid = r.product_id_numeric;
+      if (!map[pid]) map[pid] = {};
+      if (!map[pid][r.color]) map[pid][r.color] = {};
+      map[pid][r.color][r.size] = !!r.in_stock;
+    }
+    window.__DUBIS_STOCK_MAP = map;
+    // Re-render modal if already open so badges appear without a reopen
+    const openPid = document.querySelector('#product-modal.open [id^="modal-img-"]')?.id?.replace('modal-img-', '');
+    if (openPid && typeof refreshStockUi === 'function') refreshStockUi(Number(openPid));
+  } catch (_) { /* fail-open: site works without stock data */ }
+})();
+
+function isVariantInStock(productId, color, size) {
+  const map = window.__DUBIS_STOCK_MAP;
+  if (!map) return true;                                // data not loaded → optimistic
+  const p = map[productId]; if (!p) return true;
+  const c = p[color];        if (!c) return true;
+  const v = c[size];
+  return v === undefined ? true : v;                    // row missing → optimistic
+}
+
+function isColorAnyInStock(productId, color, sizes) {
+  const map = window.__DUBIS_STOCK_MAP;
+  if (!map) return true;
+  const p = map[productId]; if (!p) return true;
+  const c = p[color];        if (!c) return true;
+  return (sizes || []).some(s => c[s] !== false);       // any non-explicitly-OOS = available
+}
+
 // ── Currency by language ──
 let USD_TO_ILS = 3.63; // fallback — updated daily from API
 (async function fetchRate() {
@@ -490,25 +535,35 @@ function openProductModal(productId) {
       <div class="modal-option">
         <label>${t.modal_color}</label>
         <div class="modal-colors" id="modal-colors-${product.id}">
-          ${product.colors.map((c, i) => `
-            <button class="color-btn ${i === 0 ? 'selected' : ''}"
+          ${product.colors.map((c, i) => {
+            const anyAvail = isColorAnyInStock(product.id, c, product.sizes);
+            const oosCls   = anyAvail ? '' : ' oos';
+            const oosAttr  = anyAvail ? '' : ' aria-disabled="true"';
+            return `
+            <button class="color-btn${i === 0 ? ' selected' : ''}${oosCls}"
               onclick="selectColor(this, '${c}', ${product.id})"
-              style="background:${colorToHex(c)}" title="${c}" data-color="${c}">
+              style="background:${colorToHex(c)}" title="${c}${anyAvail ? '' : ' — Sold out'}" data-color="${c}"${oosAttr}>
+              ${anyAvail ? '' : '<span class="oos-slash" aria-hidden="true"></span>'}
             </button>
-          `).join('')}
+          `;}).join('')}
         </div>
         <span class="selected-label" id="selected-color-${product.id}">${product.colors[0]}</span>
         <div class="modal-selected-color" id="modal-color-name-${product.id}">${product.colors[0]}</div>
+        <div class="modal-stock-msg" id="modal-stock-msg-${product.id}" style="display:none;margin-top:0.25rem;font-size:0.8rem;color:#b94a48;"></div>
       </div>
       <div class="modal-option">
         <label>${t.modal_size} <a href="javascript:void(0)" onclick="showSizeGuideTab(${product.id})" style="font-size:0.75rem;color:#c8a96e;margin-left:0.5rem;text-decoration:underline">${currentLang === 'he' ? '📏 טבלת מידות' : '📏 Size Guide'}</a></label>
         <div class="modal-sizes" id="modal-sizes-${product.id}">
-          ${product.sizes.map((s, i) => `
-            <button class="size-btn ${i === 0 ? 'selected' : ''}"
-              onclick="selectSize(this, '${s}', ${product.id})" data-size="${s}">
+          ${product.sizes.map((s, i) => {
+            const avail = isVariantInStock(product.id, product.colors[0], s);
+            const cls   = avail ? '' : ' oos';
+            const dis   = avail ? '' : ' disabled aria-disabled="true"';
+            return `
+            <button class="size-btn${i === 0 && avail ? ' selected' : ''}${cls}"
+              onclick="selectSize(this, '${s}', ${product.id})" data-size="${s}"${dis}>
               ${s}
             </button>
-          `).join('')}
+          `;}).join('')}
         </div>
       </div>
       <div class="modal-trust-badges">
@@ -563,6 +618,23 @@ function openProductModal(productId) {
   modal.classList.add('open');
   overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
+
+  // Sync OOS affordances now that the modal is in the DOM.
+  // If the default-selected color is fully OOS, auto-bump to the first in-stock color.
+  try {
+    const defaultColor = product.colors[0];
+    if (!isColorAnyInStock(product.id, defaultColor, product.sizes)) {
+      const firstAvailColor = product.colors.find(c => isColorAnyInStock(product.id, c, product.sizes));
+      if (firstAvailColor && firstAvailColor !== defaultColor) {
+        const btn = document.querySelector(`#modal-colors-${product.id} .color-btn[data-color="${firstAvailColor}"]`);
+        if (btn) selectColor(btn, firstAvailColor, product.id);
+      } else {
+        refreshSizeAvailability(product.id, defaultColor);
+      }
+    } else {
+      refreshSizeAvailability(product.id, defaultColor);
+    }
+  } catch (_) { /* non-fatal */ }
 }
 
 function closeProductModal() {
@@ -605,10 +677,22 @@ function showSizeGuideTab(productId) {
 }
 
 function selectColor(btn, color, productId) {
+  // Block clicks on OOS color swatches
+  if (btn.classList.contains('oos')) {
+    const msg = document.getElementById(`modal-stock-msg-${productId}`);
+    if (msg) {
+      msg.textContent = currentLang === 'he' ? `${color} — אזל מהמלאי` : `${color} — sold out`;
+      msg.style.display = 'block';
+    }
+    return;
+  }
   document.querySelectorAll(`#modal-colors-${productId} .color-btn`)
     .forEach(b => b.classList.remove('selected'));
   btn.classList.add('selected');
   document.getElementById(`selected-color-${productId}`).textContent = color;
+
+  // Recompute per-size availability for the newly-chosen color
+  refreshSizeAvailability(productId, color);
 
   // Update color name display
   const colorNameEl = document.getElementById(`modal-color-name-${productId}`);
@@ -675,15 +759,95 @@ function setModalThumb(event, productId, view) {
 }
 
 function selectSize(btn, size, productId) {
+  if (btn.classList.contains('oos') || btn.disabled) return;  // can't pick OOS size
   document.querySelectorAll(`#modal-sizes-${productId} .size-btn`)
     .forEach(b => b.classList.remove('selected'));
   btn.classList.add('selected');
+  refreshAddToCartGuard(productId);
+}
+
+// Re-mark size buttons as OOS/available given the currently selected color.
+function refreshSizeAvailability(productId, color) {
+  const container = document.getElementById(`modal-sizes-${productId}`);
+  if (!container) return;
+  const buttons = [...container.querySelectorAll('.size-btn')];
+  let firstAvail = null;
+  buttons.forEach(b => {
+    const size = b.dataset.size;
+    const avail = isVariantInStock(productId, color, size);
+    b.classList.toggle('oos', !avail);
+    if (avail) { b.disabled = false; b.removeAttribute('aria-disabled'); firstAvail = firstAvail || b; }
+    else       { b.disabled = true;  b.setAttribute('aria-disabled','true'); b.classList.remove('selected'); }
+  });
+  // If the previously-selected size is now OOS, auto-select the first available size.
+  if (!container.querySelector('.size-btn.selected') && firstAvail) firstAvail.classList.add('selected');
+  refreshAddToCartGuard(productId);
+}
+
+// Enable/disable the Add-to-Cart button based on the current color+size combo.
+function refreshAddToCartGuard(productId) {
+  const modal = document.getElementById('product-modal');
+  if (!modal) return;
+  const btn = modal.querySelector(`button.modal-add-btn[onclick*="(${productId})"]`);
+  if (!btn) return;
+  const color = modal.querySelector(`#modal-colors-${productId} .color-btn.selected`)?.dataset.color;
+  const size  = modal.querySelector(`#modal-sizes-${productId} .size-btn.selected`)?.dataset.size;
+  const msgEl = document.getElementById(`modal-stock-msg-${productId}`);
+  if (!color || !size || !isVariantInStock(productId, color, size)) {
+    btn.disabled = true;
+    btn.classList.add('disabled');
+    btn.dataset.oos = '1';
+    const originalLabel = btn.dataset.originalLabel || btn.textContent.trim();
+    btn.dataset.originalLabel = originalLabel;
+    btn.textContent = currentLang === 'he' ? 'אזל מהמלאי' : 'Sold out';
+    if (msgEl) {
+      msgEl.textContent = currentLang === 'he'
+        ? `${color || ''} ${size || ''} — אזל מהמלאי`
+        : `${color || ''} ${size || ''} — sold out`;
+      msgEl.style.display = 'block';
+    }
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('disabled');
+    delete btn.dataset.oos;
+    if (btn.dataset.originalLabel) btn.textContent = btn.dataset.originalLabel;
+    if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
+  }
+}
+
+// Re-render stock affordances after async stock map arrives while modal is already open.
+function refreshStockUi(productId) {
+  const color = document.querySelector(`#modal-colors-${productId} .color-btn.selected`)?.dataset.color
+             || (products.find(p => p.id === productId)?.colors?.[0]);
+  if (!color) return;
+  // color swatches
+  const product = products.find(p => p.id === productId);
+  document.querySelectorAll(`#modal-colors-${productId} .color-btn`).forEach(b => {
+    const c = b.dataset.color;
+    const anyAvail = isColorAnyInStock(productId, c, product?.sizes || []);
+    b.classList.toggle('oos', !anyAvail);
+    if (anyAvail) b.removeAttribute('aria-disabled');
+    else          b.setAttribute('aria-disabled','true');
+    b.title = c + (anyAvail ? '' : ' — Sold out');
+  });
+  refreshSizeAvailability(productId, color);
 }
 
 function addToCartFromModal(productId) {
   const product = products.find(p => p.id === productId);
   const selectedColor = document.querySelector(`#modal-colors-${productId} .color-btn.selected`)?.dataset.color || product.colors[0];
   const selectedSize  = document.querySelector(`#modal-sizes-${productId} .size-btn.selected`)?.dataset.size  || product.sizes[0];
+  // Hard block: cannot add an OOS variant to cart under any circumstance
+  if (!isVariantInStock(productId, selectedColor, selectedSize)) {
+    const msg = document.getElementById(`modal-stock-msg-${productId}`);
+    if (msg) {
+      msg.textContent = currentLang === 'he'
+        ? `${selectedColor} ${selectedSize} — אזל מהמלאי, בחר/י שילוב אחר`
+        : `${selectedColor} ${selectedSize} — sold out, pick another combination`;
+      msg.style.display = 'block';
+    }
+    return;
+  }
   cart.push({ ...product, selectedColor, selectedSize });
   saveCart();
   if (window.dubisTrack) window.dubisTrack('add_to_cart', { id: product.id, phrase: product.phrase, type: product.type, price: product.price, color: selectedColor, size: selectedSize, source: 'modal' });

@@ -1145,6 +1145,25 @@ h1, h2, h3, h4 {
     transition: border-color 0.2s;
 }
 .color-btn.selected { border-color: var(--honey); }
+/* OOS color swatch — greyed out with diagonal slash */
+.color-btn.oos {
+    cursor: not-allowed;
+    opacity: 0.45;
+    position: relative;
+    filter: grayscale(0.7);
+}
+.color-btn.oos:hover { border-color: transparent; }
+.color-btn.oos .oos-slash {
+    position: absolute;
+    top: 50%;
+    left: -4px;
+    right: -4px;
+    height: 2px;
+    background: #c0392b;
+    transform: rotate(-45deg);
+    transform-origin: center;
+    pointer-events: none;
+}
 .selected-label { font-size: 0.85rem; color: #666; }
 .modal-sizes { display: flex; flex-wrap: wrap; gap: 8px; }
 .size-btn {
@@ -1162,6 +1181,30 @@ h1, h2, h3, h4 {
     background: var(--charcoal);
     color: white;
 }
+/* OOS size — disabled appearance, no hover effect */
+.size-btn.oos,
+.size-btn:disabled {
+    cursor: not-allowed;
+    background: #f2f2f2;
+    color: #aaa;
+    border-color: #e5e5e5;
+    text-decoration: line-through;
+    text-decoration-color: #c0392b;
+    text-decoration-thickness: 2px;
+}
+.size-btn.oos:hover,
+.size-btn:disabled:hover {
+    background: #f2f2f2;
+    color: #aaa;
+    border-color: #e5e5e5;
+}
+/* OOS stock message below color swatches */
+.modal-stock-msg {
+    color: #c0392b;
+    font-size: 0.82rem;
+    margin: 4px 0 2px;
+    font-weight: 500;
+}
 .modal-quality {
     display: flex;
     flex-direction: column;
@@ -1173,6 +1216,19 @@ h1, h2, h3, h4 {
     color: #666;
 }
 .modal-add-btn { width: 100%; padding: 14px; font-size: 1rem; margin-top: auto; }
+.modal-add-btn:disabled,
+.modal-add-btn.disabled {
+    background: #bbb !important;
+    color: #fff !important;
+    cursor: not-allowed;
+    opacity: 0.85;
+    box-shadow: none;
+}
+.modal-add-btn:disabled:hover,
+.modal-add-btn.disabled:hover {
+    background: #bbb !important;
+    transform: none;
+}
 
 /* CRO elements */
 .modal-limited-badge {

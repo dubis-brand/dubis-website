@@ -12,7 +12,9 @@
 ## Critical Constraints
 - **Vercel Hobby = MAX 12 Serverless Functions. AT 12/12. NEVER add .js files to /api/.**
 - To add functionality → add routes inside existing API files using query params (e.g., `?type=newroute`).
+- Shared helpers MUST use `_` prefix (e.g. `api/_paypal.js`) — underscore-prefixed files don't count against the 12/12 cap.
 - Agents are on Supabase Edge Functions, NOT Vercel.
+- **Checkout guardrails (post 2026-04-22 catastrophe):** Site label = Gelato SKU verbatim (no COLOR_MAP renames). Capture→external-API flows require auto-refund on BOTH sync error + async webhook. PayPal `onError` is NOT a terminal failure signal. Full detail in `../memory/checkout-guardrails.md`.
 
 ## Tech Stack
 - Frontend: Static HTML + vanilla JS (no framework)
