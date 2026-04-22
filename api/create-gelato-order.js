@@ -231,31 +231,95 @@ async function validateAllDesignFiles(items) {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// FALLBACK LOGGER
+// STRUCTURED LOGGER — all lines prefixed [DUBIS-GELATO] for grep
+// These lines appear in Vercel runtime logs (Observability tab).
+// ─────────────────────────────────────────────────────────────────
+function dlog(stage, data = {}) {
+  // Single-line JSON so Vercel log viewer can parse and search.
+  try {
+    console.log(`[DUBIS-GELATO] ${stage} ${JSON.stringify(data)}`);
+  } catch (_) {
+    console.log(`[DUBIS-GELATO] ${stage} <unserializable>`);
+  }
+}
+
+function derr(stage, data = {}) {
+  try {
+    console.error(`[DUBIS-GELATO] ERROR ${stage} ${JSON.stringify(data)}`);
+  } catch (_) {
+    console.error(`[DUBIS-GELATO] ERROR ${stage} <unserializable>`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// FALLBACK LOGGER (legacy — kept for human-readable multi-line dumps)
 // ─────────────────────────────────────────────────────────────────
 function logManualOrder(label, payload) {
   console.log(`\n====== DUBIS MANUAL ORDER — ${label} ======`);
   console.log(JSON.stringify(payload, null, 2));
   console.log('=============================================\n');
+  // Also emit a structured line so it's discoverable via grep.
+  dlog('manual-order', { label, paypalOrderId: payload && payload.paypalOrderId });
 }
 
 // ─────────────────────────────────────────────────────────────────
 // HANDLER
 // ─────────────────────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
+  const t0 = Date.now();
+  dlog('request-received', {
+    method: req.method,
+    hasBody: !!req.body,
+    userAgent: (req.headers && req.headers['user-agent']) || '',
+    designVersion: DESIGN_VERSION,
+  });
+
   if (req.method !== 'POST') {
+    derr('method-not-allowed', { method: req.method });
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { cartItems, shippingAddress, paypalOrderId, buyerEmail } = req.body;
+  const { cartItems, shippingAddress, paypalOrderId, buyerEmail } = req.body || {};
 
   if (!cartItems || !shippingAddress || !paypalOrderId) {
+    derr('missing-required-fields', {
+      hasCartItems: !!cartItems,
+      hasShippingAddress: !!shippingAddress,
+      hasPaypalOrderId: !!paypalOrderId,
+    });
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
+  dlog('order-input', {
+    paypalOrderId,
+    buyerEmailDomain: (buyerEmail || '').split('@')[1] || '',
+    itemsCount: cartItems.length,
+    shippingCountry: shippingAddress.country_code,
+    shippingState: shippingAddress.admin_area_1 || '',
+    itemsPreview: cartItems.map(i => ({
+      id: i.id,
+      type: i.type,
+      color: i.selectedColor,
+      size: i.selectedSize,
+      gender: i.gender,
+      designRef: i.designRef || null,
+    })),
+  });
+
   // ── Case 1: Gelato not configured yet ──
   const GELATO_API_KEY = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
+  dlog('env-check', {
+    hasGelatoKey: !!GELATO_API_KEY,
+    keyLen: GELATO_API_KEY ? GELATO_API_KEY.length : 0,
+    keySource: process.env.GELATO_API_KEY ? 'GELATO_API_KEY' :
+               process.env.GELATO         ? 'GELATO' :
+               process.env.Gelato         ? 'Gelato' : 'none',
+    hasSupabaseUrl: !!process.env.SUPABASE_URL,
+    hasSupabaseKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    node: process.version,
+  });
   if (!GELATO_API_KEY) {
+    derr('no-api-key', { paypalOrderId });
     logManualOrder('NO API KEY', { paypalOrderId, buyerEmail, cartItems, shippingAddress });
     return res.status(200).json({ success: true, manual: true, reason: 'gelato_not_configured' });
   }
@@ -272,6 +336,11 @@ module.exports = async function handler(req, res) {
   });
 
   if (unmapped.length > 0) {
+    derr('items-unmapped', {
+      paypalOrderId,
+      unmappedCount: unmapped.length,
+      unmapped: unmapped.map(u => ({ type: u.type, color: u.selectedColor, size: u.selectedSize, gender: u.gender })),
+    });
     logManualOrder('UNMAPPED ITEMS', { paypalOrderId, buyerEmail, unmapped, cartItems, shippingAddress });
     return res.status(200).json({ success: true, manual: true, reason: 'items_not_mapped', unmapped });
   }
@@ -286,10 +355,21 @@ module.exports = async function handler(req, res) {
     itemReferenceId: `item-${i + 1}`,
     files: getDesignFiles(item.id, item.selectedColor, item.designRef, item.type),
   }));
+  dlog('design-preflight-start', {
+    paypalOrderId,
+    uniqueUrls: [...new Set(preflightItems.flatMap(pi => pi.files.map(f => f.url)))],
+  });
   const fileErrors = await validateAllDesignFiles(preflightItems);
+  dlog('design-preflight-done', {
+    paypalOrderId,
+    errorCount: fileErrors.length,
+    errors: fileErrors,
+    durationMs: Date.now() - t0,
+  });
   if (fileErrors.length > 0) {
     const errorMsg = 'DESIGN FILE VALIDATION FAILED — order blocked:\n' + fileErrors.join('\n');
     console.error(errorMsg);
+    derr('design-validation-failed', { paypalOrderId, fileErrors });
     logManualOrder('DESIGN FILE VALIDATION FAILED', { paypalOrderId, buyerEmail, fileErrors, cartItems });
     // Return error so admin is notified — do NOT silently continue
     return res.status(500).json({
@@ -329,6 +409,20 @@ module.exports = async function handler(req, res) {
     },
   };
 
+  dlog('gelato-request-start', {
+    paypalOrderId,
+    endpoint: `${GELATO_API_BASE}/v4/orders`,
+    orderReferenceId: gelatoOrder.orderReferenceId,
+    itemsCount: gelatoOrder.items.length,
+    productUids: gelatoOrder.items.map(i => i.productUid),
+    shippingCountry: gelatoOrder.shippingAddress.country,
+    shippingState: gelatoOrder.shippingAddress.state,
+    shippingPostCode: gelatoOrder.shippingAddress.postCode,
+    currency: gelatoOrder.currency,
+    shipmentMethodUid: gelatoOrder.shipmentMethodUid,
+  });
+
+  const gelatoT0 = Date.now();
   try {
     const gRes = await fetch(`${GELATO_API_BASE}/v4/orders`, {
       method:  'POST',
@@ -340,8 +434,24 @@ module.exports = async function handler(req, res) {
     });
 
     const data = await gRes.json();
+    const gelatoDuration = Date.now() - gelatoT0;
+
+    dlog('gelato-response', {
+      paypalOrderId,
+      httpStatus: gRes.status,
+      ok: gRes.ok,
+      gelatoDurationMs: gelatoDuration,
+      responseId: data && (data.id || data.orderId || data.orderReferenceId) || null,
+      responseKeys: data ? Object.keys(data).slice(0, 20) : [],
+    });
 
     if (!gRes.ok) {
+      derr('gelato-api-error', {
+        paypalOrderId,
+        httpStatus: gRes.status,
+        errorData: data,
+        productUids: gelatoOrder.items.map(i => i.productUid),
+      });
       logManualOrder('GELATO API ERROR', { paypalOrderId, error: data, gelatoOrder });
       // Payment already captured — return success to customer, handle manually
       return res.status(200).json({ success: true, manual: true, reason: 'gelato_api_error' });
@@ -349,6 +459,11 @@ module.exports = async function handler(req, res) {
 
     const gelatoOrderId = data.id || data.orderId || data.orderReferenceId;
     console.log(`Gelato order created: ${gelatoOrderId} for PayPal ${paypalOrderId}`);
+    dlog('gelato-success', {
+      paypalOrderId,
+      gelatoOrderId,
+      totalDurationMs: Date.now() - t0,
+    });
     return res.status(200).json({
       success:        true,
       manual:         false,
@@ -357,6 +472,12 @@ module.exports = async function handler(req, res) {
     });
 
   } catch (err) {
+    derr('gelato-network-error', {
+      paypalOrderId,
+      errorMessage: err.message,
+      errorStack: (err.stack || '').split('\n').slice(0, 3).join(' | '),
+      gelatoDurationMs: Date.now() - gelatoT0,
+    });
     logManualOrder('NETWORK ERROR', { paypalOrderId, error: err.message, gelatoOrder });
     return res.status(200).json({ success: true, manual: true, reason: 'network_error' });
   }

@@ -66,14 +66,33 @@ async function sendShippingEmail(buyerEmail, buyerName, trackingUrl, orderId) {
 // ─────────────────────────────────────────────────────────────────
 // HANDLER
 // ─────────────────────────────────────────────────────────────────
+// Structured logger — single-line JSON for Vercel runtime-log grep
+function wlog(stage, data = {}) {
+  try { console.log(`[DUBIS-WEBHOOK] ${stage} ${JSON.stringify(data)}`); }
+  catch (_) { console.log(`[DUBIS-WEBHOOK] ${stage} <unserializable>`); }
+}
+function werr(stage, data = {}) {
+  try { console.error(`[DUBIS-WEBHOOK] ERROR ${stage} ${JSON.stringify(data)}`); }
+  catch (_) { console.error(`[DUBIS-WEBHOOK] ERROR ${stage} <unserializable>`); }
+}
+
 module.exports = async function handler(req, res) {
+  const t0 = Date.now();
+  wlog('request-received', {
+    method: req.method,
+    hasBody: !!req.body,
+    hasSecretHeader: !!(req.headers['x-gelato-webhook-secret'] || req.headers['x-webhook-secret']),
+  });
+
   if (req.method !== 'POST') {
+    werr('method-not-allowed', { method: req.method });
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   // Webhook secret verification — required
   const secret = process.env.GELATO_WEBHOOK_SECRET;
   if (!secret) {
+    werr('no-secret-configured', {});
     console.error('GELATO_WEBHOOK_SECRET not configured — rejecting webhook');
     return res.status(500).json({ error: 'Webhook not configured' });
   }
@@ -85,12 +104,20 @@ module.exports = async function handler(req, res) {
             crypto.timingSafeEqual(Buffer.from(incoming), Buffer.from(secret));
   } catch { valid = false; }
   if (!valid) {
+    werr('invalid-secret', { incomingLen: incoming.length, expectedLen: secret.length });
     console.warn('Gelato webhook: invalid secret');
     return res.status(401).json({ error: 'Invalid webhook secret' });
   }
 
   const payload = req.body;
   const event   = payload?.event || payload?.type || '';
+
+  wlog('event-parsed', {
+    event,
+    orderRef: payload?.order?.orderReferenceId || payload?.orderReferenceId || payload?.order?.id || null,
+    gelatoOrderId: payload?.order?.id || null,
+    status: payload?.order?.status || payload?.status || null,
+  });
 
   // ── Idempotency: skip duplicate events ──────────────────────────
   const eventId = payload?.id || payload?.eventId || `${event}-${payload?.order?.id || payload?.orderReferenceId || Date.now()}`;
@@ -165,6 +192,7 @@ module.exports = async function handler(req, res) {
   const { data: orders, error: findErr } = await query;
 
   if (findErr || !orders?.length) {
+    werr('order-not-found', { orderRef, paypalOrderId, findErr: findErr?.message || null });
     console.warn('Gelato webhook: order not found for ref:', orderRef);
     return res.status(200).json({ received: true, note: 'order not found' });
   }
@@ -186,15 +214,19 @@ module.exports = async function handler(req, res) {
     .eq('id', order.id);
 
   if (updateErr) {
+    werr('db-update-failed', { orderId: order.id, errorMessage: updateErr.message });
     console.error('Gelato webhook: failed to update order', updateErr.message);
   } else {
+    wlog('db-updated', { orderId: order.id, prevStatus: order.status, newStatus, durationMs: Date.now() - t0 });
     console.log(`Order ${order.id} status → ${newStatus}`);
   }
 
   // Send shipping email — only if transitioning to shipped (not already shipped)
   if (isShipped && buyerEmail && order.status !== 'shipped') {
+    wlog('shipping-email-sending', { orderId: order.id, buyerEmailDomain: buyerEmail.split('@')[1] });
     await sendShippingEmail(buyerEmail, buyerName, trackingUrl, orderRef);
   }
 
+  wlog('webhook-done', { orderId: order.id, newStatus, totalDurationMs: Date.now() - t0 });
   return res.status(200).json({ received: true, status: newStatus });
 };
