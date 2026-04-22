@@ -1,0 +1,12 @@
+ Volume in drive C is OS
+ Volume Serial Number is 0A38-6CFB
+
+ Directory of C:\Users\tehar\OneDrive\Cladue Projects\Dubis\dubis-website
+
+21/04/2026  14:37         3,492,541 design_8_white.png
+
+ Directory of C:\Users\tehar\OneDrive\Cladue Projects\Dubis\dubis-website
+
+21/04/2026  14:38         3,508,156 design_1_white.png
+               2 File(s)      7,000,697 bytes
+               0 Dir(s)  816,964,235,264 bytes free

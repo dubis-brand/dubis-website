@@ -1,0 +1,14 @@
+=== DUBIS Design URLs Verification 21/04/2026 16:18:11.41 === 
+ 
+HTTP=200 bytes=0 https://www.dubis.net/designs/front_logo_white.png
+HTTP=200 bytes=0 https://www.dubis.net/designs/front_logo_dark.png
+HTTP=200 bytes=0 https://www.dubis.net/designs/back_design_1_white.png
+HTTP=404 bytes=0 https://www.dubis.net/designs/back_design_7_white.png
+HTTP=404 bytes=0 https://www.dubis.net/designs/back_design_7_dark.png
+HTTP=200 bytes=0 https://www.dubis.net/designs/back_design_17_white.png
+HTTP=200 bytes=0 https://www.dubis.net/designs/back_design_17_dark.png
+HTTP=200 bytes=0 https://www.dubis.net/designs/back_design_18_white.png
+HTTP=200 bytes=0 https://www.dubis.net/designs/back_design_18_dark.png
+HTTP=200 bytes=0 https://www.dubis.net/designs/cap_design_white.png
+ 
+=== done === 

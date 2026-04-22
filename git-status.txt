@@ -1,0 +1,25 @@
+ M js/main.js
+ M supabase/functions/agents/index.ts
+?? deploy-only.bat
+?? download-log.txt
+?? download-reference.bat
+?? download-test-image.bat
+?? git-push-main.bat
+?? git-status.txt
+?? post_f1b34cb6.jpg
+?? ref-log.txt
+?? reference_product_8.jpg
+?? reference_product_8_black.jpg
+?? test-product-urls.bat
+?? url-test.txt
+warning: in the working copy of 'js/main.js', LF will be replaced by CRLF the next time Git touches it
+[main 72d2dda] fix: add ?p=N query param handler for IG/FB deep links (FB strips hash fragment via l.facebook.com)
+ 1 file changed, 23 insertions(+), 1 deletion(-)
+To https://github.com/dubis-brand/dubis-website.git
+ ! [rejected]        main -> main (fetch first)
+error: failed to push some refs to 'https://github.com/dubis-brand/dubis-website.git'
+hint: Updates were rejected because the remote contains work that you do not
+hint: have locally. This is usually caused by another repository pushing to
+hint: the same ref. If you want to integrate the remote changes, use
+hint: 'git pull' before pushing again.
+hint: See the 'Note about fast-forwards' in 'git push --help' for details.

@@ -189,8 +189,11 @@ function renderPayPalButtons() {
             } catch (e) { /* pixel not critical */ }
         }
         // Stash for Purchase event in onApprove
-        window.__dubisCheckoutTotal = total;
-        window.__dubisCheckoutIds   = cart.map(i => String(i.id));
+        window.__dubisCheckoutTotal    = total;
+        window.__dubisCheckoutIds      = cart.map(i => String(i.id));
+        window.__dubisCheckoutShipping = shipping;
+        window.__dubisCheckoutItemSub  = itemTotal;
+        window.__dubisCheckoutDiscount = appliedCoupon ? (itemTotal - appliedCoupon.final_total) : 0;
         return actions.order.create({
         purchase_units: [{
             description: 'DUBIS Clothing Order',
@@ -257,7 +260,11 @@ function renderPayPalButtons() {
                 }));
 
                 // ── 1. Send to Gelato ────────────────────────────────
+                // If Gelato rejects (e.g. out of stock), create-gelato-order auto-refunds
+                // via PayPal and returns { refunded: true, refundId }. In that case we
+                // show a refund message instead of success.
                 let printfulOrderId = null;
+                let gelatoRefundInfo = null; // { refunded, refundId, gelatoError }
                 try {
                     const pfRes  = await fetch('/api/create-gelato-order', {
                         method:  'POST',
@@ -272,6 +279,13 @@ function renderPayPalButtons() {
                     const pfData = await pfRes.json();
                     if (pfData.gelatoOrderId)  printfulOrderId = String(pfData.gelatoOrderId);
                     if (pfData.printfulOrderId && !printfulOrderId) printfulOrderId = String(pfData.printfulOrderId);
+                    if (pfData.refunded || pfData.reason === 'gelato_rejected_refunded') {
+                        gelatoRefundInfo = {
+                            refunded:    true,
+                            refundId:    pfData.refundId || null,
+                            gelatoError: pfData.gelatoError || '',
+                        };
+                    }
                 } catch (err) {
                     console.error('Gelato dispatch failed:', err);
                 }
@@ -294,6 +308,10 @@ function renderPayPalButtons() {
                             printfulOrderId,
                             couponCode:      appliedCoupon?.code || null,
                             discountAmount:  appliedCoupon?.discount_amount || null,
+                            // NEW (2026-04-22 postmortem fix): DB was storing only items subtotal.
+                            shippingAmount:  Number(window.__dubisCheckoutShipping) || 0,
+                            totalAmount:     Number(window.__dubisCheckoutTotal)
+                                             || (Number(window.__dubisCheckoutItemSub) || 0) + (Number(window.__dubisCheckoutShipping) || 0),
                         }),
                     });
                     const saveData = await saveRes.json();
@@ -342,7 +360,11 @@ function renderPayPalButtons() {
                 cart = [];
                 saveCart();
                 updateCartCount();
-                showSuccessModal();
+                if (gelatoRefundInfo && gelatoRefundInfo.refunded) {
+                    showRefundModal(gelatoRefundInfo);
+                } else {
+                    showSuccessModal();
+                }
             } catch (err) {
                 console.error('PayPal capture error:', err);
                 const issue = err?.details?.[0]?.issue;
@@ -354,8 +376,13 @@ function renderPayPalButtons() {
     };
 
     const onError = (err) => {
-        console.error('PayPal error:', err);
-        showPaymentError('Payment failed. Please try again or contact support.');
+        // NOTE: PayPal's onError can fire for transient issues (network blips, SDK init
+        // failures, window-resize races) — sometimes even AFTER a successful capture.
+        // It is NOT a reliable signal that payment failed.  Our authoritative failure
+        // path is the onApprove/capture try-catch.  Here we only show a non-blocking
+        // banner that does NOT destroy the button container, so the user can retry.
+        console.error('PayPal SDK error event:', err);
+        showPaymentErrorBanner('We hit a snag connecting to PayPal. If the payment did not go through, please try again.');
     };
 
     // Messaging above the buttons — makes Guest Checkout visible to the 60%+ of US users who don't have PayPal
@@ -471,6 +498,24 @@ function showSuccessModal() {
     document.getElementById('success-modal').classList.add('open');
 }
 
+// Auto-refund modal — shown when Gelato rejects the order and we've refunded PayPal.
+// Uses the existing success-modal element so no DOM changes needed — just rewrites content.
+function showRefundModal(info) {
+    const modal = document.getElementById('success-modal');
+    if (!modal) return;
+    const content = modal.querySelector('.modal-content') || modal.firstElementChild || modal;
+    if (content) {
+        content.innerHTML = `
+            <h2 style="color:#b45309;margin:0 0 16px;font-size:22px">Order refunded — item unavailable</h2>
+            <p style="margin:0 0 12px;color:#374151">We're sorry — the item you ordered just went out of stock at our fulfillment partner. Your payment has been refunded automatically.</p>
+            <p style="margin:0 0 12px;color:#374151">You should see the refund on your statement in 3–5 business days.</p>
+            ${info.refundId ? `<p style="margin:0 0 20px;color:#6b7280;font-size:13px">Refund reference: <code>${info.refundId}</code></p>` : ''}
+            <button onclick="closeSuccessModal()" style="display:block;width:100%;padding:12px;background:#111;color:#fff;border:none;cursor:pointer;font-size:14px;border-radius:4px">Close</button>
+        `;
+    }
+    modal.classList.add('open');
+}
+
 function closeSuccessModal() {
     document.getElementById('success-modal').classList.remove('open');
 }
@@ -481,12 +526,31 @@ function showPaymentProcessing() {
     if (container) container.innerHTML = '<div style="text-align:center;padding:32px;color:#666">Processing payment…</div>';
 }
 
+// Hard failure — payment definitively did not go through (capture threw, etc.)
+// Replaces the container so user can't click again on a broken state.
 function showPaymentError(msg) {
     const container = document.getElementById('paypal-button-container');
     if (container) container.innerHTML = `
         <p style="color:#c00;text-align:center;padding:16px;margin:0">${msg}</p>
         <button onclick="closePaypalModal()" style="display:block;width:100%;margin-top:8px;padding:12px;background:#111;color:#fff;border:none;cursor:pointer;font-size:14px">Close</button>
     `;
+}
+
+// Soft warning — transient PayPal SDK error.  Does NOT destroy the buttons,
+// so the user can retry without reopening the modal. Banner auto-dismisses
+// after 10s or on next successful interaction.
+function showPaymentErrorBanner(msg) {
+    const container = document.getElementById('paypal-button-container');
+    if (!container) return;
+    // Remove any previous banner
+    const prev = container.querySelector('.pp-err-banner');
+    if (prev) prev.remove();
+    const banner = document.createElement('div');
+    banner.className = 'pp-err-banner';
+    banner.style.cssText = 'background:#fff4e5;border:1px solid #ffb366;color:#8a3b00;padding:10px 12px;margin:0 0 12px;border-radius:8px;font-size:13px;text-align:center;';
+    banner.textContent = msg;
+    container.insertBefore(banner, container.firstChild);
+    setTimeout(() => banner.remove(), 10_000);
 }
 
 // Handle return from PayPal direct link

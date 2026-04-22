@@ -1,0 +1,25 @@
+=== Test main.js has ?p=N handler === 
+ 
+ Volume in drive C is OS
+ Volume Serial Number is 0A38-6CFB
+
+ Directory of C:\Users\tehar\OneDrive\Cladue Projects\Dubis\dubis-website
+
+21/04/2026  12:03            52,316 main-live.js
+               1 File(s)         52,316 bytes
+               0 Dir(s)  816,995,930,112 bytes free
+ 
+=== Searching for openFromQueryParam === 
+883:  // Query-param deep link: `?p=N` — used for Instagram captions where `#product-N`
+886:  function openFromQueryParam() {
+889:      const p = params.get('p');
+895:        openFromHash(__dubisLastHash, 'query-p');
+898:    } catch (e) { console.error('openFromQueryParam failed:', e); }
+905:    // `?p=N` takes precedence over hash (IG-safe URL format)
+906:    if (!openFromQueryParam()) {
+ 
+=== Commit ID check === 
+Etag: "cb9a5e011685e7a09a140d61c7320114"
+X-Vercel-Id: fra1::shlls-1776762236269-0a253b50028f
+ 
+=== DONE === 

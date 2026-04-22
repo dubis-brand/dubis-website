@@ -8,6 +8,8 @@
 //   3. Add to Vercel env vars: GELATO_API_KEY
 // =================================================================
 
+const { refundOrder } = require('./_paypal');
+
 const GELATO_API_BASE = 'https://order.gelatoapis.com';
 const DESIGN_BASE_URL = 'https://www.dubis.net/designs';
 // Cache-busting version — bump whenever designs are regenerated.
@@ -22,12 +24,16 @@ const DESIGN_VERSION = process.env.DESIGN_VERSION || '2026042101';
 // T-shirt: black, white, natural, charcoal, navy, sports-grey, sand, red, forest
 // Hoodie:  black, navy, white, dark-heather, sand
 // ─────────────────────────────────────────────────────────────────
+// NOTE: "Honey Brown" removed 2026-04-22 — it was a lie.
+// Gelato's t-shirt catalog has NO brown/honey/orange color.
+// The previous mapping 'Honey Brown' → 'sand' delivered cream to customers
+// who ordered orange. See memory/troubleshooting.md (2026-04-22) + POSTMORTEM.
+// ONLY add colors here that physically exist in Gelato's catalog.
 const COLOR_MAP = {
   tshirt: {
     'Black':        'black',
     'White':        'white',
     'Cream':        'natural',
-    'Honey Brown':  'sand',
     'Charcoal':     'charcoal',
     'Navy':         'navy',
     'Gray':         'sports-grey',
@@ -38,7 +44,6 @@ const COLOR_MAP = {
     'Black':        'black',
     'White':        'white',
     'Cream':        'sand',
-    'Honey Brown':  'sand',
     'Charcoal':     'dark-heather',
     'Navy':         'navy',
     'Gray':         'sports-grey',
@@ -49,7 +54,6 @@ const COLOR_MAP = {
     'White':        'white',
     'Charcoal':     'dark-heather',
     'Navy':         'navy',
-    'Honey Brown':  'sand',
   },
   longsleeve: {
     'Black':        'black',
@@ -63,7 +67,6 @@ const COLOR_MAP = {
     'Black':        'black',
     'White':        'white',
     'Cream':        'natural',
-    'Honey Brown':  'sand',
     'Charcoal':     'dark-heather',
     'Navy':         'navy',
     'Gray':         'sports-grey',
@@ -453,8 +456,26 @@ module.exports = async function handler(req, res) {
         productUids: gelatoOrder.items.map(i => i.productUid),
       });
       logManualOrder('GELATO API ERROR', { paypalOrderId, error: data, gelatoOrder });
-      // Payment already captured — return success to customer, handle manually
-      return res.status(200).json({ success: true, manual: true, reason: 'gelato_api_error' });
+
+      // ── AUTO-REFUND — Gelato won't fulfill, customer's money must go back ──
+      // Triggers on: out-of-stock (400/422), invalid product, any 4xx/5xx
+      // Lesson from incident 2026-04-22: manual-only left hila's $20.89 stuck.
+      const errMsg = (data && (data.message || data.error || JSON.stringify(data))) || '';
+      dlog('auto-refund-start', { paypalOrderId, gelatoHttpStatus: gRes.status, reason: errMsg.slice(0, 120) });
+      const refundResult = await refundOrder({
+        paypalOrderId,
+        reason: `gelato_${gRes.status}_${(errMsg.match(/out of stock/i) ? 'out_of_stock' : 'api_error')}`,
+      });
+      dlog('auto-refund-done', { paypalOrderId, refunded: refundResult.refunded, refundId: refundResult.refundId || null, refundReason: refundResult.reason || null });
+
+      return res.status(200).json({
+        success: true,
+        manual:  !refundResult.refunded,
+        refunded: !!refundResult.refunded,
+        refundId: refundResult.refundId || null,
+        reason:   refundResult.refunded ? 'gelato_rejected_refunded' : 'gelato_api_error',
+        gelatoError: errMsg.slice(0, 200),
+      });
     }
 
     const gelatoOrderId = data.id || data.orderId || data.orderReferenceId;

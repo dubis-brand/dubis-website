@@ -37,7 +37,9 @@ module.exports = async function handler(req, res) {
         cartItems,
         printfulOrderId,
         couponCode,
-        discountAmount
+        discountAmount,
+        shippingAmount,   // NEW — from client, so DB total reflects reality
+        totalAmount:      clientTotalAmount,  // NEW — client-computed grand total
     } = req.body || {};
 
     if (!paypalOrderId || !cartItems || !shippingAddress) {
@@ -114,7 +116,29 @@ module.exports = async function handler(req, res) {
         }
     }
 
-    const totalAmount = (cartItems || []).reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+    // Items subtotal (what the customer paid before shipping & discount)
+    const itemsSubtotal = (cartItems || []).reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+    const shippingNum   = Number(shippingAmount) || 0;
+    const discountNum   = Number(discountAmount) || 0;
+
+    // Grand total — client sends it, but we validate against computed amount
+    // so a malicious client can't silently store a fake total in DB.
+    const computedTotal = Math.max(0, itemsSubtotal + shippingNum - discountNum);
+    const clientTotal   = Number(clientTotalAmount);
+    const totalAmount   = (Number.isFinite(clientTotal) && Math.abs(clientTotal - computedTotal) < 0.02)
+        ? clientTotal
+        : computedTotal;
+
+    if (Number.isFinite(clientTotal) && Math.abs(clientTotal - computedTotal) >= 0.02) {
+        oerr('total-mismatch', {
+            paypalOrderId,
+            clientTotal,
+            computedTotal,
+            itemsSubtotal,
+            shippingNum,
+            discountNum,
+        });
+    }
 
     const insertData = {
         user_id:           userId,
@@ -128,7 +152,9 @@ module.exports = async function handler(req, res) {
         currency:          'USD'
     };
     if (couponCode) insertData.coupon_code = String(couponCode).toUpperCase();
-    if (discountAmount) insertData.discount_amount = Number(discountAmount);
+    if (discountNum) insertData.discount_amount = discountNum;
+    if (shippingNum) insertData.shipping_amount = shippingNum;
+    insertData.items_subtotal = itemsSubtotal;
 
     // Increment coupon usage count
     if (couponCode) {

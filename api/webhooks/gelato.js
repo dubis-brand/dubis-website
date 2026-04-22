@@ -7,6 +7,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const crypto            = require('crypto');
+const { refundOrder }  = require('../_paypal');
 
 // ─────────────────────────────────────────────────────────────────
 // Gelato status → DUBIS internal status
@@ -78,10 +79,21 @@ function werr(stage, data = {}) {
 
 module.exports = async function handler(req, res) {
   const t0 = Date.now();
+
+  // List header names (NOT values) so we can see what Gelato actually sends
+  // without leaking secrets into the log stream.
+  const headerNames = Object.keys(req.headers || {}).filter(h => !/cookie|authorization/i.test(h));
+
   wlog('request-received', {
     method: req.method,
     hasBody: !!req.body,
-    hasSecretHeader: !!(req.headers['x-gelato-webhook-secret'] || req.headers['x-webhook-secret']),
+    headerNames,
+    // Probe common secret-header variants
+    has_x_gelato_webhook_secret: !!req.headers['x-gelato-webhook-secret'],
+    has_x_webhook_secret:        !!req.headers['x-webhook-secret'],
+    has_x_gelato_signature:      !!req.headers['x-gelato-signature'],
+    has_gelato_signature:        !!req.headers['gelato-signature'],
+    has_x_signature:             !!req.headers['x-signature'],
   });
 
   if (req.method !== 'POST') {
@@ -89,25 +101,70 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Webhook secret verification — required
+  // Webhook secret verification — required.  Gelato's docs are inconsistent across
+  // account tiers: some plans deliver a plain secret via `x-gelato-webhook-secret`,
+  // others send an HMAC-SHA256 signature via `x-gelato-signature`.  We accept both.
   const secret = process.env.GELATO_WEBHOOK_SECRET;
   if (!secret) {
     werr('no-secret-configured', {});
     console.error('GELATO_WEBHOOK_SECRET not configured — rejecting webhook');
     return res.status(500).json({ error: 'Webhook not configured' });
   }
-  const incoming = req.headers['x-gelato-webhook-secret'] || req.headers['x-webhook-secret'] || '';
-  // Timing-safe comparison prevents timing attacks
+
+  // Variant A: plain-secret header — accept several spellings Gelato uses.
+  const incomingPlain = (
+    req.headers['x-gelato-webhook-secret'] ||
+    req.headers['x-webhook-secret'] ||
+    req.headers['webhook-secret'] ||
+    ''
+  ).toString();
+
+  // Variant B: HMAC-SHA256 of the raw body, compared against the header.
+  const incomingSig = (
+    req.headers['x-gelato-signature'] ||
+    req.headers['gelato-signature'] ||
+    req.headers['x-signature'] ||
+    ''
+  ).toString().replace(/^sha256=/i, '');
+
   let valid = false;
-  try {
-    valid = incoming.length === secret.length &&
-            crypto.timingSafeEqual(Buffer.from(incoming), Buffer.from(secret));
-  } catch { valid = false; }
+  let matchedVia = null;
+
+  // Try plain-secret match
+  if (incomingPlain && incomingPlain.length === secret.length) {
+    try {
+      if (crypto.timingSafeEqual(Buffer.from(incomingPlain), Buffer.from(secret))) {
+        valid = true; matchedVia = 'plain-secret';
+      }
+    } catch { /* fall through to HMAC check */ }
+  }
+
+  // Try HMAC signature match (computed over raw body)
+  if (!valid && incomingSig) {
+    try {
+      const rawBody = typeof req.body === 'string'
+        ? req.body
+        : JSON.stringify(req.body || {});
+      const computed = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+      if (incomingSig.length === computed.length &&
+          crypto.timingSafeEqual(Buffer.from(incomingSig), Buffer.from(computed))) {
+        valid = true; matchedVia = 'hmac-sha256';
+      }
+    } catch { /* stays invalid */ }
+  }
+
   if (!valid) {
-    werr('invalid-secret', { incomingLen: incoming.length, expectedLen: secret.length });
+    werr('invalid-secret', {
+      hasPlain: !!incomingPlain,
+      plainLen: incomingPlain.length,
+      hasSig:   !!incomingSig,
+      sigLen:   incomingSig.length,
+      expectedLen: secret.length,
+    });
     console.warn('Gelato webhook: invalid secret');
     return res.status(401).json({ error: 'Invalid webhook secret' });
   }
+  wlog('secret-valid', { matchedVia });
 
   const payload = req.body;
   const event   = payload?.event || payload?.type || '';
@@ -182,7 +239,7 @@ module.exports = async function handler(req, res) {
   // or the Gelato internal ID stored in printful_order_id
   const paypalOrderId = orderRef.startsWith('DUBIS-') ? orderRef.slice(6) : null;
 
-  let query = supabase.from('orders').select('id,buyer_email,shipping_address,status');
+  let query = supabase.from('orders').select('id,buyer_email,shipping_address,status,paypal_order_id,refund_id');
   if (paypalOrderId) {
     query = query.eq('paypal_order_id', paypalOrderId);
   } else {
@@ -207,18 +264,48 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ received: true, status: newStatus, skipped: true });
   }
 
-  // Update status
+  // Build update payload — may include refund fields if Gelato cancelled/failed
+  const updatePayload = { status: newStatus, updated_at: new Date().toISOString() };
+
+  // ── AUTO-REFUND on async Gelato cancellation/failure ──
+  // If Gelato accepted the order initially but later cancels/fails (e.g. stock
+  // issue caught in production, fraud block, address rejection) — we must
+  // refund the customer. Safe to call: refundOrder is idempotent via
+  // PayPal-Request-Id header, and we short-circuit if refund_id already stored.
+  if ((newStatus === 'cancelled' || newStatus === 'failed') && !order.refund_id) {
+    const payOrderId = order.paypal_order_id;
+    if (payOrderId) {
+      wlog('auto-refund-trigger', { orderId: order.id, paypalOrderId: payOrderId, gelatoStatus: newStatus });
+      const refundResult = await refundOrder({ paypalOrderId: payOrderId, reason: `gelato_${newStatus}` });
+      wlog('auto-refund-result', {
+        orderId: order.id,
+        refunded: refundResult.refunded,
+        refundId: refundResult.refundId || null,
+        refundReason: refundResult.reason || null,
+      });
+      if (refundResult.refunded) {
+        updatePayload.status        = 'refunded';
+        updatePayload.refund_id     = refundResult.refundId;
+        updatePayload.refunded_at   = new Date().toISOString();
+        updatePayload.refund_reason = `gelato_${newStatus}`;
+      }
+    } else {
+      werr('auto-refund-no-paypal-id', { orderId: order.id });
+    }
+  }
+
+  // Update status (+ refund fields if set above)
   const { error: updateErr } = await supabase
     .from('orders')
-    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .update(updatePayload)
     .eq('id', order.id);
 
   if (updateErr) {
     werr('db-update-failed', { orderId: order.id, errorMessage: updateErr.message });
     console.error('Gelato webhook: failed to update order', updateErr.message);
   } else {
-    wlog('db-updated', { orderId: order.id, prevStatus: order.status, newStatus, durationMs: Date.now() - t0 });
-    console.log(`Order ${order.id} status → ${newStatus}`);
+    wlog('db-updated', { orderId: order.id, prevStatus: order.status, newStatus: updatePayload.status, refunded: !!updatePayload.refund_id, durationMs: Date.now() - t0 });
+    console.log(`Order ${order.id} status → ${updatePayload.status}`);
   }
 
   // Send shipping email — only if transitioning to shipped (not already shipped)
@@ -227,6 +314,6 @@ module.exports = async function handler(req, res) {
     await sendShippingEmail(buyerEmail, buyerName, trackingUrl, orderRef);
   }
 
-  wlog('webhook-done', { orderId: order.id, newStatus, totalDurationMs: Date.now() - t0 });
-  return res.status(200).json({ received: true, status: newStatus });
+  wlog('webhook-done', { orderId: order.id, newStatus: updatePayload.status, totalDurationMs: Date.now() - t0 });
+  return res.status(200).json({ received: true, status: updatePayload.status });
 };

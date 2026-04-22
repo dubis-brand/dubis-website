@@ -1,0 +1,174 @@
+=== Checking design_back PNG files on dubis.net === 
+ 
+--- product 1 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3548825
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 1 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3508156
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 2 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3494184
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 2 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3470763
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 3 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3534463
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 3 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3509667
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 4 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3546888
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 4 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3514022
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 5 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3524006
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 5 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3494913
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 6 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3550687
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 6 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3518363
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 8 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3516268
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 8 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3492541
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 9 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3529767
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 9 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3505010
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 10 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3509924
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 10 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3486876
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 11 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3561413
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 11 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3518705
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 12 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3533185
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 12 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3500035
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 13 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3501772
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 13 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3481185
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 14 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3545230
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 14 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3511069
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 15 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3550300
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 15 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3520270
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 16 dark --- 
+HTTP/1.1 200 OK
+Content-Length: 3547679
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+--- product 16 white --- 
+HTTP/1.1 200 OK
+Content-Length: 3517446
+Content-Type: image/png
+X-Content-Type-Options: nosniff
+ 
+=== Downloading product 1 dark for inspection === 
+ Volume in drive C is OS
+ Volume Serial Number is 0A38-6CFB
+
+ Directory of C:\Users\tehar\OneDrive\Cladue Projects\Dubis\dubis-website
+
+21/04/2026  14:37         3,548,825 design_1_dark.png
+               1 File(s)      3,548,825 bytes
+               0 Dir(s)  816,975,478,784 bytes free
+ 
+=== Downloading product 8 dark (today's post product) for inspection === 
+ Volume in drive C is OS
+ Volume Serial Number is 0A38-6CFB
+
+ Directory of C:\Users\tehar\OneDrive\Cladue Projects\Dubis\dubis-website
+
+21/04/2026  14:37         3,516,268 design_8_dark.png
+               1 File(s)      3,516,268 bytes
+               0 Dir(s)  816,971,829,248 bytes free
+ 
+=== DONE === 

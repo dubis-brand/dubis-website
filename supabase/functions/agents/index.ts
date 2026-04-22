@@ -1457,6 +1457,8 @@ Goal: a real-world lifestyle photo of a real person 35-55 wearing this exact gar
         }
 
         // US-PIVOT (2026-04-18): caption_en is the only caption we store/publish.
+        // Note: the product URL is appended at PUBLISH time (shopLineIG/FB), not here —
+        // so caption_en stays clean and the publish step adds the clickable shop line.
         const finalCapEn = gen.caption_en || (cd.caption_en as string) || '';
         const hasCaption = !!finalCapEn;
         const newStatus = hasCaption ? 'pending_approval' : 'in_progress';
@@ -1585,9 +1587,21 @@ Goal: a real-world lifestyle photo of a real person 35-55 wearing this exact gar
       // IG won't make it clickable in feed/Reel captions, but the user can still see and copy it.
       // Pair with "link in bio" because that bio link IS clickable.
       const priceTag   = priceUsd != null ? ` — $${priceUsd}` : '';
-      const shortUrl   = productUrl.replace(/^https?:\/\/(www\.)?/, '');
-      const shopLineIG = `🛒 Shop this${priceTag} → ${shortUrl}\n🔗 Tap link in bio @dubis.brand`;
-      const shopLineFB = `🛒 Shop this${priceTag} → ${productUrl}`;
+      // Use `?p=N` format for BOTH platforms — it's the only form that survives
+      // the Meta platforms intact:
+      //   - IG: `#product-N` in caption is parsed as a hashtag → kidnaps clicks to
+      //         IG's generic #product feed. `?p=N` renders as plain text but
+      //         doesn't hijack.
+      //   - FB: `#product-N` works in-page but FB's l.facebook.com click tracker
+      //         appends `?fbclid=XXX` and drops the hash in its redirect → users
+      //         land on homepage. `?p=N` survives FB's redirect cleanly.
+      // main.js (initSpaTracking) reads `?p=N` on load → openProductModal(N).
+      // (Fixed 2026-04-21)
+      const productUrlQP = productUrl.replace(/\/?#product-(\d+)/, '/?p=$1');
+      const igUrl        = productUrlQP.replace(/^https?:\/\/(www\.)?/, '');
+      const shopLineIG   = `🛒 Shop this${priceTag} → ${igUrl}\n🔗 Tap link in bio @dubis.brand`;
+      // FB: keep full https:// so it stays clickable in the FB feed.
+      const shopLineFB   = `🛒 Shop this${priceTag} → ${productUrlQP}`;
       const baseBody = (cd.caption_en as string) || (cd.caption_he as string) || task.title;
       const tags = (cd.hashtags as string) || '#DUBIS #ForTheRestOfUs';
       // Strip any plain "www.dubis.net" the model may have added inside the body
@@ -1996,6 +2010,10 @@ Goal: a real-world lifestyle photo of a real person 35-55 wearing this exact gar
       // All products recently used — cycle by day of week
       picked = PRODUCTS[new Date().getDay() % PRODUCTS.length];
     }
+    // HARD GUARD: auto-content MUST have a product. Never create tasks without product_id.
+    if (!picked?.product_id) {
+      return json({ skipped: true, reason: 'No product with product_id available — refusing to create post without product link' });
+    }
 
     // Weekly format calendar — rotate format by day, language determined above (2 posts/day: 1 HE + 1 EN)
     const dayOfWeek = new Date().getDay(); // 0=Sun, 1=Mon, ...
@@ -2168,11 +2186,16 @@ Score the total 0-30. Return ONLY valid JSON:
       } else if (captionLen > 0) {
         captionScore = 10; // has content but wrong length
       }
-      // PRODUCT-LINK RULE: caption must include product_url or fail outright
+      // PRODUCT-LINK RULE (HARD FAIL): product_url + product_id must both be set.
+      // The publish flow (shopLineIG/FB, line ~1599) automatically appends the URL
+      // to the caption sent to Meta, so we don't require captionEn to contain it here.
+      // But if no product is linked at all, we cannot publish — no "link in bio" anchor.
       const productUrlCd = (cd.product_url as string) || '';
-      if (productUrlCd && !captionEn.includes(productUrlCd)) {
-        captionScore = Math.min(captionScore, 8);
-        failReasons.push(`caption missing product_url (${productUrlCd})`);
+      const productIdCd  = (cd.product_id as string) || '';
+      let productLinkFail = false;
+      if (!productUrlCd || !productIdCd || !productUrlCd.includes('#product-')) {
+        productLinkFail = true;
+        failReasons.push(`HARD FAIL: no product linked (product_id=${productIdCd || 'null'}, product_url=${productUrlCd || 'null'})`);
       }
       score += captionScore;
       qaDetails.caption_score = captionScore;
@@ -2219,8 +2242,9 @@ Score the total 0-30. Return ONLY valid JSON:
       if (foundForbidden.length > 0) failReasons.push(`banned words: ${foundForbidden.join(', ')}`);
 
       // ── Final verdict ────────────────────────────────────────────────
-      const qaPass = score >= 60;
-      const qaAutoPublish = score >= 75; // High-quality → auto-approve + auto-publish
+      // Hard fails block auto-publish regardless of score.
+      const qaPass = score >= 60 && !productLinkFail;
+      const qaAutoPublish = score >= 75 && !productLinkFail; // High-quality → auto-approve + auto-publish
       const newContentData = {
         ...cd,
         qa_score: score,

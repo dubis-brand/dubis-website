@@ -1,0 +1,19 @@
+=== DUBIS logging deploy 22/04/2026 19:30:09.50 === 
+[1/5] Cleaning stale git locks... 
+[2/5] git add... 
+warning: in the working copy of 'api/create-gelato-order.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'api/orders/save.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'api/webhooks/gelato.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'deploy-logs.bat', LF will be replaced by CRLF the next time Git touches it
+[3/5] git commit... 
+[main 1a952a2] feat(logs): structured [DUBIS-GELATO]/[DUBIS-ORDER]/[DUBIS-WEBHOOK] logs for runtime observability
+ 4 files changed, 237 insertions(+), 4 deletions(-)
+ create mode 100644 deploy-logs.bat
+[4/5] git pull --rebase + push... 
+error: cannot pull with rebase: You have unstaged changes.
+error: Please commit or stash them.
+To https://github.com/dubis-brand/dubis-website.git
+   90439b9..1a952a2  main -> main
+[5/5] waiting 25s for Vercel... 
+ 
+=== DONE === 

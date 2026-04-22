@@ -1,0 +1,21 @@
+=== DOWNLOAD START 21/04/2026 11:02:34.17 === 
+Working dir: C:\Users\tehar\OneDrive\Cladue Projects\Dubis\dubis-website 
+Exit code post: 0 
+ Volume in drive C is OS
+ Volume Serial Number is 0A38-6CFB
+
+ Directory of C:\Users\tehar\OneDrive\Cladue Projects\Dubis\dubis-website
+
+21/04/2026  11:02         2,182,767 post_f1b34cb6.jpg
+               1 File(s)      2,182,767 bytes
+               0 Dir(s)  817,140,588,544 bytes free
+Exit code ref: 0 
+ Volume in drive C is OS
+ Volume Serial Number is 0A38-6CFB
+
+ Directory of C:\Users\tehar\OneDrive\Cladue Projects\Dubis\dubis-website
+
+21/04/2026  11:02                79 reference_product_8.jpg
+               1 File(s)             79 bytes
+               0 Dir(s)  817,140,518,912 bytes free
+=== DOWNLOAD END 11:02:38.93 === 

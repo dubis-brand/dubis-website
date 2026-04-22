@@ -1,0 +1,49 @@
+=== GIT STASH === 
+Saved working directory and index state On main: pre-rebase stash
+ 
+=== GIT PULL --REBASE === 
+From https://github.com/dubis-brand/dubis-website
+ * branch            main       -> FETCH_HEAD
+   6813d7d..5ce7ad3  main       -> origin/main
+Rebasing (1/2)Rebasing (2/2)Successfully rebased and updated refs/heads/main.
+ 
+=== GIT PUSH === 
+To https://github.com/dubis-brand/dubis-website.git
+   5ce7ad3..ab9b3ce  main -> main
+ 
+=== GIT STASH POP === 
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   supabase/functions/agents/index.ts
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	deploy-only.bat
+	download-log.txt
+	download-reference.bat
+	download-test-image.bat
+	git-pull-push.bat
+	git-push-log.txt
+	git-push-main.bat
+	git-stash-rebase-push.bat
+	git-status.txt
+	post_f1b34cb6.jpg
+	ref-log.txt
+	reference_product_8.jpg
+	reference_product_8_black.jpg
+	test-product-urls.bat
+	url-test.txt
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Dropped refs/stash@{0} (8e62e36276efc2e3899a6a0ebb3cdbdbaf894d30)
+ 
+=== GIT LOG (last 5) === 
+ab9b3ce fix: add ?p=N query param handler for IG/FB deep links (FB strips hash fragment via l.facebook.com)
+f689de8 design: 10x upgrade ΓÇö typography system, WCAG AA buttons, hero v2, trust bar, premium footer
+5ce7ad3 feat(shopping): deploy shopping-feed as standalone edge function
+79a171a feat(shopping): add Google Merchant Center product feed at /shopping-feed.xml
+6813d7d design: 10x upgrade ΓÇö typography system, WCAG AA buttons, hero v2, trust bar, premium footer
