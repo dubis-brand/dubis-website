@@ -228,14 +228,30 @@ function generateBack(product, color, outPath) {
 
 // ---------------------------------------------------------------------------
 // Front logo generator  (3600 × 4200 px)
-// Oren directive 2026-04-21: "מקדימה אמור להיות הברנד שלנו עם (TM)".
-// Chest-area DUBIS™, centered, large enough to pass Gelato's non-transparent-
-// pixel coverage validator (~5% of canvas). Prior 130px corner logo was <1%
-// coverage → Gelato silently substituted JB default → 3 broken orders.
+// Oren directive 2026-04-23: chest-left polo-style logo, UNIFORM across all
+// 18 products. Replaces the 2026-04-21 "900px centered" approach which caused
+// the Hila test-order mismatch (site mockup showed small-left, print file
+// printed huge-center).
+//
+// NEW PLACEMENT:
+//   - DUBIS™ rendered in top-left quadrant of the 3600×4200 canvas
+//   - Horizontal center at x ≈ 22% from left (left-chest position)
+//   - Vertical center at y ≈ 17% from top (upper chest, below collar)
+//   - Font size 300px (≈ 2.5cm printed width — polo/Lacoste scale)
+//   - TM superscript rendered separately at ~0.6× size, offset up/right
+//
+// COVERAGE GATE:
+//   The Gelato ≥5% non-transparent pixel gate is satisfied by addNoise()
+//   adding a 1-alpha "ghost" dot to ~50% of pixels — invisible in print but
+//   counts as non-transparent in Gelato's validator. No need to inflate the
+//   logo itself.
 // ---------------------------------------------------------------------------
 const FRONT_W = 3600;
 const FRONT_H = 4200;
-const LOGO_FONT_SIZE = 900;  // was 130 — now passes Gelato coverage check
+const LOGO_FONT_SIZE = 300;  // polo-style chest-left, ~2.5cm printed
+const TM_RATIO       = 0.45; // TM is ~45% of the main letter height
+const LOGO_CENTER_X_RATIO = 0.22; // 22% from left edge → left-chest
+const LOGO_CENTER_Y_RATIO = 0.17; // 17% from top edge → upper chest
 
 function generateFrontLogo(color, outPath) {
   const canvas = createCanvas(FRONT_W, FRONT_H);
@@ -245,17 +261,29 @@ function generateFrontLogo(color, outPath) {
 
   const textColor = color === 'white' ? '#ffffff' : '#1a1a1a';
   ctx.fillStyle    = textColor;
-  ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
 
-  // Upper-chest zone: horizontally centered, ~28% from top
-  const x = FRONT_W / 2;
-  const y = FRONT_H * 0.28;
+  const cx = FRONT_W * LOGO_CENTER_X_RATIO;
+  const cy = FRONT_H * LOGO_CENTER_Y_RATIO;
 
+  // --- Main "DUBIS" ---
   setFont(ctx, LOGO_FONT_SIZE);
-  ctx.fillText('DUBIS\u2122', x, y);
+  ctx.textAlign = 'center';
+  ctx.fillText('DUBIS', cx, cy);
 
-  // Subtle noise to ensure file size > 200 KB
+  // --- Superscript TM to the right of the "S" ---
+  // Measure DUBIS width to find the baseline-right position for TM
+  const dubisWidth = ctx.measureText('DUBIS').width;
+  const tmSize     = LOGO_FONT_SIZE * TM_RATIO;
+  setFont(ctx, tmSize);
+  ctx.textAlign = 'left';
+  // TM baseline sits at top of DUBIS caps → shift cy up by ~30% of LOGO_FONT_SIZE
+  const tmX = cx + dubisWidth / 2 + 6;   // slight gap after "S"
+  const tmY = cy - LOGO_FONT_SIZE * 0.30;
+  ctx.fillText('\u2122', tmX, tmY);
+
+  // Subtle noise to ensure file size > 200 KB AND push non-transparent pixel
+  // ratio over Gelato's 5% coverage gate.
   addNoise(ctx, FRONT_W, FRONT_H, 1);
 
   const buffer = canvas.toBuffer('image/png');

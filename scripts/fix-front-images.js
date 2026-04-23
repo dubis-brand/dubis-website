@@ -24,24 +24,28 @@ const COLOR_DESC = {
   'Forest Green': 'deep forest green fabric',
 };
 
-// All products and their colors (from products.js)
+// All 18 products and their colors (2026-04-23: Honey Brown removed per product agent audit).
+// IMPORTANT: this list is the source of truth for mockup regeneration. Keep in sync with
+// dubis_products WHERE active=true. When adding a product, add it here too.
 const PRODUCTS = [
   { id: 1,  type: 'tshirt',     desc: 'crew-neck t-shirt, short sleeves, regular fit', colors: ['Black','White','Cream','Navy','Red'] },
-  { id: 2,  type: 'tshirt',     desc: 'crew-neck t-shirt, short sleeves, regular fit', colors: ['Honey Brown','Black','Cream','Navy'] },
+  { id: 2,  type: 'tshirt',     desc: 'crew-neck t-shirt, short sleeves, regular fit', colors: ['Black','Cream','Navy'] },
   { id: 3,  type: 'hoodie',     desc: 'pullover hoodie with front kangaroo pocket, long sleeves, relaxed oversized fit', colors: ['Charcoal','Cream','Navy','Forest Green'] },
   { id: 4,  type: 'tshirt',     desc: 'crew-neck t-shirt, short sleeves, regular fit', colors: ['Black','White','Charcoal','Navy'] },
-  { id: 5,  type: 'tshirt',     desc: 'crew-neck t-shirt, short sleeves, regular fit', colors: ['Black','White','Cream','Charcoal','Honey Brown'] },
-  { id: 6,  type: 'hoodie',     desc: 'pullover hoodie with front kangaroo pocket, long sleeves, relaxed oversized fit', colors: ['Charcoal','Black','Navy','Honey Brown'] },
-  { id: 7,  type: 'cap',        desc: 'unstructured dad hat/cap with curved brim, one size adjustable', colors: ['Charcoal','Cream','Honey Brown','Black','Navy'] },
+  { id: 5,  type: 'tshirt',     desc: 'crew-neck t-shirt, short sleeves, regular fit', colors: ['Black','White','Cream','Charcoal'] },
+  { id: 6,  type: 'hoodie',     desc: 'pullover hoodie with front kangaroo pocket, long sleeves, relaxed oversized fit', colors: ['Charcoal','Black','Navy'] },
+  { id: 7,  type: 'cap',        desc: 'unstructured dad hat/cap with curved brim, one size adjustable', colors: ['Charcoal','Cream','Black','Navy'] },
   { id: 8,  type: 'tshirt',     desc: 'crew-neck t-shirt, short sleeves, regular fit', colors: ['Black','Charcoal','Navy','Red','Forest Green'] },
   { id: 9,  type: 'ziphoodie',  desc: 'full-zip hoodie with front pockets, long sleeves, regular fit', colors: ['Black','Navy','Charcoal'] },
   { id: 10, type: 'longsleeve', desc: 'long-sleeve crew-neck shirt, long sleeves, regular fit', colors: ['Black','Navy','White','Forest Green'] },
   { id: 11, type: 'tshirt',     desc: 'crew-neck t-shirt, short sleeves, regular fit', colors: ['White','Cream','Black','Navy'] },
   { id: 12, type: 'tshirt',     desc: 'crew-neck t-shirt, short sleeves, regular fit', colors: ['Black','White','Cream','Navy'] },
-  { id: 13, type: 'hoodie',     desc: 'pullover hoodie with front kangaroo pocket, long sleeves, relaxed fit', colors: ['Charcoal','Cream','Navy','Honey Brown'] },
+  { id: 13, type: 'hoodie',     desc: 'pullover hoodie with front kangaroo pocket, long sleeves, relaxed fit', colors: ['Charcoal','Cream','Navy'] },
   { id: 14, type: 'longsleeve', desc: 'long-sleeve crew-neck shirt, long sleeves, regular fit', colors: ['Cream','White','Black','Navy'] },
   { id: 15, type: 'hoodie',     desc: 'pullover hoodie with front kangaroo pocket, long sleeves, relaxed oversized fit', colors: ['Black','White','Navy','Charcoal'] },
   { id: 16, type: 'hoodie',     desc: 'pullover hoodie with front kangaroo pocket, long sleeves, relaxed oversized fit', colors: ['Black','White','Navy','Charcoal'] },
+  { id: 17, type: 'tshirt',     desc: 'crew-neck t-shirt, short sleeves, regular fit', colors: ['Black','White','Cream','Navy'] },
+  { id: 18, type: 'tshirt',     desc: 'crew-neck t-shirt, short sleeves, regular fit', colors: ['Black','White','Cream','Navy'] },
 ];
 
 function buildFrontPrompt(product, color) {
@@ -52,18 +56,25 @@ function buildFrontPrompt(product, color) {
     return `Professional product photo of a ${product.desc}, ${colorDesc}. Small embroidered "DUBIS™" text on the front center panel of the cap in ${inkColor} thread. Clean white studio background. Product photography, no person, just the cap displayed on its own. Studio lighting, high quality, photorealistic. Square 1:1 format. No other text, no watermark, no tags.`;
   }
 
-  return `Professional product photo of a ${product.desc}, ${colorDesc}.
+  return `Professional product photo of a ${product.desc}, ${colorDesc}, front view.
 
-LOGO PLACEMENT (CRITICAL — must be exact):
-- Small "${inkColor}" colored "DUBIS™" text on the upper-left chest area of the garment
-- Position: approximately 20-25% from the left edge, 20-25% from the top
-- The text should be small (like a polo brand logo) — about 2-3cm equivalent
-- The logo is on the VIEWER'S LEFT side (garment's right breast)
-- NOT centered, NOT on the right side, NOT at the bottom, NOT large
+LOGO PLACEMENT — this must match EXACTLY what Gelato will print:
+- Small "${inkColor}" colored "DUBIS™" text on the upper-left chest area (viewer's left side)
+- Position: horizontal center of logo at ~22% from the left edge of the garment
+- Position: vertical center of logo at ~17% from the top of the garment (just below the collar line)
+- Size: approximately 2.5cm wide — roughly the size of a Lacoste crocodile or a Polo Ralph Lauren pony
+- The ™ symbol is rendered as a small superscript immediately to the right of the "S" of DUBIS
+- Font style: bold sans-serif (Impact / Helvetica Black)
 
-The garment has NO other text, NO graphics, NO prints — just the small DUBIS™ logo on the upper-left chest. The ™ symbol must be rendered as superscript next to the "S" of DUBIS.
+ABSOLUTELY FORBIDDEN on the FRONT:
+- Do NOT place the logo in the center of the chest
+- Do NOT make the logo large (no bigger than ~3cm wide)
+- Do NOT place it on the viewer's right (garment's left breast)
+- Do NOT add ANY other text, graphics, patterns, or prints anywhere on the front
+- Do NOT add size tags, wash tags, or brand tags visible on the outside of the garment
+- Do NOT repeat DUBIS anywhere else (not at the hem, not on the sleeves, not on the neck label)
 
-Clean white studio background. Product photography, no person, just the garment on invisible mannequin or laid flat. Studio lighting, high quality, photorealistic. Square 1:1 format. No watermark, no tags, no labels visible.`;
+Clean white studio background. Product photography, no person, just the garment on invisible mannequin or laid flat. Studio lighting, high quality, photorealistic. Square 1:1 format. No watermark, no text captions, no overlays.`;
 }
 
 async function generateImage(prompt, outputPath) {

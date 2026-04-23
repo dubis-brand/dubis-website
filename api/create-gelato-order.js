@@ -16,7 +16,7 @@ const DESIGN_BASE_URL = 'https://www.dubis.net/designs';
 // Gelato CDN caches by full URL; same URL = same cached file. Without this
 // param, re-uploading a fixed PNG has no effect — Gelato keeps serving the
 // broken cached version. Set via env or hardcode to a date tag.
-const DESIGN_VERSION = process.env.DESIGN_VERSION || '2026042101';
+const DESIGN_VERSION = process.env.DESIGN_VERSION || '2026042301';
 
 // ─────────────────────────────────────────────────────────────────
 // COLOR MAP — DUBIS display name → Gelato color code
