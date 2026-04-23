@@ -194,16 +194,28 @@ function renderPayPalButtons() {
         window.__dubisCheckoutShipping = shipping;
         window.__dubisCheckoutItemSub  = itemTotal;
         window.__dubisCheckoutDiscount = appliedCoupon ? (itemTotal - appliedCoupon.final_total) : 0;
+        // PayPal Orders v2 breakdown rule (2026-04-23 fix — "snag" bug root cause):
+        //   amount.value = item_total + shipping + handling + tax_total − discount
+        //   item_total   = Σ(items[i].unit_amount × items[i].quantity)
+        // Previous code DISCOUNTED item_total directly while leaving unit_amount at original
+        // price → PayPal rejected with ITEM_TOTAL_MISMATCH → onError → "We hit a snag".
+        // Correct approach: keep items at original prices, keep item_total = sum of items,
+        // and express the coupon as breakdown.discount.
+        const discountAmt = appliedCoupon ? Math.max(0, itemTotal - appliedCoupon.final_total) : 0;
+        const breakdown = {
+            item_total: { currency_code: 'USD', value: itemTotal.toFixed(2) },
+            shipping:   { currency_code: 'USD', value: shipping.toFixed(2) }
+        };
+        if (discountAmt > 0) {
+            breakdown.discount = { currency_code: 'USD', value: discountAmt.toFixed(2) };
+        }
         return actions.order.create({
         purchase_units: [{
             description: 'DUBIS Clothing Order',
             amount: {
                 currency_code: 'USD',
                 value: total.toFixed(2),
-                breakdown: {
-                    item_total: { currency_code: 'USD', value: (appliedCoupon ? appliedCoupon.final_total : itemTotal).toFixed(2) },
-                    shipping:   { currency_code: 'USD', value: shipping.toFixed(2) }
-                }
+                breakdown: breakdown
             },
             items: cart.map(item => ({
                 name:        item.phrase.substring(0, 127),
