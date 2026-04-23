@@ -126,6 +126,79 @@ function bytesToB64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
+// ── Visual variation matrix — anti-mode-collapse for Gemini image generation.
+// Every social post must look visually distinct from the last ~20 posts.
+// Seeded by task.id so the same task always produces the same scene (idempotent),
+// but any two different tasks almost never converge on the same combination.
+// Added 2026-04-23 after duplicate-posts incident (Task #40).
+function seededPick<T>(seed: number, arr: T[]): T {
+  return arr[seed % arr.length];
+}
+function buildVisualVariation(taskId: string, titleLower: string): string {
+  // 24 bits of entropy from the task UUID is plenty for picking from small arrays.
+  const hex = (taskId || '').replace(/-/g, '').substring(0, 12) || '000000000000';
+  const s1 = parseInt(hex.substring(0, 4), 16) || 1;
+  const s2 = parseInt(hex.substring(4, 8), 16) || 2;
+  const s3 = parseInt(hex.substring(8, 12), 16) || 3;
+
+  // SUBJECT — diverse American adults 35-55. No more "40-something dark top" default.
+  const subjects = [
+    'a man around 50, wider build, short salt-and-pepper beard, warm brown skin',
+    'a woman around 45, curvy build, shoulder-length curly dark hair, olive skin',
+    'a man around 38, lean build, close-cropped hair, pale skin with freckles',
+    'a woman around 52, plus-size, silver-gray bob haircut, fair skin',
+    'a nonbinary person around 42, athletic build, braided hair, deep brown skin',
+    'a man around 55, stocky, bald with trimmed gray goatee, ruddy skin',
+    'a woman around 37, petite, straight black hair in a ponytail, East Asian features',
+    'a man around 46, tall and slim, wavy chestnut hair, light olive skin',
+    'a woman around 49, mid-size, bleached pixie cut, freckled fair skin',
+    'a man around 41, broad-shouldered, curly dark hair and beard, South Asian features',
+    'a woman around 44, curvy, natural afro, dark brown skin',
+    'a man around 53, average build, glasses, thinning sandy hair, pale skin',
+  ];
+  const subject = seededPick(s1, subjects);
+
+  // SCENE — 15 distinct locations, pick avoids "couch" unless title really is about napping.
+  const isCouchAngle = titleLower.includes('nap') || titleLower.includes('couch') || titleLower.includes('cardio');
+  const couchScenes = [
+    'sprawled sideways on a worn linen sofa, late-afternoon window light streaking across the cushions',
+    'half-asleep on a dark leather armchair, lamp glow, open book face-down on their chest',
+    'curled up under a chunky knit throw on a velvet loveseat, muted morning overcast light',
+  ];
+  const activeScenes = [
+    'walking along a rain-wet city sidewalk at dusk, neon reflections in puddles, moody blue hour',
+    'leaning on a wooden railing outside a small-town diner, golden-hour sun low behind them',
+    'pouring coffee in a sunlit Brooklyn kitchen, morning light through a window with plants',
+    'riding the subway, hand on the overhead bar, harsh fluorescent carriage light',
+    'crossing a quiet suburban street at midday, long shadows on warm asphalt',
+    'sitting on a park bench in autumn, scattered leaves, soft overcast daylight',
+    'browsing vinyl in a record store, warm tungsten lighting, wooden crates around them',
+    'standing at a bus stop at night under a single sodium-vapor streetlight, rim-lit',
+    'on the back porch of a ranch house at sunset, warm orange side light, screen door behind',
+    'in a home garage workshop, diffused skylight, tool pegboard blurred in background',
+    'at a crowded farmers market stall, dappled sunlight through canvas awnings',
+    'on the steps of a brownstone in summer, harsh midday sun, iron railing shadow',
+    'inside a bookstore café, floor-to-ceiling window light, shelves as bokeh background',
+    'against a painted brick alley wall, flat shade, graffiti out of focus behind them',
+    'cooking at a kitchen island, pendant light from above, dough on the counter',
+  ];
+  const pool = isCouchAngle ? couchScenes.concat(activeScenes.slice(0, 4)) : activeScenes;
+  const scene = seededPick(s2, pool);
+
+  // LENS / COMPOSITION — vary the shot to break the "same headshot" look.
+  const compositions = [
+    '35mm lens, medium shot waist-up, slight low angle',
+    '50mm lens, chest-up portrait, eye level',
+    '85mm lens, tight head-and-shoulders, shallow depth of field',
+    '28mm lens, wide environmental shot, subject offset to left third',
+    '50mm lens, three-quarter body, candid from a step back',
+    '35mm lens, over-the-shoulder from behind, turning to camera',
+  ];
+  const composition = seededPick(s3, compositions);
+
+  return `${subject}, ${scene}. Shot on DSLR, ${composition}. Genuine unposed expression — not a fashion model, not posing.`;
+}
+
 // ── Fetch a real product front image from the live site so Gemini
 // can use it as a reference (preserves slogan/logo exactly).
 // Returns { b64, mimeType } on success, null if every candidate URL 404s.
@@ -400,13 +473,14 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
               const ref = refPid ? await fetchProductReferenceImage(refPid, refColors) : null;
 
               // Scene description (no slogan text — Gemini will copy it from the reference).
+              // 2026-04-23: switched to buildVisualVariation() to stop mode collapse (Task #40).
+              // We intentionally IGNORE gen.image_prompt here — the caption LLM kept returning
+              // near-identical "person 40s couch" prompts which is exactly how we ended up
+              // with 5 identical IG posts in a row. The seeded matrix guarantees diversity.
               const titleLower = (task.title as string).toLowerCase();
-              const sceneBase = (cd.format as string) === 'quote_card'
+              const scene = (cd.format as string) === 'quote_card'
                 ? 'Product laid flat on a moody dark charcoal textured surface, low-key directional lighting'
-                : titleLower.includes('nap') || titleLower.includes('cardio')
-                ? 'Real person 35-55 relaxing on a couch in a cozy apartment, soft warm window light, authentic unposed moment'
-                : 'Real person 35-55 (all body types welcome, not a fashion model) in an urban minimal setting, natural daylight, authentic candid moment';
-              const scene = (gen.image_prompt && gen.image_prompt.trim().length > 10) ? gen.image_prompt : sceneBase;
+                : buildVisualVariation(task.id as string, titleLower);
 
               const refPrompt = `You are given a reference photograph of the EXACT DUBIS garment for this post.
 
@@ -1353,9 +1427,9 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
               const ref = await fetchProductReferenceImage(productId, productColors);
               if (ref) {
                 const titleLower = (task.title as string).toLowerCase();
-                const scene = titleLower.includes('nap') || titleLower.includes('couch') || titleLower.includes('cardio')
-                  ? 'Real person 35-55 relaxing on a couch in a cozy apartment, soft warm window light, authentic unposed moment'
-                  : 'Real person 35-55 (real body, not a fashion model) in a clean urban minimal setting, natural daylight, authentic candid moment';
+                // 2026-04-23: use the anti-mode-collapse variation matrix so every
+                // post gets a visually distinct subject+scene+lens combo (Task #40).
+                const scene = buildVisualVariation(task.id as string, titleLower);
                 const refPrompt = `You are given a reference photograph of the EXACT DUBIS garment for this post.
 
 HARD CONSTRAINTS (non-negotiable):
