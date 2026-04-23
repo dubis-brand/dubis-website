@@ -108,7 +108,8 @@ STRICT RULES:
 - Do NOT repeat any word that already appears
 - Do NOT add quotation marks around any text
 - The garment back must show ONLY the slogan text, nothing else
-- No logo, no branding, no DUBIS text on the back
+- No logo, no branding, no DUBIS text anywhere on the back (not top, not bottom, not corners)
+- The back is 100% blank EXCEPT the slogan text above — no DUBIS wordmark, no ™, no sub-text, no anything
 
 Clean white studio background. Product photography, no person, just the garment back view on invisible mannequin. Studio lighting, high quality, photorealistic. Square 1:1 format.`;
 }

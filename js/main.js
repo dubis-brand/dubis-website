@@ -547,7 +547,6 @@ function openProductModal(productId) {
             </button>
           `;}).join('')}
         </div>
-        <span class="selected-label" id="selected-color-${product.id}">${product.colors[0]}</span>
         <div class="modal-selected-color" id="modal-color-name-${product.id}">${product.colors[0]}</div>
         <div class="modal-stock-msg" id="modal-stock-msg-${product.id}" style="display:none;margin-top:0.25rem;font-size:0.8rem;color:#b94a48;"></div>
       </div>
@@ -689,7 +688,6 @@ function selectColor(btn, color, productId) {
   document.querySelectorAll(`#modal-colors-${productId} .color-btn`)
     .forEach(b => b.classList.remove('selected'));
   btn.classList.add('selected');
-  document.getElementById(`selected-color-${productId}`).textContent = color;
 
   // Recompute per-size availability for the newly-chosen color
   refreshSizeAvailability(productId, color);
@@ -958,7 +956,6 @@ function colorToHex(color) {
     'Charcoal':     '#3D3D3D',
     'Navy':         '#1B2A4A',
     'Gray':         '#888888',
-    'Honey Brown':  '#C17E3A',
     'Red':          '#CC2200',
     'Forest Green': '#2D6A4F',
   };

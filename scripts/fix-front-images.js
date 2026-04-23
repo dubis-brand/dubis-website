@@ -49,19 +49,19 @@ function buildFrontPrompt(product, color) {
   const inkColor = ['Black', 'Navy', 'Charcoal', 'Forest Green'].includes(color) ? 'white' : 'black';
 
   if (product.type === 'cap') {
-    return `Professional product photo of a ${product.desc}, ${colorDesc}. Small embroidered "DUBIS" text on the front center panel of the cap in ${inkColor} thread. Clean white studio background. Product photography, no person, just the cap displayed on its own. Studio lighting, high quality, photorealistic. Square 1:1 format. No other text, no watermark, no tags.`;
+    return `Professional product photo of a ${product.desc}, ${colorDesc}. Small embroidered "DUBIS™" text on the front center panel of the cap in ${inkColor} thread. Clean white studio background. Product photography, no person, just the cap displayed on its own. Studio lighting, high quality, photorealistic. Square 1:1 format. No other text, no watermark, no tags.`;
   }
 
   return `Professional product photo of a ${product.desc}, ${colorDesc}.
 
 LOGO PLACEMENT (CRITICAL — must be exact):
-- Small "${inkColor}" colored "DUBIS" text on the upper-left chest area of the garment
+- Small "${inkColor}" colored "DUBIS™" text on the upper-left chest area of the garment
 - Position: approximately 20-25% from the left edge, 20-25% from the top
 - The text should be small (like a polo brand logo) — about 2-3cm equivalent
 - The logo is on the VIEWER'S LEFT side (garment's right breast)
 - NOT centered, NOT on the right side, NOT at the bottom, NOT large
 
-The garment has NO other text, NO graphics, NO prints — just the small DUBIS logo on the upper-left chest.
+The garment has NO other text, NO graphics, NO prints — just the small DUBIS™ logo on the upper-left chest. The ™ symbol must be rendered as superscript next to the "S" of DUBIS.
 
 Clean white studio background. Product photography, no person, just the garment on invisible mannequin or laid flat. Studio lighting, high quality, photorealistic. Square 1:1 format. No watermark, no tags, no labels visible.`;
 }
