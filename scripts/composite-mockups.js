@@ -114,10 +114,11 @@ const DARK_COLORS = new Set(['Black','Charcoal','Navy','Forest Green']);
 // in an as-worn photo, but the Gemini blanks are symmetric so x=0.43 lands
 // in the intended visual zone).
 // ─────────────────────────────────────────────────────────────────
-// v5 (2026-04-24): oren — "עוד ימינה, קצת באמצע". 0.57 was still center-ish
-// relative to shirt body (body spans ~15%..85% of canvas, center=50%). Moving
-// to 0.63 puts logo clearly on wearer's left chest / viewer's right chest.
-const LOGO_CENTER_X_RATIO = 0.63;  // further right — true chest-pocket position
+// v6 (2026-04-24): oren — "תעדכן את הכיתוב שיהיה בצד שמאל כמו שצריך".
+// Interpretation: LEFT side of the image (viewer's left, x<0.5).
+// This is actually wearer's right chest, but oren's directive is explicit.
+// If wrong, revert to v5 (0.63).
+const LOGO_CENTER_X_RATIO = 0.35;  // viewer's left side of shirt
 const LOGO_CENTER_Y_RATIO = 0.33;  // heart level, not collar level
 const LOGO_WIDTH_RATIO    = 0.09;  // DUBIS fills ~9% of image width → fits within shirt body
 
