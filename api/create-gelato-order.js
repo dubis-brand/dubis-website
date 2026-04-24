@@ -499,6 +499,158 @@ async function handleShippingQuote(req, res) {
   return res.status(502).json({ success: false, productUid, diagnostics });
 }
 
+// ─────────────────────────────────────────────────────────────────
+// CREATE DRAFT ORDER — admin-only, creates a free Gelato draft order
+// Used to verify mockups + fulfillment facility BEFORE real orders.
+// No production, no billing, no revenue entry. Auto-expires in ~30 days.
+//
+// Usage: POST /api/create-gelato-order?action=create-draft
+//   Headers: Authorization: Bearer <supabase_jwt>
+//   Body:    { productId, color, size, type, gender, shipCountry }
+// ─────────────────────────────────────────────────────────────────
+async function handleCreateDraft(req, res) {
+  const GELATO_API_KEY = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
+  if (!GELATO_API_KEY) return res.status(500).json({ error: 'no_api_key' });
+
+  // --- Admin auth via Supabase JWT ---
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized — admin only' });
+  }
+  let userEmail = null;
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    const sb = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { data: { user }, error } = await sb.auth.getUser(authHeader.slice(7));
+    if (error || !user) return res.status(401).json({ error: 'Invalid token' });
+    userEmail = user.email;
+    const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'dubis.brand@gmail.com')
+      .split(',').map(e => e.trim());
+    if (!ADMIN_EMAILS.includes(userEmail)) {
+      const { data: adminRow } = await sb
+        .from('admin_users').select('email').eq('email', userEmail).single();
+      if (!adminRow) return res.status(403).json({ error: 'Forbidden — admin only' });
+    }
+  } catch (e) {
+    return res.status(500).json({ error: 'auth_error', details: e.message });
+  }
+
+  const { productId, color, size = 'M', type, gender = 'unisex',
+          shipCountry = 'US' } = req.body || {};
+  if (!productId || !color || !type) {
+    return res.status(400).json({ error: 'missing_fields', need: ['productId','color','type'] });
+  }
+
+  const gelatoColor = (COLOR_MAP[type] || {})[color];
+  if (!gelatoColor) return res.status(400).json({ error: 'unsupported_color', color, type });
+  const gelatoSize = SIZE_MAP[size] || 'm';
+  const productUid = buildProductUid(type, gelatoColor, gelatoSize, gender);
+  if (!productUid) return res.status(400).json({ error: 'unsupported_type', type });
+
+  // Build print files — same logic as the real order flow
+  const variant  = DARK_COLORS.has(color) ? 'white' : 'dark';
+  const designId = productId;
+  const v = `?v=${DESIGN_VERSION}`;
+  const files = (type === 'cap')
+    ? [{ type: 'front', url: `${DESIGN_BASE_URL}/cap_design_${variant}.png${v}` }]
+    : [
+        { type: 'front', url: `${DESIGN_BASE_URL}/front_logo_${variant}.png${v}` },
+        { type: 'back',  url: `${DESIGN_BASE_URL}/back_design_${designId}_${variant}.png${v}` },
+      ];
+
+  // Shipping addresses per country (for facility routing check)
+  const SHIP_ADDR = {
+    US: {
+      firstName: 'Draft', lastName: 'Test',
+      addressLine1: '1 Test St',
+      city: 'Los Angeles', postCode: '90210',
+      country: 'US', state: 'CA',
+      email: 'draft@dubis.net',
+    },
+    IL: {
+      firstName: 'Draft', lastName: 'Test',
+      addressLine1: 'Ramat Yohanan 1',
+      city: 'Ramat Yohanan', postCode: '3003500',
+      country: 'IL',
+      email: 'draft@dubis.net',
+    },
+  };
+  const shippingAddress = SHIP_ADDR[shipCountry] || SHIP_ADDR.US;
+
+  // Draft order payload (orderType: 'draft' — Gelato creates mockup, no production)
+  const draftRef = `draft-${Date.now()}-${productId}-${color}-${size}`.replace(/[^a-zA-Z0-9-]/g,'-');
+  const payload = {
+    orderType: 'draft',
+    orderReferenceId: draftRef,
+    customerReferenceId: `admin-${userEmail}`,
+    currency: 'USD',
+    items: [{
+      itemReferenceId: 'i1',
+      productUid,
+      quantity: 1,
+      files,
+    }],
+    shippingAddress,
+  };
+
+  dlog('create-draft', { userEmail, productUid, shipCountry, draftRef });
+
+  try {
+    const r = await fetch('https://order.gelatoapis.com/v4/orders', {
+      method: 'POST',
+      headers: {
+        'X-API-KEY':    GELATO_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    const text = await r.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch {}
+
+    if (!r.ok) {
+      derr('create-draft-failed', { status: r.status, body: text.substring(0, 500) });
+      return res.status(502).json({
+        success: false,
+        status: r.status,
+        error: json?.message || 'Gelato error',
+        details: json || text.substring(0, 500),
+        sent_payload: payload,
+      });
+    }
+
+    // Extract useful fields from Gelato response
+    const summary = {
+      gelatoOrderId:       json.id || json.orderId || null,
+      gelatoOrderReferenceId: json.orderReferenceId || draftRef,
+      orderType:           json.orderType || 'draft',
+      fulfillmentCountry:  json.fulfillmentCountry || json.items?.[0]?.fulfillmentCountry || 'unknown',
+      fulfillmentFacility: json.productionFacility || json.items?.[0]?.productionFacility || 'unknown',
+      totalAmount:         json.amount || json.totalAmount || null,
+      shippingMethod:      json.shipmentMethodName || json.shipment?.shipmentMethodName || null,
+      estimatedDelivery:   json.estimatedDeliveryDate || json.shipment?.estimatedDeliveryDate || null,
+      mockupUrl:           json.items?.[0]?.mockupUrl || json.items?.[0]?.previews?.[0]?.url || null,
+      dashboardUrl:        json.id ? `https://dashboard.gelato.com/orders/view/${json.id}` : null,
+    };
+
+    return res.status(200).json({
+      success: true,
+      summary,
+      productUid,
+      shipCountry,
+      filesUsed: files,
+      fullResponse: json,
+    });
+  } catch (e) {
+    derr('create-draft-exception', { message: e.message });
+    return res.status(500).json({ success: false, error: e.message });
+  }
+}
+
 module.exports = async function handler(req, res) {
   const t0 = Date.now();
   dlog('request-received', {
@@ -517,6 +669,11 @@ module.exports = async function handler(req, res) {
   // Route: shipping quote
   if (req.method === 'POST' && req.query && req.query.action === 'shipping-quote') {
     return handleShippingQuote(req, res);
+  }
+
+  // Route: create draft order (admin only)
+  if (req.method === 'POST' && req.query && req.query.action === 'create-draft') {
+    return handleCreateDraft(req, res);
   }
 
   if (req.method !== 'POST') {

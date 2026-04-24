@@ -953,6 +953,7 @@
       <button class="nav-tab" id="nav-campaigns" onclick="showSection('campaigns',this)">📣 קמפיינים</button>
       <button class="nav-tab" id="nav-gallery"   onclick="showSection('gallery',this)">🖼 גלריה</button>
       <button class="nav-tab" id="nav-content-approval" onclick="showSection('content-approval',this)">✅ תוכן לאישור</button>
+      <button class="nav-tab" id="nav-gelato-tools" onclick="showSection('gelato-tools',this)">🧪 Gelato Tools</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -2313,6 +2314,70 @@
     <div id="ca-grid"    style="display:none;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1.25rem"></div>
   </div><!-- /section-content-approval -->
 
+  <!-- ══ GELATO TOOLS SECTION ═══════════════════════════════ -->
+  <div id="section-gelato-tools" style="display:none;padding:1.5rem" dir="rtl">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem">
+      <h2 style="font-size:1rem;color:#c8a96e;letter-spacing:2px;text-transform:uppercase;font-weight:700">🧪 Gelato Draft Orders</h2>
+      <span style="font-size:.72rem;color:#888">חינם · לא נשלח לייצור · רק מוקאפ</span>
+    </div>
+
+    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1.25rem;margin-bottom:1.25rem">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem">
+
+        <div>
+          <label style="display:block;font-size:.7rem;color:#888;letter-spacing:1px;margin-bottom:.3rem">מוצר</label>
+          <select id="gt-product" style="width:100%;background:#0f0f0f;color:#e8e0d5;border:1px solid #2a2a2a;border-radius:6px;padding:.5rem;font-size:.85rem">
+            <option value="">טוען...</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="display:block;font-size:.7rem;color:#888;letter-spacing:1px;margin-bottom:.3rem">צבע</label>
+          <select id="gt-color" style="width:100%;background:#0f0f0f;color:#e8e0d5;border:1px solid #2a2a2a;border-radius:6px;padding:.5rem;font-size:.85rem">
+            <option value="">בחר מוצר קודם</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="display:block;font-size:.7rem;color:#888;letter-spacing:1px;margin-bottom:.3rem">מידה</label>
+          <select id="gt-size" style="width:100%;background:#0f0f0f;color:#e8e0d5;border:1px solid #2a2a2a;border-radius:6px;padding:.5rem;font-size:.85rem">
+            <option value="S">S</option><option value="M" selected>M</option>
+            <option value="L">L</option><option value="XL">XL</option>
+            <option value="2XL">2XL</option><option value="3XL">3XL</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="display:block;font-size:.7rem;color:#888;letter-spacing:1px;margin-bottom:.3rem">כתובת יעד (לבדיקת facility)</label>
+          <select id="gt-ship-country" style="width:100%;background:#0f0f0f;color:#e8e0d5;border:1px solid #2a2a2a;border-radius:6px;padding:.5rem;font-size:.85rem">
+            <option value="US" selected>🇺🇸 ארה"ב (Los Angeles 90210)</option>
+            <option value="IL">🇮🇱 ישראל (רמת יוחנן)</option>
+          </select>
+        </div>
+
+      </div>
+
+      <div style="margin-top:1rem;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+        <button id="gt-create-btn" onclick="gtCreateDraft()" style="background:#1f7a42;color:white;border:none;padding:.6rem 1.5rem;border-radius:6px;cursor:pointer;font-weight:700">
+          ✓ צור Draft Order (חינם)
+        </button>
+        <span id="gt-status" style="font-size:.8rem;color:#888"></span>
+      </div>
+    </div>
+
+    <div id="gt-result" style="display:none;background:#0f0f0f;border:1px solid #2a2a2a;border-radius:10px;padding:1.25rem;margin-bottom:1.25rem">
+      <div style="font-size:.75rem;color:#c8a96e;letter-spacing:1px;margin-bottom:.75rem">תוצאה אחרונה:</div>
+      <pre id="gt-result-json" style="font-size:.72rem;color:#e8e0d5;background:#0a0a0a;padding:.75rem;border-radius:6px;overflow:auto;max-height:400px;direction:ltr;text-align:left;font-family:Consolas,monospace;margin:0"></pre>
+    </div>
+
+    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1rem;font-size:.75rem;color:#888;line-height:1.6">
+      <strong style="color:#c8a96e">💡 איך זה עובד:</strong> Draft order נוצר ב-Gelato ללא חיוב וללא ייצור.
+      התגובה תציג את מיקום ה-facility שבו Gelato תייצר (לראות שזה באמת מיוצר ב-US עבור לקוחות אמריקאים).
+      אחרי יצירת ה-draft, תוכל לראות את המוקאפ ב-<a href="https://dashboard.gelato.com/orders" target="_blank" style="color:#c8a96e">Gelato dashboard</a>.
+      Drafts נמחקים אוטומטית אחרי ~30 יום.
+    </div>
+  </div><!-- /section-gelato-tools -->
+
   <!-- Coupon Modal -->
   <div id="coupon-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
     <div style="background:#1e1e1e;border-radius:12px;padding:2rem;width:min(480px,90vw);max-height:90vh;overflow-y:auto">
@@ -2660,6 +2725,8 @@
     document.getElementById('section-campaigns').style.display = name === 'campaigns' ? '' : 'none';
     document.getElementById('section-gallery').style.display            = name === 'gallery'            ? '' : 'none';
     document.getElementById('section-content-approval').style.display   = name === 'content-approval'   ? '' : 'none';
+    document.getElementById('section-gelato-tools').style.display       = name === 'gelato-tools'       ? '' : 'none';
+    if (name === 'gelato-tools') gtInit();
     if (name === 'tasks') loadTasks();
     if (name === 'agents') loadAgentsSection();
     if (name === 'campaigns' && !_campaignsLoaded) { _campaignsLoaded = true; loadCampaigns(); }
@@ -6390,6 +6457,126 @@
       showProductSuggestions();
     } catch(e) { alert('שגיאה: ' + e.message); }
   }
+
+  // ══════════════════════════════════════════════════════════════
+  // GELATO TOOLS — Draft Order creation from admin UI (2026-04-24)
+  // ══════════════════════════════════════════════════════════════
+  let _gtProducts = null;  // cached product list
+
+  async function gtInit() {
+    if (_gtProducts) return;  // already loaded
+    // Load product catalog from the live products.js (same source as the site)
+    try {
+      const productSelect = document.getElementById('gt-product');
+      productSelect.innerHTML = '<option value="">טוען...</option>';
+
+      // Pull from dubis_products via Supabase directly
+      const { data, error } = await _sb
+        .from('dubis_products')
+        .select('id, product_id_numeric, phrase, clothing_type, colors, active')
+        .eq('active', true)
+        .order('product_id_numeric');
+
+      if (error) throw error;
+      _gtProducts = (data || []).filter(p => p.product_id_numeric);
+
+      productSelect.innerHTML = '<option value="">בחר מוצר...</option>' +
+        _gtProducts.map(p =>
+          `<option value="${p.product_id_numeric}">${p.product_id_numeric} · ${p.phrase} (${p.clothing_type})</option>`
+        ).join('');
+
+      productSelect.onchange = gtOnProductChange;
+    } catch(e) {
+      console.error('gtInit error:', e);
+      document.getElementById('gt-product').innerHTML =
+        '<option value="">שגיאה בטעינה: ' + e.message + '</option>';
+    }
+  }
+
+  function gtOnProductChange() {
+    const pid = parseInt(document.getElementById('gt-product').value);
+    const colorSelect = document.getElementById('gt-color');
+    if (!pid) {
+      colorSelect.innerHTML = '<option value="">בחר מוצר קודם</option>';
+      return;
+    }
+    const p = _gtProducts.find(x => x.product_id_numeric === pid);
+    if (!p || !Array.isArray(p.colors) || p.colors.length === 0) {
+      colorSelect.innerHTML = '<option value="">אין צבעים</option>';
+      return;
+    }
+    colorSelect.innerHTML = p.colors.map(c =>
+      `<option value="${c}">${c}</option>`
+    ).join('');
+  }
+
+  async function gtCreateDraft() {
+    const btn      = document.getElementById('gt-create-btn');
+    const status   = document.getElementById('gt-status');
+    const result   = document.getElementById('gt-result');
+    const resultJ  = document.getElementById('gt-result-json');
+
+    const productId = parseInt(document.getElementById('gt-product').value);
+    const color     = document.getElementById('gt-color').value;
+    const size      = document.getElementById('gt-size').value;
+    const ship      = document.getElementById('gt-ship-country').value;
+
+    if (!productId || !color) {
+      status.textContent = '⚠️ בחר מוצר וצבע';
+      status.style.color = '#f59e0b';
+      return;
+    }
+
+    const p = _gtProducts.find(x => x.product_id_numeric === productId);
+    const type = p?.clothing_type?.replace(/-/g,'') || 'tshirt';
+
+    btn.disabled = true;
+    status.textContent = '⏳ שולח ל-Gelato...';
+    status.style.color = '#888';
+
+    try {
+      const { data: { session } } = await _sb.auth.getSession();
+      const body = {
+        productId,
+        color,
+        size,
+        type,
+        gender: 'unisex',
+        shipCountry: ship,
+      };
+
+      const res = await fetch('/api/create-gelato-order?action=create-draft', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + session.access_token,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+
+      result.style.display = '';
+      resultJ.textContent = JSON.stringify(data, null, 2);
+
+      if (res.ok && data.success) {
+        status.textContent = '✅ Draft נוצר. עיין ב-Gelato dashboard או בתוצאה למטה.';
+        status.style.color = '#4caf50';
+      } else {
+        status.textContent = '⚠️ ' + (data.error || 'כשל. ראה תוצאה.');
+        status.style.color = '#f59e0b';
+      }
+    } catch(e) {
+      status.textContent = '❌ שגיאה: ' + e.message;
+      status.style.color = '#ef4444';
+      result.style.display = '';
+      resultJ.textContent = 'Error: ' + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  window.gtInit = gtInit;
+  window.gtCreateDraft = gtCreateDraft;
 
 </script>
 <style>
