@@ -114,12 +114,14 @@ const DARK_COLORS = new Set(['Black','Charcoal','Navy','Forest Green']);
 // in an as-worn photo, but the Gemini blanks are symmetric so x=0.43 lands
 // in the intended visual zone).
 // ─────────────────────────────────────────────────────────────────
-// v6 (2026-04-24): oren — "תעדכן את הכיתוב שיהיה בצד שמאל כמו שצריך".
-// Interpretation: LEFT side of the image (viewer's left, x<0.5).
-// This is actually wearer's right chest, but oren's directive is explicit.
-// If wrong, revert to v5 (0.63).
-const LOGO_CENTER_X_RATIO = 0.35;  // viewer's left side of shirt
-const LOGO_CENTER_Y_RATIO = 0.33;  // heart level, not collar level
+// v7 (2026-04-24): FINAL. oren clarified — "בצד שמאל של מי שלובש את החולצה"
+// = wearer's left chest = VIEWER'S RIGHT (x>0.5) in an as-worn photo.
+// This is the classic Polo/Lacoste chest-pocket position.
+// v5 tried 0.63 but oren thought it looked still near center. Going to 0.67
+// for a clearer off-center placement.
+// FINAL CONVENTION FOR ALL PRODUCTS + COLORS.
+const LOGO_CENTER_X_RATIO = 0.67;  // wearer's left chest = viewer's right
+const LOGO_CENTER_Y_RATIO = 0.33;  // heart level
 const LOGO_WIDTH_RATIO    = 0.09;  // DUBIS fills ~9% of image width → fits within shirt body
 
 function drawFrontLogo(ctx, w, h, color) {
