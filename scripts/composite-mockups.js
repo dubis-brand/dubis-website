@@ -114,10 +114,9 @@ const DARK_COLORS = new Set(['Black','Charcoal','Navy','Forest Green']);
 // in an as-worn photo, but the Gemini blanks are symmetric so x=0.43 lands
 // in the intended visual zone).
 // ─────────────────────────────────────────────────────────────────
-// v8 (2026-04-24): oren — "טיפונת לכיוון ימין של הלובש אבל רק בקצת".
-// 0.67 was a hair too far right. Dialing back to 0.64.
-// FINAL CONVENTION FOR ALL PRODUCTS + COLORS.
-const LOGO_CENTER_X_RATIO = 0.64;  // wearer's left chest = viewer's right, slightly inward
+// v9 (2026-04-24): oren — "זה בצד מדי, טיפה לצד החץ". Still too far right at 0.64.
+// Dialing in further to 0.60 — a hair right of center.
+const LOGO_CENTER_X_RATIO = 0.60;  // wearer's left chest, close to center
 const LOGO_CENTER_Y_RATIO = 0.33;  // heart level
 const LOGO_WIDTH_RATIO    = 0.09;  // DUBIS fills ~9% of image width → fits within shirt body
 
