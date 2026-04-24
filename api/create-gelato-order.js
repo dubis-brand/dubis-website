@@ -400,6 +400,105 @@ async function handleMockupPreview(req, res) {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────
+// SHIPPING QUOTE — probe Gelato shipment API for real delivery ETAs
+// Returns available shipping methods + production + transit days
+//
+// Usage: POST /api/create-gelato-order?action=shipping-quote
+// Body:  { productId, color, type, size, countryIsoCode, stateCode, postCode }
+// ─────────────────────────────────────────────────────────────────
+async function handleShippingQuote(req, res) {
+  const GELATO_API_KEY = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
+  if (!GELATO_API_KEY) {
+    return res.status(500).json({ error: 'no_api_key' });
+  }
+
+  const {
+    productId, color, gender = 'unisex', type, size = 'M',
+    countryIsoCode = 'US', stateCode = 'CA', postCode = '90210',
+  } = req.body || {};
+  if (!productId || !color || !type) {
+    return res.status(400).json({ error: 'missing_fields', need: ['productId','color','type'] });
+  }
+
+  const gelatoColor = (COLOR_MAP[type] || {})[color];
+  const gelatoSize  = SIZE_MAP[size] || 'm';
+  if (!gelatoColor) return res.status(400).json({ error: 'unsupported_color', color, type });
+  const productUid = buildProductUid(type, gelatoColor, gelatoSize, gender);
+  if (!productUid) return res.status(400).json({ error: 'unsupported_type', type });
+
+  // Try common Gelato shipment endpoint patterns
+  const attempts = [
+    {
+      label: 'shipment-v1-quotes',
+      url: 'https://shipment.gelatoapis.com/v1/quotes',
+      body: {
+        currency: 'USD',
+        recipient: { countryIsoCode, postCode, stateCode },
+        products: [{ productUid, quantity: 1 }],
+      },
+    },
+    {
+      label: 'order-v4-quote',
+      url: 'https://order.gelatoapis.com/v4/orders:quote',
+      body: {
+        orderReferenceId: 'quote-probe',
+        customerReferenceId: 'quote-probe',
+        currency: 'USD',
+        items: [{ itemReferenceId: 'i1', productUid, quantity: 1 }],
+        shippingAddress: {
+          firstName: 'Q',
+          lastName: 'Probe',
+          addressLine1: '1 Test St',
+          city: 'Los Angeles',
+          postCode,
+          country: countryIsoCode,
+          state: stateCode,
+          email: 'quote@probe.test',
+        },
+      },
+    },
+  ];
+
+  const diagnostics = [];
+  for (const a of attempts) {
+    try {
+      const r = await fetch(a.url, {
+        method: 'POST',
+        headers: {
+          'X-API-KEY':    GELATO_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(a.body),
+      });
+      const text = await r.text();
+      let json = null;
+      try { json = JSON.parse(text); } catch {}
+      diagnostics.push({
+        attempt: a.label,
+        status: r.status,
+        ok: r.ok,
+        bodyPreview: text.substring(0, 1500),
+        json: json ? Object.keys(json).slice(0, 10) : null,
+      });
+      if (r.ok && json) {
+        return res.status(200).json({
+          success: true,
+          attempt: a.label,
+          productUid,
+          countryIsoCode, stateCode, postCode,
+          response: json,
+          diagnostics,
+        });
+      }
+    } catch (e) {
+      diagnostics.push({ attempt: a.label, error: e.message });
+    }
+  }
+
+  return res.status(502).json({ success: false, productUid, diagnostics });
+}
+
 module.exports = async function handler(req, res) {
   const t0 = Date.now();
   dlog('request-received', {
@@ -413,6 +512,11 @@ module.exports = async function handler(req, res) {
   // Route: mockup preview (probing Gelato MockupStudio)
   if (req.method === 'POST' && req.query && req.query.action === 'mockup-preview') {
     return handleMockupPreview(req, res);
+  }
+
+  // Route: shipping quote
+  if (req.method === 'POST' && req.query && req.query.action === 'shipping-quote') {
+    return handleShippingQuote(req, res);
   }
 
   if (req.method !== 'POST') {
