@@ -2357,6 +2357,25 @@
 
       </div>
 
+      <!-- Preview image of selected product+color -->
+      <div id="gt-preview" style="display:none;margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid #2a2a2a">
+        <div style="font-size:.7rem;color:#888;letter-spacing:1px;margin-bottom:.6rem">👁 תצוגה מקדימה (מה הלקוח רואה באתר)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;max-width:500px">
+          <div>
+            <div style="font-size:.65rem;color:#666;text-align:center;margin-bottom:.3rem">FRONT</div>
+            <img id="gt-preview-front" src="" alt="Front preview"
+                 style="width:100%;background:#fff;border-radius:6px;display:block"
+                 onerror="this.style.opacity='0.3';this.alt='Image not found'">
+          </div>
+          <div>
+            <div style="font-size:.65rem;color:#666;text-align:center;margin-bottom:.3rem">BACK</div>
+            <img id="gt-preview-back" src="" alt="Back preview"
+                 style="width:100%;background:#fff;border-radius:6px;display:block"
+                 onerror="this.style.opacity='0.3';this.alt='Image not found'">
+          </div>
+        </div>
+      </div>
+
       <div style="margin-top:1rem;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
         <button id="gt-create-btn" onclick="gtCreateDraft()" style="background:#1f7a42;color:white;border:none;padding:.6rem 1.5rem;border-radius:6px;cursor:pointer;font-weight:700">
           ✓ צור Draft Order (חינם)
@@ -6487,6 +6506,7 @@
         ).join('');
 
       productSelect.onchange = gtOnProductChange;
+      document.getElementById('gt-color').onchange = gtUpdatePreview;
     } catch(e) {
       console.error('gtInit error:', e);
       document.getElementById('gt-product').innerHTML =
@@ -6499,16 +6519,35 @@
     const colorSelect = document.getElementById('gt-color');
     if (!pid) {
       colorSelect.innerHTML = '<option value="">בחר מוצר קודם</option>';
+      document.getElementById('gt-preview').style.display = 'none';
       return;
     }
     const p = _gtProducts.find(x => x.product_id_numeric === pid);
     if (!p || !Array.isArray(p.colors) || p.colors.length === 0) {
       colorSelect.innerHTML = '<option value="">אין צבעים</option>';
+      document.getElementById('gt-preview').style.display = 'none';
       return;
     }
     colorSelect.innerHTML = p.colors.map(c =>
       `<option value="${c}">${c}</option>`
     ).join('');
+    gtUpdatePreview();
+  }
+
+  function gtUpdatePreview() {
+    const pid   = parseInt(document.getElementById('gt-product').value);
+    const color = document.getElementById('gt-color').value;
+    const wrap  = document.getElementById('gt-preview');
+    const front = document.getElementById('gt-preview-front');
+    const back  = document.getElementById('gt-preview-back');
+    if (!pid || !color) { wrap.style.display = 'none'; return; }
+    const safeColor = color.replace(/\s+/g, '-');
+    const bust = Date.now();  // avoid browser cache when switching fast
+    front.style.opacity = '1';
+    back.style.opacity  = '1';
+    front.src = `/images/product-${pid}-${safeColor}-front.jpg?t=${bust}`;
+    back.src  = `/images/product-${pid}-${safeColor}-back.jpg?t=${bust}`;
+    wrap.style.display = '';
   }
 
   async function gtCreateDraft() {
