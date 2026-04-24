@@ -124,7 +124,7 @@ const translations = {
     modal_add: 'This Is Mine 🐾',
     tab_details: 'Details', tab_size: 'Size Guide', tab_care: 'Care',
     shipping_note: '✈️ + shipping · free on $60+',
-    modal_ships: '🚚 Ships in 5–9 business days', modal_free_ship: 'Free shipping over $60',
+    modal_ships: '🚚 Ships in 5–7 business days to US', modal_free_ship: 'Free shipping over $60',
     modal_dtg: 'DTG — Direct-to-Garment',
     modal_fabric: 'Fabric', modal_fit: 'Fit', modal_print: 'Print', modal_print_areas: 'Print areas',
     size_size: 'Size', size_chest: 'Chest (cm)', size_length: 'Length (cm)',
