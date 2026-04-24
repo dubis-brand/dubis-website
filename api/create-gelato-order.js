@@ -308,44 +308,74 @@ async function handleMockupPreview(req, res) {
 
   // Try several Gelato API hosts — MockupStudio endpoints differ by plan/region.
   // We attempt each and return the first success. Pure diagnostic probe.
+  // Round 2 (2026-04-23): round 1 all returned 404 "No route found" — different URLs needed.
   const attempts = [
+    // Round 2 — new guesses based on Gelato API conventions
     {
-      label: 'product-v3-mockups',
-      url: 'https://product.gelatoapis.com/v3/mockups',
-      body: { productUid, files },
-    },
-    {
-      label: 'order-v4-mockup',
-      url: 'https://order.gelatoapis.com/v4/mockup',
-      body: { productUid, files },
-    },
-    {
-      label: 'ecommerce-v1-preview',
-      url: `https://ecommerce.gelatoapis.com/v1/mockups/${encodeURIComponent(productUid)}`,
+      label: 'product-v3-uid-mockups',
+      method: 'POST',
+      url: `https://product.gelatoapis.com/v3/products/${encodeURIComponent(productUid)}/mockups`,
       body: { files },
+    },
+    {
+      label: 'mockupstudio-v1-mockups',
+      method: 'POST',
+      url: 'https://mockupstudio.gelatoapis.com/v1/mockups',
+      body: { productUid, files },
+    },
+    {
+      label: 'mockupstudio-v1-uid',
+      method: 'POST',
+      url: `https://mockupstudio.gelatoapis.com/v1/products/${encodeURIComponent(productUid)}/mockups`,
+      body: { files },
+    },
+    // Diagnostic: confirm Product API works at all with our key
+    {
+      label: 'GET-product-info',
+      method: 'GET',
+      url: `https://product.gelatoapis.com/v3/products/${encodeURIComponent(productUid)}`,
+      body: null,
+    },
+    // Ecommerce API needs storeId per docs — we don't have one, but probe anyway
+    {
+      label: 'ecommerce-stores',
+      method: 'GET',
+      url: 'https://ecommerce.gelatoapis.com/v1/stores',
+      body: null,
+    },
+    // Product catalog — sanity check
+    {
+      label: 'GET-catalogs',
+      method: 'GET',
+      url: 'https://product.gelatoapis.com/v3/catalogs',
+      body: null,
     },
   ];
 
   const diagnostics = [];
   for (const a of attempts) {
     try {
-      const r = await fetch(a.url, {
-        method: 'POST',
+      const opts = {
+        method: a.method || 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'X-API-KEY':    GELATO_API_KEY,
         },
-        body: JSON.stringify(a.body),
-      });
+      };
+      if (a.body) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(a.body);
+      }
+      const r = await fetch(a.url, opts);
       const text = await r.text();
       let json = null;
       try { json = JSON.parse(text); } catch {}
       diagnostics.push({
         attempt:    a.label,
+        method:     opts.method,
         status:     r.status,
         ok:         r.ok,
-        bodyPreview: text.substring(0, 400),
-        json:       json ? Object.keys(json) : null,
+        bodyPreview: text.substring(0, 600),
+        json:       json ? Object.keys(json).slice(0, 10) : null,
       });
       if (r.ok && json) {
         return res.status(200).json({
