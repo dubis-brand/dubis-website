@@ -6471,9 +6471,10 @@
       productSelect.innerHTML = '<option value="">טוען...</option>';
 
       // Pull from dubis_products via Supabase directly
+      // Column is `slogan` not `phrase` (schema check 2026-04-24)
       const { data, error } = await _sb
         .from('dubis_products')
-        .select('id, product_id_numeric, phrase, clothing_type, colors, active')
+        .select('id, product_id_numeric, slogan, clothing_type, colors, active')
         .eq('active', true)
         .order('product_id_numeric');
 
@@ -6482,7 +6483,7 @@
 
       productSelect.innerHTML = '<option value="">בחר מוצר...</option>' +
         _gtProducts.map(p =>
-          `<option value="${p.product_id_numeric}">${p.product_id_numeric} · ${p.phrase} (${p.clothing_type})</option>`
+          `<option value="${p.product_id_numeric}">${p.product_id_numeric} · ${p.slogan} (${p.clothing_type})</option>`
         ).join('');
 
       productSelect.onchange = gtOnProductChange;
