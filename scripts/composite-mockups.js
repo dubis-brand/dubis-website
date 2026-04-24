@@ -104,16 +104,18 @@ const DARK_COLORS = new Set(['Black','Charcoal','Navy','Forest Green']);
 
 // ─────────────────────────────────────────────────────────────────
 // Draw the DUBIS™ chest-left logo onto the front canvas.
-// Positioning is RELATIVE to canvas size. Calibrated against the Gemini
-// blanks (2026-04-24): shirt body occupies ~ x=30%..75%, y=10%..90% of the
-// canvas. Chest-left pocket area on a real shirt is ~ 20% from left edge
-// of the shirt body, ~ 18% down from the collar. Translated to canvas:
-//   x = 0.30 + 0.20 * (0.75 - 0.30) = 0.39
-//   y = 0.10 + 0.18 * (0.90 - 0.10) = 0.244
-// We round to 0.38 / 0.20 for a hair of margin.
+// Positioning is RELATIVE to canvas size. Calibrated twice against real
+// Gemini blank output + oren visual review (2026-04-24):
+//   v1 (0.28, 0.24): logo landed on background, not on shirt
+//   v2 (0.38, 0.20): logo landed near the collar — too high & slightly left
+//   v3 (0.43, 0.33): chest-pocket position — classic polo-style placement
+// This matches the zone where a real polo/Lacoste logo sits: upper chest,
+// roughly at heart level, on the left side of the shirt body (viewer's right
+// in an as-worn photo, but the Gemini blanks are symmetric so x=0.43 lands
+// in the intended visual zone).
 // ─────────────────────────────────────────────────────────────────
-const LOGO_CENTER_X_RATIO = 0.38;  // chest-left on the shirt body, not on background
-const LOGO_CENTER_Y_RATIO = 0.20;  // upper chest, just below collar line
+const LOGO_CENTER_X_RATIO = 0.43;  // chest-pocket area (right of sternum for viewer)
+const LOGO_CENTER_Y_RATIO = 0.33;  // heart level, not collar level
 const LOGO_WIDTH_RATIO    = 0.09;  // DUBIS fills ~9% of image width → fits within shirt body
 
 function drawFrontLogo(ctx, w, h, color) {
