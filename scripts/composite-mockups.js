@@ -104,13 +104,17 @@ const DARK_COLORS = new Set(['Black','Charcoal','Navy','Forest Green']);
 
 // ─────────────────────────────────────────────────────────────────
 // Draw the DUBIS™ chest-left logo onto the front canvas.
-// Positioning is RELATIVE to canvas size, so works regardless of image dims.
-// Matches scripts/generate-designs.js LOGO_CENTER_X_RATIO/Y_RATIO + LOGO_FONT_SIZE.
+// Positioning is RELATIVE to canvas size. Calibrated against the Gemini
+// blanks (2026-04-24): shirt body occupies ~ x=30%..75%, y=10%..90% of the
+// canvas. Chest-left pocket area on a real shirt is ~ 20% from left edge
+// of the shirt body, ~ 18% down from the collar. Translated to canvas:
+//   x = 0.30 + 0.20 * (0.75 - 0.30) = 0.39
+//   y = 0.10 + 0.18 * (0.90 - 0.10) = 0.244
+// We round to 0.38 / 0.20 for a hair of margin.
 // ─────────────────────────────────────────────────────────────────
-const LOGO_CENTER_X_RATIO = 0.28;  // slightly right-shifted vs 22% — the blank photo
-                                    // has the shirt shifted slightly left due to ghost-mannequin framing
-const LOGO_CENTER_Y_RATIO = 0.24;
-const LOGO_WIDTH_RATIO    = 0.13;  // DUBIS fills ~13% of image width → ≈ 2-3cm on garment
+const LOGO_CENTER_X_RATIO = 0.38;  // chest-left on the shirt body, not on background
+const LOGO_CENTER_Y_RATIO = 0.20;  // upper chest, just below collar line
+const LOGO_WIDTH_RATIO    = 0.09;  // DUBIS fills ~9% of image width → fits within shirt body
 
 function drawFrontLogo(ctx, w, h, color) {
   const inkColor = DARK_COLORS.has(color) ? '#ffffff' : '#1a1a1a';
@@ -157,58 +161,84 @@ function drawBackSlogan(ctx, w, h, color, product) {
 
   const centerX = w / 2;
 
-  if (product.layout === 'top-bottom') {
-    // Proportional sizes relative to image height
-    const bigH   = h * 0.16;    // BIG word ~16% of image height
-    const smallH = h * 0.04;    // small text ~4%
-    const afterH = h * 0.04;    // after text ~4%
+  // Shirt back body in the Gemini blanks occupies roughly y=10%..85% of canvas.
+  // Slogan must fit ENTIRELY within y=20%..70% to avoid hitting hem/bottom.
+  // Total vertical budget = 0.50 of canvas height.
+  //
+  // We also constrain the BIG word to ~12% of image height (was 16% — too tall),
+  // and verify the text horizontally fits within shirt body width (~45% of canvas).
+  //
+  // Horizontal constraint: shirt body is x=30%..75%, centered at 52.5% of canvas,
+  // width = 45% of canvas. BIG word must be < 42% of canvas width to have margin.
 
-    let curY = h * 0.30;
+  const MAX_TEXT_WIDTH = w * 0.42;  // horizontal budget
+
+  function fitFontSize(text, targetHeight) {
+    let fs = targetHeight;
+    setFont(ctx, fs);
+    while (ctx.measureText(text).width > MAX_TEXT_WIDTH && fs > 10) {
+      fs *= 0.95;
+      setFont(ctx, fs);
+    }
+    return fs;
+  }
+
+  if (product.layout === 'top-bottom') {
+    const bigH   = h * 0.11;    // BIG word ~11% (was 16%)
+    const smallH = h * 0.033;   // small text ~3.3% (was 4%)
+    const afterH = h * 0.033;
+
+    let curY = h * 0.22;         // start higher (was 0.30)
 
     if (product.small) {
-      setFont(ctx, smallH);
       const lines = product.small.split('\n');
       for (const line of lines) {
+        const fs = fitFontSize(line, smallH);
+        setFont(ctx, fs);
         ctx.fillText(line, centerX, curY);
-        curY += smallH * 1.2;
+        curY += fs * 1.25;
       }
-      curY += smallH * 0.4; // gap before BIG
+      curY += smallH * 0.35;
     }
 
     if (product.big) {
-      setFont(ctx, bigH);
-      ctx.fillText(product.big, centerX, curY + bigH / 2);
-      curY += bigH * 1.05 + bigH * 0.15;
+      const fs = fitFontSize(product.big, bigH);
+      setFont(ctx, fs);
+      ctx.fillText(product.big, centerX, curY + fs / 2);
+      curY += fs * 1.05 + fs * 0.20;
     }
 
     if (product.after) {
-      setFont(ctx, afterH);
-      curY += afterH * 0.3;
+      curY += afterH * 0.25;
       const lines = product.after.split('\n');
       for (const line of lines) {
+        const fs = fitFontSize(line, afterH);
+        setFont(ctx, fs);
         ctx.fillText(line, centerX, curY);
-        curY += afterH * 1.2;
+        curY += fs * 1.25;
       }
     }
   } else if (product.layout === 'big-top') {
-    const bigH   = h * 0.14;
-    const afterH = h * 0.04;
+    const bigH   = h * 0.11;
+    const afterH = h * 0.033;
 
-    let curY = h * 0.30;
+    let curY = h * 0.22;
 
     if (product.big) {
-      setFont(ctx, bigH);
-      ctx.fillText(product.big, centerX, curY + bigH / 2);
-      curY += bigH * 1.2;
+      const fs = fitFontSize(product.big, bigH);
+      setFont(ctx, fs);
+      ctx.fillText(product.big, centerX, curY + fs / 2);
+      curY += fs * 1.25;
     }
 
     if (product.after) {
-      setFont(ctx, afterH);
       curY += afterH * 0.5;
       const lines = product.after.split('\n');
       for (const line of lines) {
+        const fs = fitFontSize(line, afterH);
+        setFont(ctx, fs);
         ctx.fillText(line, centerX, curY);
-        curY += afterH * 1.3;
+        curY += fs * 1.3;
       }
     }
   }
