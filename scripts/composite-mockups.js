@@ -114,7 +114,9 @@ const DARK_COLORS = new Set(['Black','Charcoal','Navy','Forest Green']);
 // in an as-worn photo, but the Gemini blanks are symmetric so x=0.43 lands
 // in the intended visual zone).
 // ─────────────────────────────────────────────────────────────────
-const LOGO_CENTER_X_RATIO = 0.43;  // chest-pocket area (right of sternum for viewer)
+// v4 (2026-04-24): oren — "זה צד שני". Chest-left on the WEARER =
+// viewer's RIGHT in an as-worn photo. Mirror 0.43 → 0.57 across centerline.
+const LOGO_CENTER_X_RATIO = 0.57;  // wearer's left chest = viewer's right
 const LOGO_CENTER_Y_RATIO = 0.33;  // heart level, not collar level
 const LOGO_WIDTH_RATIO    = 0.09;  // DUBIS fills ~9% of image width → fits within shirt body
 
