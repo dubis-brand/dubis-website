@@ -268,6 +268,108 @@ function logManualOrder(label, payload) {
 // ─────────────────────────────────────────────────────────────────
 // HANDLER
 // ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// MOCKUP PREVIEW — Gelato MockupStudio / Product Mockup API
+// Returns pre-rendered photos of the actual garment with our print file on it.
+// Replaces Gemini-generated mockups: guaranteed parity with what Gelato prints.
+//
+// Usage: POST /api/create-gelato-order?action=mockup-preview
+// Body:  { productId: 1, color: 'Black', gender: 'unisex' }
+// Returns: { mockups: { front: <url>, back: <url> } }
+// ─────────────────────────────────────────────────────────────────
+async function handleMockupPreview(req, res) {
+  const GELATO_API_KEY = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
+  if (!GELATO_API_KEY) {
+    return res.status(500).json({ error: 'no_api_key' });
+  }
+
+  const { productId, color, gender = 'unisex', type, size = 'M', designRef } = req.body || {};
+  if (!productId || !color || !type) {
+    return res.status(400).json({ error: 'missing_fields', need: ['productId','color','type'] });
+  }
+
+  const gelatoColor = (COLOR_MAP[type] || {})[color];
+  const gelatoSize  = SIZE_MAP[size] || 'm';
+  if (!gelatoColor) {
+    return res.status(400).json({ error: 'unsupported_color', color, type });
+  }
+  const productUid = buildProductUid(type, gelatoColor, gelatoSize, gender);
+  if (!productUid) return res.status(400).json({ error: 'unsupported_type', type });
+
+  const variant = DARK_COLORS.has(color) ? 'white' : 'dark';
+  const designId = designRef || productId;
+  const v = `?v=${DESIGN_VERSION}`;
+  const files = (type === 'cap')
+    ? [{ type: 'front', url: `${DESIGN_BASE_URL}/cap_design_${variant}.png${v}` }]
+    : [
+        { type: 'front', url: `${DESIGN_BASE_URL}/front_logo_${variant}.png${v}` },
+        { type: 'back',  url: `${DESIGN_BASE_URL}/back_design_${designId}_${variant}.png${v}` },
+      ];
+
+  // Try several Gelato API hosts — MockupStudio endpoints differ by plan/region.
+  // We attempt each and return the first success. Pure diagnostic probe.
+  const attempts = [
+    {
+      label: 'product-v3-mockups',
+      url: 'https://product.gelatoapis.com/v3/mockups',
+      body: { productUid, files },
+    },
+    {
+      label: 'order-v4-mockup',
+      url: 'https://order.gelatoapis.com/v4/mockup',
+      body: { productUid, files },
+    },
+    {
+      label: 'ecommerce-v1-preview',
+      url: `https://ecommerce.gelatoapis.com/v1/mockups/${encodeURIComponent(productUid)}`,
+      body: { files },
+    },
+  ];
+
+  const diagnostics = [];
+  for (const a of attempts) {
+    try {
+      const r = await fetch(a.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-KEY':    GELATO_API_KEY,
+        },
+        body: JSON.stringify(a.body),
+      });
+      const text = await r.text();
+      let json = null;
+      try { json = JSON.parse(text); } catch {}
+      diagnostics.push({
+        attempt:    a.label,
+        status:     r.status,
+        ok:         r.ok,
+        bodyPreview: text.substring(0, 400),
+        json:       json ? Object.keys(json) : null,
+      });
+      if (r.ok && json) {
+        return res.status(200).json({
+          success:     true,
+          attempt:     a.label,
+          productUid,
+          files,
+          response:    json,
+          diagnostics,
+        });
+      }
+    } catch (e) {
+      diagnostics.push({ attempt: a.label, error: e.message });
+    }
+  }
+
+  return res.status(502).json({
+    success:     false,
+    productUid,
+    files,
+    diagnostics,
+  });
+}
+
 module.exports = async function handler(req, res) {
   const t0 = Date.now();
   dlog('request-received', {
@@ -275,7 +377,13 @@ module.exports = async function handler(req, res) {
     hasBody: !!req.body,
     userAgent: (req.headers && req.headers['user-agent']) || '',
     designVersion: DESIGN_VERSION,
+    query: req.query,
   });
+
+  // Route: mockup preview (probing Gelato MockupStudio)
+  if (req.method === 'POST' && req.query && req.query.action === 'mockup-preview') {
+    return handleMockupPreview(req, res);
+  }
 
   if (req.method !== 'POST') {
     derr('method-not-allowed', { method: req.method });
