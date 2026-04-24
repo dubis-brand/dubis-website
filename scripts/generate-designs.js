@@ -250,8 +250,12 @@ const FRONT_W = 3600;
 const FRONT_H = 4200;
 const LOGO_FONT_SIZE = 300;  // polo-style chest-left, ~2.5cm printed
 const TM_RATIO       = 0.45; // TM is ~45% of the main letter height
-const LOGO_CENTER_X_RATIO = 0.22; // 22% from left edge → left-chest
-const LOGO_CENTER_Y_RATIO = 0.17; // 17% from top edge → upper chest
+// 2026-04-24 FIX: print file had x=0.22 which made Gelato print DUBIS on
+// WEARER'S RIGHT chest (confirmed by oren looking at live Gelato mockup).
+// Mirror to x=0.78 so it prints on WEARER'S LEFT (classic Polo/Lacoste).
+// Matches the website mockup position (composite-mockups.js x=0.60 on blank).
+const LOGO_CENTER_X_RATIO = 0.78; // wearer's left chest = viewer's right
+const LOGO_CENTER_Y_RATIO = 0.17; // upper chest, below collar
 
 function generateFrontLogo(color, outPath) {
   const canvas = createCanvas(FRONT_W, FRONT_H);
