@@ -118,14 +118,27 @@ const DARK_COLORS = new Set(['Black','Charcoal','Navy','Forest Green']);
 // Dialing in further to 0.60 — a hair right of center.
 const LOGO_CENTER_X_RATIO = 0.60;  // wearer's left chest, close to center
 const LOGO_CENTER_Y_RATIO = 0.33;  // heart level
+
+// Cap override — DUBIS sits on the flat front panel (not on the curved bill).
+// Center horizontally, slightly above canvas center for the panel area.
+const CAP_LOGO_X_RATIO = 0.50;
+const CAP_LOGO_Y_RATIO = 0.40;
+const CAP_LOGO_WIDTH_RATIO = 0.12;  // slightly larger — caps are visually "smaller" in frame
 const LOGO_WIDTH_RATIO    = 0.09;  // DUBIS fills ~9% of image width → fits within shirt body
 
-function drawFrontLogo(ctx, w, h, color) {
+function drawFrontLogo(ctx, w, h, color, productType) {
   const inkColor = DARK_COLORS.has(color) ? '#ffffff' : '#1a1a1a';
   ctx.fillStyle = inkColor;
 
-  // Auto-size font so DUBIS fits LOGO_WIDTH_RATIO of image width
-  const targetW = w * LOGO_WIDTH_RATIO;
+  // Caps use a different placement — center on the flat front panel, not
+  // chest-left (which doesn't exist on a cap).
+  const isCap    = productType === 'cap';
+  const xRatio   = isCap ? CAP_LOGO_X_RATIO     : LOGO_CENTER_X_RATIO;
+  const yRatio   = isCap ? CAP_LOGO_Y_RATIO     : LOGO_CENTER_Y_RATIO;
+  const widthR   = isCap ? CAP_LOGO_WIDTH_RATIO : LOGO_WIDTH_RATIO;
+
+  // Auto-size font so DUBIS fits widthR of image width
+  const targetW = w * widthR;
   let fontSize  = 10;
   setFont(ctx, fontSize);
   while (ctx.measureText('DUBIS').width < targetW && fontSize < 500) {
@@ -136,8 +149,8 @@ function drawFrontLogo(ctx, w, h, color) {
   fontSize -= 2;
   setFont(ctx, fontSize);
 
-  const cx = w * LOGO_CENTER_X_RATIO;
-  const cy = h * LOGO_CENTER_Y_RATIO;
+  const cx = w * xRatio;
+  const cy = h * yRatio;
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -165,6 +178,18 @@ function drawBackSlogan(ctx, w, h, color, product) {
 
   const centerX = w / 2;
 
+  // Vertical start per garment type — oren feedback 2026-04-24:
+  //   "בקפוצונים צריך להוריד את הכיתוב מאחורה קצת למטה, וגם קצת בחולצות. NAPPER (longsleeve) טוב"
+  // Hoodies are visually longer/wider in the frame, so text at 0.22 sits too high.
+  // Longsleeves with text at 0.22 sit naturally (confirmed by oren on product 10).
+  const BACK_Y_START = {
+    tshirt:     0.26,  // was 0.22
+    hoodie:     0.30,  // was 0.22 — biggest drop
+    ziphoodie:  0.30,  // was 0.22
+    longsleeve: 0.22,  // unchanged — confirmed OK
+  };
+  const yStart = BACK_Y_START[product.type] ?? 0.24;
+
   // Shirt back body in the Gemini blanks occupies roughly y=10%..85% of canvas.
   // Slogan must fit ENTIRELY within y=20%..70% to avoid hitting hem/bottom.
   // Total vertical budget = 0.50 of canvas height.
@@ -188,11 +213,11 @@ function drawBackSlogan(ctx, w, h, color, product) {
   }
 
   if (product.layout === 'top-bottom') {
-    const bigH   = h * 0.11;    // BIG word ~11% (was 16%)
-    const smallH = h * 0.033;   // small text ~3.3% (was 4%)
+    const bigH   = h * 0.11;    // BIG word ~11%
+    const smallH = h * 0.033;   // small text ~3.3%
     const afterH = h * 0.033;
 
-    let curY = h * 0.22;         // start higher (was 0.30)
+    let curY = h * yStart;       // per-type start
 
     if (product.small) {
       const lines = product.small.split('\n');
@@ -226,7 +251,7 @@ function drawBackSlogan(ctx, w, h, color, product) {
     const bigH   = h * 0.11;
     const afterH = h * 0.033;
 
-    let curY = h * 0.22;
+    let curY = h * yStart;
 
     if (product.big) {
       const fs = fitFontSize(product.big, bigH);
@@ -253,8 +278,14 @@ function drawBackSlogan(ctx, w, h, color, product) {
 // ─────────────────────────────────────────────────────────────────
 async function composite(product, color, face) {
   const safeColor = color.replace(/\s+/g, '-');
-  const blankFile = path.join(BLANKS_DIR, `${product.type}-${safeColor}-${face}-flat.jpg`);
+  let   blankFile = path.join(BLANKS_DIR, `${product.type}-${safeColor}-${face}-flat.jpg`);
   const outFile   = path.join(IMAGES_DIR, `product-${product.id}-${safeColor}-${face}.jpg`);
+
+  // Caps have front-only blanks. For back requests, fall back to the front blank.
+  if (!fs.existsSync(blankFile) && product.type === 'cap' && face === 'back') {
+    const frontBlank = path.join(BLANKS_DIR, `${product.type}-${safeColor}-front-flat.jpg`);
+    if (fs.existsSync(frontBlank)) blankFile = frontBlank;
+  }
 
   if (!fs.existsSync(blankFile)) {
     return { skipped: true, reason: 'blank_missing', blankFile };
@@ -266,11 +297,16 @@ async function composite(product, color, face) {
   ctx.drawImage(blank, 0, 0);
 
   if (face === 'front') {
-    drawFrontLogo(ctx, blank.width, blank.height, color);
+    drawFrontLogo(ctx, blank.width, blank.height, color, product.type);
   } else {
-    // Caps only have a front design (embroidered logo) — no back image
-    if (product.type === 'cap') return { skipped: true, reason: 'cap_no_back' };
-    drawBackSlogan(ctx, blank.width, blank.height, color, product);
+    // Caps have no dedicated back blank. To avoid leaving a stale JPG from
+    // the old Gemini pipeline on display, we write the FRONT image to the
+    // back filename too — so the UI thumbnail always matches the product.
+    if (product.type === 'cap') {
+      drawFrontLogo(ctx, blank.width, blank.height, color, product.type);
+    } else {
+      drawBackSlogan(ctx, blank.width, blank.height, color, product);
+    }
   }
 
   const buffer = canvas.toBuffer('image/jpeg', { quality: 0.92 });
