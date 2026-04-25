@@ -6570,21 +6570,34 @@
     const p = _gtProducts.find(x => x.product_id_numeric === productId);
     const type = p?.clothing_type?.replace(/-/g,'') || 'tshirt';
 
+    // Safety: ensure button is re-enabled even if something goes wrong
     btn.disabled = true;
-    status.textContent = '⏳ שולח ל-Gelato...';
+    const safetyTimer = setTimeout(() => {
+      btn.disabled = false;
+      status.textContent = '⚠️ פסק זמן — נסה שוב או רענן דף';
+      status.style.color = '#f59e0b';
+    }, 30000);
+
+    status.textContent = '⏳ מכין בקשה...';
     status.style.color = '#888';
+    console.log('[gt] start create-draft', { productId, color, size, type, ship });
 
     try {
-      const { data: { session } } = await _sb.auth.getSession();
-      const body = {
-        productId,
-        color,
-        size,
-        type,
-        gender: 'unisex',
-        shipCountry: ship,
-      };
+      // Get session with timeout — Supabase getSession() can hang on expired token
+      console.log('[gt] getting session…');
+      const sessionPromise = _sb.auth.getSession();
+      const timeoutPromise = new Promise((_, rej) =>
+        setTimeout(() => rej(new Error('session_timeout')), 5000));
+      const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]);
+      if (!session?.access_token) throw new Error('no_session');
+      console.log('[gt] session ok, calling API…');
+      status.textContent = '⏳ שולח ל-Gelato...';
 
+      const body = { productId, color, size, type, gender: 'unisex', shipCountry: ship };
+
+      // 20s fetch timeout via AbortController
+      const ctrl = new AbortController();
+      const fetchTimer = setTimeout(() => ctrl.abort('fetch_timeout'), 20000);
       const res = await fetch('/api/create-gelato-order?action=create-draft', {
         method: 'POST',
         headers: {
@@ -6592,26 +6605,36 @@
           'Authorization': 'Bearer ' + session.access_token,
         },
         body: JSON.stringify(body),
+        signal: ctrl.signal,
       });
+      clearTimeout(fetchTimer);
+      console.log('[gt] response status', res.status);
 
       const data = await res.json();
+      console.log('[gt] response data', data);
 
       result.style.display = '';
       resultJ.textContent = JSON.stringify(data, null, 2);
 
       if (res.ok && data.success) {
-        status.textContent = '✅ Draft נוצר. עיין ב-Gelato dashboard או בתוצאה למטה.';
+        status.textContent = '✅ Draft נוצר. עיין בתוצאה למטה.';
         status.style.color = '#4caf50';
       } else {
         status.textContent = '⚠️ ' + (data.error || 'כשל. ראה תוצאה.');
         status.style.color = '#f59e0b';
       }
     } catch(e) {
-      status.textContent = '❌ שגיאה: ' + e.message;
+      console.error('[gt] error', e);
+      const msg = e.name === 'AbortError' ? 'הבקשה נחסמה אחרי 20 שניות'
+                : e.message === 'session_timeout' ? 'Supabase session תקוע — רענן דף ונסה שוב'
+                : e.message === 'no_session' ? 'אין session פעיל — התחבר מחדש'
+                : e.message;
+      status.textContent = '❌ ' + msg;
       status.style.color = '#ef4444';
       result.style.display = '';
-      resultJ.textContent = 'Error: ' + e.message;
+      resultJ.textContent = 'Error: ' + (e.stack || e.message);
     } finally {
+      clearTimeout(safetyTimer);
       btn.disabled = false;
     }
   }
