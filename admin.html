@@ -5347,20 +5347,20 @@
     const btn = document.getElementById('btn-run-agents');
     if (btn.classList.contains('running')) return;
     btn.classList.add('running');
-    btn.textContent = '⏳ מריץ...';
-
-    const { data: { session: runSession } } = await _sb.auth.getSession();
-    const token = runSession?.access_token;
+    btn.textContent = '⏳ מריץ 12 סוכנים...';
     try {
-      const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=run', {
+      // 2026-04-27 v2: cloud-native dispatcher (replaces old phantom-producing endpoint)
+      const PG_TOKEN = 'dubis-pg-cron-trigger-a554cd187bdfaf88a0a5dd8dcf571bea32658e1eb8ec217c';
+      const res = await fetch('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/dubis-run-all?token=' + PG_TOKEN, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' }
       });
       const data = await res.json();
-      if (data.queued > 0) {
-        alert(`✅ ${data.queued} משימות הועברו לביצוע.\n${data.summary || ''}`);
+      if (data.ok) {
+        const lines = (data.results || []).map(function(r){ return (r.ok === false ? '❌ ' : '✅ ') + r.job; }).join('\n');
+        alert(data.summary + '\n\n' + lines);
       } else {
-        alert('אין משימות מאושרות הממתינות להרצה.');
+        alert('שגיאה: ' + (data.error || JSON.stringify(data)));
       }
       loadTasks();
     } catch(e) {
