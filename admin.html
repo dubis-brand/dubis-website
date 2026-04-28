@@ -954,6 +954,7 @@
       <button class="nav-tab" id="nav-gallery"   onclick="showSection('gallery',this)">🖼 גלריה</button>
       <button class="nav-tab" id="nav-content-approval" onclick="showSection('content-approval',this)">✅ תוכן לאישור</button>
       <button class="nav-tab" id="nav-gelato-tools" onclick="showSection('gelato-tools',this)">🧪 Gelato Tools</button>
+      <button class="nav-tab" id="nav-tax-nexus" onclick="showSection('tax-nexus',this)">💰 Tax Nexus</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -1054,14 +1055,14 @@
     <!-- ── יעדים ותקציב ── -->
     <div class="analytics-section-title">🎯 יעדי צמיחה ותקציב</div>
     <div class="goal-banner">
-      <div class="goal-title">יעד: $1,000 רווח חודשי תוך 60 יום</div>
+      <div class="goal-title">יעד: $100 רווח חודשי נטו תוך 6 חודשים <span style="font-weight:400;color:#888;font-size:.75rem">(הוארך מ-3 חודשים — אורן 2026-04-28)</span></div>
       <div id="goal-timeline" style="text-align:center;color:#aaa;font-size:.82rem;margin-bottom:6px"></div>
       <div class="goal-progress-wrap">
         <div class="goal-progress-bar">
           <div class="goal-progress-fill" id="goal-fill" style="width:0%"></div>
           <div class="goal-progress-text" id="goal-pct-text">0%</div>
         </div>
-        <div class="goal-amt" id="goal-amt">$0 / $1,000</div>
+        <div class="goal-amt" id="goal-amt">$0 / $100</div>
       </div>
       <div class="budget-grid">
         <div class="budget-item">
@@ -2397,6 +2398,85 @@
     </div>
   </div><!-- /section-gelato-tools -->
 
+  <!-- ══ TAX NEXUS SECTION (US Sales Tax Tracker) ══════════════════ -->
+  <div id="section-tax-nexus" style="display:none;padding:1.5rem" dir="rtl">
+    <h2 style="color:#e8e0d5;margin:0 0 .5rem">💰 Tax Nexus — מעקב מס מכירות אמריקאי</h2>
+    <p style="color:#aaa;font-size:.85rem;margin:0 0 1.5rem;max-width:780px">
+      מעקב אחרי מכירות לכל מדינה בארה"ב מתחילת השנה הקלנדרית מול סף ה-Economic Nexus (פוסט-Wayfair 2018).
+      ברגע שמדינה מגיעה ל-100% — חובה להירשם, לגבות sales tax ולהגיש דוחות.
+      כשמדינה מגיעה ל-70% (כתום) — זה הזמן להתחיל להכין מעבר ל-Merchant of Record (Paddle / Lemon Squeezy).
+    </p>
+
+    <!-- Summary cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:1.5rem">
+      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1rem">
+        <div style="color:#888;font-size:.75rem;margin-bottom:.4rem">הכנסות US YTD (<span id="tn-year">—</span>)</div>
+        <div id="tn-us-revenue" style="color:#c8a96e;font-size:1.5rem;font-weight:700">$0</div>
+      </div>
+      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1rem">
+        <div style="color:#888;font-size:.75rem;margin-bottom:.4rem">עסקאות US YTD</div>
+        <div id="tn-us-orders" style="color:#e8e0d5;font-size:1.5rem;font-weight:700">0</div>
+      </div>
+      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1rem">
+        <div style="color:#888;font-size:.75rem;margin-bottom:.4rem">מדינות פעילות</div>
+        <div id="tn-state-count" style="color:#e8e0d5;font-size:1.5rem;font-weight:700">0</div>
+      </div>
+      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1rem">
+        <div style="color:#888;font-size:.75rem;margin-bottom:.4rem">רזרבת מס מומלצת (8%)</div>
+        <div id="tn-reserve" style="color:#4caf50;font-size:1.5rem;font-weight:700">$0</div>
+      </div>
+    </div>
+
+    <!-- Status legend -->
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;font-size:.78rem;color:#aaa">
+      <span><span style="display:inline-block;width:10px;height:10px;background:#4caf50;border-radius:50%;margin-left:6px"></span>Safe (&lt;40%)</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#ffc107;border-radius:50%;margin-left:6px"></span>Watch (40-70%)</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#ff9800;border-radius:50%;margin-left:6px"></span>Near (70-100%) — <strong>תכנן MoR</strong></span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#f44336;border-radius:50%;margin-left:6px"></span>Over (100%+) — <strong>חובת רישום</strong></span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#666;border-radius:50%;margin-left:6px"></span>No Tax (AK/DE/MT/NH/OR)</span>
+    </div>
+
+    <!-- States table -->
+    <div id="tn-table-wrap" style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;color:#e8e0d5;font-size:.85rem" dir="ltr">
+        <thead>
+          <tr style="background:#0d0d0d;color:#c8a96e;font-size:.78rem">
+            <th style="padding:.7rem .8rem;text-align:left">State</th>
+            <th style="padding:.7rem .8rem;text-align:right">Revenue YTD</th>
+            <th style="padding:.7rem .8rem;text-align:right">Txns YTD</th>
+            <th style="padding:.7rem .8rem;text-align:right">Threshold</th>
+            <th style="padding:.7rem .8rem;text-align:right">% to Threshold</th>
+            <th style="padding:.7rem .8rem;text-align:center">Status</th>
+            <th style="padding:.7rem .8rem;text-align:right">Last Order</th>
+          </tr>
+        </thead>
+        <tbody id="tn-tbody">
+          <tr><td colspan="7" style="padding:2rem;text-align:center;color:#666">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p id="tn-empty-msg" style="display:none;color:#888;text-align:center;padding:2rem;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;margin-top:1rem">
+      אין עדיין מכירות לארה"ב השנה. ברגע שלקוח אמריקאי ראשון יקנה — הוא יופיע כאן.
+    </p>
+
+    <!-- Action plan based on status -->
+    <div style="background:#0d1a00;border:1px solid #2a2a00;border-radius:10px;padding:1.2rem;margin-top:1.5rem">
+      <div style="color:#c8a96e;font-weight:700;margin-bottom:.6rem">📋 תוכנית פעולה לפי סטטוס</div>
+      <ul style="color:#aaa;font-size:.82rem;line-height:1.7;margin:0;padding-right:1.2rem">
+        <li><strong>כל המדינות Safe:</strong> אין דרישת רישום — להמשיך לעקוב חודשית.</li>
+        <li><strong>מדינה אחת ב-Watch:</strong> זמן לבדוק עלות-תועלת של Paddle (5-8% מכל עסקה) מול TaxJar+CPA (~$200/חודש).</li>
+        <li><strong>מדינה ב-Near (70%+):</strong> להחליט עכשיו על מעבר ל-Merchant of Record (Paddle/Lemon Squeezy) ולהתחיל אינטגרציה.</li>
+        <li><strong>מדינה ב-Over (100%+):</strong> חובה להירשם תוך 30-60 יום במדינה הספציפית. אחרי 60 יום — קנסות + ריבית רטרואקטיביים.</li>
+      </ul>
+    </div>
+
+    <p style="color:#666;font-size:.72rem;text-align:center;margin-top:1rem">
+      📚 מקור: <a href="https://www.salestaxinstitute.com/resources/economic-nexus-state-guide" target="_blank" style="color:#c8a96e">Sales Tax Institute</a> ·
+      ספים מתעדכנים פעם בשנה — לבדוק <a href="../../docs/plans/DUBIS_US_SALES_TAX_2026-04-28.html" target="_blank" style="color:#c8a96e">תכנון מלא</a>
+    </p>
+  </div><!-- /section-tax-nexus -->
+
   <!-- Coupon Modal -->
   <div id="coupon-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
     <div style="background:#1e1e1e;border-radius:12px;padding:2rem;width:min(480px,90vw);max-height:90vh;overflow-y:auto">
@@ -2745,7 +2825,9 @@
     document.getElementById('section-gallery').style.display            = name === 'gallery'            ? '' : 'none';
     document.getElementById('section-content-approval').style.display   = name === 'content-approval'   ? '' : 'none';
     document.getElementById('section-gelato-tools').style.display       = name === 'gelato-tools'       ? '' : 'none';
+    document.getElementById('section-tax-nexus').style.display          = name === 'tax-nexus'          ? '' : 'none';
     if (name === 'gelato-tools') gtInit();
+    if (name === 'tax-nexus') loadTaxNexus();
     if (name === 'tasks') loadTasks();
     if (name === 'agents') loadAgentsSection();
     if (name === 'campaigns' && !_campaignsLoaded) { _campaignsLoaded = true; loadCampaigns(); }
@@ -3394,6 +3476,76 @@
 
   function fmtDate(d) { const p = d.split('-'); return `${p[1]}/${p[2]}`; }
 
+  // ── Tax Nexus loader ────────────────────────────────────────
+  // Reuses /api/admin/analytics response (taxNexus block). No extra endpoint = stays under 12/12 Vercel cap.
+  async function loadTaxNexus() {
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) { document.getElementById('tn-tbody').innerHTML = '<tr><td colspan="7" style="padding:1rem;text-align:center;color:#e74c3c">Auth required</td></tr>'; return; }
+
+    try {
+      const res = await fetch('/api/admin/analytics', { headers: { Authorization: `Bearer ${token}` }});
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const tn = data.taxNexus || {};
+      const rows = tn.byState || [];
+
+      document.getElementById('tn-year').textContent = tn.calendarYear || new Date().getFullYear();
+      document.getElementById('tn-us-revenue').textContent = `$${(tn.usRevenueYtd || 0).toLocaleString()}`;
+      document.getElementById('tn-us-orders').textContent = tn.usOrderCountYtd || 0;
+      document.getElementById('tn-state-count').textContent = rows.length;
+      document.getElementById('tn-reserve').textContent = `$${(tn.taxReserveSuggested || 0).toLocaleString()}`;
+
+      const statusBadge = (s) => {
+        const m = {
+          over:    { color: '#f44336', label: '🔴 OVER — REGISTER NOW' },
+          near:    { color: '#ff9800', label: '🟠 NEAR (70%+) — PLAN MoR' },
+          watch:   { color: '#ffc107', label: '🟡 WATCH (40%+)' },
+          safe:    { color: '#4caf50', label: '🟢 SAFE' },
+          no_tax:  { color: '#666',    label: '⚪ NO SALES TAX' },
+          unknown: { color: '#888',    label: '❓ UNKNOWN' }
+        };
+        const x = m[s] || m.unknown;
+        return `<span style="color:${x.color};font-weight:600;font-size:.78rem">${x.label}</span>`;
+      };
+
+      const tbody = document.getElementById('tn-tbody');
+      const emptyMsg = document.getElementById('tn-empty-msg');
+      if (rows.length === 0) {
+        tbody.innerHTML = '';
+        document.getElementById('tn-table-wrap').style.display = 'none';
+        emptyMsg.style.display = 'block';
+        return;
+      }
+      document.getElementById('tn-table-wrap').style.display = '';
+      emptyMsg.style.display = 'none';
+
+      tbody.innerHTML = rows.map(r => {
+        const thresholdStr = r.revThreshold == null
+          ? (r.status === 'no_tax' ? '— (no sales tax)' : '— (unknown)')
+          : `$${r.revThreshold.toLocaleString()}${r.txnThreshold ? ` <span style="color:#666">or ${r.txnThreshold} txns</span>` : ''}`;
+        const pctStr = r.pctRev == null
+          ? '—'
+          : `${r.pctRev}%${r.pctTxn ? ` <span style="color:#666">/ ${r.pctTxn}%</span>` : ''}`;
+        const lastOrderStr = r.lastOrder ? new Date(r.lastOrder).toLocaleDateString('en-US') : '—';
+        const rowBg = r.status === 'over' ? 'background:rgba(244,67,54,.08)' :
+                      r.status === 'near' ? 'background:rgba(255,152,0,.06)' : '';
+        return `<tr style="border-top:1px solid #2a2a2a;${rowBg}">
+          <td style="padding:.6rem .8rem;font-weight:600;color:#c8a96e">${r.state}</td>
+          <td style="padding:.6rem .8rem;text-align:right">$${r.revenue.toLocaleString()}</td>
+          <td style="padding:.6rem .8rem;text-align:right">${r.txnCount}</td>
+          <td style="padding:.6rem .8rem;text-align:right;font-size:.8rem;color:#aaa">${thresholdStr}</td>
+          <td style="padding:.6rem .8rem;text-align:right;font-size:.85rem">${pctStr}</td>
+          <td style="padding:.6rem .8rem;text-align:center">${statusBadge(r.status)}</td>
+          <td style="padding:.6rem .8rem;text-align:right;color:#888;font-size:.78rem">${lastOrderStr}</td>
+        </tr>`;
+      }).join('');
+    } catch (err) {
+      console.error('Tax nexus load error:', err);
+      document.getElementById('tn-tbody').innerHTML = `<tr><td colspan="7" style="padding:1rem;text-align:center;color:#e74c3c">Error: ${err.message}</td></tr>`;
+    }
+  }
+
   async function loadAnalytics() {
     const { data: { session } } = await _sb.auth.getSession();
     const token = session?.access_token;
@@ -3544,18 +3696,22 @@
   }
 
   async function loadGoalsAndSocial(analyticsData) {
-    // Revenue goal tracking
-    const monthlyRevenue = analyticsData.totalRevenue || 0;
+    // Profit goal tracking — $100 net profit/month over the last 30 days
+    // Net profit = revenue - COGS (Gelato cost × qty). Ad spend tracked separately as budget line.
+    const monthlyProfit = analyticsData.monthlyProfit30d != null ? analyticsData.monthlyProfit30d : 0;
+    const monthlyRevenue30d = analyticsData.monthlyRevenue30d || 0;
     const totalOrders = analyticsData.totalOrders || 0;
-    const goalTarget = 1000;
-    const goalPct = Math.min(100, Math.round((monthlyRevenue / goalTarget) * 100));
+    const goalTarget = 100;
+    // Profit can be negative — clamp the bar at 0 but show the real number in the label
+    const goalPct = Math.max(0, Math.min(100, Math.round((monthlyProfit / goalTarget) * 100)));
     document.getElementById('goal-fill').style.width = goalPct + '%';
     document.getElementById('goal-pct-text').textContent = goalPct + '%';
-    document.getElementById('goal-amt').textContent = `$${monthlyRevenue.toLocaleString()} / $${goalTarget.toLocaleString()}`;
+    const profitColor = monthlyProfit >= goalTarget ? '#4caf50' : monthlyProfit >= 0 ? '#c8a96e' : '#e74c3c';
+    document.getElementById('goal-amt').innerHTML = `<span style="color:${profitColor}">$${monthlyProfit.toLocaleString()}</span> / $${goalTarget} <span style="color:#666;font-size:.7rem">(הכנסה 30 יום: $${monthlyRevenue30d.toLocaleString()})</span>`;
 
-    // Goal timeline — show start date, days elapsed, days remaining
-    const GOAL_START = new Date('2026-03-23'); // Date goal was set
-    const GOAL_DAYS = 60;
+    // Goal timeline — extended from 60 to 180 days per oren 2026-04-28
+    const GOAL_START = new Date('2026-03-23'); // Original date goal was set
+    const GOAL_DAYS = 180; // Extended from 60 to 180 days (oren 2026-04-28)
     const now = new Date();
     const daysElapsed = Math.floor((now - GOAL_START) / 86400000);
     const daysRemaining = Math.max(0, GOAL_DAYS - daysElapsed);
