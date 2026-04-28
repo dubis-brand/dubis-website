@@ -983,7 +983,25 @@ function checkCookieConsent() {
 }
 
 // ===== CLIENT-SIDE ANALYTICS TRACKER =====
-// POSTs to /api/analytics/track. Respects cookie consent.
+// POSTs to /api/analytics/track. Respects cookie consent + flags internal traffic.
+(function initDubisDevFlag(){
+  // ?dev=1 in URL once → permanently flagged as internal traffic
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('dev') === '1') {
+      localStorage.setItem('dubis-internal', '1');
+      console.log('[DUBIS] internal traffic flag set — your visits will not count in conversion stats');
+    }
+    if (params.get('dev') === '0') localStorage.removeItem('dubis-internal');
+  } catch(e) {}
+})();
+(function initDubisSession(){
+  try {
+    if (!sessionStorage.getItem('dubis-sid')) {
+      sessionStorage.setItem('dubis-sid', Math.random().toString(36).slice(2) + Date.now().toString(36));
+    }
+  } catch(e) {}
+})();
 window.dubisTrack = function(event, meta) {
   try {
     if (localStorage.getItem('dubis-cookies') === 'declined') return;
@@ -992,6 +1010,8 @@ window.dubisTrack = function(event, meta) {
       referrer: document.referrer || '',
       event: event,
       meta: meta || null,
+      session_id: (function(){ try { return sessionStorage.getItem('dubis-sid'); } catch(e) { return null; }})(),
+      is_dev: (function(){ try { return localStorage.getItem('dubis-internal') === '1'; } catch(e) { return false; }})(),
     });
     if (navigator.sendBeacon) {
       const blob = new Blob([body], { type: 'application/json' });

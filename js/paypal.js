@@ -53,7 +53,9 @@ function updateCartTotalDisplay(discountedSubtotal) {
 async function checkout() {
     if (cart.length === 0) return;
 
-    closeCart();
+    if (window.dubisTrack) window.dubisTrack('checkout_start', { items: cart.length, total: cart.reduce((s,i)=>s+(i.price||0)*(i.quantity||1),0) });
+
+    closeCart()
     renderOrderSummary();
 
     document.getElementById('paypal-modal').classList.add('open');
