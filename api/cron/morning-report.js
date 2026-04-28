@@ -239,6 +239,46 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ success: true, sent: results.filter(x => x.ok).length, total: results.length, results });
     }
 
+    // ── Route: ?type=feedback-notify — fired by DB trigger when a new blind-test response arrives ──
+    if (urlType === 'feedback-notify') {
+        if (!process.env.RESEND_API_KEY) return res.status(500).json({ error: 'RESEND_API_KEY missing' });
+        const responseId = req.body?.response_id || new URL(req.url, `https://${req.headers.host}`).searchParams.get('response_id');
+        if (!responseId) return res.status(400).json({ error: 'Missing response_id' });
+        const { data: r, error: rErr } = await supabase.from('feedback_responses').select('*').eq('id', responseId).single();
+        if (rErr || !r) return res.status(404).json({ error: 'response not found', detail: rErr?.message });
+        const escape = s => String(s||'—').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+        const html = `<!DOCTYPE html><html lang="he" dir="rtl"><body style="font-family:'Segoe UI',Arial,sans-serif;background:#f5f5f0;padding:24px">
+<div style="max-width:680px;margin:0 auto;background:#fff;border-radius:10px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+<h2 style="color:#c8a96e;margin:0 0 4px">📝 תגובת פיידבק חדשה</h2>
+<div style="color:#888;font-size:.85rem;margin-bottom:18px">${escape(r.tester_name)} (${escape(r.tester_email)}) · ${new Date(r.created_at).toLocaleString('he-IL')}</div>
+${[
+  ['1. רושם ראשון', r.q1_first_impression],
+  ['2. היית קונה?', r.q2_would_buy],
+  ['3. מחיר', r.q3_price_perception],
+  ['4. מה בלט', r.q4_what_stood_out],
+  ['5. מתנה למישהי', r.q5_would_recommend],
+  ['6. עוד משהו', r.q6_anything_else],
+].map(([label, val]) => val ? `<div style="margin-bottom:14px"><div style="color:#c8a96e;font-weight:600;font-size:.85rem;margin-bottom:4px">${label}</div><div style="color:#222;line-height:1.6;white-space:pre-wrap">${escape(val)}</div></div>` : '').join('')}
+<a href="https://www.dubis.net/admin#feedback" style="display:inline-block;background:#0d0d0d;color:#c8a96e;padding:10px 20px;text-decoration:none;border-radius:6px;font-weight:600;margin-top:12px">פתח Admin Feedback ←</a>
+</div></body></html>`;
+        try {
+            const resp = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from: 'DUBIS Reports <orders@dubis.net>',
+                    to: ['dubis.brand@gmail.com', 'teharlev1976@gmail.com'],
+                    subject: `📝 פיידבק חדש מ-${r.tester_name || r.tester_email || 'אנונימי'}`,
+                    html,
+                }),
+            });
+            const data = await resp.json();
+            return res.status(200).json({ success: resp.ok, email_id: data.id, error: resp.ok ? null : data });
+        } catch (e) {
+            return res.status(500).json({ error: e.message });
+        }
+    }
+
     // ── Route: ?type=auto-run — Phase 2 autonomy: auto-execute all non-budget tasks ──
     // Called by Vercel cron at 06:00 + 12:00 UTC (08:00 + 14:00 Israel)
     if (urlType === 'auto-run') {
