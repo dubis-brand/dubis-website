@@ -242,6 +242,61 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ success: true, sent: results.filter(x => x.ok).length, total: results.length, results });
     }
 
+    // ── Route: ?type=feedback-reminder — 48h soft reminder to non-responders if response rate < 50% ──
+    if (urlType === 'feedback-reminder') {
+        if (!process.env.RESEND_API_KEY) return res.status(500).json({ error: 'RESEND_API_KEY missing' });
+        // Original 7 testers
+        const ALL = [
+            { name: 'הילה', email: 'hilateharlev@gmail.com' },
+            { name: 'שרון', email: 'sharonshabi@gmail.com' },
+            { name: 'דבורה', email: 'dvora.galitzki@gmail.com' },
+            { name: 'דולב', email: 'dolevt0407@gmail.com' },
+            { name: 'ליאת', email: 'liatamos@gmail.com' },
+            { name: 'שני', email: 'steharlev@gmail.com' },
+            { name: 'יעל', email: 'ymz.wonderland@gmail.com' },
+        ];
+        const { data: responded } = await supabase.from('feedback_responses').select('tester_email');
+        const respondedEmails = new Set((responded || []).map(r => (r.tester_email || '').toLowerCase().trim()).filter(Boolean));
+        if (respondedEmails.size >= 4) return res.status(200).json({ skipped: true, reason: 'response rate >= 50%, no reminder needed', responded: respondedEmails.size });
+        const toRemind = ALL.filter(r => !respondedEmails.has(r.email.toLowerCase()));
+        const results = [];
+        for (const r of toRemind) {
+            const fbUrl = `https://www.dubis.net/feedback.html?n=${encodeURIComponent(r.name)}&e=${encodeURIComponent(r.email)}`;
+            const html = `<!DOCTYPE html><html lang="he" dir="rtl"><body style="margin:0;padding:0;background:#f5f5f0;font-family:'Segoe UI',Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f0;padding:40px 16px"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);overflow:hidden">
+<tr><td style="background:#0d0d0d;padding:20px 32px;text-align:center">
+<div style="color:#c8a96e;font-size:1.4rem;font-weight:700;letter-spacing:2px">DUBIS<sup style="font-size:.4em;vertical-align:super">™</sup></div>
+</td></tr>
+<tr><td style="padding:28px 32px;color:#222;line-height:1.7;font-size:.95rem">
+<p>היי ${r.name},</p>
+<p>שלחתי לך לפני יומיים בקשה ל-2 דקות פיידבק על האתר שלנו. מבין שהיו ימים עמוסים — לא לחץ.</p>
+<p>אם תוכלי בכל זאת — זה מאוד יעזור לנו לפני שאנחנו זורקים תקציב פרסום על קהל אמריקאי. <strong>תשובה כנה > תשובה מנומסת</strong>.</p>
+<div style="text-align:center;margin:24px 0">
+<a href="${fbUrl}" style="background:#c8a96e;color:#0d0d0d;padding:12px 30px;text-decoration:none;border-radius:6px;font-weight:700;display:inline-block">להתחיל ←</a>
+</div>
+<p style="color:#888;font-size:.82rem">אם זה לא מעניין/לא מתאים — תתעלמי. לא נשלח עוד תזכורת.</p>
+<p style="color:#888;font-size:.78rem;margin-top:18px">DUBIS · <a href="https://www.dubis.net" style="color:#c8a96e">dubis.net</a></p>
+</td></tr></table></td></tr></table></body></html>`;
+            try {
+                const resp = await fetch('https://api.resend.com/emails', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        from: 'DUBIS <orders@dubis.net>',
+                        to: [r.email],
+                        subject: `${r.name}, תזכורת אחת — 2 דקות עוזרות לנו המון`,
+                        html,
+                    }),
+                });
+                const data = await resp.json();
+                results.push({ to: r.email, ok: resp.ok, id: data.id });
+                await new Promise(s => setTimeout(s, 600));
+            } catch (e) { results.push({ to: r.email, ok: false, error: e.message }); }
+        }
+        return res.status(200).json({ success: true, sent: results.filter(x=>x.ok).length, total: results.length, responded_so_far: respondedEmails.size, results });
+    }
+
     // ── Route: ?type=feedback-notify — fired by DB trigger when a new blind-test response arrives ──
     if (urlType === 'feedback-notify') {
         if (!process.env.RESEND_API_KEY) return res.status(500).json({ error: 'RESEND_API_KEY missing' });
