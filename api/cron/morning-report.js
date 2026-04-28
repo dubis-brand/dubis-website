@@ -165,7 +165,10 @@ module.exports = async function handler(req, res) {
     const isVercelCron = req.headers['x-vercel-cron'] === '1';
     const hasCronSecret = process.env.CRON_SECRET &&
         req.headers['authorization'] === `Bearer ${process.env.CRON_SECRET}`;
-    if (!isVercelCron && !hasCronSecret) {
+    const hasAgentSecret = process.env.DUBIS_AGENT_SECRET &&
+        (req.headers['x-agent-secret'] === process.env.DUBIS_AGENT_SECRET ||
+         req.headers['authorization'] === `Bearer ${process.env.DUBIS_AGENT_SECRET}`);
+    if (!isVercelCron && !hasCronSecret && !hasAgentSecret) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
