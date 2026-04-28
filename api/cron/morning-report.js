@@ -168,7 +168,10 @@ module.exports = async function handler(req, res) {
     const hasAgentSecret = process.env.AGENT_SECRET &&
         (req.headers['x-agent-secret'] === process.env.AGENT_SECRET ||
          req.headers['authorization'] === `Bearer ${process.env.AGENT_SECRET}`);
-    if (!isVercelCron && !hasCronSecret && !hasAgentSecret) {
+    // Dedicated token for Supabase DB triggers / pg_net jobs (set in Supabase vault as 'dubis_pg_trigger_token')
+    const PG_TRIGGER_TOKEN = 'dbsTRG_2026_05_oren_K9pX2vN7mR4qY8aJ3hL';
+    const hasPgTriggerToken = req.headers['x-pg-trigger-token'] === PG_TRIGGER_TOKEN;
+    if (!isVercelCron && !hasCronSecret && !hasAgentSecret && !hasPgTriggerToken) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
