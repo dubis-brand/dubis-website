@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>DUBIS — מיסוי מכירות בארה"ב — 2026-04-28</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #222; background: #fafafa; }
+  h1 { color: #111; border-bottom: 3px solid #d4a017; padding-bottom: 8px; }
+  h2 { color: #2a4d6e; margin-top: 36px; border-right: 4px solid #d4a017; padding-right: 12px; }
+  h3 { color: #444; margin-top: 24px; }
+  .tldr { background: #fff8e1; border: 2px solid #d4a017; padding: 16px 20px; border-radius: 6px; margin: 20px 0; }
+  .danger { background: #fde8e8; border-right: 4px solid #c0392b; padding: 12px 18px; margin: 16px 0; }
+  .ok { background: #e8f5e9; border-right: 4px solid #2e7d32; padding: 12px 18px; margin: 16px 0; }
+  .opt { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px 20px; margin: 16px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .opt h3 { margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; background: #fff; }
+  th, td { border: 1px solid #ccc; padding: 10px 12px; text-align: right; }
+  th { background: #2a4d6e; color: #fff; }
+  .tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-right: 6px; }
+  .tag-rec { background: #2e7d32; color: #fff; }
+  .tag-now { background: #d4a017; color: #fff; }
+  .tag-later { background: #2a4d6e; color: #fff; }
+  .tag-bad { background: #c0392b; color: #fff; }
+  code { background: #eee; padding: 2px 6px; border-radius: 3px; font-size: 90%; }
+  .en { direction: ltr; text-align: left; display: inline-block; font-family: monospace; }
+  ul li { margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<h1>DUBIS — מיסוי מכירות בארה"ב</h1>
+<p><strong>תאריך:</strong> 2026-04-28 · <strong>הקשר:</strong> פיבוט ל-US-only מ-2026-04-18 חשף פער: לא הוגדרה אסטרטגיית sales tax</p>
+
+<div class="tldr">
+<h3 style="margin-top:0">שורה תחתונה</h3>
+<p>ארה"ב <strong>אין</strong> מע"מ פדרלי. יש <strong>Sales Tax מדינתי</strong> (45 מדינות + DC), כל מדינה עם שיעור שונה (0–10.5%) וחוקים שונים. אחרי <em>Wayfair v. South Dakota (2018)</em> — חובת גבייה חלה גם על מוכרים מרחוק (כולל מישראל) ברגע שעוברים <strong>סף נקסוס כלכלי</strong> (בד"כ $100K מכירות או 200 עסקאות לשנה במדינה).</p>
+<p><strong>המצב הנוכחי שלך:</strong> ככל הנראה מתחת לסף בכל המדינות, ולכן <strong>אין חובה משפטית מיידית לגבות</strong>. אבל זו פצצה מתקתקת — צריך להחליט עכשיו את המודל לפני שהמכירות מטפסות.</p>
+<p><strong>המלצה מקצועית שלי לסקייל שלך (מפעיל יחיד, &lt;$50K/חודש):</strong> פאזה 1 — Disclaimer + tracker. פאזה 2 (כשמתקרבים ל-$100K/שנה) — מעבר ל-<span class="en">Merchant of Record</span> (Paddle/Lemon Squeezy). זה <strong>הפתרון היחיד השפוי</strong> למפעיל יחיד שלא רוצה להגיש דוחות ב-45 מדינות.</p>
+</div>
+
+<h2>1. המציאות המשפטית — מה ארה"ב דורשת ממך</h2>
+
+<h3>א. אין מע"מ פדרלי, יש Sales Tax מדינתי</h3>
+<ul>
+<li><strong>5 מדינות בלי Sales Tax בכלל:</strong> Oregon, New Hampshire, Montana, Alaska, Delaware</li>
+<li><strong>45 מדינות + DC עם Sales Tax</strong> — שיעורים בין 2.9% (CO) ל-7.25% (CA) ברמה המדינתית, פלוס שיעורים מוניציפליים (LA למשל מגיעה ל-9.5%)</li>
+<li>שיעורים גבוהים במיוחד: TN 9.55%, LA 9.55%, AR 9.46%, WA 9.4%, AL 9.29%</li>
+</ul>
+
+<h3>ב. <span class="en">Wayfair</span> ו-<span class="en">Economic Nexus</span> — איך זה נוגע אליך</h3>
+<p>עד 2018 — חובת גבייה רק אם הייתה לך נוכחות פיזית במדינה. אחרי <em>Wayfair</em>, חוק השתנה: כל מדינה יכולה לחייב גם מוכר מרחוק (כולל ישראלי) ברגע שעובר <strong>סף נקסוס כלכלי</strong>.</p>
+
+<table>
+<tr><th>סוג סף</th><th>הסף הטיפוסי</th><th>דוגמאות</th></tr>
+<tr><td>סף הכנסות</td><td>$100,000 בשנה</td><td>רוב המדינות</td></tr>
+<tr><td>סף עסקאות</td><td>200 עסקאות בשנה</td><td>NY, CT, GA, MA</td></tr>
+<tr><td>ספים גבוהים</td><td>$500K (CA, TX, NY)</td><td>הגדולות</td></tr>
+<tr><td>סף נמוך</td><td>$100K בלבד (KS)</td><td>הקיצוניות</td></tr>
+</table>
+
+<div class="danger">
+<strong>חשוב להבין:</strong> זה <em>סף לכל מדינה בנפרד</em>, לא סף כולל. כלומר אם תמכור $90K בקליפורניה ו-$30K בטקסס, לא חצית את הסף באף מדינה ואין חובה. אבל $110K בקליפורניה לבד — חייב להירשם, לגבות ולשלם.
+</div>
+
+<h3>ג. מה PayPal ו-Gelato עושים (ולא עושים) בשבילך</h3>
+<ul>
+<li><strong>PayPal:</strong> <span style="color:#c0392b;font-weight:bold">לא מחשב ולא גובה Sales Tax</span>. רק מעביר את הסכום שאתה אומר לו לגבות.</li>
+<li><strong>Gelato:</strong> ספק ייצור/שילוח, לא <span class="en">Merchant of Record</span>. לא אחראי על המס שלך.</li>
+<li><strong>Vercel/Supabase:</strong> תשתית בלבד. לא רלוונטי.</li>
+</ul>
+
+<p><strong>המסקנה:</strong> כל המס נופל עליך, dubis.net הוא ה-<span class="en">Seller of Record</span>.</p>
+
+<h2>2. החשיפה האמיתית שלך כרגע</h2>
+
+<div class="ok">
+<strong>החדשות הטובות:</strong> בנפח הנוכחי (כנראה &lt;$5K/חודש בארה"ב) אתה <strong>הרבה מתחת לסף</strong> בכל מדינה. כלומר — אם תמשיך לא לגבות מס היום, אתה לא בעבירה. עדיין.
+</div>
+
+<div class="danger">
+<strong>החדשות הרעות:</strong>
+<ul>
+<li>אין <span class="en">tracker</span> בקוד שלך לפי מדינה — אתה לא תדע מתי חצית סף</li>
+<li>ברגע שחצית סף — חובת רישום ב-30/60 יום, אחרת קנסות + ריבית רטרואקטיבית</li>
+<li>חלק מהמדינות (NY, MA, CT) מודדות גם <strong>200 עסקאות</strong> בלי קשר לסכום — יחסית קל לחצות בלי לשים לב</li>
+<li>אם פעם אחת חצית את הסף — חובת הגשת דוחות נמשכת גם בשנים הבאות, גם אם הירדת מתחתיו</li>
+</ul>
+</div>
+
+<h2>3. ארבע אופציות לטיפול — השוואה כנה</h2>
+
+<div class="opt">
+<h3><span class="tag tag-now">פאזה 1</span> אופציה A: לא לגבות, להוסיף Disclaimer + Tracker</h3>
+<p><strong>מה זה:</strong> לא משנים את האתר. מוסיפים שורה קטנה בצ'קאאוט: <em>"Prices do not include applicable state sales tax where required."</em> בונים בדאטאבייס מעקב מכירות לפי מדינה (<code>dubis_orders.shipping_state</code>) + התראה אוטומטית כשמתקרבים לסף.</p>
+<p><strong>עלות:</strong> כמעט אפס. שעה אחת של פיתוח.</p>
+<p><strong>סיכון משפטי:</strong> נמוך כל עוד באמת מתחת לספים. גבוה ברגע שחוצים בלי לשים לב.</p>
+<p><strong>טוב ל:</strong> 6 החודשים הקרובים, עד שמכירות תופסות תאוצה.</p>
+</div>
+
+<div class="opt">
+<h3><span class="tag tag-bad">לא מומלץ</span> אופציה B: להירשם בכל 45 המדינות + להגיש דוחות לבד</h3>
+<p><strong>מה זה:</strong> הולכים ל-DOR של כל מדינה, נרשמים ל-<span class="en">Sales Tax Permit</span>, מגישים דוח חודשי/רבעוני/שנתי בכל אחת.</p>
+<p><strong>עלות:</strong> חינם להרשם, אבל <strong>30+ שעות עבודה אדמיניסטרטיבית בחודש</strong>. אם שוכרים <span class="en">CPA</span> אמריקאי — $300-1500/חודש.</p>
+<p><strong>למה לא:</strong> לאדם אחד שגם מנהל מותג זה התאבדות. גם חברות גדולות לא עושות את זה לבד.</p>
+</div>
+
+<div class="opt">
+<h3><span class="tag tag-now">פאזה 2 בינונית</span> אופציה C: TaxJar / Stripe Tax / Avalara</h3>
+<p><strong>מה זה:</strong> <span class="en">SaaS</span> שמתחבר לצ'קאאוט שלך, מחשב בזמן אמת את שיעור המס המדויק לפי כתובת המשלוח, ומגיש בשבילך דוחות ב-מדינות שאתה רשום בהן.</p>
+<p><strong>עלות:</strong>
+<br>
+<span class="en">Stripe Tax:</span> 0.5% מכל עסקה (לא מאחסן בכרטיס PayPal — צריך אינטגרציה דרך API)
+<br>
+<span class="en">TaxJar:</span> $19/חודש בסיסי, $99 לאוטופיילוט עם דוחות
+<br>
+<span class="en">Avalara:</span> $50-300/חודש (לעסקים גדולים יותר)
+</p>
+<p><strong>חיסרון:</strong> עדיין צריך להירשם בכל מדינה שעוברים בה את הסף, ולחתום על "<span class="en">Power of Attorney</span>" — אתה עדיין ה-Seller of Record. הם רק עוזרים בחישוב והגשה.</p>
+<p><strong>טוב ל:</strong> נפח של $50K-500K לשנה כשאתה רוצה אוטומציה אבל לא רוצה לוותר על שליטה.</p>
+</div>
+
+<div class="opt">
+<h3><span class="tag tag-rec">המלצה</span> אופציה D: <span class="en">Merchant of Record</span> (<span class="en">Paddle / Lemon Squeezy / Polar</span>)</h3>
+<p><strong>מה זה:</strong> אתה לא המוכר. <span class="en">Paddle</span> הוא המוכר. הם קונים ממך וירטואלית ומוכרים ללקוח. <strong>הם</strong> אחראים על כל המיסוי הגלובלי — Sales Tax בארה"ב, VAT באירופה, GST בקנדה/אוסטרליה. אתה מקבל דיווח חודשי וכסף נטו.</p>
+<p><strong>עלות:</strong> 5-8% מכל עסקה + עמלת עיבוד תשלום (~$0.50). זאת אומרת על חולצה ב-$45 — לוקחים בערך $3.20.</p>
+<p><strong>יתרונות אדירים למפעיל יחיד:</strong>
+<ul>
+<li>אפס רישום במדינות, אפס דוחות, אפס קנסות, אפס דאגות</li>
+<li>מטפל גם בהחזרים (chargebacks), פאי-איי-די-אס-אס, הונאות</li>
+<li>ברגע שאתה רוצה למכור גם לאירופה — VAT מטופל אוטומטית</li>
+<li>כשמגיעה ביקורת — לא אליך</li>
+</ul>
+</p>
+<p><strong>חסרונות:</strong>
+<ul>
+<li>5-8% הוא לא מבוטל — שווה לבדוק כמה זה יוצא בפועל מול האלטרנטיבה (TaxJar+CPA = ~$200/חודש = פחות אם נפח גבוה)</li>
+<li>החלפת מערכת תשלום: צריך להחליף את PayPal הנוכחי לאינטגרציה של Paddle (מאמץ פיתוח של 2-3 ימים)</li>
+<li>פחות שליטה על חוויית הצ'קאאוט (ניתן לקסטומיזציה אבל יש מגבלות)</li>
+<li>ב-DUBIS עכשיו יש את כל הבעיות שתיקנת ב-PayPal (capture, coupons, breakdown.discount) — מעבר ל-Paddle יחייב להעביר את כל הלוגיקה הזו</li>
+</ul>
+</p>
+</div>
+
+<h2>4. ההמלצה המקצועית שלי</h2>
+
+<div class="ok">
+<h3>אסטרטגיה דו-שלבית</h3>
+
+<p><strong>עכשיו (השבועיים הקרובים):</strong></p>
+<ol>
+<li>הוסף עמודה <code>shipping_state</code> ל-<code>dubis_orders</code> אם אין (מבדיקה: כנראה כבר יש מהכתובת)</li>
+<li>בנה <span class="en">SQL view</span> פשוט: <code>state, total_revenue_ytd, transaction_count_ytd</code></li>
+<li>הוסף ל-<span class="en">admin dashboard</span> טאב "Tax Nexus Tracker" שמציג מכירות לפי מדינה + מצביע אדום כשעוברים 70% מהסף</li>
+<li>הוסף לצ'קאאוט שורה: <em>"Sales tax not included where applicable. We comply with US economic nexus thresholds."</em></li>
+<li>שמור 8% מכל הכנסה בארה"ב בחשבון נפרד כ-reserve — אם פתאום מתחייב לשלם רטרואקטיבית, יש לך כסף</li>
+</ol>
+
+<p><strong>טריגר לפאזה 2 (מעבר ל-Paddle/MoR):</strong></p>
+<ul>
+<li>כשמכירות בארה"ב חוצות $5K/חודש בעקביות (כלומר ~$60K/שנה ועלייה צפויה ל-$100K)</li>
+<li>או כשבמדינה כלשהי חוצים $50K (חצי הסף) — סימן שזה מתקרב</li>
+<li>או ברגע שמתחילים למכור באירופה (אז MoR כבר קריטי)</li>
+</ul>
+
+<p><strong>לא להתקרב לאופציה B (DIY רישום) בשום פנים ואופן.</strong></p>
+</div>
+
+<h2>5. מה לא דיברנו עליו ושצריך גם בשלב כלשהו</h2>
+<ul>
+<li><strong>מס הכנסה אמריקאי לחברה ישראלית:</strong> אם אתה לא חברה אמריקאית — לא חייב על רווחים, אבל צריך להגיש <code>W-8BEN</code> ל-PayPal/Paddle כדי שלא יקפצו 30% במקור</li>
+<li><strong>מכס/Tariffs:</strong> Gelato מדפיס בארה"ב כך שאין יבוא — אם זה משתנה (Gelato Israel למשל), זה הופך לבעיה</li>
+<li><strong>אמנת מס ישראל-ארה"ב:</strong> מגנה עליך מכפל-מיסוי הכנסות, אבל לא מ-Sales Tax (זה מס עקיף לא מכוסה)</li>
+<li><strong>מע"מ ישראלי על המכירות:</strong> מכירה ל-US נחשבת ייצוא — שיעור 0%, אבל צריך תיעוד נכון</li>
+</ul>
+
+<h2>6. החלטות שאני צריך ממך עכשיו</h2>
+<ol>
+<li>אישור לבנות את ה-Tax Nexus Tracker ב-admin (~3 שעות פיתוח, אפס עלות)</li>
+<li>אישור להוסיף את ה-Disclaimer בצ'קאאוט (~15 דקות)</li>
+<li>החלטה אסטרטגית: כשמגיעים לטריגר פאזה 2 — Paddle או TaxJar? אני ממליץ Paddle</li>
+<li>האם אתה רוצה גם שאעשה ניתוח של עלות-תועלת מספרית של Paddle vs TaxJar+CPA לפי תרחישים שונים של מכירות?</li>
+</ol>
+
+</body>
+</html>

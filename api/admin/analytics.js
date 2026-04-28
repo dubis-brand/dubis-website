@@ -1,6 +1,6 @@
-// DUBIS — Admin Analytics API (Enhanced)
+// DUBIS — Admin Analytics API (Enhanced + Tax Nexus 2026-04-28)
 // GET /api/admin/analytics
-// Returns: page views, orders metrics, newsletter stats, coupon usage, reviews, referrers
+// Returns: page views, orders metrics, newsletter stats, coupon usage, reviews, referrers, US tax nexus, monthly profit
 
 const { createClient } = require('@supabase/supabase-js');
 const rateLimit        = require('../_rateLimit');
@@ -34,6 +34,8 @@ module.exports = async function handler(req, res) {
     const today = new Date().toISOString().slice(0, 10);
     const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const since7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    // YTD = January 1 of current year (US sales tax nexus is measured per calendar year)
+    const ytdStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
 
     // ── Run all queries in parallel for speed ──
     // Split page_views into 3 chunks of 10 days to stay under Supabase 1000-row REST limit
@@ -63,10 +65,10 @@ module.exports = async function handler(req, res) {
         supabase.from('page_views').select('path, referrer, created_at').gte('created_at', split1).lt('created_at', split2).order('created_at', { ascending: true }).limit(1000),
         // Page views — days 1-10 (most recent, includes today)
         supabase.from('page_views').select('path, referrer, created_at').gte('created_at', split2).order('created_at', { ascending: true }).limit(1000),
-        // All orders (include buyer_email for sandbox filtering)
-        supabase.from('orders').select('id, status, total_amount, currency, coupon_code, discount_amount, items, buyer_email, created_at'),
-        // Recent orders (30 days)
-        supabase.from('orders').select('id, status, total_amount, items, buyer_email, coupon_code, created_at').gte('created_at', since30),
+        // All orders (include buyer_email + shipping_address + is_test for sandbox filtering and tax nexus tracking)
+        supabase.from('orders').select('id, status, total_amount, currency, coupon_code, discount_amount, items, buyer_email, shipping_address, is_test, created_at'),
+        // Recent orders (30 days) — include shipping_address for tax nexus tracking + items for profit calc
+        supabase.from('orders').select('id, status, total_amount, items, buyer_email, coupon_code, shipping_address, is_test, created_at').gte('created_at', since30),
         // Newsletter — total subscribers
         supabase.from('newsletter_subscribers').select('*', { count: 'exact', head: true }),
         // Newsletter — recent (30 days)
@@ -250,6 +252,97 @@ module.exports = async function handler(req, res) {
     const roas = totalAdSpendUSD > 0 ? Math.round((totalRevenue / totalAdSpendUSD) * 100) / 100 : 0;
     const roi = totalAdSpendUSD > 0 ? Math.round(((totalRevenue - totalAdSpendUSD) / totalAdSpendUSD) * 10000) / 100 : 0;
 
+    // ── US TAX NEXUS TRACKING ──
+    // Per-product Gelato cost lookup (mirrors admin.html _gelatoCost — keep in sync)
+    const TYPE_COST = { tshirt: 12.50, hoodie: 24.00, ziphoodie: 28.00, longsleeve: 15.00, cap: 12.00 };
+    const PRODUCT_COST_OVERRIDES = { 17: 32.94 }; // Zip Hoodie verified 10/04/2026
+    const itemCost = (item) => {
+        const pid = parseInt(item.product_id || item.id || item.productId, 10);
+        if (PRODUCT_COST_OVERRIDES[pid] != null) return PRODUCT_COST_OVERRIDES[pid];
+        const t = (item.type || item.clothingType || '').replace(/-/g, '').toLowerCase();
+        return TYPE_COST[t] != null ? TYPE_COST[t] : 14.00; // 14 fallback ≈ avg
+    };
+
+    // US economic nexus thresholds (post-Wayfair 2018)
+    // null = no sales tax. Source: Sales Tax Institute 2024-2026.
+    const US_NEXUS = {
+        AL:{rev:250000,txn:null}, AK:null, AZ:{rev:100000,txn:null}, AR:{rev:100000,txn:200},
+        CA:{rev:500000,txn:null}, CO:{rev:100000,txn:null}, CT:{rev:100000,txn:200}, DE:null,
+        FL:{rev:100000,txn:null}, GA:{rev:100000,txn:200}, HI:{rev:100000,txn:200}, ID:{rev:100000,txn:null},
+        IL:{rev:100000,txn:200}, IN:{rev:100000,txn:null}, IA:{rev:100000,txn:null}, KS:{rev:100000,txn:null},
+        KY:{rev:100000,txn:200}, LA:{rev:100000,txn:null}, ME:{rev:100000,txn:null}, MD:{rev:100000,txn:200},
+        MA:{rev:100000,txn:null}, MI:{rev:100000,txn:200}, MN:{rev:100000,txn:200}, MS:{rev:250000,txn:null},
+        MO:{rev:100000,txn:null}, MT:null, NE:{rev:100000,txn:200}, NV:{rev:100000,txn:200},
+        NH:null, NJ:{rev:100000,txn:200}, NM:{rev:100000,txn:null}, NY:{rev:500000,txn:100},
+        NC:{rev:100000,txn:null}, ND:{rev:100000,txn:null}, OH:{rev:100000,txn:200}, OK:{rev:100000,txn:null},
+        OR:null, PA:{rev:100000,txn:null}, RI:{rev:100000,txn:200}, SC:{rev:100000,txn:null},
+        SD:{rev:100000,txn:null}, TN:{rev:100000,txn:null}, TX:{rev:500000,txn:null}, UT:{rev:100000,txn:200},
+        VT:{rev:100000,txn:200}, VA:{rev:100000,txn:200}, WA:{rev:100000,txn:null}, WV:{rev:100000,txn:200},
+        WI:{rev:100000,txn:null}, WY:{rev:100000,txn:200}, DC:{rev:100000,txn:200}
+    };
+
+    // Aggregate ALL real orders by US state, YTD only (calendar year)
+    const ytdOrders = realOrders.filter(o => o.created_at >= ytdStart);
+    const stateAgg = {}; // {STATE: {revenue, txnCount, lastOrder}}
+    ytdOrders.forEach(o => {
+        const ship = o.shipping_address || {};
+        const cc = (ship.country_code || '').toUpperCase();
+        if (cc !== 'US') return;
+        const st = (ship.admin_area_1 || '').toUpperCase().slice(0, 2);
+        if (!st) return;
+        if (!stateAgg[st]) stateAgg[st] = { revenue: 0, txnCount: 0, lastOrder: null };
+        stateAgg[st].revenue += parseFloat(o.total_amount) || 0;
+        stateAgg[st].txnCount += 1;
+        if (!stateAgg[st].lastOrder || o.created_at > stateAgg[st].lastOrder) stateAgg[st].lastOrder = o.created_at;
+    });
+
+    const taxNexusByState = Object.entries(stateAgg).map(([state, d]) => {
+        const rule = US_NEXUS[state];
+        if (rule === null) {
+            return { state, revenue: Math.round(d.revenue * 100) / 100, txnCount: d.txnCount,
+                     revThreshold: null, txnThreshold: null, pctRev: null, pctTxn: null,
+                     status: 'no_tax', lastOrder: d.lastOrder };
+        }
+        if (!rule) {
+            return { state, revenue: Math.round(d.revenue * 100) / 100, txnCount: d.txnCount,
+                     revThreshold: null, txnThreshold: null, pctRev: null, pctTxn: null,
+                     status: 'unknown', lastOrder: d.lastOrder };
+        }
+        const pctRev = rule.rev ? Math.round((d.revenue / rule.rev) * 1000) / 10 : 0;
+        const pctTxn = rule.txn ? Math.round((d.txnCount / rule.txn) * 1000) / 10 : 0;
+        const maxPct = Math.max(pctRev || 0, pctTxn || 0);
+        let status = 'safe';
+        if (maxPct >= 100) status = 'over';
+        else if (maxPct >= 70) status = 'near';
+        else if (maxPct >= 40) status = 'watch';
+        return { state, revenue: Math.round(d.revenue * 100) / 100, txnCount: d.txnCount,
+                 revThreshold: rule.rev, txnThreshold: rule.txn, pctRev, pctTxn,
+                 status, lastOrder: d.lastOrder };
+    }).sort((a, b) => {
+        const order = { over: 0, near: 1, watch: 2, safe: 3, no_tax: 4, unknown: 5 };
+        if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
+        return b.revenue - a.revenue;
+    });
+
+    const usOrdersYtd = ytdOrders.filter(o => (o.shipping_address?.country_code || '').toUpperCase() === 'US');
+    const usRevenueYtd = usOrdersYtd.reduce((s, o) => s + (parseFloat(o.total_amount) || 0), 0);
+    const taxReserveSuggested = Math.round(usRevenueYtd * 0.08 * 100) / 100; // 8% reserve
+
+    // ── REAL MONTHLY PROFIT (last 30 days) ──
+    // Profit = revenue - sum(item.cost × qty). Ad spend is tracked separately as a budget line.
+    let monthlyRevenue30d = 0;
+    let monthlyCogs30d = 0;
+    recentOrds.forEach(o => {
+        const rev = parseFloat(o.total_amount) || 0;
+        monthlyRevenue30d += rev;
+        const items = o.items || [];
+        items.forEach(item => {
+            const qty = item.quantity || item.qty || 1;
+            monthlyCogs30d += itemCost(item) * qty;
+        });
+    });
+    const monthlyProfit30d = Math.round((monthlyRevenue30d - monthlyCogs30d) * 100) / 100;
+
     // Content performance
     const contentTasks = (contentTasksRes.data || []);
     const publishedPosts = contentTasks.filter(t => t.status === 'done' && t.content_data?.instagram_post_id);
@@ -324,5 +417,19 @@ module.exports = async function handler(req, res) {
             total: contentTasks.length,
             avgQaScore: Math.round(avgQaScore),
         },
+
+        // US Tax Nexus Tracking (post-Wayfair, calendar-year)
+        taxNexus: {
+            byState: taxNexusByState,
+            usRevenueYtd: Math.round(usRevenueYtd * 100) / 100,
+            usOrderCountYtd: usOrdersYtd.length,
+            taxReserveSuggested, // 8% of US revenue YTD
+            calendarYear: new Date().getFullYear(),
+        },
+
+        // Real monthly profit (last 30 days, COGS-deducted, ad spend separate)
+        monthlyRevenue30d: Math.round(monthlyRevenue30d * 100) / 100,
+        monthlyCogs30d: Math.round(monthlyCogs30d * 100) / 100,
+        monthlyProfit30d,
     });
 };
