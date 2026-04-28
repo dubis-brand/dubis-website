@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>DUBIS — User Research</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #0d0d0d; color: #e8e0d5; line-height: 1.6; }
+  .container { max-width: 720px; margin: 40px auto; padding: 0 20px; }
+  h1 { color: #c8a96e; font-size: 1.8rem; margin-bottom: 8px; }
+  .sub { color: #888; font-size: .92rem; margin-bottom: 28px; }
+  .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 22px; margin-bottom: 18px; }
+  label { display: block; color: #c8a96e; font-weight: 600; margin-bottom: 8px; font-size: .95rem; }
+  .hint { color: #888; font-size: .8rem; margin-bottom: 8px; }
+  textarea, input[type=text], input[type=email] { width: 100%; padding: 10px 12px; background: #0d0d0d; border: 1px solid #333; border-radius: 6px; color: #e8e0d5; font-size: .95rem; font-family: inherit; }
+  textarea { min-height: 90px; resize: vertical; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .row > div { flex: 1; min-width: 200px; }
+  button { background: #c8a96e; color: #0d0d0d; padding: 14px 32px; border: 0; border-radius: 6px; font-weight: 700; font-size: 1rem; cursor: pointer; }
+  button:hover { background: #d4b97e; }
+  button:disabled { background: #555; color: #888; cursor: not-allowed; }
+  .success { background: #0d2a0d; border: 1px solid #2e7d32; padding: 22px; border-radius: 10px; text-align: center; }
+  .success h2 { color: #4caf50; margin: 0 0 10px; }
+  .preview-link { display: inline-block; background: #2a4d6e; color: #fff; padding: 12px 22px; border-radius: 6px; text-decoration: none; font-weight: 600; margin: 12px 0; }
+  .intro { background: #1a1a1a; border-right: 4px solid #c8a96e; padding: 16px 20px; border-radius: 6px; margin-bottom: 24px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>שתי דקות מהזמן שלך</h1>
+  <p class="sub">בלי לקנות. בלי הרשמה. רק חוות דעת כנה.</p>
+
+  <div class="intro">
+    <strong>למי שלא מכיר אותנו:</strong> DUBIS זה מותג בגדים אמיתיים לאנשים אמיתיים — בלי דוגמנים בני 22, בלי "תרזה ב-30 ימים", בלי בטן שטוחה בפלקאט. אנחנו בשלב מאוד מוקדם ועוד לא הצלחנו למכור לקהל זר. <strong>לפני שנזרוק תקציב פרסום על קהל אמריקאי, אנחנו רוצים פיידבק כנה ממך.</strong>
+    <br><br>
+    <strong>הבקשה — 2 שלבים:</strong>
+    <ol>
+      <li>תיכנס ל-<a href="https://www.dubis.net" target="_blank" class="preview-link" style="display:inline-block;padding:6px 14px;font-size:.9rem">dubis.net ↗</a> והסתכל באתר 1-2 דקות כאילו רצית לקנות בגד היום</li>
+      <li>תחזור הנה ותענה על 5 השאלות למטה</li>
+    </ol>
+    <strong>תשובה כנה &gt; תשובה מנומסת.</strong> אנחנו לא נעלב מ-"זה זוועה". אנחנו נעלב מ-"נחמד" כי זה לא עוזר לתקן.
+  </div>
+
+  <form id="feedback-form">
+    <div class="row">
+      <div>
+        <label>שם פרטי <span style="color:#888;font-weight:400">(אופציונלי)</span></label>
+        <input type="text" id="tester_name" placeholder="שם פרטי בלבד">
+      </div>
+      <div>
+        <label>אימייל <span style="color:#888;font-weight:400">(אם תרצי שנעדכן אותך מתי השקה)</span></label>
+        <input type="email" id="tester_email" placeholder="email@example.com">
+      </div>
+    </div>
+
+    <div class="card">
+      <label>1. רושם ראשון: ב-10 השניות הראשונות שראית את האתר — מה זה? למי זה?</label>
+      <textarea id="q1" required placeholder="מה הבנת? מה לא הבנת? למי זה נראה מתאים?"></textarea>
+    </div>
+
+    <div class="card">
+      <label>2. אילו לחצן "Add to cart" — היית מזמין/ה? אם לא — מה חסר/חוסם אותך?</label>
+      <textarea id="q2" required placeholder="זה אמון? תמונות? מחיר? סטיילינג? משהו אחר?"></textarea>
+    </div>
+
+    <div class="card">
+      <label>3. המחירים $14-45 — סבירים, יקרים, או זולים מדי? מה היית מצפה לשלם על חולצה כזו?</label>
+      <textarea id="q3" required placeholder="גם השוואה למה שאת/ה קונה בדרך כלל מועילה לנו"></textarea>
+    </div>
+
+    <div class="card">
+      <label>4. מה הכי בלט באתר — חיובי או שלילי?</label>
+      <textarea id="q4" required placeholder="הדבר שתפס לך את העין הכי הרבה"></textarea>
+    </div>
+
+    <div class="card">
+      <label>5. אם חברה/ית במשפחה מבקש/ת ממך לקנות לה משם מתנה — היית עושה את זה?</label>
+      <textarea id="q5" required placeholder="ולמה כן/לא"></textarea>
+    </div>
+
+    <div class="card">
+      <label>6. עוד משהו שתרצה/י להגיד <span style="color:#888;font-weight:400">(אופציונלי)</span></label>
+      <textarea id="q6" placeholder="כל מה שעולה לך"></textarea>
+    </div>
+
+    <div style="text-align:center;margin:26px 0">
+      <button type="submit" id="submit-btn">שלח פיידבק</button>
+    </div>
+  </form>
+
+  <div id="success" class="success" style="display:none">
+    <h2>תודה ענקית! 🐻</h2>
+    <p>הפיידבק שלך יקרא <strong>היום</strong> ויהפוך לפעולות תיקון השבוע. זה הצעד הראשון בדרך לעשות מותג שאנשים באמת יקנו ממנו.</p>
+    <p style="color:#888;font-size:.85rem;margin-top:18px">אם תרצי לדעת איך התקדמנו — נשלח עדכון בעוד 4 שבועות.</p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-config.js"></script>
+<script>
+  // Pre-fill from URL params (sent in the email link)
+  const params = new URLSearchParams(location.search);
+  if (params.get('n')) document.getElementById('tester_name').value = decodeURIComponent(params.get('n'));
+  if (params.get('e')) document.getElementById('tester_email').value = decodeURIComponent(params.get('e'));
+
+  const sb = supabase.createClient(window.DUBIS_SUPABASE_URL, window.DUBIS_SUPABASE_ANON);
+
+  document.getElementById('feedback-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'שולח...';
+
+    const payload = {
+      tester_name: document.getElementById('tester_name').value || null,
+      tester_email: document.getElementById('tester_email').value || null,
+      q1_first_impression: document.getElementById('q1').value,
+      q2_would_buy: document.getElementById('q2').value,
+      q3_price_perception: document.getElementById('q3').value,
+      q4_what_stood_out: document.getElementById('q4').value,
+      q5_would_recommend: document.getElementById('q5').value,
+      q6_anything_else: document.getElementById('q6').value || null,
+      user_agent: navigator.userAgent.substring(0, 500),
+      referrer: document.referrer.substring(0, 500),
+    };
+
+    const { error } = await sb.from('feedback_responses').insert(payload);
+
+    if (error) {
+      btn.disabled = false;
+      btn.textContent = 'שלח פיידבק';
+      alert('שגיאה: ' + error.message + '\n\nאפשר לשלוח פיידבק במייל ל-dubis.brand@gmail.com');
+      return;
+    }
+
+    document.getElementById('feedback-form').style.display = 'none';
+    document.querySelector('.intro').style.display = 'none';
+    document.getElementById('success').style.display = 'block';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+</script>
+</body>
+</html>

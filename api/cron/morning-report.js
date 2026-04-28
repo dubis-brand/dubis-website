@@ -181,6 +181,61 @@ module.exports = async function handler(req, res) {
 
     const urlType = new URL(req.url, `https://${req.headers.host}`).searchParams.get('type');
 
+    // ── Route: ?type=blind-test — send 7 Hebrew RTL feedback request emails (one-shot, 2026-04-28) ──
+    // Triggered manually by Claude after deploy. Each email is personalized with first name + URL params.
+    if (urlType === 'blind-test') {
+        if (!process.env.RESEND_API_KEY) return res.status(500).json({ error: 'RESEND_API_KEY missing' });
+        const RECIPIENTS = [
+            { name: 'הילה',  email: 'hilateharlev@gmail.com' },
+            { name: 'שרון',  email: 'sharonshabi@gmail.com' },
+            { name: 'דבורה', email: 'dvora.galitzki@gmail.com' },
+            { name: 'דולב',  email: 'dolevt0407@gmail.com' },
+            { name: 'ליאת',  email: 'liatamos@gmail.com' },
+            { name: 'שני',   email: 'steharlev@gmail.com' },
+            { name: 'יעל',   email: 'ymz.wonderland@gmail.com' },
+        ];
+        const results = [];
+        for (const r of RECIPIENTS) {
+            const fbUrl = `https://www.dubis.net/feedback.html?n=${encodeURIComponent(r.name)}&e=${encodeURIComponent(r.email)}`;
+            const html = `<!DOCTYPE html><html lang="he" dir="rtl"><body style="margin:0;padding:0;background:#f5f5f0;font-family:'Segoe UI',Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f0;padding:40px 16px"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);overflow:hidden">
+<tr><td style="background:#0d0d0d;padding:24px 32px;text-align:center">
+<div style="color:#c8a96e;font-size:1.6rem;font-weight:700;letter-spacing:2px">DUBIS<sup style="font-size:.4em;vertical-align:super">™</sup></div>
+<div style="color:#888;font-size:.78rem;margin-top:4px">Built for the body you actually live in.</div>
+</td></tr>
+<tr><td style="padding:32px;color:#222;line-height:1.7;font-size:.97rem">
+<p>היי ${r.name},</p>
+<p>אנחנו <strong>DUBIS</strong> — מותג בגדים אמריקאי-חדש, מיועד לאנשים <em>אמיתיים</em>. בלי דוגמנים בני 22, בלי "תרזה ב-30 ימים", בלי בטן שטוחה בפלקאט. בגדים שאנשים מעל גיל 35 רוצים ללבוש לחיים האמיתיים שלהם.</p>
+<p>אנחנו בשלב מאוד מוקדם, ולפני שנשפוך תקציב פרסום על קהל אמריקאי שלא מכיר אותנו, אנחנו רוצים פיידבק כן <strong>ממך</strong> — מישהי שלא קשורה אלינו ויכולה להגיד לנו את האמת בלי לרכך.</p>
+<p style="background:#fff8e1;border-right:4px solid #c8a96e;padding:14px 18px;border-radius:6px"><strong>הבקשה שלנו: שתי דקות מהזמן שלך.</strong><br>תיכנסי לאתר, תסתכלי 1-2 דקות כאילו רצית לקנות בגד היום, ותעני על 5 שאלות קצרות — בעברית. <strong>תשובה כנה &gt; תשובה מנומסת.</strong> אנחנו לא נעלב מ-"זה לא בשבילי" — אנחנו נעלב מ-"נחמד" כי זה לא עוזר לנו לתקן.</p>
+<div style="text-align:center;margin:28px 0">
+<a href="${fbUrl}" style="background:#c8a96e;color:#0d0d0d;padding:14px 36px;text-decoration:none;border-radius:6px;font-weight:700;display:inline-block">להתחיל ←</a>
+</div>
+<p style="color:#666;font-size:.85rem">אם אין לך זמן עכשיו — זה בסדר, פשוט תתעלמי. אם החלטת לעזור — תודה ענקית. הפיידבק שלך נקרא ביום שתשלחי אותו והופך לפעולות תיקון השבוע.</p>
+<p style="color:#888;font-size:.78rem;margin-top:24px">DUBIS · <a href="https://www.dubis.net" style="color:#c8a96e">dubis.net</a><br>פנייה חד-פעמית למחקר משתמשים. לא נשלח עוד אלא אם תבקשי.</p>
+</td></tr></table></td></tr></table></body></html>`;
+            try {
+                const resp = await fetch('https://api.resend.com/emails', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        from: 'DUBIS <orders@dubis.net>',
+                        to: [r.email],
+                        subject: `${r.name}, שתי דקות מהזמן שלך — בלי לקנות, בלי הרשמה`,
+                        html,
+                    }),
+                });
+                const data = await resp.json();
+                results.push({ to: r.email, ok: resp.ok, id: data.id, error: resp.ok ? null : data });
+                await new Promise(s => setTimeout(s, 600)); // throttle to avoid Resend rate limit
+            } catch (e) {
+                results.push({ to: r.email, ok: false, error: e.message });
+            }
+        }
+        return res.status(200).json({ success: true, sent: results.filter(x => x.ok).length, total: results.length, results });
+    }
+
     // ── Route: ?type=auto-run — Phase 2 autonomy: auto-execute all non-budget tasks ──
     // Called by Vercel cron at 06:00 + 12:00 UTC (08:00 + 14:00 Israel)
     if (urlType === 'auto-run') {
