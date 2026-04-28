@@ -1055,14 +1055,14 @@
     <!-- ── יעדים ותקציב ── -->
     <div class="analytics-section-title">🎯 יעדי צמיחה ותקציב</div>
     <div class="goal-banner">
-      <div class="goal-title">יעד: $100 רווח חודשי נטו תוך 6 חודשים <span style="font-weight:400;color:#888;font-size:.75rem">(הוארך מ-3 חודשים — אורן 2026-04-28)</span></div>
+      <div class="goal-title">יעד: $1,000 רווח חודשי נטו תוך 6 חודשים <span style="font-weight:400;color:#888;font-size:.75rem">(הוארך מ-3 חודשים — אורן 2026-04-28)</span></div>
       <div id="goal-timeline" style="text-align:center;color:#aaa;font-size:.82rem;margin-bottom:6px"></div>
       <div class="goal-progress-wrap">
         <div class="goal-progress-bar">
           <div class="goal-progress-fill" id="goal-fill" style="width:0%"></div>
           <div class="goal-progress-text" id="goal-pct-text">0%</div>
         </div>
-        <div class="goal-amt" id="goal-amt">$0 / $100</div>
+        <div class="goal-amt" id="goal-amt">$0 / $1,000</div>
       </div>
       <div class="budget-grid">
         <div class="budget-item">
@@ -3701,13 +3701,13 @@
     const monthlyProfit = analyticsData.monthlyProfit30d != null ? analyticsData.monthlyProfit30d : 0;
     const monthlyRevenue30d = analyticsData.monthlyRevenue30d || 0;
     const totalOrders = analyticsData.totalOrders || 0;
-    const goalTarget = 100;
+    const goalTarget = 1000;
     // Profit can be negative — clamp the bar at 0 but show the real number in the label
     const goalPct = Math.max(0, Math.min(100, Math.round((monthlyProfit / goalTarget) * 100)));
     document.getElementById('goal-fill').style.width = goalPct + '%';
     document.getElementById('goal-pct-text').textContent = goalPct + '%';
     const profitColor = monthlyProfit >= goalTarget ? '#4caf50' : monthlyProfit >= 0 ? '#c8a96e' : '#e74c3c';
-    document.getElementById('goal-amt').innerHTML = `<span style="color:${profitColor}">$${monthlyProfit.toLocaleString()}</span> / $${goalTarget} <span style="color:#666;font-size:.7rem">(הכנסה 30 יום: $${monthlyRevenue30d.toLocaleString()})</span>`;
+    document.getElementById('goal-amt').innerHTML = `<span style="color:${profitColor}">$${monthlyProfit.toLocaleString()}</span> / $${goalTarget.toLocaleString()} <span style="color:#666;font-size:.7rem">(הכנסה 30 יום: $${monthlyRevenue30d.toLocaleString()})</span>`;
 
     // Goal timeline — extended from 60 to 180 days per oren 2026-04-28
     const GOAL_START = new Date('2026-03-23'); // Original date goal was set
