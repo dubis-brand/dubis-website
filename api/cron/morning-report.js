@@ -242,6 +242,59 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ success: true, sent: results.filter(x => x.ok).length, total: results.length, results });
     }
 
+    // ── Route: ?type=feedback-apology — fix-and-apology email after RLS bug discovered 2026-04-30 ──
+    if (urlType === 'feedback-apology') {
+        if (!process.env.RESEND_API_KEY) return res.status(500).json({ error: 'RESEND_API_KEY missing' });
+        const ALL = [
+            { name: 'הילה', email: 'hilateharlev@gmail.com' },
+            { name: 'שרון', email: 'sharonshabi@gmail.com' },
+            { name: 'דבורה', email: 'dvora.galitzki@gmail.com' },
+            { name: 'דולב', email: 'dolevt0407@gmail.com' },
+            { name: 'ליאת', email: 'liatamos@gmail.com' },
+            { name: 'שני', email: 'steharlev@gmail.com' },
+            { name: 'יעל', email: 'ymz.wonderland@gmail.com' },
+        ];
+        const results = [];
+        for (const r of ALL) {
+            const fbUrl = `https://www.dubis.net/feedback.html?n=${encodeURIComponent(r.name)}&e=${encodeURIComponent(r.email)}`;
+            const html = `<!DOCTYPE html><html lang="he" dir="rtl"><body style="margin:0;padding:0;background:#f5f5f0;font-family:'Segoe UI',Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f0;padding:40px 16px"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);overflow:hidden">
+<tr><td style="background:#0d0d0d;padding:20px 32px;text-align:center">
+<div style="color:#c8a96e;font-size:1.4rem;font-weight:700;letter-spacing:2px">DUBIS<sup style="font-size:.4em;vertical-align:super">™</sup></div>
+</td></tr>
+<tr><td style="padding:28px 32px;color:#222;line-height:1.7;font-size:.95rem">
+<p>היי ${r.name},</p>
+<p style="background:#fff8e1;border-right:4px solid #c8a96e;padding:14px 18px;border-radius:6px;margin:16px 0">
+<strong>טעות טכנית שלנו.</strong> שלחנו לך לפני יומיים בקשה לפיידבק על האתר. גילינו עכשיו שהטופס היה <strong>שבור</strong>: כל מי שניסה לשלוח קיבל שגיאה שקטה והתשובה לא נשמרה.
+</p>
+<p>אם ניסית — מצטערים מאוד. אם לא הספקת — עכשיו זה הזמן: הטופס תוקן ופועל.</p>
+<p>הבקשה זהה: 2 דקות מהזמן שלך, פיידבק כן על האתר. <strong>תשובה כנה > תשובה מנומסת</strong>.</p>
+<div style="text-align:center;margin:24px 0">
+<a href="${fbUrl}" style="background:#c8a96e;color:#0d0d0d;padding:14px 36px;text-decoration:none;border-radius:6px;font-weight:700;display:inline-block">לטופס המתוקן ←</a>
+</div>
+<p style="color:#666;font-size:.85rem">אם זה לא בא לך — תתעלמי. לא נטריד יותר.</p>
+<p style="color:#888;font-size:.78rem;margin-top:18px">DUBIS · <a href="https://www.dubis.net" style="color:#c8a96e">dubis.net</a></p>
+</td></tr></table></td></tr></table></body></html>`;
+            try {
+                const resp = await fetch('https://api.resend.com/emails', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        from: 'DUBIS <orders@dubis.net>',
+                        to: [r.email],
+                        subject: `${r.name}, התנצלות + הטופס תוקן (2 דקות)`,
+                        html,
+                    }),
+                });
+                const data = await resp.json();
+                results.push({ to: r.email, ok: resp.ok, id: data.id });
+                await new Promise(s => setTimeout(s, 600));
+            } catch (e) { results.push({ to: r.email, ok: false, error: e.message }); }
+        }
+        return res.status(200).json({ success: true, sent: results.filter(x=>x.ok).length, total: results.length, results });
+    }
+
     // ── Route: ?type=feedback-reminder — 48h soft reminder to non-responders if response rate < 50% ──
     if (urlType === 'feedback-reminder') {
         if (!process.env.RESEND_API_KEY) return res.status(500).json({ error: 'RESEND_API_KEY missing' });
