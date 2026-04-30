@@ -243,9 +243,13 @@ module.exports = async function handler(req, res) {
     }
 
     // ── Route: ?type=feedback-apology — fix-and-apology email after RLS bug discovered 2026-04-30 ──
+    // ?test=1 → send only to teharlev1976@gmail.com (preview before broadcast)
     if (urlType === 'feedback-apology') {
         if (!process.env.RESEND_API_KEY) return res.status(500).json({ error: 'RESEND_API_KEY missing' });
-        const ALL = [
+        const isTest = new URL(req.url, `https://${req.headers.host}`).searchParams.get('test') === '1';
+        const ALL = isTest ? [
+            { name: 'Oren', email: 'teharlev1976@gmail.com' }
+        ] : [
             { name: 'הילה', email: 'hilateharlev@gmail.com' },
             { name: 'שרון', email: 'sharonshabi@gmail.com' },
             { name: 'דבורה', email: 'dvora.galitzki@gmail.com' },
