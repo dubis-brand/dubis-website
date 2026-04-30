@@ -107,6 +107,26 @@
 
   const sb = supabase.createClient(window.DUBIS_SUPABASE_URL, window.DUBIS_SUPABASE_ANON);
 
+  // Track this visit + form interactions
+  function track(event, meta) {
+    try {
+      fetch('/api/analytics/track', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          path: '/feedback.html' + location.search,
+          referrer: document.referrer || '',
+          event: event,
+          meta: meta || null,
+          session_id: sessionStorage.getItem('dubis-sid') || (function(){ const s = Math.random().toString(36).slice(2)+Date.now().toString(36); sessionStorage.setItem('dubis-sid', s); return s; })(),
+          is_dev: localStorage.getItem('dubis-internal') === '1',
+        }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch(e) {}
+  }
+  track('pageview', { source: 'feedback_page' });
+
   document.getElementById('feedback-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('submit-btn');
@@ -126,14 +146,25 @@
       referrer: document.referrer.substring(0, 500),
     };
 
+    track('cta_click', { action: 'feedback_submit_attempt' });
     const { error } = await sb.from('feedback_responses').insert(payload);
 
     if (error) {
       btn.disabled = false;
       btn.textContent = 'שלח פיידבק';
-      alert('שגיאה: ' + error.message + '\n\nאפשר לשלוח פיידבק במייל ל-dubis.brand@gmail.com');
+      track('cta_click', { action: 'feedback_submit_error', message: error.message });
+      // Visible inline error (not just alert that gets dismissed)
+      let errEl = document.getElementById('submit-error');
+      if (!errEl) {
+        errEl = document.createElement('div');
+        errEl.id = 'submit-error';
+        errEl.style.cssText = 'background:#3a1a1a;border:1px solid #c0392b;color:#ff8a80;padding:14px 18px;border-radius:6px;margin:14px 0;font-size:.92rem;text-align:right';
+        document.getElementById('submit-btn').parentNode.insertBefore(errEl, document.getElementById('submit-btn'));
+      }
+      errEl.innerHTML = `❌ <strong>שגיאה בשליחה:</strong> ${error.message}<br><br>אפשר לשלוח את התשובות שלך ידנית למייל <a href="mailto:dubis.brand@gmail.com" style="color:#ff8a80;text-decoration:underline">dubis.brand@gmail.com</a> ואני אכניס אותן בעצמי.`;
       return;
     }
+    track('purchase', { conversion: 'feedback_submitted' });
 
     document.getElementById('feedback-form').style.display = 'none';
     document.querySelector('.intro').style.display = 'none';
