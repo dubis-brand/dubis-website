@@ -8,8 +8,25 @@ const PAYPAL_LIVE_CLIENT_ID   = 'AWu0oDEl16mzRrbqX8zWrqFZeqc790LptV1UC5fiz8JnR7M
 const PAYPAL_SANDBOX_CLIENT_ID = 'AZj2dQOOGG3j_JixU4GuhgZhgmzMp6qWO8zzyPd6E5pV66iNXWhHa9udoEbpel7ja6W_jcVZ4Ll4JpG_';
 const PAYPAL_CLIENT_ID = PAYPAL_ENV === 'live' ? PAYPAL_LIVE_CLIENT_ID : PAYPAL_SANDBOX_CLIENT_ID;
 
-const SHIPPING_FEE = 8.99;
+const SHIPPING_FEE = 8.99;                  // legacy default (US standard)
 const FREE_SHIPPING_THRESHOLD = 60;
+// Country-aware shipping — Gelato standard ground varies wildly:
+//   US ~$5.99 / IL ~$12.87 / EU ~$8-12 / AU ~$10-14
+// We charge slightly above cost so we don't bleed money on intl test orders
+// (which until launch are mostly oren+amos+family in Israel — the audit
+//  on 2026-05-01 showed 100% of orders had country_code=IL and we were
+//  losing ~$3.88 per order on shipping alone).
+const SHIPPING_FEE_BY_COUNTRY = {
+    US:  8.99,
+    CA: 12.99,
+    GB: 12.99,
+    AU: 14.99,
+    IL: 14.99,
+};
+function getShippingFee(country) {
+    const c = (country || 'US').toUpperCase();
+    return SHIPPING_FEE_BY_COUNTRY[c] != null ? SHIPPING_FEE_BY_COUNTRY[c] : 14.99;
+}
 
 let paypalLoaded = false;
 let appliedCoupon = null; // { code, discount_amount, final_total, name }
@@ -95,11 +112,23 @@ async function submitContactStep() {
     const nameEl  = document.getElementById('checkout-name');
     const emailEl = document.getElementById('checkout-email');
     const phoneEl = document.getElementById('checkout-phone');
+    const addr1El = document.getElementById('checkout-addr1');
+    const addr2El = document.getElementById('checkout-addr2');
+    const cityEl  = document.getElementById('checkout-city');
+    const stateEl = document.getElementById('checkout-state');
+    const zipEl   = document.getElementById('checkout-zip');
+    const ctryEl  = document.getElementById('checkout-country');
     const errEl   = document.getElementById('contact-step-error');
 
     const email = (emailEl?.value || '').trim();
     const phone = (phoneEl?.value || '').trim();
     const name  = (nameEl?.value  || '').trim();
+    const addr1 = (addr1El?.value || '').trim();
+    const addr2 = (addr2El?.value || '').trim();
+    const city  = (cityEl?.value  || '').trim();
+    const state = (stateEl?.value || '').trim().toUpperCase();
+    const zip   = (zipEl?.value   || '').trim();
+    const ctry  = (ctryEl?.value  || 'US').trim().toUpperCase();
 
     if (!name || name.length < 2) {
         errEl.textContent = 'Please enter your full name.';
@@ -119,9 +148,53 @@ async function submitContactStep() {
         phoneEl?.focus();
         return;
     }
+    if (!addr1 || addr1.length < 4) {
+        errEl.textContent = 'Please enter your street address.';
+        errEl.style.display = 'block';
+        addr1El?.focus();
+        return;
+    }
+    if (!city || city.length < 2) {
+        errEl.textContent = 'Please enter your city.';
+        errEl.style.display = 'block';
+        cityEl?.focus();
+        return;
+    }
+    if (!state || state.length < 2) {
+        errEl.textContent = ctry === 'US'
+            ? 'Please enter your state (2-letter code, e.g. CA).'
+            : 'Please enter your state / province.';
+        errEl.style.display = 'block';
+        stateEl?.focus();
+        return;
+    }
+    if (!zip || zip.length < 3) {
+        errEl.textContent = 'Please enter your ZIP / postal code.';
+        errEl.style.display = 'block';
+        zipEl?.focus();
+        return;
+    }
+    if (ctry === 'US' && !/^\d{5}(-\d{4})?$/.test(zip)) {
+        errEl.textContent = 'Please enter a valid US ZIP code (5 digits).';
+        errEl.style.display = 'block';
+        zipEl?.focus();
+        return;
+    }
 
     // Store contact info globally for use in onApprove
     window.checkoutContact = { name, email, phone };
+    // PayPal Orders v2 shipping.address shape — sent as SET_PROVIDED_ADDRESS
+    // so PayPal does NOT silently use the buyer's profile address. The customer
+    // sees their own address pre-filled at the PayPal step.
+    window.checkoutAddress = {
+        full_name:      name,
+        address_line_1: addr1,
+        address_line_2: addr2,
+        admin_area_2:   city,        // city
+        admin_area_1:   state,       // state / province
+        postal_code:    zip,
+        country_code:   ctry,
+    };
 
     // Hide contact step, show payment step
     document.getElementById('contact-step').style.display  = 'none';
@@ -175,7 +248,9 @@ function renderPayPalButtons() {
     const createOrder = (data, actions) => {
         if (window.dubisTrack) window.dubisTrack('checkout_start', { items: cart.length, total: cart.reduce((s,i)=>s+i.price,0) });
         const itemTotal = cart.reduce((sum, i) => sum + i.price, 0);
-        const shipping  = itemTotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+        const ctry      = (window.checkoutAddress && window.checkoutAddress.country_code) || 'US';
+        const shipFee   = getShippingFee(ctry);
+        const shipping  = itemTotal >= FREE_SHIPPING_THRESHOLD ? 0 : shipFee;
         const discountedTotal = appliedCoupon ? appliedCoupon.final_total : itemTotal;
         const total = discountedTotal + shipping;
         // Meta Pixel — InitiateCheckout event (fires when customer actually clicks PayPal/Card button)
@@ -211,8 +286,11 @@ function renderPayPalButtons() {
         if (discountAmt > 0) {
             breakdown.discount = { currency_code: 'USD', value: discountAmt.toFixed(2) };
         }
-        return actions.order.create({
-        purchase_units: [{
+        // Pass the customer-entered shipping address to PayPal so the buyer
+        // sees their address (no surprise) and so we don't depend on PayPal's
+        // profile address — works for both PayPal-account and Guest Card flows.
+        const addr = window.checkoutAddress || null;
+        const purchaseUnit = {
             description: 'DUBIS Clothing Order',
             amount: {
                 currency_code: 'USD',
@@ -225,9 +303,29 @@ function renderPayPalButtons() {
                 quantity:    '1',
                 description: `${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}`
             }))
-        }],
-        application_context: { brand_name: 'DUBIS' }
-    });
+        };
+        if (addr && addr.address_line_1) {
+            purchaseUnit.shipping = {
+                name:    { full_name: addr.full_name || (window.checkoutContact?.name || '') },
+                address: {
+                    address_line_1: addr.address_line_1,
+                    address_line_2: addr.address_line_2 || '',
+                    admin_area_2:   addr.admin_area_2,
+                    admin_area_1:   addr.admin_area_1,
+                    postal_code:    addr.postal_code,
+                    country_code:   addr.country_code,
+                },
+            };
+        }
+        return actions.order.create({
+            purchase_units: [purchaseUnit],
+            application_context: {
+                brand_name:          'DUBIS',
+                // SET_PROVIDED_ADDRESS = PayPal must use OUR address (read-only on PayPal review screen)
+                // so the buyer cannot silently swap to a different profile address mid-flow.
+                shipping_preference: addr && addr.address_line_1 ? 'SET_PROVIDED_ADDRESS' : 'GET_FROM_FILE',
+            },
+        });
     };
 
     const onApprove = async (data, actions) => {
@@ -251,7 +349,20 @@ function renderPayPalButtons() {
                     } catch (e) { /* pixel not critical */ }
                 }
 
-                const shippingAddress = {
+                // Prefer the address the customer just typed into our form — it's the
+                // one they expect to see on the confirmation. PayPal's profile address
+                // is only a fallback (e.g. if SET_PROVIDED_ADDRESS was rejected).
+                const ourAddr = window.checkoutAddress || null;
+                const shippingAddress = ourAddr ? {
+                    name:           ourAddr.full_name || (window.checkoutContact?.name || ''),
+                    address_line_1: ourAddr.address_line_1 || '',
+                    address_line_2: ourAddr.address_line_2 || '',
+                    admin_area_2:   ourAddr.admin_area_2 || '',
+                    admin_area_1:   ourAddr.admin_area_1 || '',
+                    postal_code:    ourAddr.postal_code || '',
+                    country_code:   ourAddr.country_code || 'US',
+                    phone:          window.checkoutContact?.phone || '',
+                } : {
                     name:           shipping?.name?.full_name || '',
                     address_line_1: shipping?.address?.address_line_1 || '',
                     address_line_2: shipping?.address?.address_line_2 || '',
@@ -259,6 +370,7 @@ function renderPayPalButtons() {
                     admin_area_2:   shipping?.address?.admin_area_2 || '',
                     country_code:   shipping?.address?.country_code || '',
                     postal_code:    shipping?.address?.postal_code || '',
+                    phone:          window.checkoutContact?.phone || '',
                 };
 
                 const cartSnapshot = cart.map(item => ({
@@ -337,16 +449,25 @@ function renderPayPalButtons() {
                 // ── 3. Send confirmation email ────────────────────────
                 try {
                     const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+                    const itemsSubtotalEmail = cartSnapshot.reduce((s, i) => s + (Number(i.price) || 0), 0);
                     await fetch('/api/email/confirm-order', {
                         method:  'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            buyerEmail:   details.payer?.email_address || window.checkoutContact?.email || '',
-                            buyerName:    user?.user_metadata?.full_name || window.checkoutContact?.name || details.payer?.name?.given_name || '',
-                            orderId:      savedOrderId,
-                            paypalOrderId: details.id,
-                            items:        cartSnapshot,
-                            totalAmount:  cartSnapshot.reduce((s, i) => s + i.price, 0),
+                            buyerEmail:      details.payer?.email_address || window.checkoutContact?.email || '',
+                            buyerName:       user?.user_metadata?.full_name || window.checkoutContact?.name || details.payer?.name?.given_name || '',
+                            orderId:         savedOrderId,
+                            paypalOrderId:   details.id,
+                            items:           cartSnapshot,
+                            // Real money breakdown — was missing before, now lines up with checkout.
+                            itemsSubtotal:   itemsSubtotalEmail,
+                            shippingAmount:  Number(window.__dubisCheckoutShipping) || 0,
+                            discountAmount:  Number(window.__dubisCheckoutDiscount) || 0,
+                            couponCode:      appliedCoupon?.code || null,
+                            totalAmount:     Number(window.__dubisCheckoutTotal) || itemsSubtotalEmail,
+                            // Shipping address — so the customer can see where it's going,
+                            // and so they have written proof we captured it.
+                            shippingAddress: shippingAddress,
                         }),
                     });
                 } catch (err) {
@@ -444,7 +565,11 @@ function renderPayPalButtons() {
 // ===== ORDER SUMMARY =====
 function renderOrderSummary() {
     const itemTotal = cart.reduce((sum, item) => sum + item.price, 0);
-    const shipping  = itemTotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+    // Read country from the address form if it's mounted; default US.
+    const ctryEl = document.getElementById('checkout-country');
+    const ctry   = (ctryEl && ctryEl.value) || (window.checkoutAddress && window.checkoutAddress.country_code) || 'US';
+    const shipFee   = getShippingFee(ctry);
+    const shipping  = itemTotal >= FREE_SHIPPING_THRESHOLD ? 0 : shipFee;
     const couponDiscount = appliedCoupon ? (itemTotal - appliedCoupon.final_total) : 0;
     const grandTotal = itemTotal - couponDiscount + shipping;
 
@@ -576,5 +701,16 @@ window.addEventListener('DOMContentLoaded', () => {
         updateCartCount();
         showSuccessModal();
         window.history.replaceState({}, '', '/');
+    }
+
+    // Re-render the order summary when the customer picks a different country —
+    // shipping is country-aware (US: $8.99, IL/intl: up to $14.99) so the total
+    // must update on the fly. Without this, the customer sees a US price and
+    // the real charge happens at PayPal capture, breaking trust.
+    const ctryEl = document.getElementById('checkout-country');
+    if (ctryEl) {
+        ctryEl.addEventListener('change', () => {
+            try { renderOrderSummary(); } catch (e) { /* modal not open yet */ }
+        });
     }
 });

@@ -3392,13 +3392,25 @@
               <span>Gelato cost</span>
               <span id="gc-${p.id}" class="cost-val">loading…</span>
             </div>
-            <div class="cost-row">
-              <span>Shipping est.</span>
+            <div class="cost-row" title="Gelato standard ground to a US address (CA, 90210). Real customer market.">
+              <span>Ship cost (US)</span>
+              <span id="sc-us-${p.id}" class="cost-val">~$5.99</span>
+            </div>
+            <div class="cost-row" style="opacity:0.55;font-size:11px" title="Test orders sent to Israel during QA. NOT what real US customers cost us.">
+              <span>Ship cost (IL test)</span>
               <span>~$12.87</span>
             </div>
-            <div class="cost-row profit-row">
-              <span>Profit</span>
+            <div class="cost-row" title="What the customer pays for shipping at checkout (free over $60).">
+              <span>Customer pays ship</span>
+              <span style="color:#7fb069">$8.99</span>
+            </div>
+            <div class="cost-row profit-row" title="Item margin only (sell - Gelato item cost). Shipping margin is separate: customer $8.99 - Gelato US ship.">
+              <span>Item profit</span>
               <span id="gp-${p.id}" class="profit-val">—</span>
+            </div>
+            <div class="cost-row profit-row" title="Net per US order = item profit + (8.99 - ~5.99). If shipping > customer-paid, this goes red.">
+              <span>Net (US)</span>
+              <span id="np-us-${p.id}" class="profit-val">—</span>
             </div>
           </div>
           <div class="price-edit">
@@ -3451,7 +3463,14 @@
   }
 
   // ── Product Profit & Price Management ─────────────────
-  const SHIPPING_EST = 12.87; // Gelato actual shipping to Israel (IL)
+  // Shipping costs:
+  //   US standard (real customer market) → ~$5.99 (Gelato apparel ground)
+  //   IL test (oren+amos QA orders)      → ~$12.87 (DHL/Express to Israel)
+  // Customer pays $8.99 (or free over $60). On US orders we typically MAKE
+  // ~$3 on shipping; on IL test orders we LOSE ~$3.88 (acceptable, it's QA).
+  const SHIP_COST_US     = 5.99;
+  const SHIP_COST_IL     = 12.87;
+  const SHIP_PAID_BY_CX  = 8.99;
   let currentProducts = [];
 
   async function renderProductsWithPrices(products) {
@@ -3464,10 +3483,14 @@
     } catch (e) {}
 
     products.forEach(p => {
-      const sell   = priceMap[p.id] || p.price;
-      const cost   = p.gelatoCost != null ? p.gelatoCost : null;
-      const profit = cost != null ? sell - cost : null; // shipping paid by customer separately
-      const pct    = profit != null ? ((profit / sell) * 100).toFixed(0) : null;
+      const sell       = priceMap[p.id] || p.price;
+      const cost       = p.gelatoCost != null ? p.gelatoCost : null;
+      const itemProfit = cost != null ? sell - cost : null;
+      const pct        = itemProfit != null ? ((itemProfit / sell) * 100).toFixed(0) : null;
+      // Shipping margin per US order — this is the number oren actually cares about
+      const shipMargin = SHIP_PAID_BY_CX - SHIP_COST_US; // ~$3.00
+      const netUs      = itemProfit != null ? itemProfit + shipMargin : null;
+      const netPct     = netUs != null ? ((netUs / (sell + SHIP_PAID_BY_CX)) * 100).toFixed(0) : null;
 
       const spEl = document.getElementById(`sp-${p.id}`);
       if (spEl) spEl.value = sell.toFixed(2);
@@ -3476,9 +3499,15 @@
       if (gcEl) gcEl.textContent = cost != null ? `$${cost.toFixed(2)}` : '—';
 
       const gpEl = document.getElementById(`gp-${p.id}`);
-      if (gpEl && profit != null) {
-        gpEl.textContent = `$${profit.toFixed(2)} (${pct}%)`;
-        gpEl.className = `profit-val ${profit >= 0 ? 'profit-positive' : 'profit-negative'}`;
+      if (gpEl && itemProfit != null) {
+        gpEl.textContent = `$${itemProfit.toFixed(2)} (${pct}%)`;
+        gpEl.className = `profit-val ${itemProfit >= 0 ? 'profit-positive' : 'profit-negative'}`;
+      }
+
+      const npEl = document.getElementById(`np-us-${p.id}`);
+      if (npEl && netUs != null) {
+        npEl.textContent = `$${netUs.toFixed(2)} (${netPct}%)`;
+        npEl.className = `profit-val ${netUs >= 0 ? 'profit-positive' : 'profit-negative'}`;
       }
     });
   }

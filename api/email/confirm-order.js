@@ -18,7 +18,12 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ success: false, reason: 'resend_not_configured' });
     }
 
-    const { buyerEmail, buyerName, orderId, paypalOrderId, items, totalAmount } = req.body;
+    const {
+        buyerEmail, buyerName, orderId, paypalOrderId, items, totalAmount,
+        // NEW (2026-05-01): real breakdown + shipping address so customer
+        // sees where the order is going and what they paid for what.
+        itemsSubtotal, shippingAmount, discountAmount, couponCode, shippingAddress,
+    } = req.body;
 
     // HTML escape helper — prevents XSS in email body
     const esc = s => String(s || '')
@@ -46,6 +51,47 @@ module.exports = async function handler(req, res) {
     const firstName  = (buyerName || buyerEmail || '').split(/[\s@]/)[0] || 'there';
     const displayTotal = Number(totalAmount || 0).toFixed(2);
     const shortOrderId = (orderId || paypalOrderId || '').toString().substring(0, 8).toUpperCase();
+
+    // ── Shipping address block ───────────────────────────────────
+    // We always show this — it's the #1 thing customers want confirmed
+    // ("did they get my address?").
+    const a = shippingAddress || {};
+    const addrLine1 = esc(a.address_line_1 || '');
+    const addrLine2 = esc(a.address_line_2 || '');
+    const addrCity  = esc(a.admin_area_2 || '');
+    const addrState = esc(a.admin_area_1 || '');
+    const addrZip   = esc(a.postal_code || '');
+    const addrCtry  = esc(a.country_code || '');
+    const addrName  = esc(a.name || buyerName || '');
+    const hasAddr   = !!addrLine1;
+    const addrHtml  = hasAddr ? `
+              <!-- Shipping address -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px">
+                <tr>
+                  <td style="padding:14px 16px">
+                    <div style="color:#555;font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Shipping to</div>
+                    <div style="color:#e8e0d5;font-size:14px;line-height:1.55">
+                      ${addrName ? `<strong>${addrName}</strong><br>` : ''}
+                      ${addrLine1}${addrLine2 ? `<br>${addrLine2}` : ''}<br>
+                      ${addrCity}${addrState ? `, ${addrState}` : ''} ${addrZip}<br>
+                      ${addrCtry}
+                    </div>
+                  </td>
+                </tr>
+              </table>` : '';
+
+    // ── Money breakdown ──────────────────────────────────────────
+    // Real numbers — used to show "Calculated at checkout" which spooked customers.
+    const itemsSubNum = Number(itemsSubtotal != null ? itemsSubtotal : (items || []).reduce((s, i) => s + (Number(i.price) || 0), 0));
+    const shipNum     = Number(shippingAmount || 0);
+    const discNum     = Number(discountAmount || 0);
+    const totalNum    = Number(totalAmount != null ? totalAmount : Math.max(0, itemsSubNum + shipNum - discNum));
+
+    const moneyRow = (label, val, opts = {}) => `
+                <tr>
+                  <td style="color:${opts.bold ? '#e8e0d5' : '#888'};font-size:${opts.bold ? '16px' : '14px'};${opts.bold ? 'font-weight:700;padding-top:10px' : ''}">${esc(label)}</td>
+                  <td style="color:${opts.bold ? '#c8a96e' : (opts.discount ? '#7fb069' : '#e8e0d5')};font-size:${opts.bold ? '16px' : '14px'};text-align:right;${opts.bold ? 'font-weight:700;padding-top:10px' : ''}">${opts.discount ? '−' : ''}$${Number(val).toFixed(2)}</td>
+                </tr>`;
 
     // ── Email HTML ───────────────────────────────────────────────
     const html = `
@@ -105,17 +151,15 @@ module.exports = async function handler(req, res) {
                 </tbody>
               </table>
 
-              <!-- Total -->
-              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px">
-                <tr>
-                  <td style="color:#888;font-size:14px">Shipping</td>
-                  <td style="color:#888;font-size:14px;text-align:right">Calculated at checkout</td>
-                </tr>
-                <tr>
-                  <td style="color:#e8e0d5;font-size:16px;font-weight:700;padding-top:10px">Total</td>
-                  <td style="color:#c8a96e;font-size:16px;font-weight:700;text-align:right;padding-top:10px">$${displayTotal}</td>
-                </tr>
+              <!-- Real money breakdown — items + shipping + (optional) discount -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px">
+                ${moneyRow('Subtotal', itemsSubNum)}
+                ${discNum > 0 ? moneyRow(`Discount${couponCode ? ' (' + couponCode + ')' : ''}`, discNum, { discount: true }) : ''}
+                ${moneyRow(shipNum === 0 ? 'Shipping (FREE)' : 'Shipping', shipNum)}
+                ${moneyRow('Total', totalNum, { bold: true })}
               </table>
+
+              ${addrHtml}
 
               <p style="margin:0 0 8px;color:#888;font-size:14px;line-height:1.6">
                 We'll send another email when your order ships with a tracking link.<br>
