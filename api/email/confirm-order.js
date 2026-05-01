@@ -1,22 +1,76 @@
 // DUBIS — Order Confirmation Email
 // Vercel Serverless Function  POST /api/email/confirm-order
 // Uses Resend (https://resend.com) — free tier: 3,000 emails/month
+//
+// MODES:
+//   1. Order confirmation (default) — fired by paypal.js after capture,
+//      builds the order receipt with items / shipping address / totals.
+//   2. Admin mail — body { adminMail: true, subject, htmlBody } — sends an
+//      arbitrary HTML email to oren ONLY (recipient hardcoded). No auth
+//      header required because the recipient is locked, but rate-limited
+//      hard so a malicious script can't spam his inbox.
 // ================================================================
 
 const rateLimit = require('../_rateLimit');
+
+const ADMIN_MAIL_TO = 'teharlev1976@gmail.com';
 
 module.exports = async function handler(req, res) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    // Rate limit: 5 confirmation emails per IP per minute
-    if (rateLimit(req, res, { max: 5, windowMs: 60_000 })) return;
-
     if (!process.env.RESEND_API_KEY) {
         console.warn('RESEND_API_KEY not set — skipping confirmation email');
         return res.status(200).json({ success: false, reason: 'resend_not_configured' });
     }
+
+    // ── Admin mail mode ─────────────────────────────────────────
+    // Used by Claude (and other internal tooling) to send oren ad-hoc summary
+    // emails through the same Resend pipeline that sends order confirmations.
+    if (req.body && req.body.adminMail === true) {
+        // Hard rate-limit: 10 admin mails per hour (per IP). Recipient is locked,
+        // so the worst a runaway script can do is spam oren 10× before the gate
+        // closes — bad enough to notice, not bad enough to flood.
+        if (rateLimit(req, res, { max: 10, windowMs: 60 * 60_000 })) return;
+
+        const subj = String(req.body.subject || '(no subject)').slice(0, 200);
+        const html = String(req.body.htmlBody || '').slice(0, 200_000);
+        const text = String(req.body.textBody || '').slice(0, 50_000);
+        if (!html && !text) {
+            return res.status(400).json({ error: 'admin_mail_requires_body' });
+        }
+        try {
+            const r = await fetch('https://api.resend.com/emails', {
+                method:  'POST',
+                headers: {
+                    'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                    'Content-Type':  'application/json',
+                },
+                body: JSON.stringify({
+                    from:    'DUBIS Admin <orders@dubis.net>',
+                    to:      [ADMIN_MAIL_TO],
+                    subject: subj,
+                    html:    html || undefined,
+                    text:    text || undefined,
+                    reply_to: 'hello@dubis.net',
+                }),
+            });
+            const data = await r.json();
+            if (!r.ok) {
+                console.error('[ADMIN-MAIL] Resend error:', JSON.stringify(data));
+                return res.status(200).json({ success: false, error: data.message || 'send_failed', resendStatus: r.status });
+            }
+            console.log(`[ADMIN-MAIL] sent → ${ADMIN_MAIL_TO} | subject="${subj}" | resend=${data.id}`);
+            return res.status(200).json({ success: true, mode: 'admin', emailId: data.id });
+        } catch (err) {
+            console.error('[ADMIN-MAIL] exception:', err.message);
+            return res.status(200).json({ success: false, error: err.message });
+        }
+    }
+
+    // Order confirmation rate limit: 5 per IP per minute
+    if (rateLimit(req, res, { max: 5, windowMs: 60_000 })) return;
 
     const {
         buyerEmail, buyerName, orderId, paypalOrderId, items, totalAmount,
