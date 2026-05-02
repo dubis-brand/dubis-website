@@ -592,6 +592,13 @@ function renderOrderSummary() {
     const shipping  = itemTotal >= FREE_SHIPPING_THRESHOLD ? 0 : shipFee;
     const couponDiscount = appliedCoupon ? (itemTotal - appliedCoupon.final_total) : 0;
     const grandTotal = itemTotal - couponDiscount + shipping;
+    // Lang-aware currency display in checkout. PayPal always charges USD —
+    // when customer browses in Hebrew with ILS shown, we explicitly disclose
+    // the USD charge so they aren't surprised at the PayPal handoff.
+    const isHe = (typeof currentLang !== 'undefined' && currentLang === 'he');
+    const ils = (usd) => '₪' + Math.round(usd * (typeof USD_TO_ILS !== 'undefined' ? USD_TO_ILS : 3.63));
+    const fmt = (usd) => isHe ? ils(usd) : '$' + Number(usd).toFixed(2);
+    const fmtFree = isHe ? '<span style="color:var(--honey);font-weight:600">חינם 🎉</span>' : '<span style="color:var(--honey);font-weight:600">FREE 🎉</span>';
 
     const remaining = Math.max(0, FREE_SHIPPING_THRESHOLD - itemTotal);
     const pct = Math.min(100, (itemTotal / FREE_SHIPPING_THRESHOLD) * 100);
@@ -611,38 +618,46 @@ function renderOrderSummary() {
 
         <!-- Items list -->
         <div class="order-items">
-            ${cart.map(item => `
+            ${cart.map(item => {
+                const colorFile = (item.selectedColor || '').replace(/\s+/g, '-');
+                const variantImg = colorFile ? `images/product-${item.id}-${colorFile}-front.jpg` : (item.image || '');
+                return `
                 <div class="order-item">
-                    <img src="${item.image}" alt="${item.phrase}" class="order-item-img" onerror="this.style.display='none'" />
+                    <img src="${variantImg}" alt="${item.phrase}" class="order-item-img" onerror="this.onerror=null;this.src='${item.image||''}'" />
                     <div class="order-item-info">
                         <div class="order-item-name">"${item.phrase}"</div>
                         <div class="order-item-details">${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}</div>
                     </div>
-                    <div class="order-item-price">$${item.price.toFixed(2)}</div>
-                </div>
-            `).join('')}
+                    <div class="order-item-price">${fmt(item.price)}</div>
+                </div>`;
+            }).join('')}
         </div>
 
         <!-- Totals -->
         <div class="order-totals">
             <div class="order-total-row">
-                <span>Subtotal</span>
-                <span>$${itemTotal.toFixed(2)}</span>
+                <span>${isHe ? 'סה"כ ביניים' : 'Subtotal'}</span>
+                <span>${fmt(itemTotal)}</span>
             </div>
             ${couponDiscount > 0 ? `
             <div class="order-total-row discount">
-                <span>Coupon (${appliedCoupon?.code})</span>
-                <span>−$${couponDiscount.toFixed(2)}</span>
+                <span>${isHe ? 'קופון' : 'Coupon'} (${appliedCoupon?.code})</span>
+                <span>−${fmt(couponDiscount)}</span>
             </div>` : ''}
             <div class="order-total-row">
-                <span>Shipping</span>
-                <span>${shipping === 0 ? '<span style="color:var(--honey);font-weight:600">FREE 🎉</span>' : '$' + shipping.toFixed(2)}</span>
+                <span>${isHe ? 'משלוח' : 'Shipping'}</span>
+                <span>${shipping === 0 ? fmtFree : fmt(shipping)}</span>
             </div>
             <div class="order-total-row total">
-                <span>Total</span>
-                <span>$${grandTotal.toFixed(2)}</span>
+                <span>${isHe ? 'סה"כ' : 'Total'}</span>
+                <span>${fmt(grandTotal)}</span>
             </div>
         </div>
+        ${isHe ? `
+        <div style="margin-top:10px;padding:10px 12px;background:#fef9e7;border:1px solid #f1c40f33;border-radius:6px;font-size:12px;color:#5d4e1f;line-height:1.5">
+            💳 <strong>PayPal יחייב בדולרים:</strong> $${grandTotal.toFixed(2)}<br>
+            <span style="font-size:11px;opacity:0.8">המרה משוערת — הסכום הסופי בכרטיס יהיה לפי שער מסחרי של PayPal ביום החיוב.</span>
+        </div>` : ''}
     `;
 }
 

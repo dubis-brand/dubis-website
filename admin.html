@@ -3470,6 +3470,7 @@
             <span class="price-save-status" id="ps-${p.id}">✓ saved</span>
           </div>
           <div class="product-actions">
+            <button class="btn-sm" onclick="regenFrontMockup(${p.id}, this)" title="צור תמונת FRONT חדשה עם DUBIS™">🔄 חדש</button>
             <button class="btn-sm" onclick="copyUid('${uid}', this)" title="Copy full UID">Copy UID</button>
             <a class="btn-sm" href="https://www.dubis.net/#product-${p.id}" target="_blank" rel="noopener" style="text-decoration:none">צפה באתר →</a>
             <a class="btn-gelato" href="${p.gelatoUrl || 'https://dashboard.gelato.com'}" target="_blank" rel="noopener">Gelato →</a>
@@ -6719,6 +6720,28 @@
     }
   }
 
+  // Regenerate FRONT mockup (small DUBIS logo on chest) for an existing product.
+  // Calls the standalone dubis-mockup-front edge function.
+  window.regenFrontMockup = async function regenFrontMockup(productId, btn) {
+    if (!confirm('לייצר מחדש תמונת FRONT עם הלוגו? (עד 90 שניות)')) return;
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = '⏳';
+    try {
+      const r = await fetch(window.DUBIS_SUPABASE_URL + '/functions/v1/dubis-mockup-front?product_id=' + productId, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + (window.DUBIS_SUPABASE_ANON || ''), 'Content-Type': 'application/json' },
+      });
+      if (!r.ok) {
+        const t = await r.text().catch(() => '');
+        throw new Error('HTTP ' + r.status + ' ' + t.slice(0, 200));
+      }
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      alert('✅ תמונה חדשה נוצרה. רענן Ctrl+F5.');
+    } catch(e) { alert('שגיאה: ' + e.message); }
+    finally { btn.disabled = false; btn.textContent = orig; }
+  }
+
   // ── PRODUCT CREATOR ────────────────────────────────────
   // 2026-05-02: added 90s AbortController timeout. Old code had no timeout —
   // when the agents fn (212KB legacy) hung, the button stayed "...מייצר" forever
@@ -6884,27 +6907,25 @@
       if (el) { el.style.transition = 'all .3s'; el.style.opacity = '0'; el.style.transform = 'translateX(20px)'; setTimeout(() => el.remove(), 300); }
       if (action === 'approve') {
         const pid = data.product_id_numeric || '?';
-        const mockup = data.mockup_url ? '\n🖼 תמונת מוקאפ נוצרה!' : '';
-        alert(`✅ מוצר #${pid} אושר!${mockup}\n\nמסנכרן לחנות...`);
-        // Auto-sync to store
+        // 2026-05-02: stopped calling sync-products. The customer site reads
+        // products from dubis_products at runtime via the DB loader in js/products.js,
+        // so rewriting the static file is now redundant AND it kept stripping the
+        // loader code. The product appears on the site automatically within seconds.
+        // Trigger a FRONT mockup regen so the small-DUBIS-logo image (not the back
+        // text design from the legacy approve-product handler) becomes the primary.
+        let frontStatus = '';
         try {
-          const syncRes = await fetch(AGENTS_BASE + '?type=sync-products', {
+          const fr = await fetch(window.DUBIS_SUPABASE_URL + '/functions/v1/dubis-mockup-front?product_id=' + pid, {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + session.access_token }
+            headers: { 'Authorization': 'Bearer ' + (window.DUBIS_SUPABASE_ANON || ''), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ color: (data.product?.colors || ['Black'])[0] }),
           });
-          const syncData = await syncRes.json();
-          if (syncData.pushed_to_github) {
-            alert(`🚀 מוצר #${pid} סונכרן לחנות! האתר יתעדכן תוך ~30 שניות.`);
-          } else if (syncData.content) {
-            // No GitHub token — offer manual download
-            const blob = new Blob([syncData.content], { type: 'text/javascript' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'products.js';
-            a.click();
-            alert(`📥 products.js הורד (${syncData.product_count} מוצרים). העלה ידנית ל-js/products.js ב-GitHub.`);
+          if (fr.ok) {
+            const fd = await fr.json();
+            frontStatus = fd.image_url ? '\n🖼 תמונת FRONT עם DUBIS™ נוצרה.' : '';
           }
-        } catch(syncErr) { console.error('Sync error:', syncErr); }
+        } catch (err) { console.warn('front-mockup non-fatal:', err.message); }
+        alert(`✅ מוצר #${pid} אושר!${frontStatus}\nהאתר יציג אותו אוטומטית בתוך כ-30 שניות.`);
       } else {
         alert('❌ המוצר נדחה.');
       }
