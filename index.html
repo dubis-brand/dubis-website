@@ -17,7 +17,7 @@
 
     <!-- Trust Bar + legacy modal styles (stock/urgency kept for any dynamic modal callouts) -->
     <style>
-    .trust-bar{background:#F5EFE4;color:#1A1A1A;border-bottom:1px solid #D4CFC4;position:relative;z-index:1001}
+    .trust-bar{background:#F5EFE4;color:#1A1A1A;border-bottom:1px solid #D4CFC4;position:fixed;top:0;left:0;right:0;z-index:999;height:38px}body{padding-top:38px}.navbar{top:38px !important}
     .trust-bar-inner{max-width:1280px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:center;padding:10px 24px}
     .trust-item{display:flex;align-items:center;justify-content:center;gap:8px;font-family:'Inter',-apple-system,sans-serif;font-size:12px;font-weight:500;letter-spacing:0.04em;color:#3D3D3D;white-space:nowrap}
     .trust-icon{font-size:14px;line-height:1;color:#C17E3A}
@@ -135,7 +135,7 @@
     <nav class="navbar">
         <div class="nav-container">
             <div class="logo">
-                <span class="logo-text">DUBIS<span class="logo-tm">™</span></span>
+                <span class="logo-text" dir="ltr">DUBIS<span class="logo-tm">™</span></span>
             </div>
             <button class="hamburger" id="hamburger-btn" onclick="toggleMobileMenu()" aria-label="Menu">
                 <span></span><span></span><span></span>
@@ -587,15 +587,7 @@
             <div class="paypal-modal-header">
                 <h2>Complete Your Order</h2>
             </div>
-            <div class="paypal-order-summary" id="paypal-order-summary"></div>
-            <div class="coupon-row">
-                <input type="text" id="coupon-input" placeholder="Coupon code" maxlength="20" autocomplete="off"
-                    oninput="this.value=this.value.toUpperCase()">
-                <button class="coupon-apply-btn" onclick="applyCoupon()">Apply</button>
-            </div>
-            <div id="coupon-feedback" class="coupon-feedback"></div>
-
-            <!-- Step 1: Contact details -->
+            <!-- Step 1: Contact details (rendered FIRST so customer enters country before seeing shipping) -->
             <div id="contact-step">
                 <p class="contact-step-title">Your details / פרטים ליצירת קשר</p>
                 <input id="checkout-name"  type="text"  placeholder="Full name / שם מלא" required autocomplete="name">
@@ -612,14 +604,83 @@
                 </div>
                 <select id="checkout-country" required autocomplete="country" style="width:100%;padding:11px 14px;margin-top:8px;border:1px solid #d8c9a8;border-radius:8px;background:#fff;font-size:14px">
                     <option value="US" selected>United States</option>
-                    <option value="CA">Canada</option>
-                    <option value="GB">United Kingdom</option>
-                    <option value="AU">Australia</option>
-                    <option value="IL">Israel</option>
+                    <optgroup label="North America">
+                        <option value="CA">Canada</option>
+                        <option value="MX">Mexico</option>
+                    </optgroup>
+                    <optgroup label="Europe">
+                        <option value="GB">United Kingdom</option>
+                        <option value="IE">Ireland</option>
+                        <option value="DE">Germany</option>
+                        <option value="FR">France</option>
+                        <option value="IT">Italy</option>
+                        <option value="ES">Spain</option>
+                        <option value="NL">Netherlands</option>
+                        <option value="BE">Belgium</option>
+                        <option value="AT">Austria</option>
+                        <option value="CH">Switzerland</option>
+                        <option value="PL">Poland</option>
+                        <option value="SE">Sweden</option>
+                        <option value="NO">Norway</option>
+                        <option value="DK">Denmark</option>
+                        <option value="FI">Finland</option>
+                        <option value="PT">Portugal</option>
+                        <option value="GR">Greece</option>
+                        <option value="CZ">Czechia</option>
+                        <option value="HU">Hungary</option>
+                        <option value="RO">Romania</option>
+                        <option value="BG">Bulgaria</option>
+                    </optgroup>
+                    <optgroup label="Oceania">
+                        <option value="AU">Australia</option>
+                        <option value="NZ">New Zealand</option>
+                    </optgroup>
+                    <optgroup label="Middle East">
+                        <option value="IL">Israel</option>
+                        <option value="AE">United Arab Emirates</option>
+                        <option value="SA">Saudi Arabia</option>
+                        <option value="TR">Turkey</option>
+                    </optgroup>
+                    <optgroup label="Asia">
+                        <option value="JP">Japan</option>
+                        <option value="SG">Singapore</option>
+                        <option value="HK">Hong Kong</option>
+                        <option value="KR">South Korea</option>
+                        <option value="MY">Malaysia</option>
+                        <option value="TH">Thailand</option>
+                        <option value="PH">Philippines</option>
+                        <option value="ID">Indonesia</option>
+                        <option value="VN">Vietnam</option>
+                        <option value="IN">India</option>
+                    </optgroup>
+                    <optgroup label="Latin America">
+                        <option value="BR">Brazil</option>
+                        <option value="AR">Argentina</option>
+                        <option value="CL">Chile</option>
+                        <option value="CO">Colombia</option>
+                    </optgroup>
+                    <optgroup label="Africa">
+                        <option value="ZA">South Africa</option>
+                    </optgroup>
                 </select>
 
                 <p id="contact-step-error" class="contact-step-error" style="display:none"></p>
-                <button id="btn-continue-to-payment" onclick="submitContactStep()">Continue to Payment →</button>
+            </div>
+
+            <!-- Order summary — placed BELOW the contact form so customer enters country first
+                 (shipping cost + total update live as country changes). Reordered 2026-05-02. -->
+            <div class="paypal-order-summary" id="paypal-order-summary"></div>
+            <div class="coupon-row">
+                <input type="text" id="coupon-input" placeholder="Coupon code" maxlength="20" autocomplete="off"
+                    oninput="this.value=this.value.toUpperCase()">
+                <button class="coupon-apply-btn" onclick="applyCoupon()">Apply</button>
+            </div>
+            <div id="coupon-feedback" class="coupon-feedback"></div>
+
+            <!-- Continue button moved out of contact-step and below summary, so the
+                 'Pay' click happens AFTER the customer has confirmed total + country. -->
+            <div id="contact-continue-row">
+                <button id="btn-continue-to-payment" onclick="submitContactStep()" style="width:100%;padding:14px;background:#c8a96e;color:#0d0d0d;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-top:14px">Continue to Payment →</button>
             </div>
 
             <!-- Step 2: Payment (shown after contact details filled) -->

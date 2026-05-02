@@ -74,14 +74,13 @@ let USD_TO_ILS = 3.63; // fallback — updated daily from API
   } catch(e) { /* keep fallback */ }
 })();
 function formatPrice(usdPrice) {
-  if (currentLang === 'he') {
-    return '₪' + Math.round(usdPrice * USD_TO_ILS);
-  }
+  // 2026-05-02: brand is US-only — always show USD on customer-facing UI.
+  // Cart total + shipping + PayPal are all in USD; mixing ₪ with $ caused
+  // confusion in checkout (oren spotted: items in ₪, total in $).
   return '$' + usdPrice;
 }
 function freeShippingThreshold() {
-  const ilsThreshold = Math.round(60 * USD_TO_ILS);
-  return currentLang === 'he' ? '₪' + ilsThreshold : '$60';
+  return '$60';
 }
 
 // ===== COMPREHENSIVE TRANSLATIONS =====
@@ -248,6 +247,8 @@ function translateUI(lang) {
 
   document.body.dir = lang === 'he' ? 'rtl' : 'ltr';
   document.documentElement.lang = lang;
+  // Brand mark must always read DUBIS™ left-to-right, regardless of page direction.
+  document.querySelectorAll('.logo-text, .footer-logo, .about-mark').forEach(el => { el.setAttribute('dir', 'ltr'); });
 
   // Nav links
   const navLinks = qa('.nav-links a');

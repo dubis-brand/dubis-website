@@ -16,16 +16,32 @@ const FREE_SHIPPING_THRESHOLD = 60;
 // (which until launch are mostly oren+amos+family in Israel — the audit
 //  on 2026-05-01 showed 100% of orders had country_code=IL and we were
 //  losing ~$3.88 per order on shipping alone).
+// Per-country shipping (Gelato ships to 80+ countries). Expanded 2026-05-02
+// after oren confirmed the US-only block was killing intl friend-of-brand orders.
+// Rates are slightly above Gelato's actual cost so we don't bleed margin on intl.
 const SHIPPING_FEE_BY_COUNTRY = {
-    US:  8.99,
-    CA: 12.99,
-    GB: 12.99,
-    AU: 14.99,
-    IL: 14.99,
+    // North America
+    US: 8.99, CA: 12.99, MX: 16.99,
+    // UK + Europe
+    GB: 12.99, IE: 12.99, DE: 12.99, FR: 12.99, IT: 12.99, ES: 12.99, NL: 12.99,
+    PL: 12.99, SE: 12.99, NO: 14.99, DK: 12.99, FI: 14.99, BE: 12.99, AT: 12.99,
+    CH: 14.99, PT: 12.99, GR: 14.99, CZ: 14.99, HU: 14.99, RO: 14.99, BG: 14.99,
+    // Oceania
+    AU: 14.99, NZ: 14.99,
+    // Middle East
+    IL: 14.99, AE: 16.99, SA: 16.99, TR: 14.99,
+    // Asia
+    JP: 16.99, SG: 16.99, HK: 16.99, KR: 16.99, MY: 16.99, TH: 16.99, PH: 16.99,
+    ID: 16.99, VN: 16.99, IN: 16.99,
+    // Latin America
+    BR: 19.99, AR: 19.99, CL: 19.99, CO: 19.99,
+    // Africa
+    ZA: 19.99,
 };
+const FALLBACK_INTL_SHIPPING = 19.99; // any other country Gelato accepts
 function getShippingFee(country) {
     const c = (country || 'US').toUpperCase();
-    return SHIPPING_FEE_BY_COUNTRY[c] != null ? SHIPPING_FEE_BY_COUNTRY[c] : 14.99;
+    return SHIPPING_FEE_BY_COUNTRY[c] != null ? SHIPPING_FEE_BY_COUNTRY[c] : FALLBACK_INTL_SHIPPING;
 }
 
 let paypalLoaded = false;
@@ -87,10 +103,12 @@ async function checkout() {
     if (cpInput) cpInput.value = '';
     if (cpFb) { cpFb.textContent = ''; cpFb.className = 'coupon-feedback'; }
 
-    // Show contact step, hide payment step
+    // Show contact step + continue button, hide payment step
     const contactStep  = document.getElementById('contact-step');
     const paymentStep  = document.getElementById('payment-step');
+    const continueRow  = document.getElementById('contact-continue-row');
     if (contactStep) contactStep.style.display = '';
+    if (continueRow) continueRow.style.display = '';
     if (paymentStep) paymentStep.style.display  = 'none';
 
     // Pre-fill contact fields if user is logged in
@@ -196,8 +214,10 @@ async function submitContactStep() {
         country_code:   ctry,
     };
 
-    // Hide contact step, show payment step
+    // Hide contact step + the continue button row, show payment step
     document.getElementById('contact-step').style.display  = 'none';
+    const continueRow = document.getElementById('contact-continue-row');
+    if (continueRow) continueRow.style.display = 'none';
     document.getElementById('payment-step').style.display  = '';
 
     // Render PayPal
