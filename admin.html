@@ -6670,22 +6670,39 @@
   }
 
   // ── PRODUCT CREATOR ────────────────────────────────────
+  // 2026-05-02: added 90s AbortController timeout. Old code had no timeout —
+  // when the agents fn (212KB legacy) hung, the button stayed "...מייצר" forever
+  // with no error feedback (oren stuck on this 2026-05-02).
   window.generateSlogans = async function generateSlogans() {
     if (!confirm('לייצר 3 הצעות סלוגנים חדשים?')) return;
     const btn = event.target;
-    btn.disabled = true; btn.textContent = '...מייצר';
+    const originalText = btn.textContent;
+    btn.disabled = true; btn.textContent = '...מייצר (עד 90 שניות)';
+    const ctrl = new AbortController();
+    const timeoutId = setTimeout(() => ctrl.abort(), 90_000);
     try {
       const { data: { session } } = await _sb.auth.getSession();
       const res = await fetch(AGENTS_BASE + '?type=generate-slogan', {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' }
+        headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+        signal: ctrl.signal,
       });
+      clearTimeout(timeoutId);
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${errText.slice(0, 200) || res.statusText}`);
+      }
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      alert('נוצרו ' + data.count + ' הצעות סלוגנים! עבור ללשונית מוצרים לאישור.');
-      showProductSuggestions();
-    } catch(e) { alert('שגיאה: ' + e.message); }
-    finally { btn.disabled = false; btn.textContent = '+ סלוגן חדש'; }
+      alert('נוצרו ' + (data.count ?? '?') + ' הצעות סלוגנים! עבור ללשונית מוצרים לאישור.');
+      if (typeof showProductSuggestions === 'function') showProductSuggestions();
+    } catch(e) {
+      clearTimeout(timeoutId);
+      const msg = e.name === 'AbortError' ? 'תהליך הייצור נתקע (יותר מ-90 שניות). הסוכן הישן (agents fn) כנראה תקוע — נדרש דיבוג של Gemini API key או של ה-edge function.' : e.message;
+      alert('שגיאה ביצירת סלוגנים: ' + msg);
+      console.error('generateSlogans error:', e);
+    }
+    finally { btn.disabled = false; btn.textContent = originalText; }
   }
 
   window.runSecurityScan = async function runSecurityScan() {
