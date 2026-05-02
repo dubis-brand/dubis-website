@@ -1835,6 +1835,11 @@
           <button class="gender-filter-tab" onclick="filterProductCards('men',this)">Men</button>
           <button class="gender-filter-tab" onclick="filterProductCards('women',this)">Women</button>
         </div>
+        <div class="gender-filter-tabs" style="margin-top:8px">
+          <button class="gender-filter-tab stock-filter-tab active" onclick="filterProductsByStock('all',this)">📦 הכל</button>
+          <button class="gender-filter-tab stock-filter-tab" onclick="filterProductsByStock('in_stock',this)" style="border-color:#27ae60;color:#27ae60">✅ במלאי</button>
+          <button class="gender-filter-tab stock-filter-tab" onclick="filterProductsByStock('oos',this)" style="border-color:#c0392b;color:#c0392b">❌ אזל</button>
+        </div>
       </div>
     </div>
     <div class="loading" id="products-loading" style="display:none">Loading catalog… 🐾</div>
@@ -3324,8 +3329,37 @@
     }
 
     loadingEl.style.display = 'none';
+    // Load stock info before rendering — admin needs to show in-stock/OOS badges
+    await _loadStockDataForAdmin();
     renderProductCards();
     renderProductsWithPrices(_allProducts);
+  }
+
+  // Fetches in_stock totals per product from product_variant_stock + annotates _allProducts
+  let _productStockStatus = {}; // {pid: {total, inStock, hasData}}
+  async function _loadStockDataForAdmin() {
+    try {
+      const { data, error } = await _sb.from('product_variant_stock').select('product_id_numeric,in_stock');
+      if (error || !Array.isArray(data)) return;
+      _productStockStatus = {};
+      for (const row of data) {
+        const pid = row.product_id_numeric;
+        if (!_productStockStatus[pid]) _productStockStatus[pid] = { total: 0, inStock: 0, hasData: true };
+        _productStockStatus[pid].total++;
+        if (row.in_stock) _productStockStatus[pid].inStock++;
+      }
+      // Mark products without any stock rows as no-data (will be considered visible)
+      _allProducts.forEach(p => {
+        if (!_productStockStatus[p.id]) _productStockStatus[p.id] = { total: 0, inStock: 0, hasData: false };
+      });
+    } catch (e) { console.warn('admin stock load failed', e); }
+  }
+  function _stockSummary(pid) {
+    const s = _productStockStatus[pid];
+    if (!s || !s.hasData) return { label: '? לא נבדק', color: '#888', badge: 'unknown', visible: true };
+    if (s.inStock === 0) return { label: 'אזל', color: '#c0392b', badge: 'oos', visible: false };
+    if (s.inStock === s.total) return { label: 'במלאי', color: '#27ae60', badge: 'in_stock', visible: true };
+    return { label: s.inStock + '/' + s.total + ' במלאי', color: '#d4af37', badge: 'partial', visible: true };
   }
 
   function filterProductCards(gender, btn) {
@@ -3335,11 +3369,26 @@
     renderProductCards();
   }
 
+  let _productsStockFilter = 'all'; // 'all' | 'in_stock' | 'oos'
+  function filterProductsByStock(val, btn) {
+    _productsStockFilter = val;
+    document.querySelectorAll('.stock-filter-tab').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderProductCards();
+  }
   function renderProductCards() {
     const grid = document.getElementById('products-grid');
-    const filtered = _productsGender === 'all'
+    let filtered = _productsGender === 'all'
       ? _allProducts
       : _allProducts.filter(p => p.gender === _productsGender);
+    if (_productsStockFilter !== 'all') {
+      filtered = filtered.filter(p => {
+        const s = _stockSummary(p.id);
+        if (_productsStockFilter === 'in_stock') return s.badge === 'in_stock' || s.badge === 'partial' || s.badge === 'unknown';
+        if (_productsStockFilter === 'oos') return s.badge === 'oos';
+        return true;
+      });
+    }
 
     if (filtered.length === 0) {
       grid.innerHTML = '<div class="empty">No products found.</div>';
@@ -3368,7 +3417,7 @@
       const cardImgHtml = `
         <div class="product-img-wrapper" style="position:relative">
           <img id="pimg-${p.id}" src="${_defaultImg}" class="product-preview-img" alt="${p.phrase}" loading="lazy"
-               onerror="this.src='images/product-${p.id}.jpg';this.onerror=null">
+               onerror="this.onerror=null;this.src='images/product-${p.id}.jpg';this.onerror=()=>{this.onerror=null;this.src='${(p.image||'').replace(/'/g,'')}'}">
           <div class="fb-toggle">
             <button class="fb-btn active" onclick="switchProductSide(${p.id},'front',this)">Front</button>
             <button class="fb-btn"        onclick="switchProductSide(${p.id},'back', this)">Back</button>
@@ -3383,6 +3432,7 @@
           <div class="product-id-row">
             <span class="product-id">#${p.id} · ${p.typeLabel}</span>
             <span class="product-gender-badge ${genderClass}">${genderLabel}</span>
+            <span class="product-stock-badge" style="background:${_stockSummary(p.id).color}22;color:${_stockSummary(p.id).color};border:1px solid ${_stockSummary(p.id).color}66;border-radius:4px;padding:2px 6px;font-size:0.7rem;font-weight:600;margin-inline-start:4px">${_stockSummary(p.id).label}</span>
           </div>
           <div class="product-phrase">"${p.phrase}"</div>
           <div class="product-meta">$${p.price} · ${p.typeLabel}</div>
