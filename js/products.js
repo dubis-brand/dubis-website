@@ -452,3 +452,121 @@ const products = [
         sizeGuide: SIZE_GUIDE_LONGSLEEVE
     },
 ];
+
+// ──────────────────────────────────────────────────────────────────────
+// DB SYNC (added 2026-05-02) — `dubis_products` table is the source of truth
+//
+// The hardcoded array above is the **fallback baseline** (last known good).
+// On script load we fetch active products from Supabase and replace the
+// contents of the `products` array in-place. Filters out products that have
+// zero in-stock variants, so OOS items disappear from the customer site
+// without being removed from admin (per oren 2026-05-02).
+//
+// NOTE: the `sync-products` endpoint in the agents fn rewrites this file
+// after approve-product. It strips this block. If you see the loader
+// missing, redeploy this commit. Real fix: disable sync-products since
+// the DB loader makes it redundant.
+// ──────────────────────────────────────────────────────────────────────
+
+(function () {
+  const TYPE_INFO = {
+    tshirt: {
+      typeLabel: 'T-Shirt', sizes: SIZES_TSHIRT, sizeGuide: SIZE_GUIDE_TSHIRT,
+      fabric: '100% combed ring-spun cotton', fit: 'Unisex, regular fit',
+      printMethod: 'DTG — Direct-to-Garment', printAreas: ['Front', 'Back'],
+      care: CARE_TSHIRT, care_he: CARE_TSHIRT_HE,
+    },
+    hoodie: {
+      typeLabel: 'Hoodie', sizes: SIZES_HOODIE, sizeGuide: SIZE_GUIDE_HOODIE,
+      fabric: '80% cotton, 20% polyester — heavyweight fleece', fit: 'Unisex, relaxed fit',
+      printMethod: 'DTG — Direct-to-Garment', printAreas: ['Front', 'Back'],
+      care: CARE_HOODIE, care_he: CARE_HOODIE_HE,
+    },
+    ziphoodie: {
+      typeLabel: 'Zip Hoodie', sizes: SIZES_HOODIE, sizeGuide: SIZE_GUIDE_HOODIE,
+      fabric: '80% cotton, 20% polyester — heavyweight fleece', fit: 'Unisex, regular fit',
+      printMethod: 'DTG — Direct-to-Garment', printAreas: ['Front', 'Back'],
+      care: CARE_HOODIE, care_he: CARE_HOODIE_HE,
+    },
+    longsleeve: {
+      typeLabel: 'Long-Sleeve', sizes: SIZES_LONGSLEEVE, sizeGuide: SIZE_GUIDE_LONGSLEEVE,
+      fabric: '100% combed ring-spun cotton', fit: 'Unisex, regular fit',
+      printMethod: 'DTG — Direct-to-Garment', printAreas: ['Front', 'Back'],
+      care: CARE_TSHIRT, care_he: CARE_TSHIRT_HE,
+    },
+    cap: {
+      typeLabel: 'Cap', sizes: SIZES_CAP,
+      sizeGuide: [{ size: 'One Size', note: 'Adjustable strap, fits most head sizes' }],
+      fabric: '100% chino cotton twill, unstructured', fit: 'One Size, adjustable strap',
+      printMethod: 'Embroidery', printAreas: ['Front'],
+      care: ['Spot clean only', 'Do not machine wash', 'Do not tumble dry', 'Reshape and air dry'],
+      care_he: CARE_CAP_HE,
+    },
+  };
+
+  function mapDbRow(row) {
+    const rawType = String(row.clothing_type || '').trim();
+    const type = rawType.replace(/-/g, '');
+    const info = TYPE_INFO[type];
+    if (!info) return null;
+    const pid = row.product_id_numeric;
+    return {
+      id: pid,
+      phrase: row.slogan || '',
+      type,
+      typeLabel: info.typeLabel,
+      gender: row.gender || 'unisex',
+      price: Number(row.price_usd) || 0,
+      // Use Storage bucket URL if approve-product set image_url, else local /images/.
+      // Newer products (17+) have AI-generated mockups in Storage; older 1-14 are
+      // baked into the repo at /images/product-N.jpg.
+      image: row.image_url || `images/product-${pid}.jpg`,
+      colors: Array.isArray(row.colors) ? row.colors : [],
+      sizes: info.sizes,
+      description: row.description_en || '',
+      description_he: row.description_he || '',
+      fabric: info.fabric, fit: info.fit,
+      printMethod: info.printMethod, printAreas: info.printAreas,
+      care: info.care, care_he: info.care_he,
+      sizeGuide: info.sizeGuide,
+    };
+  }
+
+  async function loadFromDB() {
+    const baseUrl = window.DUBIS_SUPABASE_URL || '';
+    const key = window.DUBIS_SUPABASE_ANON || '';
+    if (!baseUrl || !key) { console.warn('[DUBIS] Supabase config missing'); return false; }
+    const headers = { apikey: key, Authorization: 'Bearer ' + key };
+    try {
+      const [pRes, sRes] = await Promise.all([
+        fetch(baseUrl + '/rest/v1/dubis_products?active=eq.true&select=*&order=product_id_numeric.asc', { headers }),
+        fetch(baseUrl + '/rest/v1/product_variant_stock?in_stock=eq.true&select=product_id_numeric', { headers }),
+      ]);
+      if (!pRes.ok) { console.warn('[DUBIS] dubis_products fetch failed', pRes.status); return false; }
+      const rows = await pRes.json();
+      if (!Array.isArray(rows) || rows.length === 0) { return false; }
+      let inStockIds = null;
+      if (sRes.ok) {
+        const stockRows = await sRes.json();
+        inStockIds = new Set((stockRows || []).map(r => r.product_id_numeric));
+      }
+      const mapped = rows
+        .filter(row => inStockIds === null || inStockIds.has(row.product_id_numeric))
+        .map(mapDbRow)
+        .filter(Boolean);
+      if (mapped.length === 0) { return false; }
+      products.length = 0;
+      for (const p of mapped) products.push(p);
+      const hidden = rows.length - mapped.length;
+      console.log('[DUBIS] catalog from DB:', mapped.length, 'visible,', hidden, 'OOS hidden');
+      if (typeof renderProducts === 'function') { try { renderProducts(); } catch (e) {} }
+      if (typeof injectProductStructuredData === 'function') { try { injectProductStructuredData(); } catch (e) {} }
+      return true;
+    } catch (e) {
+      console.warn('[DUBIS] dubis_products fetch threw', e.message);
+      return false;
+    }
+  }
+
+  window.dubisProductsReady = loadFromDB();
+})();
