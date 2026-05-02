@@ -6727,9 +6727,10 @@
     const orig = btn.textContent;
     btn.disabled = true; btn.textContent = '⏳';
     try {
+      const { data: { session: sess } } = await _sb.auth.getSession();
       const r = await fetch(window.DUBIS_SUPABASE_URL + '/functions/v1/dubis-mockup-front?product_id=' + productId, {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + (window.DUBIS_SUPABASE_ANON || ''), 'Content-Type': 'application/json' },
+        headers: { 'Authorization': 'Bearer ' + (sess?.access_token || ''), 'Content-Type': 'application/json' },
       });
       if (!r.ok) {
         const t = await r.text().catch(() => '');
@@ -6915,9 +6916,11 @@
         // text design from the legacy approve-product handler) becomes the primary.
         let frontStatus = '';
         try {
+          // Use the admin's user JWT (not anon) so dubis-mockup-front's auth.getUser succeeds
+          const { data: { session: sess2 } } = await _sb.auth.getSession();
           const fr = await fetch(window.DUBIS_SUPABASE_URL + '/functions/v1/dubis-mockup-front?product_id=' + pid, {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + (window.DUBIS_SUPABASE_ANON || ''), 'Content-Type': 'application/json' },
+            headers: { 'Authorization': 'Bearer ' + (sess2?.access_token || ''), 'Content-Type': 'application/json' },
             body: JSON.stringify({ color: (data.product?.colors || ['Black'])[0] }),
           });
           if (fr.ok) {
