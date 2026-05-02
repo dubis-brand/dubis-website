@@ -352,3 +352,135 @@ const products = [
         sizeGuide: SIZE_GUIDE_LONGSLEEVE
     },
 ];
+
+// ──────────────────────────────────────────────────────────────────────
+// DB SYNC (added 2026-05-02) — `dubis_products` table is the source of truth
+//
+// The hardcoded array above is the **fallback baseline** (last known good).
+// On script load we fetch active products from Supabase and replace the
+// contents of the `products` array in-place. This way:
+//   - stock-monitor's auto-restore (active=true on stock return) takes effect
+//     immediately on the customer site without requiring a redeploy
+//   - active=false products vanish from the UI without code edits
+//   - if DB fetch fails, we silently keep the hardcoded fallback
+// ──────────────────────────────────────────────────────────────────────
+
+(function () {
+  // Type-derived constants for DB rows (DB only stores clothing_type, not the
+  // associated fabric/care/size data — those are brand constants).
+  const TYPE_INFO = {
+    tshirt: {
+      typeLabel: 'T-Shirt', sizes: SIZES_TSHIRT, sizeGuide: SIZE_GUIDE_TSHIRT,
+      fabric: '100% combed ring-spun cotton', fit: 'Unisex, regular fit',
+      printMethod: 'DTG — Direct-to-Garment', printAreas: ['Front', 'Back'],
+      care: CARE_TSHIRT, care_he: CARE_TSHIRT_HE,
+    },
+    hoodie: {
+      typeLabel: 'Hoodie', sizes: SIZES_HOODIE, sizeGuide: SIZE_GUIDE_HOODIE,
+      fabric: '80% cotton, 20% polyester — heavyweight fleece', fit: 'Unisex, relaxed fit',
+      printMethod: 'DTG — Direct-to-Garment', printAreas: ['Front', 'Back'],
+      care: CARE_HOODIE, care_he: CARE_HOODIE_HE,
+    },
+    ziphoodie: {
+      typeLabel: 'Zip Hoodie', sizes: SIZES_HOODIE, sizeGuide: SIZE_GUIDE_HOODIE,
+      fabric: '80% cotton, 20% polyester — heavyweight fleece', fit: 'Unisex, regular fit',
+      printMethod: 'DTG — Direct-to-Garment', printAreas: ['Front', 'Back'],
+      care: CARE_HOODIE, care_he: CARE_HOODIE_HE,
+    },
+    longsleeve: {
+      typeLabel: 'Long-Sleeve', sizes: SIZES_LONGSLEEVE, sizeGuide: SIZE_GUIDE_LONGSLEEVE,
+      fabric: '100% combed ring-spun cotton', fit: 'Unisex, regular fit',
+      printMethod: 'DTG — Direct-to-Garment', printAreas: ['Front', 'Back'],
+      care: CARE_TSHIRT, care_he: CARE_TSHIRT_HE,
+    },
+    cap: {
+      typeLabel: 'Cap', sizes: SIZES_CAP,
+      sizeGuide: [{ size: 'One Size', note: 'Adjustable strap, fits most head sizes' }],
+      fabric: '100% chino cotton twill, unstructured', fit: 'One Size, adjustable strap',
+      printMethod: 'Embroidery', printAreas: ['Front'],
+      care: ['Spot clean only', 'Do not machine wash', 'Do not tumble dry', 'Reshape and air dry'],
+      care_he: CARE_CAP_HE,
+    },
+  };
+
+  function mapDbRow(row) {
+    const rawType = String(row.clothing_type || '').trim();
+    // 't-shirt' → 'tshirt', 'long-sleeve' → 'longsleeve', 'zip-hoodie' → 'ziphoodie'
+    const type = rawType.replace(/-/g, '');
+    const info = TYPE_INFO[type];
+    if (!info) return null;
+    const pid = row.product_id_numeric;
+    return {
+      id: pid,
+      phrase: row.slogan || '',
+      type,
+      typeLabel: info.typeLabel,
+      gender: row.gender || 'unisex',
+      price: Number(row.price_usd) || 0,
+      image: `images/product-${pid}.jpg`,
+      colors: Array.isArray(row.colors) ? row.colors : [],
+      sizes: info.sizes,
+      description: row.description_en || '',
+      description_he: row.description_he || '',
+      fabric: info.fabric, fit: info.fit,
+      printMethod: info.printMethod, printAreas: info.printAreas,
+      care: info.care, care_he: info.care_he,
+      sizeGuide: info.sizeGuide,
+    };
+  }
+
+  async function loadFromDB() {
+    const baseUrl = window.DUBIS_SUPABASE_URL || '';
+    const key = window.DUBIS_SUPABASE_ANON || '';
+    if (!baseUrl || !key) { console.warn('[DUBIS] Supabase config missing, using fallback products'); return false; }
+    const headers = { apikey: key, Authorization: 'Bearer ' + key };
+    try {
+      // Customer site shows products that are BOTH (a) active=true AND (b) have at least one
+      // in-stock variant. OOS products keep active=true so they remain visible in admin and
+      // auto-return to the site when Gelato stock comes back. Per oren 2026-05-02.
+      const [pRes, sRes] = await Promise.all([
+        fetch(baseUrl + '/rest/v1/dubis_products?active=eq.true&select=*&order=product_id_numeric.asc', { headers }),
+        fetch(baseUrl + '/rest/v1/product_variant_stock?in_stock=eq.true&select=product_id_numeric', { headers }),
+      ]);
+      if (!pRes.ok) { console.warn('[DUBIS] dubis_products fetch failed', pRes.status); return false; }
+      const rows = await pRes.json();
+      if (!Array.isArray(rows) || rows.length === 0) { console.warn('[DUBIS] dubis_products empty'); return false; }
+
+      // Build set of product_ids that have ≥1 in-stock variant. If stock fetch fails,
+      // fall back to "show everything active=true" rather than hiding the whole catalog.
+      let inStockIds = null;
+      if (sRes.ok) {
+        const stockRows = await sRes.json();
+        inStockIds = new Set((stockRows || []).map(r => r.product_id_numeric));
+      } else {
+        console.warn('[DUBIS] product_variant_stock fetch failed', sRes.status, '— showing all active products');
+      }
+
+      const mapped = rows
+        .filter(row => inStockIds === null || inStockIds.has(row.product_id_numeric))
+        .map(mapDbRow)
+        .filter(Boolean);
+      if (mapped.length === 0) { console.warn('[DUBIS] no in-stock rows mapped — keeping fallback'); return false; }
+
+      // Replace contents IN-PLACE so other code holding reference to `products` sees the update.
+      products.length = 0;
+      for (const p of mapped) products.push(p);
+      const hidden = rows.length - mapped.length;
+      console.log('[DUBIS] catalog from DB:', mapped.length, 'products visible,', hidden, 'OOS hidden');
+      // Re-render if main.js already painted with the fallback array.
+      if (typeof renderProducts === 'function') {
+        try { renderProducts(); } catch (e) { /* page might not be ready */ }
+      }
+      if (typeof injectProductStructuredData === 'function') {
+        try { injectProductStructuredData(); } catch (e) { /* non-critical */ }
+      }
+      return true;
+    } catch (e) {
+      console.warn('[DUBIS] dubis_products fetch threw', e.message);
+      return false;
+    }
+  }
+
+  // Expose a Promise so other code (main.js bootstrap) can await it before first render.
+  window.dubisProductsReady = loadFromDB();
+})();
