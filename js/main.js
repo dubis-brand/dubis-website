@@ -74,13 +74,25 @@ let USD_TO_ILS = 3.63; // fallback — updated daily from API
   } catch(e) { /* keep fallback */ }
 })();
 function formatPrice(usdPrice) {
-  // 2026-05-02: brand is US-only — always show USD on customer-facing UI.
-  // Cart total + shipping + PayPal are all in USD; mixing ₪ with $ caused
-  // confusion in checkout (oren spotted: items in ₪, total in $).
+  // 2026-05-02 (revised): Hebrew → ₪ everywhere, English → $ everywhere.
+  // Earlier same-day fix forced everything to USD which over-corrected.
+  // Right design: language toggle controls currency consistently across
+  // product cards, cart line items, cart total, AND shipping. PayPal still
+  // charges USD always — customer sees a "PayPal will charge $X (≈₪Y)" note
+  // in the checkout modal.
+  if (currentLang === 'he') {
+    return '₪' + Math.round(usdPrice * USD_TO_ILS);
+  }
   return '$' + usdPrice;
 }
 function freeShippingThreshold() {
-  return '$60';
+  const ilsThreshold = Math.round(60 * USD_TO_ILS);
+  return currentLang === 'he' ? '₪' + ilsThreshold : '$60';
+}
+// Helpers used by cart total + shipping rows so the whole cart stays in one currency.
+function formatPriceFloat(usdPrice) {
+  if (currentLang === 'he') return '₪' + Math.round(usdPrice * USD_TO_ILS);
+  return '$' + Number(usdPrice).toFixed(2);
 }
 
 // ===== COMPREHENSIVE TRANSLATIONS =====
@@ -187,8 +199,8 @@ const translations = {
     modal_returns: '↩️ פגם? מוצר שגוי? מחזירים בלי סיבוכים.',
     modal_add: 'זה שלי 🐾',
     tab_details: 'פרטים', tab_size: 'מדריך מידות', tab_care: 'טיפול',
-    shipping_note: '✈️ + משלוח · חינם מ-$60',
-    modal_ships: '🚚 משלוח תוך 5–9 ימי עסקים', modal_free_ship: 'משלוח חינם מעל $60',
+    shipping_note: '✈️ + משלוח · חינם מעל ₪222',
+    modal_ships: '🚚 משלוח תוך 5–9 ימי עסקים', modal_free_ship: 'משלוח חינם מעל ₪222',
     modal_dtg: 'DTG — הדפסה ישירה על הבד',
     modal_fabric: 'בד', modal_fit: 'גזרה', modal_print: 'הדפסה', modal_print_areas: 'אזורי הדפסה',
     size_size: 'מידה', size_chest: 'חזה (ס"מ)', size_length: 'אורך (ס"מ)',
@@ -906,13 +918,19 @@ function renderCart() {
 
   if (cart.length === 0) {
     cartItems.innerHTML = `<p class="cart-empty">${t.cart_empty}</p>`;
-    cartTotal.textContent = '0';
+    const totalParentEmpty = cartTotal.parentElement;
+    if (totalParentEmpty) totalParentEmpty.textContent = (currentLang === 'he' ? 'סה"כ: ' : 'Total: ') + (currentLang === 'he' ? '₪0' : '$0');
     return;
   }
 
-  cartItems.innerHTML = cart.map((item, index) => `
+  cartItems.innerHTML = cart.map((item, index) => {
+    // Color-specific cart thumbnail. Customer who bought Navy/White must SEE the
+    // colored item, not the default black photo (oren bug 2026-05-02).
+    const colorFile = (item.selectedColor || '').replace(/\s+/g, '-');
+    const variantImg = colorFile ? `images/product-${item.id}-${colorFile}-front.jpg` : item.image;
+    return `
     <div class="cart-item">
-      <img src="${item.image}" alt="${item.phrase}" class="cart-item-img" />
+      <img src="${variantImg}" alt="${item.phrase}" class="cart-item-img" onerror="this.onerror=null;this.src='${item.image}'" />
       <div class="cart-item-info">
         <div class="cart-item-name">"${item.phrase}"</div>
         <div class="cart-item-type">${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}</div>
@@ -922,9 +940,15 @@ function renderCart() {
         <button class="cart-item-remove" onclick="removeFromCart(${index})">✕</button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
-  cartTotal.textContent = cart.reduce((sum, item) => sum + item.price, 0);
+  // Set the total WITH currency symbol so the cart matches the language.
+  // Also rewrite the "Total:" label prefix to remove the hardcoded "$" from HTML.
+  const total = cart.reduce((sum, item) => sum + item.price, 0);
+  cartTotal.textContent = '';
+  const totalParent = cartTotal.parentElement;
+  if (totalParent) totalParent.textContent = (currentLang === 'he' ? 'סה"כ: ' : 'Total: ') + formatPrice(total);
 }
 
 function removeFromCart(index) {

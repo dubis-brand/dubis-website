@@ -545,13 +545,31 @@ const products = [
       if (!pRes.ok) { console.warn('[DUBIS] dubis_products fetch failed', pRes.status); return false; }
       const rows = await pRes.json();
       if (!Array.isArray(rows) || rows.length === 0) { return false; }
-      let inStockIds = null;
+      // Build sets of (a) products with stock data at all, (b) products with ≥1 in-stock variant.
+      // A newly-approved product has NO stock rows yet (stock-check hasn't run on it). We
+      // give those benefit-of-doubt and SHOW them — otherwise oren approves a product and
+      // it's invisible until the daily stock-check fires (oren bug 2026-05-02).
+      let stockedIds = null, inStockIds = null;
       if (sRes.ok) {
         const stockRows = await sRes.json();
         inStockIds = new Set((stockRows || []).map(r => r.product_id_numeric));
+        // Also fetch the full set of products that HAVE any stock row (to detect "no data" case)
+        try {
+          const allStockRes = await fetch(baseUrl + '/rest/v1/product_variant_stock?select=product_id_numeric', { headers });
+          if (allStockRes.ok) {
+            const allRows = await allStockRes.json();
+            stockedIds = new Set((allRows || []).map(r => r.product_id_numeric));
+          }
+        } catch (e) { stockedIds = null; }
       }
       const mapped = rows
-        .filter(row => inStockIds === null || inStockIds.has(row.product_id_numeric))
+        .filter(row => {
+          // Show product if: (a) no stock fetch at all → show all; (b) no stock data for this
+          // product yet → show (newly approved); (c) at least one in_stock variant → show.
+          if (inStockIds === null) return true;
+          if (stockedIds !== null && !stockedIds.has(row.product_id_numeric)) return true; // never checked yet
+          return inStockIds.has(row.product_id_numeric);
+        })
         .map(mapDbRow)
         .filter(Boolean);
       if (mapped.length === 0) { return false; }
