@@ -1292,11 +1292,8 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
     const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
-    const anonKey     = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
     const token = url.searchParams.get('token') || req.headers.get('x-agent-secret') || (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim() || '';
-    // Task #40 regen — temp anon acceptance for pg_net path. Revert after all 4 tasks regenerated + verified.
-    const devRegen = url.searchParams.get('dev_regen_task40') === '1' && anonKey && token === anonKey;
-    const isAuthed = (svcKey && token === svcKey) || (cronSecret && token === cronSecret) || (agentSecret && token === agentSecret) || devRegen;
+    const isAuthed = (svcKey && token === svcKey) || (cronSecret && token === cronSecret) || (agentSecret && token === agentSecret);
     const adminOk = await verifyAdmin(req);
     if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
 
@@ -1307,8 +1304,26 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
     ]);
     type Task = Record<string, unknown>;
     const allTasks = [...(approvedTasks || []), ...(pendingTasks || [])];
-    const tasks = allTasks.filter((t: Task) => !((t.content_data as Task)?.generated_image_url as string)?.includes('supabase.co'));
-    if (!tasks.length) return json({ queued: 0, summary: 'All content tasks already have Supabase images ✅' });
+    // 2026-05-03 fix: skip noise (boss-agent team-meeting / admin tasks accidentally
+    // tagged agent_id='content'). A real post task must carry at least format,
+    // product_id, or product_slogan. Anything else is a misrouted admin TODO.
+    const looksLikePostTask = (t: Task) => {
+      const cd = (t.content_data as Task) || {};
+      return !!(cd.format || cd.product_id || cd.product_slogan || cd.caption_en || cd.caption_he);
+    };
+    const skipped = allTasks.filter((t: Task) => !looksLikePostTask(t));
+    const tasks = allTasks.filter((t: Task) => looksLikePostTask(t) && !((t.content_data as Task)?.generated_image_url as string)?.includes('supabase.co'));
+    // Mark misrouted tasks so they stop blocking — change agent_id to 'oren' (admin queue)
+    // so they show in the admin pending list but don't pollute content queue counters.
+    if (skipped.length) {
+      const ids = skipped.map((t: Task) => t.id);
+      await sb.from('agent_tasks').update({
+        agent_id: 'oren',
+        notes: 'Auto-rerouted from content → oren: task has no post payload (format/product_slogan/caption). Created by team-meeting or admin agent.',
+        updated_at: new Date().toISOString(),
+      }).in('id', ids as string[]);
+    }
+    if (!tasks.length) return json({ queued: 0, rerouted: skipped.length, summary: 'All content tasks already have Supabase images ✅' });
 
     const batch = tasks.slice(0, 1);
     const now = new Date().toISOString();
@@ -1619,8 +1634,14 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
         // Note: the product URL is appended at PUBLISH time (shopLineIG/FB), not here —
         // so caption_en stays clean and the publish step adds the clickable shop line.
         const finalCapEn = gen.caption_en || (cd.caption_en as string) || '';
+        const finalImageUrl = imageUrl || (cd.generated_image_url as string) || '';
         const hasCaption = !!finalCapEn;
-        const newStatus = hasCaption ? 'pending_approval' : 'in_progress';
+        const hasFinalImg = !!finalImageUrl;
+        // 2026-05-03 fix: never advance to pending_approval without BOTH caption AND image.
+        // publish-ready blocks no-image tasks anyway, and QA was approving them at 80/100
+        // because image is only 20pts of the score → tasks rotted in 'approved' forever.
+        // Stay in_progress so the next content-run cron retries Gemini image gen.
+        const newStatus = (hasCaption && hasFinalImg) ? 'pending_approval' : 'in_progress';
         await sb.from('agent_tasks').update({
           status: newStatus,
           // Strip any legacy caption_he that may have been saved before the US pivot.
@@ -1631,18 +1652,24 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
             caption_en: finalCapEn,
             hashtags: gen.hashtags || (cd.hashtags as string) || '',
             image_prompt: gen.image_prompt || '',
-            generated_image_url: imageUrl || (cd.generated_image_url as string) || '',
+            generated_image_url: finalImageUrl,
             product_url:       productUrl,
             product_id:        productId,
             product_price_usd: productPriceUsd,
             product_type:      productType,
           },
-          notes: ((task.notes as string) || '') + (hasCaption ? '' : `\n⚠️ Caption empty — retry needed`),
+          notes: ((task.notes as string) || '') + (
+            !hasCaption ? `\n⚠️ Caption empty — retry needed`
+            : !hasFinalImg ? `\n⚠️ Image generation failed [${imgError || 'unknown'}] — retry needed`
+            : ''
+          ),
           updated_at: now,
         }).eq('id', task.id);
-        taskResults.push(hasCaption
-          ? `✅ ${task.title}: ${imageUrl ? 'image+caption' : `caption only [${imgError}]`} → pending_approval`
-          : `⚠️ ${task.title}: caption empty — stays in_progress`);
+        taskResults.push(
+          (hasCaption && hasFinalImg) ? `✅ ${task.title}: image+caption → pending_approval`
+          : !hasCaption                ? `⚠️ ${task.title}: caption empty — stays in_progress`
+          :                              `⚠️ ${task.title}: image missing [${imgError || 'gemini_failed'}] — stays in_progress`
+        );
       } catch (e) {
         taskResults.push(`❌ ${task.title}: ${(e as Error).message}`);
       }
@@ -1716,16 +1743,29 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
     const igAccount = Deno.env.get('INSTAGRAM_ACCOUNT_ID') ?? '';
     if (!igToken || !igAccount) return json({ error: 'Instagram env vars חסרים' }, 503);
 
-    const { data: candidates, error: fetchErr } = await sb.from('agent_tasks').select('id, title, content_data').in('status', ['pending_approval', 'approved']).eq('agent_id', 'content').order('created_at', { ascending: true });
+    // 2026-04-25 dup-publish fix: include 'publishing' so we can re-claim stale locks (>10min).
+    const { data: candidates, error: fetchErr } = await sb.from('agent_tasks').select('id, title, content_data, status').in('status', ['pending_approval', 'approved', 'publishing']).eq('agent_id', 'content').order('created_at', { ascending: true });
     if (fetchErr) return json({ error: fetchErr.message }, 500);
 
     type Task = Record<string, unknown>;
     const batchSize = parseInt(url.searchParams.get('batch') || '1', 10);
+    const STALE_LOCK_MS = 10 * 60 * 1000; // 10 minutes
+    const nowMs = Date.now();
     const readyTasks = (candidates || []).filter((t: Task) => {
       const cd = (t.content_data as Task) || {};
+      // 2026-04-25: hard freeze flag — manual override to skip a task that caused dup-publish
+      if (cd.publish_frozen) return false;
       const hasImage = !!(cd.generated_image_url as string); // accept dubis.net OR supabase.co images
       const hasReel  = !!(cd.video_url && cd.reel_status === 'ready');
-      return cd.content_approved && (hasImage || hasReel);
+      if (!cd.content_approved || (!hasImage && !hasReel)) return false;
+      // Skip tasks that are already locked (status='publishing') unless the lock is stale
+      if (t.status === 'publishing') {
+        const lockAt = cd.publish_lock_at as string | undefined;
+        if (lockAt && (nowMs - new Date(lockAt).getTime()) < STALE_LOCK_MS) return false;
+      }
+      // Permanent retry cap — if >= 5 publish attempts without success, send to manual review
+      if ((cd.publish_attempts as number) >= 5) return false;
+      return true;
     }).slice(0, batchSize);
 
     if (!readyTasks.length) return json({ published: 0, summary: 'אין משימות מוכנות לפרסום עדיין' });
@@ -1736,6 +1776,31 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
 
     for (const task of readyTasks) {
       const cd = (task.content_data as Task) || {};
+      // ── 2026-04-25 ATOMIC CLAIM ─────────────────────────────────────
+      // Race-safe lock: only one concurrent run can transition the task into
+      // 'publishing'. The .in() filter ensures the UPDATE only succeeds if the
+      // task is still in a publishable state (or holding a stale lock).
+      // If 0 rows return, another worker already claimed it → skip.
+      const priorStatus = task.status as string;
+      const acceptStatuses = priorStatus === 'publishing'
+        ? ['publishing']                          // re-claim stale lock
+        : ['pending_approval', 'approved'];
+      const attemptCount = ((cd.publish_attempts as number) || 0) + 1;
+      const claimNow = new Date().toISOString();
+      const { data: claimed, error: claimErr } = await sb.from('agent_tasks')
+        .update({
+          status: 'publishing',
+          content_data: { ...cd, publish_lock_at: claimNow, publish_attempts: attemptCount },
+          updated_at: claimNow,
+        })
+        .eq('id', task.id)
+        .in('status', acceptStatuses)
+        .select('id')
+        .maybeSingle();
+      if (claimErr || !claimed) {
+        results.push({ id: task.id, title: task.title, status: 'skipped', reason: claimErr?.message || 'lock-held-by-another-worker' });
+        continue;
+      }
       const lang = (cd.lang as string) || 'he';
       // Instagram doesn't make URLs clickable in feed/Reel captions — only bio link works.
       // Facebook DOES make URLs clickable, so we link directly to the specific product page.
@@ -1788,7 +1853,12 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
             body: JSON.stringify({ video_url: videoUrl, caption, media_type: 'REELS', access_token: igToken }),
           });
           container = await cRes.json();
-          if (!cRes.ok || container.error) { results.push({ id: task.id, title: task.title, status: 'error', error: (container.error as Record<string,unknown>)?.message || 'reel container failed' }); continue; }
+          if (!cRes.ok || container.error) {
+            const errMsg = (container.error as Record<string,unknown>)?.message as string || 'reel container failed';
+            await sb.from('agent_tasks').update({ status: priorStatus, content_data: { ...cd, publish_lock_at: null, publish_attempts: attemptCount, last_publish_error: errMsg, last_publish_attempt_at: claimNow }, updated_at: new Date().toISOString() }).eq('id', task.id);
+            results.push({ id: task.id, title: task.title, status: 'error', error: errMsg });
+            continue;
+          }
           // Poll container status — videos take longer to process (up to 30s)
           const containerId = container.id as string;
           let ready = false;
@@ -1799,17 +1869,32 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
             if (statusData.status_code === 'FINISHED') { ready = true; break; }
             if (statusData.status_code === 'ERROR') { break; }
           }
-          if (!ready) { results.push({ id: task.id, title: task.title, status: 'error', error: 'Reel container not ready after 120s' }); continue; }
+          if (!ready) {
+            const errMsg = 'Reel container not ready after 120s';
+            await sb.from('agent_tasks').update({ status: priorStatus, content_data: { ...cd, publish_lock_at: null, publish_attempts: attemptCount, last_publish_error: errMsg, last_publish_attempt_at: claimNow }, updated_at: new Date().toISOString() }).eq('id', task.id);
+            results.push({ id: task.id, title: task.title, status: 'error', error: errMsg });
+            continue;
+          }
         } else {
           // Image post
           const cRes = await fetch(`${igBase}/media`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url, caption, access_token: igToken }) });
           container = await cRes.json();
-          if (!cRes.ok || container.error) { results.push({ id: task.id, title: task.title, status: 'error', error: (container.error as Record<string,unknown>)?.message || 'container failed' }); continue; }
+          if (!cRes.ok || container.error) {
+            const errMsg = (container.error as Record<string,unknown>)?.message as string || 'container failed';
+            await sb.from('agent_tasks').update({ status: priorStatus, content_data: { ...cd, publish_lock_at: null, publish_attempts: attemptCount, last_publish_error: errMsg, last_publish_attempt_at: claimNow }, updated_at: new Date().toISOString() }).eq('id', task.id);
+            results.push({ id: task.id, title: task.title, status: 'error', error: errMsg });
+            continue;
+          }
           await new Promise((r) => setTimeout(r, 7000));
         }
         const pRes = await fetch(`${igBase}/media_publish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ creation_id: container.id, access_token: igToken }) });
         const pub = await pRes.json();
-        if (!pRes.ok || pub.error) { results.push({ id: task.id, title: task.title, status: 'error', error: pub.error?.message || 'publish failed' }); continue; }
+        if (!pRes.ok || pub.error) {
+          const errMsg = pub.error?.message || 'publish failed';
+          await sb.from('agent_tasks').update({ status: priorStatus, content_data: { ...cd, publish_lock_at: null, publish_attempts: attemptCount, last_publish_error: errMsg, last_publish_attempt_at: claimNow }, updated_at: new Date().toISOString() }).eq('id', task.id);
+          results.push({ id: task.id, title: task.title, status: 'error', error: errMsg });
+          continue;
+        }
         // Instagram succeeded — now try Facebook as well
         let fbPostId: string | null = null;
         let fbError: string | null = null;
@@ -1835,7 +1920,9 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
           fbError = (fbErr as Error).message;
         }
 
-        await sb.from('agent_tasks').update({ status: 'done', content_data: { ...cd, instagram_post_id: pub.id, facebook_post_id: fbPostId, published_at: now }, updated_at: now }).eq('id', task.id);
+        // Use a fresh timestamp at the moment we record success — `now` was set at loop start.
+        const publishNow = new Date().toISOString();
+        await sb.from('agent_tasks').update({ status: 'done', content_data: { ...cd, instagram_post_id: pub.id, facebook_post_id: fbPostId, published_at: publishNow, publish_lock_at: null, publish_attempts: attemptCount }, updated_at: publishNow }).eq('id', task.id);
         // Save published image to dubis_images gallery so it appears in the gallery tab
         if (image_url && image_url.includes('supabase.co')) {
           try {
@@ -1853,7 +1940,10 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
         }
         results.push({ id: task.id, title: task.title, status: 'published', ig_id: pub.id, fb_id: fbPostId, fb_error: fbError });
       } catch (e) {
-        results.push({ id: task.id, title: task.title, status: 'error', error: (e as Error).message });
+        const errMsg = (e as Error).message;
+        // Restore the lock so a future cron run can retry — but keep the attempt count so the cap eventually kicks in.
+        try { await sb.from('agent_tasks').update({ status: priorStatus, content_data: { ...cd, publish_lock_at: null, publish_attempts: attemptCount, last_publish_error: errMsg, last_publish_attempt_at: claimNow }, updated_at: new Date().toISOString() }).eq('id', task.id); } catch { /* swallow — caller still sees error in results */ }
+        results.push({ id: task.id, title: task.title, status: 'error', error: errMsg });
       }
     }
 
@@ -2146,9 +2236,18 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
       .select('id, content_data')
       .eq('agent_id', 'content')
       .gte('created_at', todayStart.toISOString());
+    // 2026-05-03 fix: count only OUR own auto-content tasks toward the daily cap.
+    // Sunday's `dubis-weekly-team-meeting` task creates admin TODOs with
+    // agent_id='content' and was eating the entire daily quota → no posts ever
+    // got created on Sundays.
+    type Cd = Record<string, unknown>;
+    const autoTodayCount = (todayTasks || []).filter((t: Record<string, unknown>) => {
+      const cd = (t.content_data as Cd) || {};
+      return cd.created_by === 'auto-content-cron' || cd.auto_created === true;
+    }).length;
     const MAX_DAILY_POSTS = 2;
-    if ((todayTasks?.length ?? 0) >= MAX_DAILY_POSTS) {
-      return json({ skipped: true, reason: `Already ${todayTasks?.length} content tasks today (max ${MAX_DAILY_POSTS})`, task_ids: (todayTasks || []).map((t: Record<string, unknown>) => t.id) });
+    if (autoTodayCount >= MAX_DAILY_POSTS) {
+      return json({ skipped: true, reason: `Already ${autoTodayCount} auto-content tasks today (max ${MAX_DAILY_POSTS})`, total_content_tasks_today: todayTasks?.length ?? 0 });
     }
     const nextLang = 'en'; // US-PIVOT: EN only. No HE generation.
 
@@ -2402,8 +2501,12 @@ Score the total 0-30. Return ONLY valid JSON:
 
       // ── Final verdict ────────────────────────────────────────────────
       // Hard fails block auto-publish regardless of score.
-      const qaPass = score >= 60 && !productLinkFail;
-      const qaAutoPublish = score >= 75 && !productLinkFail; // High-quality → auto-approve + auto-publish
+      // 2026-05-03: image-missing is also a hard fail — publish-ready will
+      // never publish a no-image task, so approving one just rots the queue.
+      const imageMissing = imageScore === 0;
+      if (imageMissing) failReasons.push('HARD FAIL: no image (publish-ready blocks no-image tasks)');
+      const qaPass = score >= 60 && !productLinkFail && !imageMissing;
+      const qaAutoPublish = score >= 75 && !productLinkFail && !imageMissing; // High-quality → auto-approve + auto-publish
       const newContentData = {
         ...cd,
         qa_score: score,
