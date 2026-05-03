@@ -1313,13 +1313,15 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
     };
     const skipped = allTasks.filter((t: Task) => !looksLikePostTask(t));
     const tasks = allTasks.filter((t: Task) => looksLikePostTask(t) && !((t.content_data as Task)?.generated_image_url as string)?.includes('supabase.co'));
-    // Mark misrouted tasks so they stop blocking — change agent_id to 'oren' (admin queue)
-    // so they show in the admin pending list but don't pollute content queue counters.
+    // Mark misrouted tasks so they stop blocking — change agent_id to 'boss'
+    // (these are admin TODOs created by the weekly-team-meeting boss subagent)
+    // so they show in the boss queue but don't pollute the content quota.
+    // 'oren' is not in the agent_tasks valid_agent CHECK constraint.
     if (skipped.length) {
       const ids = skipped.map((t: Task) => t.id);
       await sb.from('agent_tasks').update({
-        agent_id: 'oren',
-        notes: 'Auto-rerouted from content → oren: task has no post payload (format/product_slogan/caption). Created by team-meeting or admin agent.',
+        agent_id: 'boss',
+        notes: 'Auto-rerouted from content → boss: task has no post payload (format/product_slogan/caption). Created by team-meeting or admin agent.',
         updated_at: new Date().toISOString(),
       }).in('id', ids as string[]);
     }
