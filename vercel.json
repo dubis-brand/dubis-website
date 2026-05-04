@@ -11,7 +11,7 @@
     { "path": "/api/cron/morning-report?type=security", "schedule": "0 3 * * 1"  }
   ],
   "rewrites": [
-    { "source": "/admin",   "destination": "/admin.html"   },
+    { "source": "/dub-console", "destination": "/admin.html"   },
     { "source": "/terms",   "destination": "/terms.html"   },
     { "source": "/returns", "destination": "/returns.html" },
     { "source": "/ig-content/:path*", "destination": "https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=serve-image&f=:path*" },
