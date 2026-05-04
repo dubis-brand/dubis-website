@@ -2682,7 +2682,7 @@
   async function adminSignInWithGoogle() {
     const { error } = await _sb.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: 'https://www.dubis.net/admin' }
+      options: { redirectTo: 'https://www.dubis.net/dub-console' }
     });
     if (error) {
       document.getElementById('login-error').textContent = error.message;
