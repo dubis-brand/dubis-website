@@ -1,0 +1,16 @@
+{
+  "name": "dubis-tiktok-render",
+  "version": "1.0.0",
+  "description": "DUBIS daily TikTok video renderer (GitHub Actions)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node scripts/render-and-publish.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
