@@ -1,3 +1,16 @@
 # Exclude admin-only utility functions that are not needed in production
 # to stay within Vercel Hobby plan limit of 12 serverless functions.
 api/admin/gelato-catalog.js
+
+# Internal status / planning docs — DO NOT deploy publicly.
+# These contain architecture details, vault secret names, project IDs.
+# They live in the repo for AI-assisted dev only.
+docs/
+deploy.bat
+deploy-bugfix-*.bat
+memory/
+.claude/
+CLAUDE.md
+AGENTS.md
+supabase/
+video/scripts/
