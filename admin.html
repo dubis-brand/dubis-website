@@ -2807,53 +2807,97 @@
   }
 
   // ── Gelato Sync ──────────────────────────────────────
+  // Map server reason codes → user-readable Hebrew messages.
+  const SYNC_REASON_MESSAGES = {
+    no_auth:                'אין הרשאה — רענן את הדף ונסה שוב.',
+    session_expired:        'תוקף ההזדהות פג. רענן את הדף והתחבר מחדש.',
+    not_admin:              'המשתמש שלך אינו מנהל מערכת.',
+    no_gelato_id:           'להזמנה אין מזהה Gelato — לא ניתן לסנכרן אוטומטית.',
+    no_gelato_key:          'GELATO_API_KEY לא מוגדר ב-Vercel env. עדכן ופרסם מחדש.',
+    gelato_timeout:         'ה-API של Gelato לא הגיב בזמן (8 שניות). נסה שוב בעוד דקה.',
+    gelato_order_not_found: 'הזמנה לא נמצאה ב-Gelato (404). ייתכן שמזהה ההזמנה שגוי.',
+    gelato_error:           'שגיאה בקריאה ל-Gelato API.',
+  };
+
   async function syncGelato(orderId, btn) {
+    // Resolve Supabase session token. If missing, surface it — never fail silently.
     const { data: { session } } = await _sb.auth.getSession();
     const token = session?.access_token;
-    if (!token) return;
+    if (!token) {
+      alert('ההזדהות פגה. רענן את הדף והתחבר מחדש.');
+      return;
+    }
 
     btn.disabled = true;
     btn.textContent = '…';
+    const originalText = '↻';
+
+    // Wall-clock timeout (12s) so the button never spins forever even if Vercel hangs.
+    const ctrl = new AbortController();
+    const wallTimeout = setTimeout(() => ctrl.abort(), 12000);
 
     try {
       const res = await fetch('/api/admin/gelato-sync', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId })
+        body: JSON.stringify({ orderId }),
+        signal: ctrl.signal
       });
-      const data = await res.json();
+      clearTimeout(wallTimeout);
 
-      if (!data.synced) {
-        btn.textContent = '↻';
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        // Non-JSON response (Vercel error page, gateway timeout)
+        btn.textContent = originalText;
         btn.disabled = false;
-        alert(data.reason === 'no_gelato_key' ? 'GELATO_API_KEY not set in Vercel env.' : `Sync failed: ${data.reason}`);
+        alert(`שגיאת שרת (HTTP ${res.status}). בדוק Vercel logs.`);
         return;
       }
 
-      // Update status cell
+      if (!data.synced) {
+        btn.textContent = originalText;
+        btn.disabled = false;
+        const msg = SYNC_REASON_MESSAGES[data.reason] || `סנכרון נכשל: ${data.reason || data.error || 'unknown'}`;
+        const detail = data.message ? `\n\n${data.message.substring(0, 200)}` : '';
+        alert(msg + detail);
+        return;
+      }
+
+      // synced === true. Update status cell.
       if (data.status) {
         const statusCell = document.getElementById(`status-cell-${orderId}`);
         const label = data.status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
         if (statusCell) statusCell.innerHTML = `<span class="status-badge status-${data.status}">${label}</span>`;
       }
 
-      // Update tracking cell
+      // Update tracking cell — only if we have a tracking number.
       const trackingCell = document.getElementById(`tracking-cell-${orderId}`);
       if (trackingCell && data.tracking_number) {
         const href = data.tracking_url || `https://mydhl.express.dhl/en/en/tracking.html#/results?id=${data.tracking_number}`;
         trackingCell.innerHTML = `<a class="track-link" href="${href}" target="_blank">${data.tracking_number}</a> <button class="sync-btn" onclick="syncGelato('${orderId}', this)" title="Sync from Gelato">↻</button>`;
-      } else {
-        // Log debug info to console for troubleshooting
-        console.log('Gelato sync — no tracking found. Debug:', data._debug, 'gelato_status:', data.gelato_status);
-        btn.textContent = data.gelato_status ? `✓ (${data.gelato_status})` : '✓';
-        setTimeout(() => { btn.textContent = '↻'; btn.disabled = false; }, 3000);
         return;
       }
 
+      // No tracking yet — show inline feedback. Differentiate "changed" vs "already up to date".
+      console.log('Gelato sync OK. updated=', data.updated, 'changed=', data.changed_fields, 'gelato_status=', data.gelato_status, 'debug=', data._debug);
+      const wasChanged = data.updated === true;
+      const gStatus    = data.gelato_status || 'no-status';
+      btn.textContent = wasChanged ? `✓ ${gStatus}` : `= ${gStatus}`;
+      btn.title       = wasChanged ? `עודכן: ${(data.changed_fields || []).join(', ')}` : 'כבר מעודכן — אין שינוי ב-Gelato';
+      setTimeout(() => { btn.textContent = originalText; btn.disabled = false; btn.title = 'Sync from Gelato'; }, 3000);
+
     } catch (e) {
+      clearTimeout(wallTimeout);
       console.error('Sync error:', e);
-      btn.textContent = '↻';
+      btn.textContent = originalText;
       btn.disabled = false;
+      if (e.name === 'AbortError') {
+        alert('הקריאה ל-API פסקה אחרי 12 שניות. נסה שוב.');
+      } else {
+        alert(`שגיאת רשת: ${e.message || 'unknown'}`);
+      }
     }
   }
 

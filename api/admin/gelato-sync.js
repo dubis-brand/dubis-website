@@ -110,7 +110,9 @@ module.exports = async function handler(req, res) {
 
     // Verify admin JWT
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    if (!authHeader?.startsWith('Bearer ')) {
+        return res.status(401).json({ synced: false, reason: 'no_auth', error: 'Unauthorized' });
+    }
 
     const supabase = createClient(
         process.env.SUPABASE_URL,
@@ -119,13 +121,17 @@ module.exports = async function handler(req, res) {
     );
 
     const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.slice(7));
-    if (authError || !user) return res.status(401).json({ error: 'Invalid token' });
+    if (authError || !user) {
+        return res.status(401).json({ synced: false, reason: 'session_expired', error: 'Invalid token' });
+    }
 
     const isAdmin = ADMIN_EMAILS.includes(user.email);
     if (!isAdmin) {
         const { data: adminRow } = await supabase
             .from('admin_users').select('email').eq('email', user.email).single();
-        if (!adminRow) return res.status(403).json({ error: 'Forbidden' });
+        if (!adminRow) {
+            return res.status(403).json({ synced: false, reason: 'not_admin', error: 'Forbidden' });
+        }
     }
 
     const { orderId } = req.body || {};
@@ -144,18 +150,41 @@ module.exports = async function handler(req, res) {
     const gelatoKey = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
     if (!gelatoKey) return res.status(200).json({ synced: false, reason: 'no_gelato_key' });
 
-    // Fetch from Gelato
-    const gelatoRes = await fetch(`${GELATO_API_BASE}/v3/orders/${order.printful_order_id}`, {
-        headers: {
-            'X-API-KEY': gelatoKey,
-            'Content-Type': 'application/json'
+    // Fetch from Gelato — try v4 first (matches bulk sync), fall back to v3
+    // v4 is the current Order Management API; v3 is being deprecated.
+    let gelatoRes;
+    try {
+        const ctrl = new AbortController();
+        const timeout = setTimeout(() => ctrl.abort(), 8000);
+        gelatoRes = await fetch(`${GELATO_API_BASE}/v4/orders/${order.printful_order_id}`, {
+            headers: { 'X-API-KEY': gelatoKey, 'Content-Type': 'application/json' },
+            signal: ctrl.signal
+        });
+        clearTimeout(timeout);
+        if (gelatoRes.status === 404) {
+            // v4 not found — try v3 as fallback for older draft orders
+            const ctrl2 = new AbortController();
+            const t2 = setTimeout(() => ctrl2.abort(), 8000);
+            gelatoRes = await fetch(`${GELATO_API_BASE}/v3/orders/${order.printful_order_id}`, {
+                headers: { 'X-API-KEY': gelatoKey, 'Content-Type': 'application/json' },
+                signal: ctrl2.signal
+            });
+            clearTimeout(t2);
         }
-    });
+    } catch (err) {
+        console.error('Gelato fetch network/timeout error:', err.message);
+        return res.status(200).json({ synced: false, reason: 'gelato_timeout', message: err.message });
+    }
 
     if (!gelatoRes.ok) {
         const txt = await gelatoRes.text();
         console.error('Gelato fetch error:', gelatoRes.status, txt);
-        return res.status(200).json({ synced: false, reason: 'gelato_error', status: gelatoRes.status });
+        return res.status(200).json({
+            synced: false,
+            reason: gelatoRes.status === 404 ? 'gelato_order_not_found' : 'gelato_error',
+            status: gelatoRes.status,
+            message: txt.substring(0, 200)
+        });
     }
 
     const gelatoOrder = await gelatoRes.json();
@@ -238,6 +267,7 @@ module.exports = async function handler(req, res) {
         tracking_number: trackingNumber,
         tracking_url: trackingUrl,
         updated: Object.keys(updates).length > 0,
+        changed_fields: Object.keys(updates),
         // debug fields — help identify Gelato's actual response structure
         _debug: {
             has_shipment: !!gelatoOrder.shipment,
