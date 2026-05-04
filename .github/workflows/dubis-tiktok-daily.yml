@@ -1,47 +1,57 @@
-name: DUBIS TikTok Daily Video
-
-# Daily 18:00 UTC — generates one Hyperframes-style reel per active product (rotating),
-# uploads MP4 to Supabase Storage 'videos' bucket, then triggers dubis-tiktok-content
-# edge fn to write the agent_tasks row + email oren the caption + video link.
-#
-# Set these GitHub repository secrets:
-#   SUPABASE_URL                  https://ntzwvqtpdmvvavbhuyeb.supabase.co
-#   SUPABASE_SERVICE_ROLE_KEY     <service_role from Supabase project settings>
-#   DUBIS_AGENT_SECRET            <same value as Supabase Edge Function AGENT_SECRET env>
+name: DUBIS TikTok Daily
 
 on:
   schedule:
-    - cron: '0 18 * * *'    # 18:00 UTC daily — peak TikTok engagement (US prime)
-  workflow_dispatch:        # also allow manual trigger from GitHub UI
+    - cron: '0 18 * * *'
+  workflow_dispatch:
     inputs:
       product_id:
-        description: 'Force a specific product_id_numeric (optional)'
+        description: 'product_id_numeric (optional, picks random active if blank)'
         required: false
-        type: string
+        default: ''
+
+permissions:
+  contents: read
 
 jobs:
-  render-and-publish:
+  render-publish:
+    name: Render TikTok video and publish via Late
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
 
       - name: Install ffmpeg + fonts
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -yqq ffmpeg fonts-liberation fonts-noto-color-emoji
-          # Try Hyperframes (HeyGen) — falls back to ffmpeg if package not available
-          npm install --no-save @heygen/hyperframes 2>/dev/null || echo "hyperframes-not-available-using-ffmpeg-fallback"
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core fonts-liberation
 
-      - name: Render reel + upload + notify
+      - name: Install npm deps
+        working-directory: video
+        run: |
+          npm install --no-audit --no-fund @supabase/supabase-js@2
+
+      - name: Render and publish
+        working-directory: video
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DUBIS_AGENT_SECRET: ${{ secrets.DUBIS_AGENT_SECRET }}
-          PRODUCT_ID_FORCE: ${{ inputs.product_id }}
-        run: node dubis-website/video/scripts/render-and-publish.js
+          INPUT_PRODUCT_ID: ${{ github.event.inputs.product_id }}
+        run: node scripts/render-and-publish.js
+
+      - name: Upload rendered video as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiktok-video-${{ github.run_id }}
+          path: video/out/*.mp4
+          if-no-files-found: ignore
+          retention-days: 7
