@@ -1,0 +1,47 @@
+name: DUBIS TikTok Daily Video
+
+# Daily 18:00 UTC — generates one Hyperframes-style reel per active product (rotating),
+# uploads MP4 to Supabase Storage 'videos' bucket, then triggers dubis-tiktok-content
+# edge fn to write the agent_tasks row + email oren the caption + video link.
+#
+# Set these GitHub repository secrets:
+#   SUPABASE_URL                  https://ntzwvqtpdmvvavbhuyeb.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY     <service_role from Supabase project settings>
+#   DUBIS_AGENT_SECRET            <same value as Supabase Edge Function AGENT_SECRET env>
+
+on:
+  schedule:
+    - cron: '0 18 * * *'    # 18:00 UTC daily — peak TikTok engagement (US prime)
+  workflow_dispatch:        # also allow manual trigger from GitHub UI
+    inputs:
+      product_id:
+        description: 'Force a specific product_id_numeric (optional)'
+        required: false
+        type: string
+
+jobs:
+  render-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install ffmpeg + fonts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -yqq ffmpeg fonts-liberation fonts-noto-color-emoji
+          # Try Hyperframes (HeyGen) — falls back to ffmpeg if package not available
+          npm install --no-save @heygen/hyperframes 2>/dev/null || echo "hyperframes-not-available-using-ffmpeg-fallback"
+
+      - name: Render reel + upload + notify
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DUBIS_AGENT_SECRET: ${{ secrets.DUBIS_AGENT_SECRET }}
+          PRODUCT_ID_FORCE: ${{ inputs.product_id }}
+        run: node dubis-website/video/scripts/render-and-publish.js
