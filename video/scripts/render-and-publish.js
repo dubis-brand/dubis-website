@@ -19,6 +19,7 @@ if (!SUPABASE_URL || !SERVICE_ROLE) {
 
 const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
 const BUCKET = 'tiktok-videos';
+const AUDIO_BUCKET = 'tiktok-audio';
 const OUT_DIR = 'out';
 const SLIDE_DURATION = 4;
 const TARGET_W = 1080;
@@ -38,13 +39,13 @@ async function ensureBucket() {
 async function pickProduct() {
   if (FORCE_PID) {
     const { data } = await sb.from('dubis_products')
-      .select('id, product_id_numeric, slogan, clothing_type, gender, colors, description_en, image_url')
+      .select('id, product_id_numeric, slogan, clothing_type, gender, colors, description_en, image_url, lifestyle_image_url')
       .eq('product_id_numeric', FORCE_PID).single();
     if (!data) throw new Error('product not found: ' + FORCE_PID);
     return data;
   }
   const { data: products } = await sb.from('dubis_products')
-    .select('id, product_id_numeric, slogan, clothing_type, gender, colors, description_en, image_url')
+    .select('id, product_id_numeric, slogan, clothing_type, gender, colors, description_en, image_url, lifestyle_image_url')
     .eq('active', true).order('product_id_numeric');
   if (!products?.length) throw new Error('no active products');
 
@@ -59,6 +60,26 @@ async function pickProduct() {
   const eligible = products.filter(p => !seen.has(p.product_id_numeric));
   const pool = eligible.length ? eligible : products;
   return pool[Math.floor(Math.random() * pool.length)];
+}
+
+
+async function pickAudio() {
+  try {
+    const { data: files } = await sb.storage.from(AUDIO_BUCKET).list('', { limit: 100 });
+    const audio = (files || []).filter(f => /\.(mp3|wav|ogg|m4a)$/i.test(f.name));
+    if (!audio.length) { console.log('No audio in bucket, rendering silent'); return null; }
+    const pick = audio[Math.floor(Math.random() * audio.length)];
+    const { data } = sb.storage.from(AUDIO_BUCKET).getPublicUrl(pick.name);
+    console.log('Picked audio:', pick.name);
+    return { name: pick.name, url: data.publicUrl };
+  } catch (e) { console.warn('audio pick failed', e.message); return null; }
+}
+async function downloadFile(url, dest) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('download-failed ' + r.status);
+  const buf = Buffer.from(await r.arrayBuffer());
+  await fs.writeFile(dest, buf);
+  return dest;
 }
 
 async function downloadImage(url, dest) {
@@ -84,10 +105,13 @@ function ffmpeg(args) {
   execSync('ffmpeg -y ' + args.join(' '), { stdio: 'inherit' });
 }
 
-async function renderSlideshow(product, tagline) {
+async function renderSlideshow(product, tagline, audioPath) {
   await fs.mkdir(OUT_DIR, { recursive: true });
   const imgPath = path.join(OUT_DIR, 'product.jpg');
-  await downloadImage(product.image_url, imgPath);
+  const imgUrl = product.lifestyle_image_url || product.image_url;
+  const usingLifestyle = !!product.lifestyle_image_url;
+  console.log('Image source:', usingLifestyle ? 'LIFESTYLE' : 'product', '->', imgUrl);
+  await downloadImage(imgUrl, imgPath);
 
   const slogan = product.slogan || 'DUBIS';
   const cta = 'shop dubis.net/?p=' + product.product_id_numeric;
@@ -125,14 +149,13 @@ async function renderSlideshow(product, tagline) {
   const filterFile = path.join(OUT_DIR, 'filter.txt');
   await fs.writeFile(filterFile, filterComplex);
 
-  ffmpeg([
-    '-loop', '1', '-t', String(SLIDE_DURATION), '-i', imgPath,
-    '-filter_complex_script', filterFile,
-    '-map', '[outv]',
-    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', '-preset', 'medium',
-    '-movflags', '+faststart',
-    outPath,
-  ]);
+  const TOTAL_DUR = SLIDE_DURATION * 3;
+  const args = ['-loop', '1', '-t', String(SLIDE_DURATION), '-i', imgPath];
+  if (audioPath) args.push('-i', audioPath);
+  args.push('-filter_complex_script', filterFile, '-map', '[outv]');
+  if (audioPath) args.push('-map', '1:a:0', '-c:a', 'aac', '-b:a', '128k', '-af', 'afade=t=in:st=0:d=1,afade=t=out:st=' + (TOTAL_DUR - 1) + ':d=1', '-shortest');
+  args.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', '-preset', 'medium', '-t', String(TOTAL_DUR), '-movflags', '+faststart', outPath);
+  ffmpeg(args);
 
   if (!existsSync(outPath)) throw new Error('render-produced-no-output');
   const stat = await fs.stat(outPath);
@@ -187,7 +210,14 @@ async function main() {
   ];
   const tagline = taglines[Math.floor(Math.random() * taglines.length)];
 
-  const videoPath = await renderSlideshow(product, tagline);
+  let audioPath = null;
+  const audioPick = await pickAudio();
+  if (audioPick) {
+    audioPath = path.join(OUT_DIR, 'audio' + path.extname(audioPick.name));
+    await fs.mkdir(OUT_DIR, { recursive: true });
+    try { await downloadFile(audioPick.url, audioPath); } catch (e) { console.warn('audio download failed:', e.message); audioPath = null; }
+  }
+  const videoPath = await renderSlideshow(product, tagline, audioPath);
   const videoUrl = await uploadVideo(videoPath, product);
   const result = await triggerPublish(product, videoUrl);
 
