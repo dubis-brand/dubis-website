@@ -2610,15 +2610,44 @@
       auth: { persistSession: true, storageKey: 'dubis-auth' }
     });
 
+    // BREACH FIX 2026-05-04: gate every login through public.dub_admins allowlist.
+    // Without this, ANY signed-in Google user could see the admin DOM.
+    async function _isDubisAdmin(email) {
+      if (!email) return false;
+      try {
+        const { data, error } = await _sb.from('dub_admins').select('email').eq('email', email).maybeSingle();
+        if (error) { console.warn('admin-check error', error); return false; }
+        return !!data;
+      } catch (e) { console.warn('admin-check exception', e); return false; }
+    }
+    async function _gateOrSignOut(session) {
+      if (!session?.user) return false;
+      const ok = await _isDubisAdmin(session.user.email);
+      if (ok) return true;
+      try { await _sb.auth.signOut(); } catch (e) {}
+      const errEl = document.getElementById('login-error');
+      if (errEl) {
+        errEl.textContent = 'Access denied. This account is not authorized to access DUBIS admin.';
+        errEl.style.display = 'block';
+      }
+      const ls = document.getElementById('login-screen');
+      const db = document.getElementById('dashboard');
+      if (ls) ls.style.display = 'block';
+      if (db) db.style.display = 'none';
+      return false;
+    }
+    window.isDubisAdmin = _isDubisAdmin;
+
     const { data: { session } } = await _sb.auth.getSession();
-    if (session?.user) {
+    if (await _gateOrSignOut(session)) {
       await showDashboard(session.user, session.access_token);
     }
 
-    // Handle OAuth redirect callback (Google login lands back here)
     _sb.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        await showDashboard(session.user, session.access_token);
+        if (await _gateOrSignOut(session)) {
+          await showDashboard(session.user, session.access_token);
+        }
       }
     });
   });
@@ -2641,6 +2670,11 @@
     btn.textContent = 'Sign In';
 
     if (error) { errEl.textContent = error.message; return; }
+    if (!await window.isDubisAdmin(data.user.email)) {
+      try { await _sb.auth.signOut(); } catch (e) {}
+      errEl.textContent = 'Access denied. This account is not authorized.';
+      return;
+    }
     await showDashboard(data.user, data.session.access_token);
   }
 
