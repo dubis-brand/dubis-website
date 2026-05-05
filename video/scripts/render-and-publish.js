@@ -105,12 +105,35 @@ function ffmpeg(args) {
   execSync('ffmpeg -y ' + args.join(' '), { stdio: 'inherit' });
 }
 
+async function resolveImageUrl(product) {
+  if (product.lifestyle_image_url) return { url: product.lifestyle_image_url, source: 'LIFESTYLE' };
+  if (product.image_url) return { url: product.image_url, source: 'product' };
+
+  // Fallback 1: dubis_images table (vetted real-person photos)
+  try {
+    const { data: imgs } = await sb.from('dubis_images')
+      .select('image_url, photo_url, url')
+      .eq('product_id', product.product_id_numeric)
+      .eq('approved', true)
+      .limit(5);
+    for (const row of (imgs || [])) {
+      const u = row.image_url || row.photo_url || row.url;
+      if (u) return { url: u, source: 'dubis_images' };
+    }
+  } catch (e) { console.warn('dubis_images lookup failed:', e.message); }
+
+  // Fallback 2: standard default mockup — `product-{id}-front.jpg` always exists per CLAUDE.md
+  return {
+    url: `https://www.dubis.net/images/product-${product.product_id_numeric}-front.jpg`,
+    source: 'fallback-mockup',
+  };
+}
+
 async function renderSlideshow(product, tagline, audioPath) {
   await fs.mkdir(OUT_DIR, { recursive: true });
   const imgPath = path.join(OUT_DIR, 'product.jpg');
-  const imgUrl = product.lifestyle_image_url || product.image_url;
-  const usingLifestyle = !!product.lifestyle_image_url;
-  console.log('Image source:', usingLifestyle ? 'LIFESTYLE' : 'product', '->', imgUrl);
+  const { url: imgUrl, source: imgSource } = await resolveImageUrl(product);
+  console.log('Image source:', imgSource, '->', imgUrl);
   await downloadImage(imgUrl, imgPath);
 
   const slogan = product.slogan || 'DUBIS';
