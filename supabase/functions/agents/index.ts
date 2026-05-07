@@ -3961,19 +3961,32 @@ Return ONLY valid JSON (no markdown):
         if (!campaignId) { results.success = false; return json(results, 500); }
       } catch (e) { steps.push({ step: 'create_campaign', error: (e as Error).message }); return json({ ...results, success: false }, 500); }
 
-      // Step 2: Pull a real product image from dubis_images
-      let imageUrl = (body.image_url as string) || '';
-      if (!imageUrl) {
-        try {
-          const { data: imgs } = await sb.from('dubis_images').select('image_url').eq('approved', true).limit(1);
-          if (imgs && imgs[0]) imageUrl = imgs[0].image_url as string;
-        } catch (_e) { /* ignore */ }
+      // Step 2: Pull gender-matched images from dubis_images.
+      // 2026-05-07 — explicit per-gender lookup so women's ad NEVER gets a male
+      // image and vice versa (the bug from 2026-04-21 P0 audit).
+      // model_type values in DB: 'woman' / 'curvy_woman' for female, 'man' / 'large_man' / 'older_man' for male.
+      async function pickImage(genderBucket: 'female' | 'male'): Promise<string> {
+        const womanTypes = ['woman', 'curvy_woman'];
+        const manTypes   = ['man', 'large_man', 'older_man'];
+        const types = genderBucket === 'female' ? womanTypes : manTypes;
+        const { data } = await sb
+          .from('dubis_images')
+          .select('image_url')
+          .in('model_type', types)
+          .eq('approved', true)
+          .order('quality_score', { ascending: false })
+          .limit(1);
+        return (data && data[0] && (data[0] as { image_url: string }).image_url) || '';
       }
+      const womenImg = (body.image_url_women as string) || await pickImage('female');
+      const menImg   = (body.image_url_men   as string) || await pickImage('male');
 
       // Step 3: Create 2 Ad Sets (Women 30-55 + Men 30-55, Israel)
-      const segments: { label: string; genders: number[]; utm_content: string }[] = [
-        { label: 'Women', genders: [2], utm_content: 'ad_a_women' },
-        { label: 'Men',   genders: [1], utm_content: 'ad_b_men' },
+      // Each segment carries its own image so the creative on Women adset shows a woman
+      // and the creative on Men adset shows a man.
+      const segments: { label: string; genders: number[]; utm_content: string; image: string }[] = [
+        { label: 'Women', genders: [2], utm_content: 'ad_a_women', image: womenImg },
+        { label: 'Men',   genders: [1], utm_content: 'ad_b_men',   image: menImg   },
       ];
       const adSetIds: Record<string, string> = {};
       for (const s of segments) {
@@ -4025,10 +4038,14 @@ Return ONLY valid JSON (no markdown):
       // Per-segment landing — different products to test which converts better
       const productByLabel: Record<string, number> = { Women: 8, Men: 11 };
 
-      if (pageId && imageUrl) {
+      if (pageId && (womenImg || menImg)) {
         for (const s of segments) {
           const adsetId = adSetIds[s.label];
           if (!adsetId) continue;
+          if (!s.image) {
+            steps.push({ step: 'create_creative_or_ad', segment: s.label, skipped: true, reason: `no approved ${s.label} image found in dubis_images` });
+            continue;
+          }
           const msg = s.label === 'Women' ? creativeWomen : creativeMen;
           const productId = productByLabel[s.label];
           const link = `${baseLanding}&p=${productId}&utm_content=${s.utm_content}`;
@@ -4043,14 +4060,14 @@ Return ONLY valid JSON (no markdown):
                   message: msg,
                   name: headlines[s.label],
                   description: descriptions[s.label],
-                  picture: imageUrl,
+                  picture: s.image,
                   call_to_action: { type: 'SHOP_NOW', value: { link } },
                 },
               },
               degrees_of_freedom_spec: { creative_features_spec: { standard_enhancements: { enroll_status: 'OPT_OUT' } } },
             });
             const creativeId = (creative as { id?: string }).id || '';
-            steps.push({ step: 'create_creative', segment: s.label, creative_id: creativeId, result: creative });
+            steps.push({ step: 'create_creative', segment: s.label, creative_id: creativeId, image_used: s.image, result: creative });
 
             if (creativeId) {
               const ad = await metaCall(`/${adAccountId}/ads`, 'POST', {
@@ -4064,7 +4081,7 @@ Return ONLY valid JSON (no markdown):
           } catch (e) { steps.push({ step: 'create_creative_or_ad', segment: s.label, error: (e as Error).message }); }
         }
       } else {
-        steps.push({ step: 'create_creative_or_ad', skipped: true, reason: `missing pageId (${!!pageId}) or imageUrl (${!!imageUrl})` });
+        steps.push({ step: 'create_creative_or_ad', skipped: true, reason: `missing pageId (${!!pageId}) or images (women=${!!womenImg}, men=${!!menImg})` });
       }
 
       results.success = true;
