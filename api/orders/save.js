@@ -40,6 +40,7 @@ module.exports = async function handler(req, res) {
         discountAmount,
         shippingAmount,   // NEW — from client, so DB total reflects reality
         totalAmount:      clientTotalAmount,  // NEW — client-computed grand total
+        attribution,      // 2026-05-06 — { utm_source, utm_medium, utm_campaign, utm_content, utm_term, attribution_session_id, landing_path, landing_referrer, first_touch_at }
     } = req.body || {};
 
     if (!paypalOrderId || !cartItems || !shippingAddress) {
@@ -155,6 +156,31 @@ module.exports = async function handler(req, res) {
     if (discountNum) insertData.discount_amount = discountNum;
     if (shippingNum) insertData.shipping_amount = shippingNum;
     insertData.items_subtotal = itemsSubtotal;
+
+    // ── Attribution (2026-05-06) — write only when client supplied non-null values
+    // so we never overwrite DB-default NULLs with explicit nulls. (direct) is a
+    // legitimate value meaning "no UTM" and is preserved.
+    if (attribution && typeof attribution === 'object') {
+        if (attribution.utm_source)             insertData.utm_source              = String(attribution.utm_source).slice(0, 80);
+        if (attribution.utm_medium)             insertData.utm_medium              = String(attribution.utm_medium).slice(0, 80);
+        if (attribution.utm_campaign)           insertData.utm_campaign            = String(attribution.utm_campaign).slice(0, 120);
+        if (attribution.utm_content)            insertData.utm_content             = String(attribution.utm_content).slice(0, 120);
+        if (attribution.utm_term)               insertData.utm_term                = String(attribution.utm_term).slice(0, 120);
+        if (attribution.attribution_session_id) insertData.attribution_session_id  = String(attribution.attribution_session_id).slice(0, 64);
+        if (attribution.landing_path)           insertData.landing_path            = String(attribution.landing_path).slice(0, 200);
+        if (attribution.landing_referrer)       insertData.landing_referrer        = String(attribution.landing_referrer).slice(0, 500);
+        if (attribution.first_touch_at) {
+            const ts = new Date(attribution.first_touch_at);
+            if (!isNaN(ts.getTime())) insertData.attribution_first_touch_at = ts.toISOString();
+        }
+        olog('attribution-attached', {
+            paypalOrderId,
+            utm_source:   insertData.utm_source   || null,
+            utm_campaign: insertData.utm_campaign || null,
+        });
+    } else {
+        olog('attribution-missing', { paypalOrderId, hint: 'client did not send attribution object' });
+    }
 
     // Increment coupon usage count
     if (couponCode) {

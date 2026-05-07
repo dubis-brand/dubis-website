@@ -3931,7 +3931,154 @@ Return ONLY valid JSON (no markdown):
       return json(results);
     }
 
-    return json({ error: 'Invalid action. Valid: check-token, list-campaigns, toggle-campaign, orchestrate-us-pivot' }, 400);
+    // ── ACTION: orchestrate-il-campaign ─────────────────────────────────
+    // 2026-05-06 — Israel campaign in HEBREW. Built per oren's request after the US
+    // campaign was paused for ROAS=0–0.26x. Reasoning: 100% of our 4 existing orders
+    // came from IL via the personal network, so paid IL traffic should convert
+    // higher than cold US traffic until US brand recognition builds.
+    // body: { daily_budget_ils?, image_url?, landing_url? }
+    // ALL objects created in PAUSED state — oren reviews in Ads Manager and activates
+    // manually after verifying UTM tracking works end-to-end.
+    if (action === 'orchestrate-il-campaign') {
+      const results: Record<string, unknown> = { steps: [] };
+      const steps = results.steps as Record<string, unknown>[];
+      const dailyBudgetILS = Number(body.daily_budget_ils) || 16; // ₪16/adset/day = ₪32 total ≈ $8.50/day
+      const dailyBudgetMinor = Math.round(dailyBudgetILS * 100); // אגורות
+      const baseLanding = (body.landing_url as string) || 'https://www.dubis.net/?lang=he&utm_source=fb&utm_medium=paid&utm_campaign=il_w1';
+
+      // Step 1: Create campaign (PAUSED)
+      let campaignId = '';
+      try {
+        const createCamp = await metaCall(`/${adAccountId}/campaigns`, 'POST', {
+          name: `DUBIS IL Sales — W1 — ${new Date().toISOString().slice(0, 10)}`,
+          objective: 'OUTCOME_SALES',
+          status: 'PAUSED',
+          special_ad_categories: [],
+          buying_type: 'AUCTION',
+        });
+        campaignId = (createCamp as { id?: string }).id || '';
+        steps.push({ step: 'create_campaign', campaign_id: campaignId, result: createCamp });
+        if (!campaignId) { results.success = false; return json(results, 500); }
+      } catch (e) { steps.push({ step: 'create_campaign', error: (e as Error).message }); return json({ ...results, success: false }, 500); }
+
+      // Step 2: Pull a real product image from dubis_images
+      let imageUrl = (body.image_url as string) || '';
+      if (!imageUrl) {
+        try {
+          const { data: imgs } = await sb.from('dubis_images').select('image_url').eq('approved', true).limit(1);
+          if (imgs && imgs[0]) imageUrl = imgs[0].image_url as string;
+        } catch (_e) { /* ignore */ }
+      }
+
+      // Step 3: Create 2 Ad Sets (Women 30-55 + Men 30-55, Israel)
+      const segments: { label: string; genders: number[]; utm_content: string }[] = [
+        { label: 'Women', genders: [2], utm_content: 'ad_a_women' },
+        { label: 'Men',   genders: [1], utm_content: 'ad_b_men' },
+      ];
+      const adSetIds: Record<string, string> = {};
+      for (const s of segments) {
+        try {
+          const startTime = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // start in 1h
+          const createAS = await metaCall(`/${adAccountId}/adsets`, 'POST', {
+            name: `IL ${s.label} 30-55`,
+            campaign_id: campaignId,
+            daily_budget: dailyBudgetMinor,
+            billing_event: 'IMPRESSIONS',
+            optimization_goal: 'OFFSITE_CONVERSIONS',
+            bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+            status: 'PAUSED',
+            start_time: startTime,
+            destination_type: 'WEBSITE',
+            targeting: {
+              geo_locations: { countries: ['IL'] },
+              age_min: 30,
+              age_max: 55,
+              genders: s.genders,
+              // Manual placement — Audience Network OFF (it killed US ROAS)
+              publisher_platforms: ['facebook', 'instagram'],
+              facebook_positions: ['feed', 'story'],
+              instagram_positions: ['stream', 'story'],
+            },
+            promoted_object: { pixel_id: pixelId, custom_event_type: 'PURCHASE' },
+            attribution_spec: [{ event_type: 'CLICK_THROUGH', window_days: 7 }],
+          });
+          const adsetId = (createAS as { id?: string }).id || '';
+          adSetIds[s.label] = adsetId;
+          steps.push({ step: 'create_adset', segment: s.label, adset_id: adsetId, result: createAS });
+        } catch (e) { steps.push({ step: 'create_adset', segment: s.label, error: (e as Error).message }); }
+      }
+
+      // Step 4: Create Ad Creatives + Ads with Hebrew copy
+      // Hebrew written natively — NOT a translation of the US English creatives.
+      // Tone: oren's voice — direct, slightly self-deprecating, no influencer-speak.
+      const creativeWomen = `חיפשתי שנים בגדים שמרגישים כמוני.\nלא דוגמנית. לא מושלמת. לא מצטדקת.\nמצאתי? לא ממש. אז בניתי.\n\nDUBIS — בגדים שנבנו לגוף שאת גרה בו.\n14 דגמים, נשלח מארה״ב לישראל בתוך 7-10 ימים.\n\nלחיצה לדגם המוביל →`;
+      const creativeMen = `DUBIS זה לא קמפיין של אינסטוסלב.\nזה ברנד שהקים בחור אחד שנמאס לו לחפש חולצה שמתאימה לו אחרי 40.\n\n14 דגמים. חולצות, קפוצונים, שרוול ארוך, כובעים.\nשום דבר לא נשלח לפני שמודדים את הלוגו ב-3D.\n\nניסיון אחד — אתה תבין.`;
+
+      const headlines: Record<string, string> = {
+        Women: 'בגדים שנבנו לגוף שאת גרה בו',
+        Men:   'ברנד שלא רצה להיות עוד אחד',
+      };
+      const descriptions: Record<string, string> = {
+        Women: 'אופנה אמיתית לבוגרות. נשלח מארה"ב.',
+        Men:   'אופנה אמיתית לבוגרים. נשלח מארה"ב.',
+      };
+      // Per-segment landing — different products to test which converts better
+      const productByLabel: Record<string, number> = { Women: 8, Men: 11 };
+
+      if (pageId && imageUrl) {
+        for (const s of segments) {
+          const adsetId = adSetIds[s.label];
+          if (!adsetId) continue;
+          const msg = s.label === 'Women' ? creativeWomen : creativeMen;
+          const productId = productByLabel[s.label];
+          const link = `${baseLanding}&p=${productId}&utm_content=${s.utm_content}`;
+          try {
+            const creative = await metaCall(`/${adAccountId}/adcreatives`, 'POST', {
+              name: `DUBIS IL ${s.label} — W1 creative`,
+              object_story_spec: {
+                page_id: pageId,
+                ...(igAccountId ? { instagram_actor_id: igAccountId } : {}),
+                link_data: {
+                  link,
+                  message: msg,
+                  name: headlines[s.label],
+                  description: descriptions[s.label],
+                  picture: imageUrl,
+                  call_to_action: { type: 'SHOP_NOW', value: { link } },
+                },
+              },
+              degrees_of_freedom_spec: { creative_features_spec: { standard_enhancements: { enroll_status: 'OPT_OUT' } } },
+            });
+            const creativeId = (creative as { id?: string }).id || '';
+            steps.push({ step: 'create_creative', segment: s.label, creative_id: creativeId, result: creative });
+
+            if (creativeId) {
+              const ad = await metaCall(`/${adAccountId}/ads`, 'POST', {
+                name: `DUBIS IL ${s.label} — W1 ad`,
+                adset_id: adsetId,
+                creative: { creative_id: creativeId },
+                status: 'PAUSED',
+              });
+              steps.push({ step: 'create_ad', segment: s.label, ad_id: (ad as { id?: string }).id || '', result: ad });
+            }
+          } catch (e) { steps.push({ step: 'create_creative_or_ad', segment: s.label, error: (e as Error).message }); }
+        }
+      } else {
+        steps.push({ step: 'create_creative_or_ad', skipped: true, reason: `missing pageId (${!!pageId}) or imageUrl (${!!imageUrl})` });
+      }
+
+      results.success = true;
+      results.campaign_id = campaignId;
+      results.adset_ids = adSetIds;
+      results.currency = 'ILS';
+      results.daily_budget_per_adset_ils = dailyBudgetILS;
+      results.total_daily_budget_ils = dailyBudgetILS * segments.length;
+      results.utm_campaign = 'il_w1';
+      results.note = 'IL campaign created in PAUSED state. Verify UTM tracking + creatives in Ads Manager, then activate. Kill-switch: <2 attributed orders after 7 days → pause.';
+      return json(results);
+    }
+
+    return json({ error: 'Invalid action. Valid: check-token, list-campaigns, toggle-campaign, orchestrate-us-pivot, orchestrate-il-campaign' }, 400);
   }
 
   // ── shopping-feed: Google Merchant Center product feed (XML/RSS 2.0) ──

@@ -15,9 +15,22 @@ module.exports = async function handler(req, res) {
 
     if (rateLimit(req, res, { max: 60, windowMs: 60_000 })) return;
 
-    const { path, referrer, event, meta, session_id, is_dev } = req.body || {};
+    const {
+        path, referrer, event, meta, session_id, is_dev,
+        utm_source, utm_medium, utm_campaign, utm_content, utm_term,  // 2026-05-06 — attribution
+    } = req.body || {};
     if (!path || typeof path !== 'string') return res.status(400).json({ error: 'Missing path' });
     const evt = ALLOWED_EVENTS.includes(event) ? event : 'pageview';
+
+    // Sanitize UTMs — short strings only, prevent abuse via long payloads
+    const trim = (v, max) => (typeof v === 'string' && v.trim()) ? v.trim().slice(0, max) : null;
+    const utm = {
+        utm_source:   trim(utm_source,   80),
+        utm_medium:   trim(utm_medium,   80),
+        utm_campaign: trim(utm_campaign, 120),
+        utm_content:  trim(utm_content,  120),
+        utm_term:     trim(utm_term,     120),
+    };
 
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
         return res.status(200).json({ ok: false });
@@ -50,6 +63,11 @@ module.exports = async function handler(req, res) {
         ua_short: uaShort,
         is_internal: isInternal,
         country_code: req.headers['x-vercel-ip-country'] || null,
+        utm_source:   utm.utm_source,
+        utm_medium:   utm.utm_medium,
+        utm_campaign: utm.utm_campaign,
+        utm_content:  utm.utm_content,
+        utm_term:     utm.utm_term,
     });
 
     return res.status(200).json({ ok: true, is_internal: isInternal });

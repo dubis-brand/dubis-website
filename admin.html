@@ -957,6 +957,7 @@
       <button class="nav-tab" id="nav-tax-nexus" onclick="showSection('tax-nexus',this)">💰 Tax Nexus</button>
       <button class="nav-tab" id="nav-funnel" onclick="showSection('funnel',this)">📊 Funnel</button>
       <button class="nav-tab" id="nav-feedback" onclick="showSection('feedback',this)">📝 Feedback</button>
+      <button class="nav-tab" id="nav-meta-campaigns" onclick="showSection('meta-campaigns',this)">📣 Meta Campaigns</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -2531,6 +2532,53 @@
     <div id="fb-list" style="display:flex;flex-direction:column;gap:1rem"></div>
   </div><!-- /section-feedback -->
 
+  <!-- ══ META CAMPAIGNS SECTION (one-click IL campaign create) ══════════ -->
+  <div id="section-meta-campaigns" style="display:none;padding:1.5rem" dir="rtl">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem">
+      <h2 style="font-size:1rem;color:#c8a96e;letter-spacing:2px;text-transform:uppercase;font-weight:700">📣 Meta Campaigns</h2>
+      <span style="font-size:.72rem;color:#888">בנייה אוטומטית של קמפיינים — נוצר ב-PAUSED, אתה מפעיל ידנית</span>
+    </div>
+
+    <!-- Token health -->
+    <div id="mc-token-status" style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1rem;font-size:.85rem;color:#888">בודק חיבור ל-Meta Graph API...</div>
+
+    <!-- IL Campaign card -->
+    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1.25rem;margin-bottom:1.25rem">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;gap:1rem;flex-wrap:wrap">
+        <div>
+          <div style="font-size:.95rem;color:#e8e0d5;font-weight:700;margin-bottom:.25rem">🇮🇱 קמפיין ישראל — שבוע ראשון</div>
+          <div style="font-size:.75rem;color:#888;line-height:1.6">2 קבוצות (נשים + גברים 30-55), קריאייטיב בעברית, ₪32/יום סה"כ, UTM tracking מובנה (utm_campaign=il_w1).<br>ייווצר במצב PAUSED — תפעיל ידנית ב-Ads Manager אחרי בדיקה.</div>
+        </div>
+        <button id="mc-il-btn" onclick="mcCreateILCampaign()" style="background:#1f7a42;color:white;border:none;padding:.7rem 1.4rem;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap">
+          ✓ צור קמפיין IL
+        </button>
+      </div>
+      <div id="mc-il-status" style="font-size:.78rem;color:#888;margin-top:.5rem"></div>
+    </div>
+
+    <!-- Result panel -->
+    <div id="mc-result" style="display:none;background:#0f0f0f;border:1px solid #2a2a2a;border-radius:10px;padding:1.25rem;margin-bottom:1.25rem">
+      <div style="font-size:.75rem;color:#c8a96e;letter-spacing:1px;margin-bottom:.75rem">תוצאת יצירה:</div>
+      <pre id="mc-result-json" style="font-size:.72rem;color:#e8e0d5;background:#0a0a0a;padding:.75rem;border-radius:6px;overflow:auto;max-height:500px;direction:ltr;text-align:left;font-family:Consolas,monospace;margin:0"></pre>
+    </div>
+
+    <!-- Existing campaigns list -->
+    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1.25rem;margin-bottom:1.25rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <div style="font-size:.85rem;color:#e8e0d5;font-weight:700">קמפיינים קיימים</div>
+        <button onclick="mcListCampaigns()" style="background:#2a2a2a;color:#c8a96e;border:1px solid #3a3a3a;padding:.4rem .9rem;border-radius:5px;cursor:pointer;font-size:.75rem">↻ רענן</button>
+      </div>
+      <div id="mc-campaigns-list" style="font-size:.78rem;color:#888">טוען...</div>
+    </div>
+
+    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1rem;font-size:.75rem;color:#888;line-height:1.7">
+      <strong style="color:#c8a96e">💡 איך זה עובד:</strong> לחיצה על "צור קמפיין IL" שולחת קריאה ל-Meta Graph API דרך Edge Function שלנו (orchestrate-il-campaign).
+      נוצרים: 1 Campaign + 2 AdSets + 2 Creatives + 2 Ads — הכל ב-PAUSED.
+      אחרי היצירה, כנס ל-<a href="https://business.facebook.com/adsmanager/manage/campaigns?act=26201135546175057" target="_blank" style="color:#c8a96e">Ads Manager</a>,
+      בדוק שהמודעות נראות בסדר, וודא שה-pixel מקושר, ואז Activate ידנית.
+    </div>
+  </div><!-- /section-meta-campaigns -->
+
   <!-- Coupon Modal -->
   <div id="coupon-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
     <div style="background:#1e1e1e;border-radius:12px;padding:2rem;width:min(480px,90vw);max-height:90vh;overflow-y:auto">
@@ -2960,7 +3008,9 @@
     document.getElementById('section-tax-nexus').style.display          = name === 'tax-nexus'          ? '' : 'none';
     document.getElementById('section-funnel').style.display             = name === 'funnel'             ? '' : 'none';
     document.getElementById('section-feedback').style.display           = name === 'feedback'           ? '' : 'none';
+    document.getElementById('section-meta-campaigns').style.display     = name === 'meta-campaigns'     ? '' : 'none';
     if (name === 'gelato-tools') gtInit();
+    if (name === 'meta-campaigns') mcInit();
     if (name === 'tax-nexus') loadTaxNexus();
     if (name === 'funnel') loadFunnel();
     if (name === 'feedback') loadFeedback();
@@ -3835,6 +3885,103 @@
     } catch (err) {
       console.error('Feedback load error:', err);
       document.getElementById('fb-loading').textContent = 'Error: ' + err.message;
+    }
+  }
+
+  // ── Meta Campaigns: token health + one-click IL campaign create ────
+  // 2026-05-06 — Calls agents Edge Function (?type=meta-ads-manage) which holds
+  // META_ACCESS_TOKEN in its env. Admin JWT auth, so only oren can fire it.
+  const _MC_FN_BASE = 'https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=meta-ads-manage';
+
+  async function _mcCall(action, body) {
+    const { data: { session } } = await _sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) throw new Error('No admin session — log in again.');
+    const url = _MC_FN_BASE + '&action=' + encodeURIComponent(action);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body || {}),
+    });
+    const text = await res.text();
+    let json; try { json = JSON.parse(text); } catch (_) { json = { raw: text }; }
+    if (!res.ok) throw new Error(`HTTP ${res.status} — ${json.error || text}`);
+    return json;
+  }
+
+  async function mcInit() {
+    const tokenEl = document.getElementById('mc-token-status');
+    tokenEl.textContent = 'בודק חיבור ל-Meta Graph API...';
+    try {
+      const r = await _mcCall('check-token', {});
+      const ok = r.has_ads_management;
+      const me = (r.me && r.me.name) || '?';
+      const acct = (r.ad_account && r.ad_account.name) || '?';
+      tokenEl.style.color = ok ? '#3B7A57' : '#e74c3c';
+      tokenEl.innerHTML = ok
+        ? `✅ Token תקין — מחובר ל-${acct} (משתמש: ${me}). Pixel: ${r.pixel_id}`
+        : `❌ Token חסר הרשאת ads_management. בדוק ב-Meta Business Settings.`;
+    } catch (err) {
+      tokenEl.style.color = '#e74c3c';
+      tokenEl.textContent = '❌ ' + err.message + ' — ייתכן שצריך לדפלוי את ה-Edge Function עם orchestrate-il-campaign.';
+    }
+    mcListCampaigns();
+  }
+
+  async function mcListCampaigns() {
+    const el = document.getElementById('mc-campaigns-list');
+    el.textContent = 'טוען...';
+    try {
+      const r = await _mcCall('list-campaigns', {});
+      const items = (r.campaigns && r.campaigns.data) || [];
+      if (!items.length) { el.textContent = 'אין קמפיינים'; return; }
+      el.innerHTML = items.map(c => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:1px solid #2a2a2a;gap:1rem;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div style="color:#e8e0d5;font-size:.85rem;font-weight:600">${(c.name||'').replace(/[<>]/g,'')}</div>
+            <div style="color:#666;font-size:.7rem;direction:ltr;text-align:right">${c.id} · ${c.objective}</div>
+          </div>
+          <div style="font-size:.72rem;color:${c.effective_status==='ACTIVE'?'#3B7A57':c.effective_status==='PAUSED'?'#C9A227':'#888'};font-weight:600">${c.effective_status}</div>
+        </div>`).join('');
+    } catch (err) {
+      el.style.color = '#e74c3c';
+      el.textContent = 'שגיאה: ' + err.message;
+    }
+  }
+
+  async function mcCreateILCampaign() {
+    if (!confirm('ליצור קמפיין IL חדש? (ייווצר ב-PAUSED — לא יחויב כסף עד שתפעיל ידנית ב-Ads Manager)')) return;
+    const btn = document.getElementById('mc-il-btn');
+    const status = document.getElementById('mc-il-status');
+    const result = document.getElementById('mc-result');
+    const resultJson = document.getElementById('mc-result-json');
+
+    btn.disabled = true;
+    btn.textContent = '⏳ יוצר...';
+    status.style.color = '#888';
+    status.textContent = 'שולח בקשה ל-Edge Function — בונה Campaign + 2 AdSets + 2 Creatives + 2 Ads...';
+
+    try {
+      const r = await _mcCall('orchestrate-il-campaign', {
+        daily_budget_ils: 16,
+      });
+      result.style.display = '';
+      resultJson.textContent = JSON.stringify(r, null, 2);
+      if (r.success) {
+        const total = r.total_daily_budget_ils;
+        status.style.color = '#3B7A57';
+        status.innerHTML = `✅ נוצר! Campaign ID: <code style="direction:ltr">${r.campaign_id}</code> · תקציב כולל ₪${total}/יום · 2 adsets · UTM=${r.utm_campaign}<br>הפעל ידנית ב-<a href="https://business.facebook.com/adsmanager/manage/ads?act=26201135546175057&selected_campaign_ids=${r.campaign_id}" target="_blank" style="color:#c8a96e">Ads Manager</a>.`;
+        mcListCampaigns();
+      } else {
+        status.style.color = '#e74c3c';
+        status.textContent = '❌ נכשל. תראה ב-result בהמשך.';
+      }
+    } catch (err) {
+      status.style.color = '#e74c3c';
+      status.textContent = '❌ ' + err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '✓ צור קמפיין IL';
     }
   }
 

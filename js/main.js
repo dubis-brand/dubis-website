@@ -167,7 +167,7 @@ const translations = {
     nav_about: 'אודות', nav_contact: 'צור קשר',
     hero_tagline: 'אופנה שלא מבקשת ממך להכניס את הבטן.',
     hero_subtitle: 'מעוצב לגוף שאת/ה באמת חי/ה בו.',
-    hero_desc: 'בגדים אמיתיים, גזרה אמיתית, אנשים אמיתיים. בלי התנצלויות. בלי מידות מזויפות. מודפס טרי לפי הזמנה — כי מגיע לך משהו שנעשה עבורך.',
+    hero_desc: 'בגדים אמיתיים, גזרה אמיתית, אנשים אמיתיים. בלי התנצלויות. בלי מידות מזויפות. מודפס לפי הזמנה — כי מגיע לך משהו שנעשה עבורך.',
     hero_btn: 'לחנות — החל מ-$14',
     people_title: 'החבר\'ה של DUBIS 🐻',
     people_sub: 'אנשים כמוך. בלי פוזות. בלי תירוצים.',
@@ -1027,9 +1027,88 @@ function checkCookieConsent() {
     }
   } catch(e) {}
 })();
+
+// ===== ATTRIBUTION CAPTURE (UTMs + landing data) =====
+// First-touch: stored in localStorage 'dubis-attr' for 30d — survives sessions, this
+// is what we credit an order to (an ad clicked Wed → cart abandoned → returned Fri
+// direct → purchase Sat still credits Wed's ad).
+// Last-touch: stored in sessionStorage 'dubis-attr-last' — informational only,
+// useful for click attribution debug.
+// FB injects fbclid; Google injects gclid — we promote them to utm_source so we
+// always know an ad-click happened even if a partner stripped utms.
+(function captureDubisAttribution(){
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    const fbclid = params.get('fbclid');
+    const gclid  = params.get('gclid');
+    const ttclid = params.get('ttclid');
+    const has = (k) => params.has(k) && params.get(k);
+    const incoming = {
+      utm_source:   has('utm_source')   || (fbclid ? 'facebook' : null) || (gclid ? 'google' : null) || (ttclid ? 'tiktok' : null) || null,
+      utm_medium:   has('utm_medium')   || ((fbclid || gclid || ttclid) ? 'paid' : null) || null,
+      utm_campaign: has('utm_campaign') || null,
+      utm_content:  has('utm_content')  || null,
+      utm_term:     has('utm_term')     || null,
+      session_id:   sessionStorage.getItem('dubis-sid') || null,
+      landing_path: (window.location.pathname || '/') + (window.location.hash || ''),
+      landing_referrer: (document.referrer || '').slice(0, 500),
+      first_touch_at: new Date().toISOString(),
+    };
+    const hasUtm = !!(incoming.utm_source || incoming.utm_medium || incoming.utm_campaign || incoming.utm_content);
+
+    // Last-touch — always overwrite this session so debug is honest
+    if (hasUtm) {
+      sessionStorage.setItem('dubis-attr-last', JSON.stringify(incoming));
+    }
+
+    // First-touch — only set if empty or expired (30d), so the original ad gets credit
+    let existing = null;
+    try { existing = JSON.parse(localStorage.getItem('dubis-attr') || 'null'); } catch(e) {}
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const isExpired = !existing || !existing.first_touch_at ||
+                      (Date.now() - new Date(existing.first_touch_at).getTime() > THIRTY_DAYS_MS);
+
+    if (hasUtm && (isExpired || !existing.utm_source)) {
+      try { localStorage.setItem('dubis-attr', JSON.stringify(incoming)); } catch(e) {}
+    } else if (!existing && !hasUtm) {
+      // Direct visitor — still record the first touch so we can attribute "direct" properly
+      try { localStorage.setItem('dubis-attr', JSON.stringify({
+        utm_source:'(direct)', utm_medium:'(none)', utm_campaign:null, utm_content:null, utm_term:null,
+        session_id: incoming.session_id,
+        landing_path: incoming.landing_path,
+        landing_referrer: incoming.landing_referrer,
+        first_touch_at: incoming.first_touch_at,
+      })); } catch(e) {}
+    }
+  } catch(e) { /* never throw — attribution is best-effort */ }
+})();
+
+// Helper for checkout / orders.save — returns the first-touch attribution object,
+// or null if storage is unavailable. Always inspect both localStorage (long-lived)
+// and sessionStorage (current session) so we never accidentally credit (direct).
+window.dubisGetAttribution = function() {
+  try {
+    const first = JSON.parse(localStorage.getItem('dubis-attr') || 'null');
+    const last  = JSON.parse(sessionStorage.getItem('dubis-attr-last') || 'null');
+    if (!first && !last) return null;
+    return {
+      utm_source:   (first && first.utm_source)   || (last && last.utm_source)   || '(direct)',
+      utm_medium:   (first && first.utm_medium)   || (last && last.utm_medium)   || '(none)',
+      utm_campaign: (first && first.utm_campaign) || (last && last.utm_campaign) || null,
+      utm_content:  (first && first.utm_content)  || (last && last.utm_content)  || null,
+      utm_term:     (first && first.utm_term)     || (last && last.utm_term)     || null,
+      attribution_session_id: (first && first.session_id) || (last && last.session_id) || null,
+      landing_path:     (first && first.landing_path) || null,
+      landing_referrer: (first && first.landing_referrer) || null,
+      first_touch_at:   (first && first.first_touch_at) || null,
+    };
+  } catch(e) { return null; }
+};
+
 window.dubisTrack = function(event, meta) {
   try {
     if (localStorage.getItem('dubis-cookies') === 'declined') return;
+    const attr = (typeof window.dubisGetAttribution === 'function') ? window.dubisGetAttribution() : null;
     const body = JSON.stringify({
       path: (window.location.pathname || '/') + (window.location.hash || ''),
       referrer: document.referrer || '',
@@ -1037,6 +1116,11 @@ window.dubisTrack = function(event, meta) {
       meta: meta || null,
       session_id: (function(){ try { return sessionStorage.getItem('dubis-sid'); } catch(e) { return null; }})(),
       is_dev: (function(){ try { return localStorage.getItem('dubis-internal') === '1'; } catch(e) { return false; }})(),
+      utm_source:   attr ? attr.utm_source   : null,
+      utm_medium:   attr ? attr.utm_medium   : null,
+      utm_campaign: attr ? attr.utm_campaign : null,
+      utm_content:  attr ? attr.utm_content  : null,
+      utm_term:     attr ? attr.utm_term     : null,
     });
     if (navigator.sendBeacon) {
       const blob = new Blob([body], { type: 'application/json' });

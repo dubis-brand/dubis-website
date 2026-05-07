@@ -459,6 +459,10 @@ function renderPayPalButtons() {
                             shippingAmount:  Number(window.__dubisCheckoutShipping) || 0,
                             totalAmount:     Number(window.__dubisCheckoutTotal)
                                              || (Number(window.__dubisCheckoutItemSub) || 0) + (Number(window.__dubisCheckoutShipping) || 0),
+                            // 2026-05-06: Attribution — first-touch UTMs from landing.
+                            // Without this, ROAS is unmeasurable (the lesson from the IL/US
+                            // campaign post-mortem on 2026-05-06).
+                            attribution: (typeof window.dubisGetAttribution === 'function') ? window.dubisGetAttribution() : null,
                         }),
                     });
                     const saveData = await saveRes.json();
