@@ -732,6 +732,63 @@ ${[
         planMilestones = data;
     } catch (_) { planMilestones = []; }
 
+    // ── 10. Stock summary + 24h deltas (product_variant_stock) ──────
+    let stockStats = null;
+    let stockDeltas = null;
+    let stockStaleCount = 0;
+    try {
+        const { data: stats } = await supabase.rpc('exec_stock_summary').catch(() => ({ data: null }));
+        if (stats) stockStats = stats;
+        else {
+            // Fallback: aggregate in JS
+            const { data: allVariants } = await supabase
+                .from('product_variant_stock')
+                .select('in_stock, manual_override, last_checked_at, last_out_of_stock_at, last_back_in_stock_at');
+            if (allVariants) {
+                const inStockN = allVariants.filter(v => v.in_stock).length;
+                const oosN = allVariants.filter(v => !v.in_stock).length;
+                const manualN = allVariants.filter(v => v.manual_override).length;
+                const checks = allVariants.map(v => v.last_checked_at).filter(Boolean).sort();
+                stockStats = {
+                    total: allVariants.length,
+                    in_stock: inStockN,
+                    oos: oosN,
+                    manual: manualN,
+                    last_check: checks[checks.length - 1] || null,
+                    oldest_check: checks[0] || null,
+                };
+                const sevenDaysAgo = Date.now() - 7 * 86400000;
+                stockStaleCount = allVariants.filter(v =>
+                    v.last_checked_at && new Date(v.last_checked_at).getTime() < sevenDaysAgo
+                ).length;
+            }
+        }
+        // 24h deltas
+        const { data: deltas } = await supabase
+            .from('product_variant_stock')
+            .select('product_id_numeric, color, size, in_stock, last_out_of_stock_at, last_back_in_stock_at')
+            .or(`last_out_of_stock_at.gte.${since24h},last_back_in_stock_at.gte.${since24h}`)
+            .order('last_out_of_stock_at', { ascending: false, nullsFirst: false })
+            .limit(15);
+        stockDeltas = deltas || [];
+    } catch (e) { stockStats = null; stockDeltas = []; }
+
+    // ── 11. Security + site_audit last-run snapshots ────────────────
+    let lastSecurityRun = null;
+    let lastSiteAuditRun = null;
+    try {
+        const { data } = await supabase
+            .from('agent_runs')
+            .select('agent_id, status, summary, error_message, created_at, proof_verified')
+            .in('agent_id', ['security', 'site_audit'])
+            .order('created_at', { ascending: false })
+            .limit(20);
+        for (const r of (data || [])) {
+            if (r.agent_id === 'security' && !lastSecurityRun) lastSecurityRun = r;
+            if (r.agent_id === 'site_audit' && !lastSiteAuditRun) lastSiteAuditRun = r;
+        }
+    } catch (_) {}
+
     // ── Calculate stats ─────────────────────────────────────────────
     const todayRevenue  = (todayOrders  || []).reduce((s, o) => s + Number(o.total_amount || 0), 0);
     const weekRevenue   = (weekOrders   || []).reduce((s, o) => s + Number(o.total_amount || 0), 0);
@@ -1335,6 +1392,103 @@ ${[
             </div>`;
         }).join('');
 
+    // ═════════════════════════════════════════════════════════════════
+    //  STOCK SUMMARY + 24h DELTAS
+    // ═════════════════════════════════════════════════════════════════
+    const stockLastCheckAge = stockStats?.last_check
+        ? Math.floor((Date.now() - new Date(stockStats.last_check).getTime()) / 3600000)
+        : 999;
+    const stockHealthy = stockLastCheckAge < 30;
+    const oosByProduct = {};
+    const wentOos = (stockDeltas || []).filter(d => d.last_out_of_stock_at && new Date(d.last_out_of_stock_at) >= new Date(since24h));
+    const cameBack = (stockDeltas || []).filter(d => d.last_back_in_stock_at && new Date(d.last_back_in_stock_at) >= new Date(since24h));
+
+    const stockHtml = !stockStats
+        ? `<p style="color:#999;font-size:12px;margin:0">לא ניתן לקרוא את product_variant_stock — בדוק את ה-RLS.</p>`
+        : `<div style="background:#f8f6f0;border-radius:6px;padding:12px;margin-bottom:10px">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="text-align:center;padding:6px"><div style="color:#27ae60;font-size:18px;font-weight:700">${stockStats.in_stock}</div><div style="color:#999;font-size:10px">במלאי</div></td>
+                <td style="text-align:center;padding:6px"><div style="color:${stockStats.oos > 0 ? '#e67e22' : '#999'};font-size:18px;font-weight:700">${stockStats.oos}</div><div style="color:#999;font-size:10px">אזל</div></td>
+                <td style="text-align:center;padding:6px"><div style="color:#666;font-size:18px;font-weight:700">${stockStats.total}</div><div style="color:#999;font-size:10px">סה"כ SKUs</div></td>
+                <td style="text-align:center;padding:6px"><div style="color:${stockHealthy ? '#27ae60' : '#e74c3c'};font-size:14px;font-weight:600">${stockLastCheckAge < 1 ? `${Math.round((Date.now() - new Date(stockStats.last_check).getTime())/60000)} דק'` : `${stockLastCheckAge}h`}</div><div style="color:#999;font-size:10px">מבדיקה אחרונה</div></td>
+              </tr>
+            </table>
+          </div>
+          ${wentOos.length === 0 && cameBack.length === 0
+            ? `<p style="color:#27ae60;font-size:12px;margin:0">✅ אין שינויי מלאי ב-24 שעות — המלאי יציב</p>`
+            : `<div style="font-size:12px">
+                ${wentOos.length > 0 ? `<p style="color:#c0392b;margin:0 0 6px"><strong>🚨 ירדו ל-OOS (${wentOos.length}):</strong></p>
+                  <ul style="margin:0 0 8px;padding-right:18px;color:#666;font-size:11px;line-height:1.6">
+                    ${wentOos.slice(0,8).map(d => `<li>מוצר ${d.product_id_numeric} · ${esc(d.color)} ${esc(d.size)}</li>`).join('')}
+                    ${wentOos.length > 8 ? `<li style="color:#999">+${wentOos.length - 8} נוספים</li>` : ''}
+                  </ul>` : ''}
+                ${cameBack.length > 0 ? `<p style="color:#27ae60;margin:0 0 6px"><strong>✅ חזרו למלאי (${cameBack.length}):</strong></p>
+                  <ul style="margin:0;padding-right:18px;color:#666;font-size:11px;line-height:1.6">
+                    ${cameBack.slice(0,8).map(d => `<li>מוצר ${d.product_id_numeric} · ${esc(d.color)} ${esc(d.size)}</li>`).join('')}
+                    ${cameBack.length > 8 ? `<li style="color:#999">+${cameBack.length - 8} נוספים</li>` : ''}
+                  </ul>` : ''}
+              </div>`}
+          ${stockStaleCount > 0 ? `<p style="background:#fff9f0;border:1px solid #ffe0a0;border-radius:4px;padding:8px 10px;margin:10px 0 0;font-size:11px;color:#7a5b1c">⚠️ ${stockStaleCount} SKUs לא נסרקו מעל 7 ימים. ה-cron של Gelato stock-check כנראה לא רץ במלואו.</p>` : ''}`;
+
+    // ═════════════════════════════════════════════════════════════════
+    //  SECURITY — last scan
+    // ═════════════════════════════════════════════════════════════════
+    const secAge = lastSecurityRun
+        ? Math.floor((Date.now() - new Date(lastSecurityRun.created_at).getTime()) / 86400000)
+        : 999;
+    const secHealthy = secAge <= 10; // weekly cron — should be < 7-10 days
+    const secStatus = lastSecurityRun?.status || 'never';
+    const securityHtml = !lastSecurityRun
+        ? `<div style="background:#fff5f5;border:1px solid #ffcfcf;border-radius:6px;padding:12px;font-size:13px;color:#c0392b">
+            🚨 <strong>סריקת אבטחה לא רצה כלל</strong> ב-14 הימים האחרונים. ה-cron מתוכנן לכל יום שני 03:00 UTC לפי AGENTS.md אבל לא קיים ב-agent_runs.<br>
+            <span style="font-size:11px;color:#7a1a1a;display:block;margin-top:6px">פעולה: אמת ב-Cowork scheduled-tasks או הוסף ל-Vercel cron.</span>
+          </div>`
+        : `<div style="background:${secHealthy ? '#f0fbf4' : '#fff9f0'};border:1px solid ${secHealthy ? '#cfeed4' : '#ffe0a0'};border-radius:6px;padding:12px">
+            <div style="margin-bottom:6px">
+              <span style="background:${secStatus === 'completed' ? '#27ae60' : '#e74c3c'};color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">${secStatus.toUpperCase()}</span>
+              <strong style="color:#2c2c2c;font-size:13px;margin-right:6px">סריקה אחרונה לפני ${secAge} ימים</strong>
+            </div>
+            ${lastSecurityRun.summary ? `<pre style="background:#f8f6f0;border-radius:4px;padding:8px 10px;font-size:11px;color:#444;line-height:1.5;white-space:pre-wrap;margin:6px 0 0;font-family:'Helvetica',Arial,sans-serif">${esc(lastSecurityRun.summary.substring(0, 400))}${lastSecurityRun.summary.length > 400 ? '…' : ''}</pre>` : ''}
+            ${lastSecurityRun.error_message ? `<p style="color:#c0392b;font-size:11px;margin:6px 0 0">שגיאה: ${esc(lastSecurityRun.error_message.substring(0, 200))}</p>` : ''}
+          </div>`;
+
+    // ═════════════════════════════════════════════════════════════════
+    //  SITE AUDIT — last scan
+    // ═════════════════════════════════════════════════════════════════
+    const saAge = lastSiteAuditRun
+        ? Math.floor((Date.now() - new Date(lastSiteAuditRun.created_at).getTime()) / 3600000)
+        : 999;
+    const saHealthy = saAge < 48;
+    let saAllOk = null;
+    let saChecks = [];
+    if (lastSiteAuditRun?.summary) {
+        const m = lastSiteAuditRun.summary.match(/cloud-run\s+site_audit\s+\w+:\s*(\{[\s\S]+\})/i);
+        if (m) {
+            try {
+                const parsed = JSON.parse(m[1]);
+                saAllOk = parsed.all_ok;
+                saChecks = parsed.checks || [];
+            } catch (_) {}
+        }
+    }
+    const saBroken = saChecks.filter(c => !c.ok);
+    const siteAuditHtml = !lastSiteAuditRun
+        ? `<div style="background:#fff5f5;border:1px solid #ffcfcf;border-radius:6px;padding:12px;font-size:13px;color:#c0392b">
+            🚨 <strong>Site Audit לא רץ כלל</strong> ב-14 הימים האחרונים.
+          </div>`
+        : `<div style="background:${saHealthy && saAllOk ? '#f0fbf4' : '#fff9f0'};border:1px solid ${saHealthy && saAllOk ? '#cfeed4' : '#ffe0a0'};border-radius:6px;padding:12px">
+            <div style="margin-bottom:6px">
+              <span style="background:${saAllOk ? '#27ae60' : '#e67e22'};color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">${saAllOk ? 'ALL OK' : (saAllOk === false ? 'BROKEN' : 'UNKNOWN')}</span>
+              <strong style="color:#2c2c2c;font-size:13px;margin-right:6px">${saChecks.length} URLs נבדקו לפני ${saAge < 24 ? saAge + 'h' : Math.floor(saAge/24) + ' ימים'}</strong>
+            </div>
+            ${saBroken.length > 0 ? `<ul style="margin:6px 0 0;padding-right:18px;color:#c0392b;font-size:11px;line-height:1.6">
+                ${saBroken.slice(0,5).map(c => `<li>${esc(c.url)} → ${c.status}</li>`).join('')}
+              </ul>` : (saAllOk
+                ? `<p style="color:#1e6e3a;font-size:11px;margin:0">כל ה-URLs החזירו 200.</p>`
+                : `<p style="color:#666;font-size:11px;margin:0">לא ניתן לפענח את התוצאה — בדוק ב-admin.</p>`)}
+          </div>`;
+
     // ── Gmail insights ──
     const gmailHtml = (gmailInsights || []).length === 0
         ? `<p style="color:#999;font-size:12px;margin:0">לא נמצאו תובנות חדשות מהמייל השבוע (Email Monitor ${emFailed ? '<strong style="color:#e74c3c">נפל</strong>' : 'רץ אבל ללא matches'}).</p>`
@@ -1497,7 +1651,34 @@ ${[
       </td></tr>
       <tr><td style="height:10px"></td></tr>
 
-      <!-- 8. GMAIL INSIGHTS -->
+      <!-- STOCK SUMMARY + 24h DELTAS -->
+      <tr><td style="background:#fff;border-radius:12px;padding:20px 24px">
+        <h2 style="margin:0 0 12px;font-size:15px;color:#2c2c2c;border-bottom:2px solid #f5f0e8;padding-bottom:8px">
+          📦 מלאי — בדיקה יומית <span style="color:#999;font-weight:400;font-size:11px">— ${wentOos.length + cameBack.length} שינויים ב-24h</span>
+        </h2>
+        ${stockHtml}
+      </td></tr>
+      <tr><td style="height:10px"></td></tr>
+
+      <!-- SITE AUDIT -->
+      <tr><td style="background:#fff;border-radius:12px;padding:20px 24px">
+        <h2 style="margin:0 0 12px;font-size:15px;color:#2c2c2c;border-bottom:2px solid #f5f0e8;padding-bottom:8px">
+          🔎 Site Audit — בדיקת תקינות אתר
+        </h2>
+        ${siteAuditHtml}
+      </td></tr>
+      <tr><td style="height:10px"></td></tr>
+
+      <!-- SECURITY -->
+      <tr><td style="background:#fff;border-radius:12px;padding:20px 24px">
+        <h2 style="margin:0 0 12px;font-size:15px;color:#2c2c2c;border-bottom:2px solid #f5f0e8;padding-bottom:8px">
+          🔒 אבטחה — סריקה שבועית
+        </h2>
+        ${securityHtml}
+      </td></tr>
+      <tr><td style="height:10px"></td></tr>
+
+      <!-- GMAIL INSIGHTS -->
       <tr><td style="background:#fff;border-radius:12px;padding:20px 24px">
         <h2 style="margin:0 0 12px;font-size:15px;color:#2c2c2c;border-bottom:2px solid #f5f0e8;padding-bottom:8px">
           📧 תובנות מהמייל
