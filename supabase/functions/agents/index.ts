@@ -1782,10 +1782,18 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
       }
       if (fbId && !fbPermalink) {
         try {
-          const r = await fetch(`https://graph.facebook.com/v19.0/${fbId}?fields=permalink_url&access_token=${fbToken}`);
+          // FB photo posts use `link`, regular posts use `permalink_url`. Ask for both.
+          const r = await fetch(`https://graph.facebook.com/v19.0/${fbId}?fields=link,permalink_url&access_token=${fbToken}`);
           const d = await r.json();
-          if (r.ok && d.permalink_url) fbPermalink = d.permalink_url as string;
-          else fbErr = d.error?.message || `HTTP ${r.status}`;
+          if (r.ok) {
+            fbPermalink = (d.link as string | undefined) || (d.permalink_url as string | undefined) || null;
+          }
+          if (!fbPermalink) {
+            // Construct fallback from page_id + post_id — always works for our own page posts.
+            const fbPageId = Deno.env.get('FACEBOOK_PAGE_ID') ?? '';
+            if (fbPageId) fbPermalink = `https://www.facebook.com/${fbPageId}/posts/${fbId}`;
+            else fbErr = d.error?.message || `HTTP ${r.status} (and FACEBOOK_PAGE_ID not set for fallback)`;
+          }
         } catch (e) { fbErr = (e as Error).message; }
       }
 
@@ -2006,9 +2014,18 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
         if (fbPostId) {
           try {
             const fbToken = Deno.env.get('FACEBOOK_PAGE_TOKEN') ?? igToken;
-            const fbPRes = await fetch(`https://graph.facebook.com/v19.0/${fbPostId}?fields=permalink_url&access_token=${fbToken}`);
+            // FB photo posts expose `link` not `permalink_url`. Try `link` first;
+            // fall back to permalink_url for regular posts.
+            const fbPRes = await fetch(`https://graph.facebook.com/v19.0/${fbPostId}?fields=link,permalink_url&access_token=${fbToken}`);
             const fbPData = await fbPRes.json();
-            if (fbPRes.ok && fbPData.permalink_url) fbPermalink = fbPData.permalink_url as string;
+            if (fbPRes.ok) {
+              fbPermalink = (fbPData.link as string | undefined) || (fbPData.permalink_url as string | undefined) || null;
+            }
+            // Last-resort fallback: construct from page_id + post_id
+            if (!fbPermalink && fbPostId) {
+              const fbPageId = Deno.env.get('FACEBOOK_PAGE_ID') ?? '';
+              if (fbPageId) fbPermalink = `https://www.facebook.com/${fbPageId}/posts/${fbPostId}`;
+            }
           } catch (_) { /* leave null */ }
         }
 
