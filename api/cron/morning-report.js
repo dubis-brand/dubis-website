@@ -187,6 +187,27 @@ module.exports = async function handler(req, res) {
 
     const urlType = new URL(req.url, `https://${req.headers.host}`).searchParams.get('type');
 
+    // ── Route: ?type=backfill-permalinks — proxy to agents Edge Function ────
+    // Lets us trigger the backfill from pg_net (via x-pg-trigger-token) without
+    // ever exposing AGENT_SECRET to SQL. Forwards to the Edge Function using
+    // CRON_SECRET from Vercel env (which the Edge Function also accepts).
+    if (urlType === 'backfill-permalinks') {
+        const agentsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1/agents';
+        const authToken = process.env.AGENT_SECRET || process.env.CRON_SECRET || '';
+        if (!authToken) return res.status(500).json({ error: 'no agent/cron secret configured' });
+        const limit = new URL(req.url, `https://${req.headers.host}`).searchParams.get('limit') || '50';
+        try {
+            const r = await fetch(`${agentsBase}?type=backfill-permalinks&limit=${limit}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+            });
+            const data = await r.json();
+            return res.status(r.status).json({ success: r.ok, edge_function_response: data });
+        } catch (e) {
+            return res.status(500).json({ error: 'proxy failed', detail: e.message });
+        }
+    }
+
     // ── Route: ?type=blind-test — send 7 Hebrew RTL feedback request emails (one-shot, 2026-04-28) ──
     // Triggered manually by Claude after deploy. Each email is personalized with first name + URL params.
     if (urlType === 'blind-test') {
