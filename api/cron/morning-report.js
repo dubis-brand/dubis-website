@@ -679,6 +679,59 @@ ${[
         snapshots = data;
     } catch (_) { snapshots = []; }
 
+    // ── 7. Posts published in last 24h — IG + FB (category='social_post') ──
+    let publishedPosts = null;
+    try {
+        const { data } = await supabase
+            .from('agent_tasks')
+            .select('id, title, updated_at, content_data, proof_of_completion')
+            .eq('category', 'social_post')
+            .eq('status', 'done')
+            .gte('updated_at', since24h)
+            .order('updated_at', { ascending: false })
+            .limit(20);
+        publishedPosts = data;
+    } catch (_) { publishedPosts = []; }
+
+    // ── 8. TikTok videos published in last 24h ──────────────────────
+    let publishedTikToks = null;
+    try {
+        const { data } = await supabase
+            .from('agent_tasks')
+            .select('id, title, updated_at, content_data, proof_of_completion')
+            .eq('category', 'tiktok_post')
+            .eq('status', 'done')
+            .gte('updated_at', since24h)
+            .order('updated_at', { ascending: false })
+            .limit(10);
+        publishedTikToks = data;
+    } catch (_) { publishedTikToks = []; }
+
+    // Pipeline health: when was the last successful TikTok publish (any age)?
+    let lastTikTokDoneAt = null;
+    try {
+        const { data } = await supabase
+            .from('agent_tasks')
+            .select('updated_at')
+            .eq('category', 'tiktok_post')
+            .eq('status', 'done')
+            .order('updated_at', { ascending: false })
+            .limit(1);
+        lastTikTokDoneAt = data?.[0]?.updated_at || null;
+    } catch (_) {}
+
+    // ── 9. Plan milestones for the active plan (Road to $1,000) ─────
+    let planMilestones = null;
+    try {
+        const { data } = await supabase
+            .from('plan_milestones')
+            .select('*')
+            .eq('plan_id', 'road_to_1000_2026-04-28')
+            .order('phase', { ascending: true })
+            .order('ord', { ascending: true });
+        planMilestones = data;
+    } catch (_) { planMilestones = []; }
+
     // ── Calculate stats ─────────────────────────────────────────────
     const todayRevenue  = (todayOrders  || []).reduce((s, o) => s + Number(o.total_amount || 0), 0);
     const weekRevenue   = (weekOrders   || []).reduce((s, o) => s + Number(o.total_amount || 0), 0);
@@ -1102,6 +1155,186 @@ ${[
             </tr>`;
         }).join('');
 
+    // ═════════════════════════════════════════════════════════════════
+    //  PLAN PROGRESS — Road to $1,000
+    // ═════════════════════════════════════════════════════════════════
+    const PLAN_START = new Date('2026-04-28');
+    const PLAN_END = new Date('2026-09-15');
+    const planTotalDays = Math.round((PLAN_END - PLAN_START) / 86400000);
+    const planDayNum = Math.max(0, Math.floor((Date.now() - PLAN_START.getTime()) / 86400000));
+    const ml = planMilestones || [];
+    const blockedOnOren = ml.filter(m => m.status === 'blocked_on_oren');
+    const lateItems = ml.filter(m => m.status !== 'done' && m.status !== 'cancelled'
+        && m.due_date && new Date(m.due_date) < new Date() && !m.is_kpi);
+    const doneCount = ml.filter(m => m.status === 'done').length;
+    const inProgressCount = ml.filter(m => m.status === 'in_progress').length;
+    const totalActionable = ml.filter(m => !m.is_kpi).length;
+
+    // Detect current phase: phase whose milestones have any non-done items with earliest due
+    const phases = [1, 2, 3, 4];
+    let currentPhase = 1;
+    for (const p of phases) {
+        const phaseItems = ml.filter(m => m.phase === p && !m.is_kpi);
+        const allDone = phaseItems.length > 0 && phaseItems.every(m => m.status === 'done');
+        if (!allDone) { currentPhase = p; break; }
+        if (p === 4) currentPhase = 4;
+    }
+
+    const phaseName = (ml.find(m => m.phase === currentPhase) || {}).phase_name || '';
+    const planDocPath = (ml[0] || {}).plan_doc_path || '';
+    const planTitle = (ml[0] || {}).plan_title || 'תוכנית פעילה';
+
+    const blockedHtml = blockedOnOren.length === 0
+        ? `<p style="color:#27ae60;font-size:12px;margin:0">✅ אין פריטים שחוסמים אותך</p>`
+        : blockedOnOren.map(m => {
+            const daysLate = m.due_date ? Math.max(0, Math.floor((Date.now() - new Date(m.due_date).getTime()) / 86400000)) : 0;
+            return `<div style="background:#fff5f5;border:1px solid #ffcfcf;border-right:4px solid #e74c3c;border-radius:6px;padding:12px 14px;margin-bottom:8px">
+                <div style="margin-bottom:4px">
+                  <span style="background:#e74c3c;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">חוסם ${daysLate > 0 ? daysLate + ' ימים' : ''}</span>
+                  <strong style="color:#2c2c2c;font-size:13px;margin-right:6px">${esc(m.title)}</strong>
+                </div>
+                <p style="color:#1e6e3a;font-size:12px;margin:6px 0 4px;background:#f0fbf4;padding:8px 10px;border-radius:4px"><strong>פעולה דרושה ממך:</strong> ${esc(m.oren_action || '')}</p>
+                ${m.blocking_what ? `<p style="color:#888;font-size:11px;margin:4px 0 0;font-style:italic">חוסם: ${esc(m.blocking_what)}</p>` : ''}
+            </div>`;
+        }).join('');
+
+    const phaseProgress = [];
+    for (const p of phases) {
+        const items = ml.filter(m => m.phase === p && !m.is_kpi);
+        if (items.length === 0) continue;
+        const done = items.filter(m => m.status === 'done').length;
+        const pct = items.length > 0 ? Math.round(done / items.length * 100) : 0;
+        const isCurrent = p === currentPhase;
+        phaseProgress.push(`<tr>
+            <td style="padding:6px 8px;font-size:12px;color:${isCurrent ? '#c8a96e' : '#666'};font-weight:${isCurrent ? '700' : '500'};width:140px">
+              ${isCurrent ? '▶ ' : ''}פאזה ${p} — ${esc(items[0].phase_name || '')}
+            </td>
+            <td style="padding:6px 8px;font-size:11px;color:#888;width:60px">${done}/${items.length}</td>
+            <td style="padding:6px 8px">
+              <div style="background:#f0ebe0;border-radius:3px;height:8px;overflow:hidden;width:100%">
+                <div style="background:${isCurrent ? '#c8a96e' : '#9b9b9b'};height:100%;width:${pct}%"></div>
+              </div>
+            </td>
+        </tr>`);
+    }
+
+    const kpiRows = ml.filter(m => m.is_kpi).map(k => `<tr>
+        <td style="padding:5px 8px;font-size:11px;color:#555">${esc(k.title.replace(/\s*\(W7 target\).*/i, ''))}</td>
+        <td style="padding:5px 8px;font-size:11px;color:#999;text-align:left">${esc(k.kpi_current || '?')}</td>
+        <td style="padding:5px 8px;font-size:11px;color:#c8a96e;font-weight:700;text-align:left">${esc(k.kpi_target || '?')}</td>
+    </tr>`).join('');
+
+    const planHtml = `
+        <div style="background:#fff;border:1px solid #e0d8c0;border-radius:8px;padding:16px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f0ebe0;padding-bottom:10px;margin-bottom:12px">
+            <strong style="color:#2c2c2c;font-size:14px">${esc(planTitle)}</strong>
+            <span style="color:#888;font-size:11px">יום ${planDayNum}/${planTotalDays} · ${doneCount}/${totalActionable} milestones הושלמו</span>
+          </div>
+          ${blockedOnOren.length > 0 ? `
+            <div style="margin-bottom:14px">
+              <strong style="color:#e74c3c;font-size:13px;display:block;margin-bottom:8px">🚨 חוסם אותך (${blockedOnOren.length}):</strong>
+              ${blockedHtml}
+            </div>` : ''}
+          ${lateItems.length > 0 ? `
+            <div style="background:#fff9f0;border:1px solid #ffe0a0;border-radius:6px;padding:10px 12px;margin-bottom:14px">
+              <strong style="color:#b7860b;font-size:12px">⚠️ ${lateItems.length} פריטים מאחרים מהדדליין:</strong>
+              <ul style="margin:6px 0 0;padding-right:18px;color:#7a5b1c;font-size:11px;line-height:1.7">
+                ${lateItems.slice(0,5).map(m => `<li>${esc(m.title)} <span style="color:#999">— ${esc(m.due_date)} · owner: ${esc(m.owner)}</span></li>`).join('')}
+              </ul>
+            </div>` : ''}
+          <div style="margin-bottom:10px">
+            <strong style="color:#555;font-size:12px;display:block;margin-bottom:6px">התקדמות פאזות:</strong>
+            <table width="100%" cellpadding="0" cellspacing="0">${phaseProgress.join('')}</table>
+          </div>
+          ${kpiRows ? `
+            <div style="background:#f8f6f0;border-radius:6px;padding:10px 12px;margin-top:10px">
+              <strong style="color:#555;font-size:12px;display:block;margin-bottom:6px">KPIs שבועיים (יעד שבוע 7 — 15.06):</strong>
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr><th style="text-align:right;color:#999;font-size:10px;padding:4px 8px;font-weight:500">מדד</th><th style="text-align:left;color:#999;font-size:10px;padding:4px 8px;font-weight:500">בפועל</th><th style="text-align:left;color:#999;font-size:10px;padding:4px 8px;font-weight:500">יעד W7</th></tr>
+                ${kpiRows}
+              </table>
+            </div>` : ''}
+          ${planDocPath ? `<p style="margin:10px 0 0;font-size:11px;color:#999">📄 מסמך מלא: <a href="https://www.dubis.net/${esc(planDocPath)}" style="color:#c8a96e">${esc(planDocPath)}</a></p>` : ''}
+        </div>`;
+
+    // ═════════════════════════════════════════════════════════════════
+    //  POSTS PUBLISHED (24h) — IG + FB
+    // ═════════════════════════════════════════════════════════════════
+    const postsHtml = (publishedPosts || []).length === 0
+        ? `<p style="color:#888;font-size:12px;margin:0">⏳ לא פורסמו פוסטים ב-24 השעות האחרונות. (Cron content רץ 10:00 + 16:00 UTC)</p>`
+        : (publishedPosts || []).map(p => {
+            const cd = p.content_data || {};
+            const proof = p.proof_of_completion || {};
+            const ig = cd.ig_permalink || cd.instagram_permalink || (cd.instagram_id ? `https://www.instagram.com/p/${cd.instagram_id}` : null);
+            const fb = cd.fb_permalink || cd.facebook_permalink || (cd.facebook_id ? `https://www.facebook.com/${cd.facebook_id}` : null);
+            const productUrl = cd.product_url || '';
+            const slogan = cd.slogan || cd.product_slogan || '';
+            const imageUrl = cd.image_url || '';
+            const platform = cd.platform || 'IG+FB';
+            const publishedAt = proof.published_at || p.updated_at;
+            const ts = new Date(publishedAt).toLocaleString('he-IL', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Jerusalem' });
+            return `<div style="background:#fff;border:1px solid #e8e4d4;border-radius:8px;padding:12px 14px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start">
+                ${imageUrl ? `<img src="${esc(imageUrl)}" alt="" style="width:54px;height:54px;border-radius:6px;object-fit:cover;flex-shrink:0">` : ''}
+                <div style="flex:1;min-width:0">
+                  <div style="margin-bottom:4px">
+                    <strong style="color:#2c2c2c;font-size:13px">${esc(p.title || slogan)}</strong>
+                    <span style="color:#999;font-size:10px;margin-right:8px">${ts}</span>
+                  </div>
+                  ${slogan ? `<p style="color:#666;font-size:11px;margin:0 0 4px;font-style:italic">"${esc(slogan)}"</p>` : ''}
+                  <div style="font-size:11px">
+                    ${ig ? `<a href="${esc(ig)}" style="color:#e1306c;text-decoration:none;margin-left:10px">📷 Instagram →</a>` : `<span style="color:#bbb;margin-left:10px">📷 IG (ללא קישור)</span>`}
+                    ${fb ? `<a href="${esc(fb)}" style="color:#1877f2;text-decoration:none;margin-left:10px">📘 Facebook →</a>` : `<span style="color:#bbb;margin-left:10px">📘 FB (ללא קישור)</span>`}
+                    ${productUrl ? `<a href="${esc(productUrl)}" style="color:#c8a96e;text-decoration:none">🛍 מוצר →</a>` : ''}
+                  </div>
+                </div>
+            </div>`;
+        }).join('') + ((publishedPosts || []).every(p => !p.content_data?.ig_permalink && !p.content_data?.fb_permalink && !p.content_data?.instagram_id && !p.content_data?.facebook_id)
+            ? `<div style="background:#fff9f0;border:1px solid #ffe0a0;border-radius:6px;padding:10px 12px;margin-top:8px;font-size:11px;color:#7a5b1c">
+                <strong>⚠️ באג ידוע:</strong> ה-publisher לא שומר את ה-permalinks של IG/FB. כל פוסט פורסם בפועל, אבל אין URL ציבורי ב-DB. תיקון מתוכנן: שמירת permalink מ-Graph API אחרי publish.
+            </div>`
+            : '');
+
+    // ═════════════════════════════════════════════════════════════════
+    //  TIKTOK VIDEOS PUBLISHED (24h)
+    // ═════════════════════════════════════════════════════════════════
+    const tiktokAgeHours = lastTikTokDoneAt
+        ? Math.floor((Date.now() - new Date(lastTikTokDoneAt).getTime()) / 3600000)
+        : 999;
+    const tiktokHealthy = tiktokAgeHours < 30;
+
+    const tiktokHtml = (publishedTikToks || []).length === 0
+        ? `<div style="background:${tiktokHealthy ? '#fff9f0' : '#fff5f5'};border:1px solid ${tiktokHealthy ? '#ffe0a0' : '#ffcfcf'};border-radius:6px;padding:12px;font-size:12px;color:${tiktokHealthy ? '#7a5b1c' : '#c0392b'}">
+            ${tiktokHealthy
+                ? `⏳ לא פורסם TikTok חדש ב-24 שעות אחרונות. הפרסום האחרון לפני ${tiktokAgeHours} שעות. (Cron GH Actions רץ 18:00 UTC)`
+                : `🚨 <strong>Pipeline לא רץ ${Math.floor(tiktokAgeHours/24)} ימים</strong>. הפרסום האחרון לפני ${tiktokAgeHours} שעות. בדוק GH Actions: <a href="https://github.com/dubis-brand/dubis-website/actions/workflows/dubis-tiktok-daily.yml" style="color:#c8a96e">dubis-tiktok-daily.yml</a>`
+            }
+          </div>`
+        : (publishedTikToks || []).map(t => {
+            const cd = t.content_data || {};
+            const proof = t.proof_of_completion || {};
+            const videoUrl = cd.video_url || '';
+            const lateId = cd.late_post_id || proof.tiktok_late_post_id || '';
+            const tiktokUrl = cd.tiktok_url || cd.permalink || '';
+            const productUrl = cd.product_url || '';
+            const slogan = cd.product_slogan || cd.slogan || '';
+            const publishedAt = proof.published_at || t.updated_at;
+            const ts = new Date(publishedAt).toLocaleString('he-IL', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Jerusalem' });
+            return `<div style="background:#fff;border:1px solid #e8e4d4;border-radius:8px;padding:12px 14px;margin-bottom:8px">
+                <div style="margin-bottom:4px">
+                  <span style="background:#000;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">TIKTOK</span>
+                  <strong style="color:#2c2c2c;font-size:13px;margin-right:6px">${esc(t.title)}</strong>
+                  <span style="color:#999;font-size:10px;margin-right:8px">${ts}</span>
+                </div>
+                ${slogan ? `<p style="color:#666;font-size:11px;margin:4px 0;font-style:italic">"${esc(slogan)}"</p>` : ''}
+                <div style="font-size:11px;margin-top:6px">
+                  ${tiktokUrl ? `<a href="${esc(tiktokUrl)}" style="color:#000;text-decoration:none;margin-left:10px">🎬 צפה ב-TikTok →</a>` : ''}
+                  ${videoUrl ? `<a href="${esc(videoUrl)}" style="color:#666;text-decoration:none;margin-left:10px">📹 קובץ MP4 →</a>` : ''}
+                  ${productUrl ? `<a href="${esc(productUrl)}" style="color:#c8a96e;text-decoration:none">🛍 מוצר →</a>` : ''}
+                </div>
+                ${lateId && !tiktokUrl ? `<p style="color:#999;font-size:10px;margin:6px 0 0;font-family:monospace">late_post_id: ${esc(lateId)} (URL ציבורי לא נשמר — צריך לפתוח את חשבון TikTok ידנית)</p>` : ''}
+            </div>`;
+        }).join('');
+
     // ── Gmail insights ──
     const gmailHtml = (gmailInsights || []).length === 0
         ? `<p style="color:#999;font-size:12px;margin:0">לא נמצאו תובנות חדשות מהמייל השבוע (Email Monitor ${emFailed ? '<strong style="color:#e74c3c">נפל</strong>' : 'רץ אבל ללא matches'}).</p>`
@@ -1157,7 +1390,16 @@ ${[
         </table>
       </td></tr>
 
-      <!-- 1. CRITICAL ISSUES -->
+      <!-- 1. PLAN PROGRESS — Road to $1,000 -->
+      <tr><td style="background:#fff;border-radius:12px;padding:20px 24px">
+        <h2 style="margin:0 0 14px;font-size:15px;color:#2c2c2c;border-bottom:2px solid #f5f0e8;padding-bottom:8px">
+          📋 התקדמות מול תוכנית${blockedOnOren.length > 0 ? ` <span style="background:#e74c3c;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;margin-right:8px">${blockedOnOren.length} חוסם אותך</span>` : ''}
+        </h2>
+        ${planHtml}
+      </td></tr>
+      <tr><td style="height:10px"></td></tr>
+
+      <!-- 2. CRITICAL ISSUES -->
       <tr><td style="background:#fff;border-radius:12px;padding:20px 24px">
         <h2 style="margin:0 0 14px;font-size:15px;color:#2c2c2c;border-bottom:2px solid #f5f0e8;padding-bottom:8px">
           🚨 בעיות קריטיות (${issues.length})
@@ -1179,7 +1421,25 @@ ${[
       </td></tr>
       <tr><td style="height:10px"></td></tr>
 
-      <!-- 3. CAMPAIGN DEEP ANALYSIS -->
+      <!-- POSTS PUBLISHED (IG+FB) — last 24h -->
+      <tr><td style="background:#fff;border-radius:12px;padding:20px 24px">
+        <h2 style="margin:0 0 12px;font-size:15px;color:#2c2c2c;border-bottom:2px solid #f5f0e8;padding-bottom:8px">
+          📷 פוסטים שעלו (24h) <span style="color:#999;font-weight:400;font-size:11px">— ${(publishedPosts||[]).length} ב-IG+FB</span>
+        </h2>
+        ${postsHtml}
+      </td></tr>
+      <tr><td style="height:10px"></td></tr>
+
+      <!-- TIKTOK VIDEOS — last 24h + pipeline health -->
+      <tr><td style="background:#fff;border-radius:12px;padding:20px 24px">
+        <h2 style="margin:0 0 12px;font-size:15px;color:#2c2c2c;border-bottom:2px solid #f5f0e8;padding-bottom:8px">
+          🎬 TikTok — סרטונים שעלו (24h) <span style="color:#999;font-weight:400;font-size:11px">— ${(publishedTikToks||[]).length} פורסמו</span>
+        </h2>
+        ${tiktokHtml}
+      </td></tr>
+      <tr><td style="height:10px"></td></tr>
+
+      <!-- CAMPAIGN DEEP ANALYSIS -->
       <tr><td style="background:#fff;border-radius:12px;padding:20px 24px">
         <h2 style="margin:0 0 12px;font-size:15px;color:#2c2c2c;border-bottom:2px solid #f5f0e8;padding-bottom:8px">
           📊 ניתוח קמפיין מעמיק
