@@ -1747,10 +1747,15 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
     if (!igToken) return json({ error: 'INSTAGRAM_ACCESS_TOKEN missing' }, 503);
 
     const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+    // Fetch ALL done social_posts (current total ~76, won't grow past a few hundred
+    // for years). Filtering in JS to find ones that still need work is fine at
+    // this scale. The previous `limit*4` over-fetch made batches converge on the
+    // same first N rows and never reach the tail.
     const { data: tasks, error } = await sb.from('agent_tasks')
       .select('id, title, content_data')
       .eq('category', 'social_post').eq('status', 'done')
-      .limit(limit * 4); // over-fetch — many tasks may already have permalinks
+      .order('updated_at', { ascending: true })
+      .limit(500);
     if (error) return json({ error: error.message }, 500);
 
     const toBackfill = (tasks || []).filter((t: Record<string, unknown>) => {
