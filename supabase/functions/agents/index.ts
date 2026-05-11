@@ -1731,6 +1731,76 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
   }
 
   // ── PUBLISH-READY ────────────────────────────────────────────────────
+  if (type === 'backfill-permalinks') {
+    // One-off: scan all done social_post tasks lacking ig_permalink/fb_permalink,
+    // query Graph API for each, and fill content_data with public URLs.
+    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const cronSecret = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader = req.headers.get('authorization') ?? '';
+    const token = url.searchParams.get('token') || req.headers.get('x-agent-secret') || authHeader.replace('Bearer ', '').trim() || '';
+    const isAuthed = (svcKey && token === svcKey) || (agentSecret && token === agentSecret) || (cronSecret && token === cronSecret);
+    if (!isAuthed && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);
+
+    const igToken = Deno.env.get('INSTAGRAM_ACCESS_TOKEN') ?? '';
+    const fbToken = Deno.env.get('FACEBOOK_PAGE_TOKEN') ?? igToken;
+    if (!igToken) return json({ error: 'INSTAGRAM_ACCESS_TOKEN missing' }, 503);
+
+    const limit = parseInt(url.searchParams.get('limit') || '20', 10);
+    const { data: tasks, error } = await sb.from('agent_tasks')
+      .select('id, title, content_data')
+      .eq('category', 'social_post').eq('status', 'done')
+      .limit(limit * 4); // over-fetch — many tasks may already have permalinks
+    if (error) return json({ error: error.message }, 500);
+
+    const toBackfill = (tasks || []).filter((t: Record<string, unknown>) => {
+      const cd = (t.content_data as Record<string, unknown>) || {};
+      const hasIgUrl = !!cd.ig_permalink;
+      const hasFbUrl = !!cd.fb_permalink;
+      const hasIgId = !!cd.instagram_post_id;
+      const hasFbId = !!cd.facebook_post_id;
+      return (hasIgId && !hasIgUrl) || (hasFbId && !hasFbUrl);
+    }).slice(0, limit);
+
+    const results: Record<string, unknown>[] = [];
+    for (const task of toBackfill) {
+      const cd = (task.content_data as Record<string, unknown>) || {};
+      const igId = cd.instagram_post_id as string | undefined;
+      const fbId = cd.facebook_post_id as string | undefined;
+      let igPermalink = cd.ig_permalink as string | null || null;
+      let fbPermalink = cd.fb_permalink as string | null || null;
+      let igErr: string | null = null;
+      let fbErr: string | null = null;
+
+      if (igId && !igPermalink) {
+        try {
+          const r = await fetch(`https://graph.facebook.com/v19.0/${igId}?fields=permalink&access_token=${igToken}`);
+          const d = await r.json();
+          if (r.ok && d.permalink) igPermalink = d.permalink as string;
+          else igErr = d.error?.message || `HTTP ${r.status}`;
+        } catch (e) { igErr = (e as Error).message; }
+      }
+      if (fbId && !fbPermalink) {
+        try {
+          const r = await fetch(`https://graph.facebook.com/v19.0/${fbId}?fields=permalink_url&access_token=${fbToken}`);
+          const d = await r.json();
+          if (r.ok && d.permalink_url) fbPermalink = d.permalink_url as string;
+          else fbErr = d.error?.message || `HTTP ${r.status}`;
+        } catch (e) { fbErr = (e as Error).message; }
+      }
+
+      await sb.from('agent_tasks').update({
+        content_data: { ...cd, ig_permalink: igPermalink, fb_permalink: fbPermalink },
+        updated_at: new Date().toISOString(),
+      }).eq('id', task.id);
+
+      results.push({ id: task.id, title: task.title, ig: igPermalink, fb: fbPermalink, ig_err: igErr, fb_err: fbErr });
+      await new Promise((r) => setTimeout(r, 250)); // throttle Graph API
+    }
+
+    return json({ ok: true, scanned: (tasks || []).length, backfilled: results.length, results });
+  }
+
   if (type === 'publish-ready') {
     const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
@@ -1922,9 +1992,29 @@ Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact g
           fbError = (fbErr as Error).message;
         }
 
+        // Fetch public permalinks. IG/FB only mint these AFTER media_publish, so
+        // this has to be a separate Graph API call — pub.id alone is the numeric
+        // media_id, not a URL. Failures are non-fatal: we still mark the task done,
+        // just without a public link in the daily report.
+        let igPermalink: string | null = null;
+        try {
+          const igPRes = await fetch(`https://graph.facebook.com/v19.0/${pub.id}?fields=permalink&access_token=${igToken}`);
+          const igPData = await igPRes.json();
+          if (igPRes.ok && igPData.permalink) igPermalink = igPData.permalink as string;
+        } catch (_) { /* leave null */ }
+        let fbPermalink: string | null = null;
+        if (fbPostId) {
+          try {
+            const fbToken = Deno.env.get('FACEBOOK_PAGE_TOKEN') ?? igToken;
+            const fbPRes = await fetch(`https://graph.facebook.com/v19.0/${fbPostId}?fields=permalink_url&access_token=${fbToken}`);
+            const fbPData = await fbPRes.json();
+            if (fbPRes.ok && fbPData.permalink_url) fbPermalink = fbPData.permalink_url as string;
+          } catch (_) { /* leave null */ }
+        }
+
         // Use a fresh timestamp at the moment we record success — `now` was set at loop start.
         const publishNow = new Date().toISOString();
-        await sb.from('agent_tasks').update({ status: 'done', content_data: { ...cd, instagram_post_id: pub.id, facebook_post_id: fbPostId, published_at: publishNow, publish_lock_at: null, publish_attempts: attemptCount }, updated_at: publishNow }).eq('id', task.id);
+        await sb.from('agent_tasks').update({ status: 'done', content_data: { ...cd, instagram_post_id: pub.id, facebook_post_id: fbPostId, ig_permalink: igPermalink, fb_permalink: fbPermalink, published_at: publishNow, publish_lock_at: null, publish_attempts: attemptCount }, updated_at: publishNow }).eq('id', task.id);
         // Save published image to dubis_images gallery so it appears in the gallery tab
         if (image_url && image_url.includes('supabase.co')) {
           try {

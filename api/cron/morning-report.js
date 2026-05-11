@@ -1322,8 +1322,10 @@ ${[
         : (publishedPosts || []).map(p => {
             const cd = p.content_data || {};
             const proof = p.proof_of_completion || {};
-            const ig = cd.ig_permalink || cd.instagram_permalink || (cd.instagram_id ? `https://www.instagram.com/p/${cd.instagram_id}` : null);
-            const fb = cd.fb_permalink || cd.facebook_permalink || (cd.facebook_id ? `https://www.facebook.com/${cd.facebook_id}` : null);
+            const ig = cd.ig_permalink || null;
+            const fb = cd.fb_permalink || null;
+            const igId = cd.instagram_post_id || null;
+            const fbId = cd.facebook_post_id || null;
             const productUrl = cd.product_url || '';
             const slogan = cd.slogan || cd.product_slogan || '';
             const imageUrl = cd.image_url || '';
@@ -1339,15 +1341,15 @@ ${[
                   </div>
                   ${slogan ? `<p style="color:#666;font-size:11px;margin:0 0 4px;font-style:italic">"${esc(slogan)}"</p>` : ''}
                   <div style="font-size:11px">
-                    ${ig ? `<a href="${esc(ig)}" style="color:#e1306c;text-decoration:none;margin-left:10px">📷 Instagram →</a>` : `<span style="color:#bbb;margin-left:10px">📷 IG (ללא קישור)</span>`}
-                    ${fb ? `<a href="${esc(fb)}" style="color:#1877f2;text-decoration:none;margin-left:10px">📘 Facebook →</a>` : `<span style="color:#bbb;margin-left:10px">📘 FB (ללא קישור)</span>`}
+                    ${ig ? `<a href="${esc(ig)}" style="color:#e1306c;text-decoration:none;margin-left:10px">📷 Instagram →</a>` : (igId ? `<span style="color:#999;margin-left:10px" title="ID: ${esc(igId)}">📷 IG (פורסם, ממתין ל-backfill)</span>` : '')}
+                    ${fb ? `<a href="${esc(fb)}" style="color:#1877f2;text-decoration:none;margin-left:10px">📘 Facebook →</a>` : (fbId ? `<span style="color:#999;margin-left:10px" title="ID: ${esc(fbId)}">📘 FB (פורסם, ממתין ל-backfill)</span>` : '')}
                     ${productUrl ? `<a href="${esc(productUrl)}" style="color:#c8a96e;text-decoration:none">🛍 מוצר →</a>` : ''}
                   </div>
                 </div>
             </div>`;
-        }).join('') + ((publishedPosts || []).every(p => !p.content_data?.ig_permalink && !p.content_data?.fb_permalink && !p.content_data?.instagram_id && !p.content_data?.facebook_id)
+        }).join('') + ((publishedPosts || []).every(p => !p.content_data?.ig_permalink && !p.content_data?.fb_permalink)
             ? `<div style="background:#fff9f0;border:1px solid #ffe0a0;border-radius:6px;padding:10px 12px;margin-top:8px;font-size:11px;color:#7a5b1c">
-                <strong>⚠️ באג ידוע:</strong> ה-publisher לא שומר את ה-permalinks של IG/FB. כל פוסט פורסם בפועל, אבל אין URL ציבורי ב-DB. תיקון מתוכנן: שמירת permalink מ-Graph API אחרי publish.
+                ⚠️ עדיין אין permalinks. הפרסומים מ-Edge Function גרסה חדשה ייכנסו אחרי הדפלוי הבא. ל-backfill של 81 פוסטים קיימים: <code>POST /functions/v1/agents?type=backfill-permalinks</code>.
             </div>`
             : '');
 
