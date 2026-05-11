@@ -122,11 +122,24 @@ async function resolveImageUrl(product) {
     }
   } catch (e) { console.warn('dubis_images lookup failed:', e.message); }
 
-  // Fallback 2: standard default mockup — `product-{id}-front.jpg` always exists per CLAUDE.md
-  return {
-    url: `https://www.dubis.net/images/product-${product.product_id_numeric}-front.jpg`,
-    source: 'fallback-mockup',
-  };
+  // Fallback 2: per-color mockup. After the 2026-05-03 color-rotation fix, the
+  // no-color default `product-{id}-front.jpg` was removed. Iterate the product's
+  // `colors[]` palette and return the first variant that exists on the CDN.
+  let colors = [];
+  try {
+    if (Array.isArray(product.colors)) colors = product.colors;
+    else if (typeof product.colors === 'string') colors = JSON.parse(product.colors);
+  } catch (_) {}
+  for (const c of colors) {
+    if (!c) continue;
+    const url = `https://www.dubis.net/images/product-${product.product_id_numeric}-${encodeURIComponent(c)}-front.jpg`;
+    try {
+      const r = await fetch(url, { method: 'HEAD' });
+      if (r.ok) return { url, source: `per-color:${c}` };
+    } catch (_) {}
+  }
+
+  throw new Error(`no image found for product ${product.product_id_numeric} (tried lifestyle/image_url/dubis_images/colors[${colors.length}])`);
 }
 
 async function renderSlideshow(product, tagline, audioPath) {
