@@ -36,13 +36,13 @@ async function ensureBucket() {
   }
 }
 
-async function pickProduct() {
+async function buildProductPool() {
   if (FORCE_PID) {
     const { data } = await sb.from('dubis_products')
       .select('id, product_id_numeric, slogan, clothing_type, gender, colors, description_en, image_url, lifestyle_image_url')
       .eq('product_id_numeric', FORCE_PID).single();
     if (!data) throw new Error('product not found: ' + FORCE_PID);
-    return data;
+    return [data];
   }
   const { data: products } = await sb.from('dubis_products')
     .select('id, product_id_numeric, slogan, clothing_type, gender, colors, description_en, image_url, lifestyle_image_url')
@@ -59,7 +59,11 @@ async function pickProduct() {
   }
   const eligible = products.filter(p => !seen.has(p.product_id_numeric));
   const pool = eligible.length ? eligible : products;
-  return pool[Math.floor(Math.random() * pool.length)];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool;
 }
 
 
@@ -110,15 +114,16 @@ async function resolveImageUrl(product) {
   if (product.image_url) return { url: product.image_url, source: 'product' };
 
   // Fallback 1: dubis_images table (vetted real-person photos)
+  // Note: dubis_images.product_id is a UUID — join via product.id (UUID), NOT product_id_numeric.
   try {
     const { data: imgs } = await sb.from('dubis_images')
-      .select('image_url, photo_url, url')
-      .eq('product_id', product.product_id_numeric)
+      .select('image_url, quality_score')
+      .eq('product_id', product.id)
       .eq('approved', true)
+      .order('quality_score', { ascending: false, nullsFirst: false })
       .limit(5);
     for (const row of (imgs || [])) {
-      const u = row.image_url || row.photo_url || row.url;
-      if (u) return { url: u, source: 'dubis_images' };
+      if (row.image_url) return { url: row.image_url, source: 'dubis_images' };
     }
   } catch (e) { console.warn('dubis_images lookup failed:', e.message); }
 
@@ -142,10 +147,10 @@ async function resolveImageUrl(product) {
   throw new Error(`no image found for product ${product.product_id_numeric} (tried lifestyle/image_url/dubis_images/colors[${colors.length}])`);
 }
 
-async function renderSlideshow(product, tagline, audioPath) {
+async function renderSlideshow(product, tagline, audioPath, preResolved) {
   await fs.mkdir(OUT_DIR, { recursive: true });
   const imgPath = path.join(OUT_DIR, 'product.jpg');
-  const { url: imgUrl, source: imgSource } = await resolveImageUrl(product);
+  const { url: imgUrl, source: imgSource } = preResolved || await resolveImageUrl(product);
   console.log('Image source:', imgSource, '->', imgUrl);
   await downloadImage(imgUrl, imgPath);
 
@@ -230,10 +235,29 @@ async function triggerPublish(product, videoUrl) {
   return JSON.parse(txt);
 }
 
+async function pickProductWithResolvableImage(pool) {
+  const MAX_TRIES = Math.min(5, pool.length);
+  const failures = [];
+  for (let i = 0; i < MAX_TRIES; i++) {
+    const candidate = pool[i];
+    try {
+      const resolved = await resolveImageUrl(candidate);
+      console.log('Resolved image for product', candidate.product_id_numeric, '"' + candidate.slogan + '" via', resolved.source);
+      return { product: candidate, resolved };
+    } catch (e) {
+      console.warn(`Product ${candidate.product_id_numeric} ("${candidate.slogan}") has no resolvable image: ${e.message}`);
+      failures.push(`#${candidate.product_id_numeric}: ${e.message}`);
+    }
+  }
+  throw new Error(`no product in pool of ${pool.length} had a resolvable image. tried ${MAX_TRIES}. failures: ${failures.join(' | ')}`);
+}
+
 async function main() {
   console.log('=== DUBIS TikTok Daily ===', new Date().toISOString());
   await ensureBucket();
-  const product = await pickProduct();
+  const pool = await buildProductPool();
+  console.log(`Pool: ${pool.length} candidate product(s)`);
+  const { product, resolved } = await pickProductWithResolvableImage(pool);
   console.log('Picked product', product.product_id_numeric, '"' + product.slogan + '"');
 
   const taglines = [
@@ -253,7 +277,7 @@ async function main() {
     await fs.mkdir(OUT_DIR, { recursive: true });
     try { await downloadFile(audioPick.url, audioPath); } catch (e) { console.warn('audio download failed:', e.message); audioPath = null; }
   }
-  const videoPath = await renderSlideshow(product, tagline, audioPath);
+  const videoPath = await renderSlideshow(product, tagline, audioPath, resolved);
   const videoUrl = await uploadVideo(videoPath, product);
   const result = await triggerPublish(product, videoUrl);
 
