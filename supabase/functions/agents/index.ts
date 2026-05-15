@@ -4358,7 +4358,190 @@ ${items.join('\n')}
     } catch { return new Response('Error fetching image', { status: 500 }); }
   }
 
+  // ── GELATO-DISCOVERY — daily catalog snapshot + diff (Wave 1, 2026-05-15) ─
+  // Plan: docs/plans/DUBIS_GELATO_DISCOVERY_AGENT_2026-05-15.html
+  // Wave 1 scope: fetch apparel catalog → aggregate by base productUid →
+  //               UPSERT snapshot → diff vs yesterday → log to agent_runs.
+  // NO scoring, NO slogan generation, NO admin UI yet (Waves 2-4).
+  if (type === 'gelato-discovery') {
+    const t0 = Date.now();
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const token       = url.searchParams.get('token') || authHeader.replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
+    const isAuthed = (cronSecret && token === cronSecret) || (agentSecret && token === agentSecret) || (svcKey && token === svcKey);
+    const adminOk = await verifyAdmin(req);
+    if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
+
+    const GELATO_API_KEY = Deno.env.get('GELATO_API_KEY') ?? '';
+    if (!GELATO_API_KEY) return json({ error: 'GELATO_API_KEY not set' }, 500);
+
+    // Catalogs DUBIS cares about (apparel covers tshirt/hoodie/ziphoodie/longsleeve/dad-hat).
+    // Beanies + bucket-hat are siblings — include for future expansion.
+    const CATALOGS = ['apparel'];
+    const PAGE_LIMIT = 100;
+    const MAX_PAGES_PER_CATALOG = 200; // safety: 200 × 100 = 20,000 variants per catalog
+
+    type Variant = {
+      productUid: string;
+      attributes?: Record<string, string>;
+      supportedCountries?: string[];
+      notSupportedCountries?: string[];
+      dimensions?: Record<string, { value: string; measureUnit: string }>;
+    };
+
+    const allVariants: Variant[] = [];
+    const fetchErrors: string[] = [];
+
+    for (const catalogUid of CATALOGS) {
+      let offset = 0;
+      for (let page = 0; page < MAX_PAGES_PER_CATALOG; page++) {
+        try {
+          const r = await fetch(`https://product.gelatoapis.com/v3/catalogs/${catalogUid}/products:search`, {
+            method: 'POST',
+            headers: { 'X-API-KEY': GELATO_API_KEY, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ limit: PAGE_LIMIT, offset, attributeFilters: {} }),
+            signal: AbortSignal.timeout(30000),
+          });
+          if (!r.ok) {
+            fetchErrors.push(`${catalogUid} page ${page} HTTP ${r.status}`);
+            break;
+          }
+          const body = await r.json();
+          const products: Variant[] = Array.isArray(body?.products) ? body.products : [];
+          if (products.length === 0) break;
+          allVariants.push(...products);
+          if (products.length < PAGE_LIMIT) break;
+          offset += products.length;
+        } catch (e) {
+          fetchErrors.push(`${catalogUid} page ${page} fetch-error: ${(e as Error).message}`);
+          break;
+        }
+      }
+    }
+
+    // Aggregate by base productUid (everything before _gsi_<size>) so we store
+    // ONE row per base product per snapshot, with colors[] + sizes[] arrays.
+    type Agg = {
+      product_uid: string;
+      brand: string | null;
+      product_type: string | null;
+      colors: Set<string>;
+      sizes: Set<string>;
+      facilities: string[];
+      base_price_usd: number | null;
+      available_us: boolean;
+      raw_payload: Variant; // sample variant
+    };
+
+    const byBase = new Map<string, Agg>();
+    for (const v of allVariants) {
+      if (!v.productUid) continue;
+      const base = v.productUid.split('_gsi_')[0]; // strip size+color suffix
+      const a = v.attributes || {};
+      let agg = byBase.get(base);
+      if (!agg) {
+        agg = {
+          product_uid: base,
+          brand: a.ApparelManufacturer || null,
+          product_type: a.GarmentSubcategory || a.GarmentCategory || null,
+          colors: new Set(),
+          sizes: new Set(),
+          facilities: [], // populated in Wave 2 via per-product enrichment
+          base_price_usd: null, // populated in Wave 2 via /v3/prices
+          available_us: false,
+          raw_payload: v,
+        };
+        byBase.set(base, agg);
+      }
+      if (a.GarmentColor) agg.colors.add(a.GarmentColor);
+      if (a.GarmentSize) agg.sizes.add(a.GarmentSize);
+      const supported = Array.isArray(v.supportedCountries) ? v.supportedCountries : [];
+      const notSupported = Array.isArray(v.notSupportedCountries) ? v.notSupportedCountries : [];
+      // available_us = US is supported AND not in notSupported. If supportedCountries is empty,
+      // Gelato's convention is "available everywhere except notSupportedCountries".
+      const usOk = (supported.length === 0 || supported.includes('US')) && !notSupported.includes('US');
+      if (usOk) agg.available_us = true;
+    }
+
+    // UPSERT today's snapshot rows in batches (Postgres has practical limits on large arrays)
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = Array.from(byBase.values()).map((agg) => ({
+      snapshot_date: today,
+      product_uid: agg.product_uid,
+      brand: agg.brand,
+      product_type: agg.product_type,
+      colors: Array.from(agg.colors),
+      sizes: Array.from(agg.sizes),
+      facilities: agg.facilities,
+      base_price_usd: agg.base_price_usd,
+      available_us: agg.available_us,
+      raw_payload: agg.raw_payload,
+    }));
+
+    let upserted = 0;
+    const upsertErrors: string[] = [];
+    const sb = sbAdmin();
+    const BATCH = 500;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const slice = rows.slice(i, i + BATCH);
+      const { error } = await sb
+        .from('gelato_catalog_snapshot')
+        .upsert(slice, { onConflict: 'snapshot_date,product_uid' });
+      if (error) {
+        upsertErrors.push(`batch ${i}-${i + slice.length}: ${error.message}`);
+      } else {
+        upserted += slice.length;
+      }
+    }
+
+    // Diff vs yesterday
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const { data: yRows } = await sb
+      .from('gelato_catalog_snapshot')
+      .select('product_uid')
+      .eq('snapshot_date', yesterday);
+    const yset = new Set((yRows ?? []).map((r: { product_uid: string }) => r.product_uid));
+    const todaySet = new Set(rows.map((r) => r.product_uid));
+    const newCount = [...todaySet].filter((u) => !yset.has(u)).length;
+    const removedCount = [...yset].filter((u) => !todaySet.has(u)).length;
+
+    const summary = {
+      catalogs_scanned: CATALOGS,
+      variants_fetched: allVariants.length,
+      base_products: rows.length,
+      upserted,
+      upsert_errors: upsertErrors,
+      fetch_errors: fetchErrors,
+      diff_vs_yesterday: {
+        yesterday_date: yesterday,
+        yesterday_count: yset.size,
+        new_today: newCount,
+        removed_today: removedCount,
+      },
+      brands_seen: Array.from(new Set(rows.map((r) => r.brand).filter(Boolean))).slice(0, 30),
+      duration_ms: Date.now() - t0,
+    };
+
+    // Log to agent_runs (schema: agent_id, run_date, status, summary, tasks_created, duration_ms, side_effects)
+    const runStatus = fetchErrors.length || upsertErrors.length ? 'failed' : 'completed';
+    const { error: runErr } = await sb.from('agent_runs').insert({
+      agent_id: 'gelato-discovery',
+      run_date: today,
+      status: runStatus,
+      summary: `Snapshot: ${rows.length} base products from ${allVariants.length} variants. New: ${newCount}, removed: ${removedCount}.`,
+      tasks_created: 0, // Wave 1: no agent_tasks created (Wave 4 will add approval flow)
+      duration_ms: Date.now() - t0,
+      error_message: runStatus === 'failed' ? [...fetchErrors, ...upsertErrors].join(' | ').slice(0, 500) : null,
+      side_effects: summary,
+    });
+    if (runErr) console.warn('[gelato-discovery] agent_runs insert failed:', runErr.message);
+
+    return json({ success: true, ...summary });
+  }
+
   return json({
-    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image, meta-ads-manage, shopping-feed',
+    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image, meta-ads-manage, shopping-feed, gelato-discovery',
   }, 400);
 });

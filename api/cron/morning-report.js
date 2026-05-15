@@ -513,6 +513,24 @@ ${[
         }
     }
 
+    // ── Route: ?type=gelato-discovery — daily Gelato catalog snapshot + diff ──
+    // Called by Vercel cron every day at 02:00 UTC (04:00 Israel)
+    // Plan: docs/plans/DUBIS_GELATO_DISCOVERY_AGENT_2026-05-15.html (Wave 1)
+    if (urlType === 'gelato-discovery') {
+        const agentsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1/agents';
+        const authToken  = process.env.CRON_SECRET || process.env.AGENT_SECRET || '';
+        try {
+            const r = await fetch(`${agentsBase}?type=gelato-discovery`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+            });
+            const data = await r.json();
+            return res.status(r.ok ? 200 : 500).json({ success: r.ok, discovery: data });
+        } catch (e) {
+            return res.status(500).json({ success: false, error: e.message });
+        }
+    }
+
     // ── Route: ?type=security — weekly security scan ──────────────────
     // Called by Vercel cron every Monday 03:00 UTC (05:00 Israel)
     if (urlType === 'security') {
