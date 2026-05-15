@@ -21,6 +21,21 @@ function shouldShowBackDefault(id) {
   return (n % 100) < 40;
 }
 
+// Deterministic per-product display color so the catalog looks varied instead of an
+// all-black/charcoal wall. Picks from the product's own `colors` array (which mirrors
+// the images that actually exist on disk), preferring non-Black/Charcoal so the grid
+// has real color spread. Falls back to the first color if the product only carries
+// Black/Charcoal. Uses a different multiplier from shouldShowBackDefault so the
+// back/front flip and the color pick are independent streams.
+function pickDisplayColor(product) {
+  const all = Array.isArray(product?.colors) ? product.colors : [];
+  if (all.length === 0) return null;
+  const colorful = all.filter(c => c !== 'Black' && c !== 'Charcoal');
+  const pool = colorful.length > 0 ? colorful : all;
+  const n = ((Number(product.id) || 0) * 2246822519) >>> 0;
+  return pool[n % pool.length];
+}
+
 // ── Real-time variant stock (from product_variant_stock, synced daily from Gelato) ──
 // Shape: { [productId]: { [color]: { [size]: boolean } } }
 // Missing key → optimistic in-stock (matches edge-function default).
@@ -432,13 +447,15 @@ function renderProducts(filter, gender) {
     longsleeve: t.type_longsleeve,
   };
 
-  grid.innerHTML = filtered.map(product => `
+  grid.innerHTML = filtered.map(product => {
+    const displayColor = pickDisplayColor(product) || product.colors[0];
+    return `
     <div class="product-card${shouldShowBackDefault(product.id) ? ' show-back-default' : ''}" data-id="${product.id}" data-type="${product.type}"
-         data-selected-color="${product.colors[0]}"
+         data-selected-color="${displayColor}"
          onclick="openProductModal(${product.id})">
       <div class="product-image" id="card-img-${product.id}">
-        <img class="img-view img-back"  src="${productImg(product.id, product.colors[0], 'back')}"  alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}';const c=this.closest('.product-card');if(c)c.classList.remove('show-back-default');" />
-        <img class="img-view img-front" src="${productImg(product.id, product.colors[0], 'front')}" alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}'" />
+        <img class="img-view img-back"  src="${productImg(product.id, displayColor, 'back')}"  alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}';const c=this.closest('.product-card');if(c)c.classList.remove('show-back-default');" />
+        <img class="img-view img-front" src="${productImg(product.id, displayColor, 'front')}" alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}'" />
         <div class="product-badge">${typeMap[product.type] || product.typeLabel}</div>
         <div class="product-rating-badge" id="badge-${product.id}">${currentLang === 'he' ? 'NEW' : 'NEW'}</div>
         <div class="product-hover-overlay"><span>${t.view_details}</span></div>
@@ -446,8 +463,8 @@ function renderProducts(filter, gender) {
       <div class="product-info">
         <div class="product-phrase">"${product.phrase}"</div>
         <div class="product-colors">
-          ${product.colors.map((c, i) => `
-            <span class="color-dot ${i === 0 ? 'active-color' : ''}"
+          ${product.colors.map(c => `
+            <span class="color-dot ${c === displayColor ? 'active-color' : ''}"
               title="${c}"
               style="background:${colorToHex(c)}"
               onclick="event.stopPropagation(); selectCardColor(${product.id}, '${c}', this)">
@@ -461,7 +478,8 @@ function renderProducts(filter, gender) {
         </div>
       </div>
     </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 // ===== COLOR SWATCH ON PRODUCT CARD =====
