@@ -15,6 +15,8 @@
     { "source": "/dub-console", "destination": "/admin.html"   },
     { "source": "/terms",   "destination": "/terms.html"   },
     { "source": "/returns", "destination": "/returns.html" },
+    { "source": "/us", "destination": "/index.html" },
+    { "source": "/us/:path*", "destination": "/index.html" },
     { "source": "/ig-content/:path*", "destination": "https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=serve-image&f=:path*" },
     { "source": "/shopping-feed.xml", "destination": "https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/shopping-feed" }
   ],
