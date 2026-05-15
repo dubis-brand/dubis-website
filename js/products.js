@@ -6,6 +6,11 @@
 const SIZES_TSHIRT    = ['S', 'M', 'L', 'XL', '2XL', '3XL'];
 const SIZES_HOODIE    = ['S', 'M', 'L', 'XL', '2XL', '3XL'];
 const SIZES_LONGSLEEVE = ['S', 'M', 'L', 'XL', '2XL', '3XL'];
+// Womens brands (Bella+Canvas 6004, Alternative 9906zt, SOLS 02075) cap below
+// the unisex range — verified against Gelato catalog 2026-05-15.
+const SIZES_TSHIRT_WOMENS     = ['S', 'M', 'L', 'XL', '2XL'];
+const SIZES_HOODIE_WOMENS     = ['S', 'M', 'L', 'XL', '2XL'];
+const SIZES_LONGSLEEVE_WOMENS = ['S', 'M', 'L', 'XL'];
 const SIZES_CAP       = ['One Size'];
 
 const SIZE_GUIDE_TSHIRT = [
@@ -193,7 +198,7 @@ const products = [
         gender: "unisex",
         price: 14,
         image: "images/product-7.jpg",
-        colors: ["Charcoal","Cream","Black","Navy"],
+        colors: ["Cream","Black","Navy"],
         sizes: SIZES_CAP,
         description: "Embroidered chino cap for the rest of us — the ones not in the ad. Adjustable strap, unstructured crown, zero pretense.",
         description_he: "כובע כותנה רקום בשבילנו — אלה שלא בפרסומת. רצועה מתכווננת, כתר רך, בלי שטויות.",
@@ -380,7 +385,7 @@ const products = [
         price: 14,
         image: "images/product-11.jpg",
         colors: ["White","Cream","Black","Navy"],
-        sizes: SIZES_TSHIRT,
+        sizes: SIZES_TSHIRT_WOMENS,
         description: "Soft cotton tee with a women fit — because rest is also ambition. Nap first, conquer later.",
         description_he: "חולצה רכה בגזרת נשים — כי גם מנוחה היא שאיפה. קודם לנמנם, אחר כך לכבוש.",
         fabric: "100% combed ring-spun cotton",
@@ -400,7 +405,7 @@ const products = [
         price: 14,
         image: "images/product-12.jpg",
         colors: ["Black","White","Cream","Navy"],
-        sizes: SIZES_TSHIRT,
+        sizes: SIZES_TSHIRT_WOMENS,
         description: "The shirt that runs on exactly what you run on. Women fit, ring-spun cotton, permission granted.",
         description_he: "החולצה שרצה על בדיוק מה שאת רצה עליו. גזרת נשים, כותנה מסורקת, ההיתר ניתן.",
         fabric: "100% combed ring-spun cotton",
@@ -419,8 +424,8 @@ const products = [
         gender: "women",
         price: 28,
         image: "images/product-13.jpg",
-        colors: ["Charcoal","Cream","Navy"],
-        sizes: SIZES_HOODIE,
+        colors: ["Charcoal","Navy","Black"],
+        sizes: SIZES_HOODIE_WOMENS,
         description: "Heavy fleece hoodie for charter members of the Zero Motivation Club. Dues paid in naps.",
         description_he: "קפוצון פליז כבד לחברי מועדון אפס מוטיבציה. דמי חבר משולמים בתנומות.",
         fabric: "80% cotton, 20% polyester — heavyweight fleece",
@@ -439,8 +444,8 @@ const products = [
         gender: "women",
         price: 18,
         image: "images/product-14.jpg",
-        colors: ["Cream","White","Black","Navy"],
-        sizes: SIZES_LONGSLEEVE,
+        colors: ["White","Black","Navy"],
+        sizes: SIZES_LONGSLEEVE_WOMENS,
         description: "Women long-sleeve cotton built for couch-based living. Soft, forgiving, honest about its priorities.",
         description_he: "שרוול ארוך בגזרת נשים לחיי ספה. רך, סלחן, כן לגבי הסדר עדיפויות.",
         fabric: "100% combed ring-spun cotton",

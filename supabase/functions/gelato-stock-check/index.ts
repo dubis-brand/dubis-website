@@ -27,52 +27,79 @@ const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const ALL_SIZES = ['S', 'M', 'L', 'XL', '2XL', '3XL'];
 const CAP_SIZES = ['One Size'];
 
-// Mirror of COLOR_MAP in api/create-gelato-order.js.
-// MUST stay in sync — consider promoting to a shared module next iteration.
-const COLOR_MAP: Record<string, Record<string, string>> = {
-  tshirt: {
-    'Black': 'black', 'White': 'white', 'Cream': 'natural', 'Charcoal': 'charcoal',
-    'Navy': 'navy', 'Gray': 'sports-grey', 'Red': 'red', 'Forest Green': 'forest',
-  },
-  hoodie: {
-    'Black': 'black', 'White': 'white', 'Cream': 'sand', 'Charcoal': 'dark-heather',
-    'Navy': 'navy', 'Gray': 'sports-grey', 'Forest Green': 'forest',
-  },
-  ziphoodie: {
-    'Black': 'black', 'White': 'white', 'Charcoal': 'dark-heather', 'Navy': 'navy',
-  },
-  longsleeve: {
+// Mirror of TEMPLATES + COLOR_MAP in api/create-gelato-order.js. Keep in sync.
+// Rewritten 2026-05-15 after every womens, every long-sleeve, every cap UID was
+// found to be 404 in Gelato's current catalog. See api/create-gelato-order.js
+// for the canonical comments + verification notes.
+type ColorEntry = string | { color: string; brand: string; sku: string };
+type Template = {
+  cat: string; sub: string; cut: string; qa: string; gpr: string;
+  brand: string | null; sku: string | null;
+};
+
+const TEMPLATES: Record<string, Template> = {
+  'tshirt-unisex':     { cat: 't-shirt', sub: 'crewneck',        cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '64000'  },
+  'tshirt-women':      { cat: 't-shirt', sub: 'crewneck',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'bella-and-canvas', sku: '6004'   },
+  'hoodie-unisex':     { cat: 'hoodie',  sub: 'pullover',        cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '18500'  },
+  'hoodie-women':      { cat: 'hoodie',  sub: 'pullover',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
+  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: null,                sku: null    },
+  'longsleeve-unisex': { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '2400'   },
+  'longsleeve-women':  { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'sols',             sku: '02075'  },
+  'cap-unisex':        { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-dtf', brand: 'as-colour',        sku: '1114'   },
+};
+
+const COLOR_MAP: Record<string, Record<string, ColorEntry>> = {
+  'tshirt-unisex': {
     'Black': 'black', 'White': 'white', 'Cream': 'natural', 'Navy': 'navy',
-    'Forest Green': 'forest', 'Gray': 'sports-grey',
+    'Charcoal': 'charcoal', 'Red': 'red', 'Gray': 'rs-sport-grey',
+    'Forest Green': { color: 'forest-green', brand: 'next-level', sku: '3600' },
   },
-  cap: {
-    'Black': 'black', 'White': 'white', 'Cream': 'natural', 'Charcoal': 'dark-heather',
-    'Navy': 'navy', 'Gray': 'sports-grey',
+  'tshirt-women': {
+    'Black': 'black', 'White': 'white', 'Cream': 'soft-cream', 'Navy': 'navy',
+  },
+  'hoodie-unisex': {
+    'Black': 'black', 'White': 'white', 'Cream': 'sand', 'Navy': 'navy',
+    'Charcoal': 'dark-heather', 'Forest Green': 'forest-green', 'Gray': 'sport-grey',
+  },
+  'hoodie-women': {
+    'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Charcoal': 'charcoal',
+  },
+  'ziphoodie-unisex': {
+    'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Charcoal': 'dark-heather',
+  },
+  'longsleeve-unisex': {
+    'Black': 'black', 'White': 'white', 'Cream': 'sand', 'Navy': 'navy',
+    'Forest Green': 'forest-green', 'Gray': 'sports-grey',
+  },
+  'longsleeve-women': {
+    'Black': 'deep-black', 'White': 'white', 'Navy': 'french-navy',
+  },
+  'cap-unisex': {
+    'Black': 'black', 'White': 'white', 'Cream': 'ecru', 'Navy': 'navy',
   },
 };
 
 const SIZE_MAP: Record<string, string> = {
-  'S': 's', 'M': 'm', 'L': 'l', 'XL': 'xl', '2XL': '2xl', '3XL': '3xl', 'One Size': 'os',
+  'S': 's', 'M': 'm', 'L': 'l', 'XL': 'xl', '2XL': '2xl', '3XL': '3xl', 'One Size': 'onesize',
 };
 
-function buildProductUid(type: string, gelatoColor: string, gelatoSize: string, gender = 'unisex'): string | null {
-  const genderCode = gender === 'women' ? 'women' : 'unisex';
-  if (type === 'tshirt') {
-    return `apparel_product_gca_t-shirt_gsc_crewneck_gcu_${genderCode}_gqa_classic_gsi_${gelatoSize}_gco_${gelatoColor}_gpr_4-4`;
-  }
-  if (type === 'hoodie') {
-    return `apparel_product_gca_hoodie_gsc_pullover_gcu_${genderCode}_gqa_classic_gsi_${gelatoSize}_gco_${gelatoColor}_gpr_4-4`;
-  }
-  if (type === 'ziphoodie') {
-    return `apparel_product_gca_hoodie_gsc_zip_gcu_${genderCode}_gqa_classic_gsi_${gelatoSize}_gco_${gelatoColor}_gpr_4-4`;
-  }
-  if (type === 'longsleeve') {
-    return `apparel_product_gca_long-sleeve_gsc_crewneck_gcu_${genderCode}_gqa_classic_gsi_${gelatoSize}_gco_${gelatoColor}_gpr_4-4`;
-  }
-  if (type === 'cap') {
-    return `apparel_product_gca_dad-hat_gsc_classic_gcu_unisex_gqa_classic_gsi_os_gco_${gelatoColor}_gpr_4-0`;
-  }
-  return null;
+function templateKey(type: string, gender: string | undefined | null): string {
+  return `${type}-${gender === 'women' ? 'women' : 'unisex'}`;
+}
+
+function buildProductUid(type: string, dubisColor: string, dubisSize: string, gender = 'unisex'): string | null {
+  const key = templateKey(type, gender);
+  const t = TEMPLATES[key];
+  if (!t) return null;
+  const colorEntry = (COLOR_MAP[key] || {})[dubisColor];
+  if (!colorEntry) return null;
+  const gColor = typeof colorEntry === 'string' ? colorEntry : colorEntry.color;
+  const brand  = (typeof colorEntry === 'object' && colorEntry.brand) ? colorEntry.brand : t.brand;
+  const sku    = (typeof colorEntry === 'object' && colorEntry.sku)   ? colorEntry.sku   : t.sku;
+  const gSize  = SIZE_MAP[dubisSize];
+  if (!gSize) return null;
+  const brandSuffix = (brand && sku) ? `_${brand}_${sku}` : '';
+  return `apparel_product_gca_${t.cat}_gsc_${t.sub}_gcu_${t.cut}_gqa_${t.qa}_gsi_${gSize}_gco_${gColor}_gpr_${t.gpr}${brandSuffix}`;
 }
 
 type CheckResult = {
@@ -163,30 +190,28 @@ Deno.serve(async (req: Request) => {
 
   for (const product of products || []) {
     // DB stores hyphenated types ('t-shirt', 'zip-hoodie', 'long-sleeve').
-    // COLOR_MAP + buildProductUid use non-hyphenated keys ('tshirt', 'ziphoodie', 'longsleeve').
+    // TEMPLATES + buildProductUid use non-hyphenated keys ('tshirt', 'ziphoodie', 'longsleeve').
     // Normalize once so we match products regardless of how they were stored.
     const rawType = product.clothing_type as string;
     const type = rawType.replace(/-/g, '');
     const colors = Array.isArray(product.colors) ? product.colors : [];
     const sizes = type === 'cap' ? CAP_SIZES : ALL_SIZES;
-    const colorMap = COLOR_MAP[type as keyof typeof COLOR_MAP];
-    if (!colorMap) {
-      log('unknown-clothing-type', { product_id: product.product_id_numeric, raw_type: rawType, normalized: type });
+    const tplKey = templateKey(type, product.gender);
+    if (!TEMPLATES[tplKey]) {
+      log('unknown-clothing-type', { product_id: product.product_id_numeric, raw_type: rawType, normalized: type, gender: product.gender });
       continue;
     }
+    const colorMap = COLOR_MAP[tplKey] || {};
 
     for (const color of colors) {
-      const gelatoColor = colorMap[color];
-      if (!gelatoColor) {
+      if (!colorMap[color]) {
         // Site label has no Gelato mapping — should be impossible if add-product gates are honored.
-        log('unmapped-color', { product_id: product.product_id_numeric, color, type });
+        log('unmapped-color', { product_id: product.product_id_numeric, color, type, gender: product.gender });
         skippedUnmappable++;
         continue;
       }
       for (const size of sizes) {
-        const gelatoSize = SIZE_MAP[size];
-        if (!gelatoSize) continue;
-        const productUid = buildProductUid(type, gelatoColor, gelatoSize, product.gender);
+        const productUid = buildProductUid(type, color, size, product.gender);
         if (!productUid) continue;
 
         const key = `${product.product_id_numeric}|${color}|${size}`;

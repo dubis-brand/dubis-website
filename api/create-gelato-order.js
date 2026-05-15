@@ -19,58 +19,32 @@ const DESIGN_BASE_URL = 'https://www.dubis.net/designs';
 const DESIGN_VERSION = process.env.DESIGN_VERSION || '2026042401';
 
 // ─────────────────────────────────────────────────────────────────
-// COLOR MAP — DUBIS display name → Gelato color code
-// Verified against Gelato catalog API (March 2026)
-// T-shirt: black, white, natural, charcoal, navy, sports-grey, sand, red, forest
-// Hoodie:  black, navy, white, dark-heather, sand
+// GELATO TEMPLATES — type+cut → Gelato catalog config
+// Verified 2026-05-15 against Gelato Product API v3 with the active API key.
+// Each row produces UIDs of shape:
+//   apparel_product_gca_{cat}_gsc_{sub}_gcu_{cut}_gqa_{qa}_gsi_{size}_gco_{color}_gpr_{gpr}[_{brand}_{sku}]
+//
+// History: pre-2026-05-15 UIDs were the legacy short form
+//   `..._gsc_crewneck_gcu_unisex_gqa_classic_..._gpr_4-4`
+// Gelato still resolves a small set of those as aliases (unisex t-shirt/hoodie/zip-hoodie).
+// EVERYTHING ELSE returns 404 — including all women's-cut variants, every long-sleeve,
+// and every cap — so this rewrite is required, not optional.
 // ─────────────────────────────────────────────────────────────────
-// NOTE: "Honey Brown" removed 2026-04-22 — it was a lie.
-// Gelato's t-shirt catalog has NO brown/honey/orange color.
-// The previous mapping 'Honey Brown' → 'sand' delivered cream to customers
-// who ordered orange. See memory/troubleshooting.md (2026-04-22) + POSTMORTEM.
-// ONLY add colors here that physically exist in Gelato's catalog.
-const COLOR_MAP = {
-  tshirt: {
-    'Black':        'black',
-    'White':        'white',
-    'Cream':        'natural',
-    'Charcoal':     'charcoal',
-    'Navy':         'navy',
-    'Gray':         'sports-grey',
-    'Red':          'red',
-    'Forest Green': 'forest',
-  },
-  hoodie: {
-    'Black':        'black',
-    'White':        'white',
-    'Cream':        'sand',
-    'Charcoal':     'dark-heather',
-    'Navy':         'navy',
-    'Gray':         'sports-grey',
-    'Forest Green': 'forest',
-  },
-  ziphoodie: {
-    'Black':        'black',
-    'White':        'white',
-    'Charcoal':     'dark-heather',
-    'Navy':         'navy',
-  },
-  longsleeve: {
-    'Black':        'black',
-    'White':        'white',
-    'Cream':        'natural',
-    'Navy':         'navy',
-    'Forest Green': 'forest',
-    'Gray':         'sports-grey',
-  },
-  cap: {
-    'Black':        'black',
-    'White':        'white',
-    'Cream':        'natural',
-    'Charcoal':     'dark-heather',
-    'Navy':         'navy',
-    'Gray':         'sports-grey',
-  },
+const TEMPLATES = {
+  // DUBIS `gender: 'men'` maps to Gelato `cut: unisex` (we don't sell men's-only cuts).
+  'tshirt-unisex':     { cat: 't-shirt', sub: 'crewneck',        cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '64000'  },
+  'tshirt-women':      { cat: 't-shirt', sub: 'crewneck',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'bella-and-canvas', sku: '6004'   },
+  'hoodie-unisex':     { cat: 'hoodie',  sub: 'pullover',        cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '18500'  },
+  // Women's hoodie has no single-brand catalog with our colors; the un-suffixed
+  // legacy alias (`...gpr_4-4` with no brand) DOES carry charcoal/navy/black/white.
+  'hoodie-women':      { cat: 'hoodie',  sub: 'pullover',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
+  // Zip-hoodie: legacy alias only — Gelato hasn't published branded UIDs we can use.
+  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: null,                sku: null    },
+  'longsleeve-unisex': { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '2400'   },
+  'longsleeve-women':  { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'sols',             sku: '02075'  },
+  // Caps were entirely broken pre-2026-05-15. Old `gca_dad-hat_gsc_classic` no
+  // longer exists; the live shape is `gca_hat_gsc_dad-hat ... _as-colour_1114` (DTF).
+  'cap-unisex':        { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-dtf', brand: 'as-colour',        sku: '1114'   },
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -78,36 +52,116 @@ const COLOR_MAP = {
 // ─────────────────────────────────────────────────────────────────
 const SIZE_MAP = {
   'S': 's', 'M': 'm', 'L': 'l', 'XL': 'xl', '2XL': '2xl', '3XL': '3xl',
-  'One Size': 'os',
+  'One Size': 'onesize',
 };
 
 // ─────────────────────────────────────────────────────────────────
-// DARK COLORS — use white design files on these garments
+// COLOR MAP — keyed by `${type}-${gender-bucket}` (women vs unisex).
+// Entries are either a plain Gelato color string, or { color, brand, sku }
+// to override the template's brand for this specific color (e.g. Forest Green
+// isn't in Gildan 64000 — falls back to Next Level 3600).
+//
+// NEVER add colors that don't physically exist in Gelato's catalog for that
+// cut. The 2026-04-22 Honey Brown catastrophe started with a lie like that.
+// ─────────────────────────────────────────────────────────────────
+const COLOR_MAP = {
+  'tshirt-unisex': {
+    'Black':        'black',
+    'White':        'white',
+    'Cream':        'natural',
+    'Navy':         'navy',
+    'Charcoal':     'charcoal',
+    'Red':          'red',
+    'Gray':         'rs-sport-grey',
+    // Gildan 64000 doesn't carry forest-green → use Next Level 3600 for this color only.
+    'Forest Green': { color: 'forest-green', brand: 'next-level', sku: '3600' },
+  },
+  'tshirt-women': {
+    'Black': 'black',
+    'White': 'white',
+    'Cream': 'soft-cream',
+    'Navy':  'navy',
+  },
+  'hoodie-unisex': {
+    'Black':        'black',
+    'White':        'white',
+    'Cream':        'sand',
+    'Navy':         'navy',
+    'Charcoal':     'dark-heather',
+    'Forest Green': 'forest-green',
+    'Gray':         'sport-grey',
+  },
+  'hoodie-women': {
+    'Black':    'black',
+    'White':    'white',
+    'Navy':     'navy',
+    'Charcoal': 'charcoal',
+    // No Cream/Sand variant for womens pullover hoodie — Cream removed from product 13.
+  },
+  'ziphoodie-unisex': {
+    'Black':    'black',
+    'White':    'white',
+    'Navy':     'navy',
+    'Charcoal': 'dark-heather',
+  },
+  'longsleeve-unisex': {
+    'Black':        'black',
+    'White':        'white',
+    'Cream':        'sand',
+    'Navy':         'navy',
+    'Forest Green': 'forest-green',
+    'Gray':         'sports-grey',
+  },
+  'longsleeve-women': {
+    'Black': 'deep-black',
+    'White': 'white',
+    'Navy':  'french-navy',
+    // No Cream variant on SOLS 02075 — Cream removed from product 14.
+  },
+  'cap-unisex': {
+    'Black': 'black',
+    'White': 'white',
+    'Cream': 'ecru',
+    'Navy':  'navy',
+    // No Charcoal variant on AS Colour 1114 dad-hat — Charcoal removed from product 7.
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────
+// DARK COLORS — use white-ink design files on these garments
 // ─────────────────────────────────────────────────────────────────
 const DARK_COLORS = new Set(['Black', 'Charcoal', 'Navy', 'Forest Green']);
 
 // ─────────────────────────────────────────────────────────────────
-// Build Gelato productUid from item type, color, size, gender
-// gender: 'men'|'unisex' → gcu_unisex, 'women' → gcu_women
+// Build Gelato productUid from item type, DUBIS color, DUBIS size, gender.
+// Returns null if the (type, gender, color) combo isn't in the catalog.
+// gender: 'men' | 'unisex' → gcu_unisex; 'women' → gcu_womens.
 // ─────────────────────────────────────────────────────────────────
-function buildProductUid(type, gelatoColor, gelatoSize, gender = 'unisex') {
-  const genderCode = gender === 'women' ? 'women' : 'unisex';
-  if (type === 'tshirt') {
-    return `apparel_product_gca_t-shirt_gsc_crewneck_gcu_${genderCode}_gqa_classic_gsi_${gelatoSize}_gco_${gelatoColor}_gpr_4-4`;
-  }
-  if (type === 'hoodie') {
-    return `apparel_product_gca_hoodie_gsc_pullover_gcu_${genderCode}_gqa_classic_gsi_${gelatoSize}_gco_${gelatoColor}_gpr_4-4`;
-  }
-  if (type === 'ziphoodie') {
-    return `apparel_product_gca_hoodie_gsc_zip_gcu_${genderCode}_gqa_classic_gsi_${gelatoSize}_gco_${gelatoColor}_gpr_4-4`;
-  }
-  if (type === 'longsleeve') {
-    return `apparel_product_gca_long-sleeve_gsc_crewneck_gcu_${genderCode}_gqa_classic_gsi_${gelatoSize}_gco_${gelatoColor}_gpr_4-4`;
-  }
-  if (type === 'cap') {
-    return `apparel_product_gca_dad-hat_gsc_classic_gcu_unisex_gqa_classic_gsi_os_gco_${gelatoColor}_gpr_4-0`;
-  }
-  return null;
+function templateKey(type, gender) {
+  return `${type}-${gender === 'women' ? 'women' : 'unisex'}`;
+}
+
+function buildProductUid(type, dubisColor, dubisSize, gender = 'unisex') {
+  const key = templateKey(type, gender);
+  const t   = TEMPLATES[key];
+  if (!t) return null;
+  const colorEntry = (COLOR_MAP[key] || {})[dubisColor];
+  if (!colorEntry) return null;
+  const gColor = typeof colorEntry === 'string' ? colorEntry : colorEntry.color;
+  const brand  = (typeof colorEntry === 'object' && colorEntry.brand) ? colorEntry.brand : t.brand;
+  const sku    = (typeof colorEntry === 'object' && colorEntry.sku)   ? colorEntry.sku   : t.sku;
+  const gSize  = SIZE_MAP[dubisSize];
+  if (!gSize) return null;
+  const brandSuffix = (brand && sku) ? `_${brand}_${sku}` : '';
+  return `apparel_product_gca_${t.cat}_gsc_${t.sub}_gcu_${t.cut}_gqa_${t.qa}_gsi_${gSize}_gco_${gColor}_gpr_${t.gpr}${brandSuffix}`;
+}
+
+// Helper for older callers that just want the resolved Gelato color string
+// (used by mockup-preview / shipping-quote routes for error reporting).
+function getGelatoColor(type, gender, dubisColor) {
+  const entry = (COLOR_MAP[templateKey(type, gender)] || {})[dubisColor];
+  if (!entry) return null;
+  return typeof entry === 'string' ? entry : entry.color;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -288,13 +342,12 @@ async function handleMockupPreview(req, res) {
     return res.status(400).json({ error: 'missing_fields', need: ['productId','color','type'] });
   }
 
-  const gelatoColor = (COLOR_MAP[type] || {})[color];
-  const gelatoSize  = SIZE_MAP[size] || 'm';
+  const gelatoColor = getGelatoColor(type, gender, color);
   if (!gelatoColor) {
-    return res.status(400).json({ error: 'unsupported_color', color, type });
+    return res.status(400).json({ error: 'unsupported_color', color, type, gender });
   }
-  const productUid = buildProductUid(type, gelatoColor, gelatoSize, gender);
-  if (!productUid) return res.status(400).json({ error: 'unsupported_type', type });
+  const productUid = buildProductUid(type, color, size, gender);
+  if (!productUid) return res.status(400).json({ error: 'unsupported_variant', type, gender, color, size });
 
   const variant = DARK_COLORS.has(color) ? 'white' : 'dark';
   const designId = designRef || productId;
@@ -421,11 +474,11 @@ async function handleShippingQuote(req, res) {
     return res.status(400).json({ error: 'missing_fields', need: ['productId','color','type'] });
   }
 
-  const gelatoColor = (COLOR_MAP[type] || {})[color];
-  const gelatoSize  = SIZE_MAP[size] || 'm';
-  if (!gelatoColor) return res.status(400).json({ error: 'unsupported_color', color, type });
-  const productUid = buildProductUid(type, gelatoColor, gelatoSize, gender);
-  if (!productUid) return res.status(400).json({ error: 'unsupported_type', type });
+  if (!getGelatoColor(type, gender, color)) {
+    return res.status(400).json({ error: 'unsupported_color', color, type, gender });
+  }
+  const productUid = buildProductUid(type, color, size, gender);
+  if (!productUid) return res.status(400).json({ error: 'unsupported_variant', type, gender, color, size });
 
   // Try common Gelato shipment endpoint patterns
   const attempts = [
@@ -545,11 +598,11 @@ async function handleCreateDraft(req, res) {
     return res.status(400).json({ error: 'missing_fields', need: ['productId','color','type'] });
   }
 
-  const gelatoColor = (COLOR_MAP[type] || {})[color];
-  if (!gelatoColor) return res.status(400).json({ error: 'unsupported_color', color, type });
-  const gelatoSize = SIZE_MAP[size] || 'm';
-  const productUid = buildProductUid(type, gelatoColor, gelatoSize, gender);
-  if (!productUid) return res.status(400).json({ error: 'unsupported_type', type });
+  if (!getGelatoColor(type, gender, color)) {
+    return res.status(400).json({ error: 'unsupported_color', color, type, gender });
+  }
+  const productUid = buildProductUid(type, color, size, gender);
+  if (!productUid) return res.status(400).json({ error: 'unsupported_variant', type, gender, color, size });
 
   // Build print files — same logic as the real order flow
   const variant  = DARK_COLORS.has(color) ? 'white' : 'dark';
@@ -728,13 +781,7 @@ module.exports = async function handler(req, res) {
 
   // ── Case 2: Validate all items can be mapped ──
   const unmapped = cartItems.filter(item => {
-    const colorMap    = COLOR_MAP[item.type] || COLOR_MAP.tshirt;
-    const gelatoColor = colorMap[item.selectedColor];
-    const gelatoSize  = SIZE_MAP[item.selectedSize];
-    const productUid  = gelatoColor && gelatoSize
-      ? buildProductUid(item.type, gelatoColor, gelatoSize, item.gender)
-      : null;
-    return !productUid;
+    return !buildProductUid(item.type, item.selectedColor, item.selectedSize, item.gender);
   });
 
   if (unmapped.length > 0) {
@@ -786,17 +833,12 @@ module.exports = async function handler(req, res) {
     orderReferenceId:    `DUBIS-${paypalOrderId}`,
     customerReferenceId: paypalOrderId,
     currency:            'USD',
-    items: cartItems.map((item, i) => {
-      const colorMap    = COLOR_MAP[item.type] || COLOR_MAP.tshirt;
-      const gelatoColor = colorMap[item.selectedColor];
-      const gelatoSize  = SIZE_MAP[item.selectedSize];
-      return {
-        itemReferenceId: `item-${i + 1}`,
-        productUid:      buildProductUid(item.type, gelatoColor, gelatoSize, item.gender),
-        files:           getDesignFiles(item.id, item.selectedColor, item.designRef, item.type),
-        quantity:        1,
-      };
-    }),
+    items: cartItems.map((item, i) => ({
+      itemReferenceId: `item-${i + 1}`,
+      productUid:      buildProductUid(item.type, item.selectedColor, item.selectedSize, item.gender),
+      files:           getDesignFiles(item.id, item.selectedColor, item.designRef, item.type),
+      quantity:        1,
+    })),
     shipmentMethodUid: 'express',
     shippingAddress: {
       firstName:    firstName,
