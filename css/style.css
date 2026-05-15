@@ -606,6 +606,14 @@ h1, h2, h3, h4 {
 .product-card:hover .product-image .img-back  { opacity: 1; }
 .product-card:hover .product-image .img-front { opacity: 0; }
 
+/* Variety: ~40% of cards show the back image as the default (class applied by renderProducts).
+   Hover still swaps to the other side. If the back image fails to load, the onerror handler
+   strips the class so the card falls back to front-default. */
+.product-card.show-back-default .product-image .img-front { opacity: 0; z-index: 1; }
+.product-card.show-back-default .product-image .img-back  { opacity: 1; z-index: 2; }
+.product-card.show-back-default:hover .product-image .img-back  { opacity: 0; }
+.product-card.show-back-default:hover .product-image .img-front { opacity: 1; }
+
 .product-badge {
     position: absolute;
     top: 12px;
@@ -1373,6 +1381,20 @@ h1, h2, h3, h4 {
     .promise-grid { grid-template-columns: repeat(2, 1fr); }
     .modal-body { grid-template-columns: 1fr; }
     .modal-image { height: 300px; border-radius: 16px 16px 0 0; }
+
+    /* Mobile: single-scroll modal. The whole modal scrolls as one unit instead of nesting
+       an inner-scroll inside a height-capped body — the inner-scroll approach hid the
+       reviews tab on phones (you could see the add-to-cart button but couldn't reach below). */
+    .product-modal {
+        width: 95%;
+        max-height: 92vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+    }
+    .modal-body { max-height: none; overflow: visible; }
+    .modal-info { max-height: none; overflow-y: visible; padding: 1.25rem 1.25rem 2rem; }
+    .modal-left { border-radius: 16px 16px 0 0; }
 }
 @media (max-width: 600px) {
     /* Carousel: 1 card visible */

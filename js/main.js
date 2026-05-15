@@ -13,6 +13,14 @@ function getStockNum(id) {
   return seed < 4 ? seed + 3 : seed < 10 ? seed + 2 : seed;
 }
 
+// Deterministic 40% chance to display the BACK image as the default in the catalog grid,
+// for visual variety. Stable per product id (no flicker on re-render). If the back image
+// is missing, the <img onerror> strips the class so the card falls back to the front view.
+function shouldShowBackDefault(id) {
+  const n = ((Number(id) || 0) * 2654435761) >>> 0;
+  return (n % 100) < 40;
+}
+
 // ── Real-time variant stock (from product_variant_stock, synced daily from Gelato) ──
 // Shape: { [productId]: { [color]: { [size]: boolean } } }
 // Missing key → optimistic in-stock (matches edge-function default).
@@ -425,11 +433,11 @@ function renderProducts(filter, gender) {
   };
 
   grid.innerHTML = filtered.map(product => `
-    <div class="product-card" data-id="${product.id}" data-type="${product.type}"
+    <div class="product-card${shouldShowBackDefault(product.id) ? ' show-back-default' : ''}" data-id="${product.id}" data-type="${product.type}"
          data-selected-color="${product.colors[0]}"
          onclick="openProductModal(${product.id})">
       <div class="product-image" id="card-img-${product.id}">
-        <img class="img-view img-back"  src="${productImg(product.id, product.colors[0], 'back')}"  alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}'" />
+        <img class="img-view img-back"  src="${productImg(product.id, product.colors[0], 'back')}"  alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}';const c=this.closest('.product-card');if(c)c.classList.remove('show-back-default');" />
         <img class="img-view img-front" src="${productImg(product.id, product.colors[0], 'front')}" alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}'" />
         <div class="product-badge">${typeMap[product.type] || product.typeLabel}</div>
         <div class="product-rating-badge" id="badge-${product.id}">${currentLang === 'he' ? 'NEW' : 'NEW'}</div>
