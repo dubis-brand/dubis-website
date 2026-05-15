@@ -147,10 +147,51 @@ const DUBIS_SIZE =  65;  // watermark corner text
 
 /**
  * Generates one back design PNG.
+ *
+ * Layout math (2026-05-15 rewrite — fixes asymmetric gaps):
+ *   All blocks share centerX = BACK_W/2 with textAlign='center'.
+ *   Vertical positioning uses cap-height math (CAP_RATIO ≈ 0.74 for Impact)
+ *   instead of relying on the alphabetic baseline alone. Each block's visual
+ *   "top" (cap-top) is placed deterministically with a uniform VISUAL_GAP
+ *   between blocks, so the BIG word has equal whitespace above AND below it.
+ *
+ *   Old code drew BIG at baseline = curY + BIG_SIZE, leaving a big invisible
+ *   ascender area above (≈26% of font-size) but no compensating space below.
+ *   Result: ~446px gap above LIMITED, ~35px below.
+ *
  * @param {object} product
  * @param {string} color  'white' | 'dark'
  * @param {string} outPath
  */
+const CAP_RATIO       = 0.74; // Impact cap-height as fraction of font-size
+const VISUAL_GAP      = 110;  // px of clear space between stacked blocks
+const LINE_GAP_RATIO  = 0.10; // tight line spacing within a multi-line block
+const STACK_CENTER_Y  = BACK_H * 0.43; // vertical center of the entire stack
+
+function blockVisualHeight(text, fontSize) {
+  if (!text) return 0;
+  const lines = text.split('\n');
+  const cap   = fontSize * CAP_RATIO;
+  return cap * lines.length + fontSize * LINE_GAP_RATIO * (lines.length - 1);
+}
+
+/**
+ * Draw a (possibly multi-line) text block whose CAP-TOP sits exactly at capTopY.
+ * Each line is horizontally centered (textAlign must be 'center').
+ */
+function drawBlockAtCapTop(ctx, text, fontSize, capTopY, centerX) {
+  setFont(ctx, fontSize);
+  const lines = text.split('\n');
+  const cap   = fontSize * CAP_RATIO;
+  const lineH = cap + fontSize * LINE_GAP_RATIO;
+  let y = capTopY;
+  for (const line of lines) {
+    // textBaseline='alphabetic': baseline = cap-top + cap-height
+    ctx.fillText(line, centerX, y + cap);
+    y += lineH;
+  }
+}
+
 function generateBack(product, color, outPath) {
   const canvas = createCanvas(BACK_W, BACK_H);
   const ctx    = canvas.getContext('2d');
@@ -159,59 +200,54 @@ function generateBack(product, color, outPath) {
   ctx.clearRect(0, 0, BACK_W, BACK_H);
 
   const textColor = color === 'white' ? '#ffffff' : '#1a1a1a';
-  ctx.fillStyle   = textColor;
-  ctx.textAlign   = 'center';
+  ctx.fillStyle    = textColor;
+  ctx.textAlign    = 'center';
   ctx.textBaseline = 'alphabetic';
 
   const centerX = BACK_W / 2;
 
-  // ---- layout: top-bottom ----
-  // small → BIG → after, stacked, positioned ~30% from top
+  // ---- layout: top-bottom (small → BIG → after) ----
   if (product.layout === 'top-bottom') {
-    let curY = BACK_H * 0.30;
+    const hSmall = blockVisualHeight(product.small, SMALL_SIZE);
+    const hBig   = blockVisualHeight(product.big,   BIG_SIZE);
+    const hAfter = blockVisualHeight(product.after, AFTER_SIZE);
 
-    // Small text
+    const presentBlocks = [hSmall, hBig, hAfter].filter(h => h > 0);
+    const totalH = presentBlocks.reduce((a, b) => a + b, 0)
+                 + VISUAL_GAP * Math.max(0, presentBlocks.length - 1);
+
+    let curY = STACK_CENTER_Y - totalH / 2;
+
     if (product.small) {
-      setFont(ctx, SMALL_SIZE);
-      const smallLineH = SMALL_SIZE * 1.15;
-      curY = drawCenteredText(ctx, product.small, centerX, curY, smallLineH);
-      curY += SMALL_SIZE * 0.2; // gap
+      drawBlockAtCapTop(ctx, product.small, SMALL_SIZE, curY, centerX);
+      curY += hSmall + VISUAL_GAP;
     }
-
-    // BIG word
     if (product.big) {
-      setFont(ctx, BIG_SIZE);
-      ctx.fillText(product.big, centerX, curY + BIG_SIZE);
-      curY += BIG_SIZE * 1.05 + BIG_SIZE * 0.15; // advance + gap
+      drawBlockAtCapTop(ctx, product.big, BIG_SIZE, curY, centerX);
+      curY += hBig + VISUAL_GAP;
     }
-
-    // After text
     if (product.after) {
-      setFont(ctx, AFTER_SIZE);
-      const afterLineH = AFTER_SIZE * 1.15;
-      curY += AFTER_SIZE * 0.1;
-      drawCenteredText(ctx, product.after, centerX, curY, afterLineH);
+      drawBlockAtCapTop(ctx, product.after, AFTER_SIZE, curY, centerX);
     }
   }
 
-  // ---- layout: big-top ----
-  // BIG word at top, small/after text below
+  // ---- layout: big-top (BIG → after, no small above) ----
   else if (product.layout === 'big-top') {
-    let curY = BACK_H * 0.25;
+    const hBig   = blockVisualHeight(product.big,   BIG_SIZE);
+    const hAfter = blockVisualHeight(product.after, AFTER_SIZE);
 
-    // BIG word
+    const presentBlocks = [hBig, hAfter].filter(h => h > 0);
+    const totalH = presentBlocks.reduce((a, b) => a + b, 0)
+                 + VISUAL_GAP * Math.max(0, presentBlocks.length - 1);
+
+    let curY = STACK_CENTER_Y - totalH / 2;
+
     if (product.big) {
-      setFont(ctx, BIG_SIZE);
-      ctx.fillText(product.big, centerX, curY + BIG_SIZE);
-      curY += BIG_SIZE * 1.1;
+      drawBlockAtCapTop(ctx, product.big, BIG_SIZE, curY, centerX);
+      curY += hBig + VISUAL_GAP;
     }
-
-    // After text (body copy below the big word)
     if (product.after) {
-      setFont(ctx, AFTER_SIZE);
-      const afterLineH = AFTER_SIZE * 1.2;
-      curY += AFTER_SIZE * 0.3;
-      drawCenteredText(ctx, product.after, centerX, curY, afterLineH);
+      drawBlockAtCapTop(ctx, product.after, AFTER_SIZE, curY, centerX);
     }
   }
 
