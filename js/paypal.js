@@ -104,6 +104,16 @@ async function checkout() {
     if (cpInput) cpInput.value = '';
     if (cpFb) { cpFb.textContent = ''; cpFb.className = 'coupon-feedback'; }
 
+    // FB visitor → auto-apply the DUBIS15 welcome coupon (organic + paid). The
+    // banner promises it; surface the discount before the customer eyeballs the
+    // total so the FB→purchase funnel doesn't die at "wait, where's the 15%".
+    if (typeof window.dubisCameFromFacebook === 'function' && window.dubisCameFromFacebook()) {
+        if (cpInput) {
+            cpInput.value = 'DUBIS15';
+            setTimeout(() => { try { applyCoupon(); } catch(e) {} }, 80);
+        }
+    }
+
     // Show contact step + continue button, hide payment step
     const contactStep  = document.getElementById('contact-step');
     const paymentStep  = document.getElementById('payment-step');
@@ -221,6 +231,13 @@ async function submitContactStep() {
     if (continueRow) continueRow.style.display = 'none';
     document.getElementById('payment-step').style.display  = '';
 
+    // FB/IG in-app webview → skip PayPal SDK entirely (popup is blocked anyway)
+    // and show the external-browser handoff directly.
+    if (typeof window.dubisIsFacebookWebView === 'function' && window.dubisIsFacebookWebView()) {
+        renderWebViewExternalHandoff();
+        return;
+    }
+
     // Render PayPal
     if (USE_SDK) {
         try {
@@ -247,6 +264,65 @@ function renderDirectPayPalButton() {
     `;
 }
 
+// ===== FB / INSTAGRAM IN-APP WEBVIEW HANDOFF =====
+// Replaces PayPal buttons with an "open in external browser" UI when the
+// visitor is inside the FB or IG in-app browser, where PayPal popups die.
+// We never want to render PayPal buttons here — the user clicks, sees nothing
+// happen, and bounces. Show them how to bail out to Chrome/Safari instead.
+function renderWebViewExternalHandoff() {
+    const container = document.getElementById('paypal-button-container');
+    if (!container) return;
+
+    // Build the external URL with a flag so we can debug / track later.
+    const cleanUrl = window.location.origin + window.location.pathname;
+    const externalUrl = cleanUrl + '?ext=1#shop';
+    // Android: intent:// URL forces Chrome to open the page. iOS has no equivalent
+    // (Apple blocks programmatic browser handoff), so we rely on target=_blank
+    // (sometimes pops out of FB) + a copy-link button as the universal fallback.
+    const isAndroid = /Android/i.test(navigator.userAgent || '');
+    const intentUrl = 'intent://' + window.location.host + (window.location.pathname || '/') +
+                      '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' +
+                      encodeURIComponent(externalUrl) + ';end';
+
+    container.innerHTML = `
+        <div class="fb-webview-notice" dir="rtl">
+            <h4>לתשלום מאובטח — פתח בדפדפן חיצוני</h4>
+            <p>תשלום ב-PayPal / כרטיס אשראי לא עובד בדפדפן הפנימי של פייסבוק/אינסטגרם. פתח את האתר ב-Chrome או Safari כדי להשלים את ההזמנה. הקופון <strong>DUBIS15</strong> כבר מוחל בעגלה.</p>
+            <div class="fb-webview-actions">
+                ${isAndroid ? `<a class="fb-webview-btn" href="${intentUrl}">פתח ב-Chrome</a>` : ''}
+                <a class="fb-webview-btn ${isAndroid ? 'secondary' : ''}" href="${externalUrl}" target="_blank" rel="noopener noreferrer">פתח בדפדפן ברירת מחדל</a>
+                <button type="button" class="fb-webview-btn secondary" onclick="dubisCopyCheckoutLink(this)">העתק קישור לאתר</button>
+            </div>
+            <p class="fb-webview-hint">או: פתח את התפריט (⋯) בפינה הימנית-עליונה ובחר "Open in Safari" / "פתח ב-Chrome"</p>
+        </div>
+    `;
+}
+
+window.dubisCopyCheckoutLink = function(btn) {
+    try {
+        const url = window.location.origin + window.location.pathname + '?ext=1#shop';
+        const done = (ok) => {
+            if (!btn) return;
+            const original = btn.textContent;
+            btn.textContent = ok ? '✓ הקישור הועתק' : '⚠ העתק ידנית';
+            setTimeout(() => { btn.textContent = original; }, 2500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(() => done(true)).catch(() => done(false));
+        } else {
+            const ta = document.createElement('textarea');
+            ta.value = url;
+            ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            let ok = false;
+            try { ok = document.execCommand('copy'); } catch(e) { ok = false; }
+            document.body.removeChild(ta);
+            done(ok);
+        }
+    } catch(e) { /* never throw — user can read the URL bar */ }
+};
+
 // ===== PHASE 2: SMART BUTTONS SDK =====
 function loadPayPalSDK() {
     return new Promise((resolve, reject) => {
@@ -266,6 +342,18 @@ function loadPayPalSDK() {
 }
 
 function renderPayPalButtons() {
+    // FB/Instagram in-app webview short-circuit. The PayPal SDK opens its
+    // login/card flow in a popup window — popups are blocked or silently
+    // killed inside the FB/IG webview. Verified 2026-05-15: 88% of today's
+    // traffic was FB organic, 83 product_view events, 0 purchases. Swap the
+    // PayPal buttons for a "open in external browser" handoff so the customer
+    // can complete checkout in Chrome / Safari. Their cart + DUBIS15 coupon
+    // persist via localStorage and URL params on the handoff link.
+    if (typeof window.dubisIsFacebookWebView === 'function' && window.dubisIsFacebookWebView()) {
+        renderWebViewExternalHandoff();
+        return;
+    }
+
     const createOrder = (data, actions) => {
         if (window.dubisTrack) window.dubisTrack('checkout_start', { items: cart.length, total: cart.reduce((s,i)=>s+i.price,0) });
         const itemTotal = cart.reduce((sum, i) => sum + i.price, 0);

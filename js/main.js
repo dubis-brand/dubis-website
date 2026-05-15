@@ -1091,6 +1091,63 @@ function checkCookieConsent() {
   } catch(e) { /* never throw — attribution is best-effort */ }
 })();
 
+// ===== FACEBOOK VISITOR HELPERS =====
+// 2026-05-15: 88% of today's traffic = FB organic with 0 purchases on 83 product
+// views. Root cause: PayPal popups die inside FB's in-app browser. Two helpers
+// here serve two different UX needs:
+//   - dubisCameFromFacebook(): VISITOR arrived from FB (referrer / fbclid / utm).
+//     Used to show the welcome coupon banner and auto-apply DUBIS15.
+//   - dubisIsFacebookWebView(): visitor is CURRENTLY inside the FB or IG in-app
+//     browser (user agent). Used in paypal.js to swap PayPal buttons for an
+//     "open in external browser" handoff, because popups are blocked.
+window.dubisCameFromFacebook = function() {
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        if (params.has('fbclid')) return true;
+        if ((params.get('utm_source') || '').toLowerCase() === 'facebook') return true;
+        const ref = (document.referrer || '').toLowerCase();
+        if (ref.includes('facebook.com') || ref.includes('fb.com') || ref.includes('l.facebook.com') || ref.includes('m.facebook.com')) return true;
+        const attr = (typeof window.dubisGetAttribution === 'function') ? window.dubisGetAttribution() : null;
+        if (attr && (attr.utm_source || '').toLowerCase() === 'facebook') return true;
+        return false;
+    } catch(e) { return false; }
+};
+
+window.dubisIsFacebookWebView = function() {
+    try {
+        const ua = navigator.userAgent || '';
+        // FBAN/FBAV — iOS Facebook app · FB_IAB/FB4A — Android Facebook app · FBIOS — older
+        // Instagram in-app browser has the same PayPal-popup issue, so include it.
+        return /\b(FBAN|FBAV|FB_IAB|FB4A|FBIOS|Instagram)\b/i.test(ua);
+    } catch(e) { return false; }
+};
+
+// ===== FB COUPON BANNER (DUBIS15) =====
+// Auto-shown to FB-arriving visitors. Dismissible; dismiss state lives in
+// sessionStorage so it doesn't nag during the same visit but re-shows on
+// future visits (FB drops attribution between sessions anyway).
+function dubisShowFbCouponBanner() {
+    try {
+        if (!window.dubisCameFromFacebook()) return;
+        if (sessionStorage.getItem('dubis-fb-banner-dismissed') === '1') return;
+        const banner = document.getElementById('fb-coupon-banner');
+        if (!banner) return;
+        banner.classList.add('visible');
+        document.body.classList.add('fb-banner-active');
+    } catch(e) {}
+}
+
+window.dubisDismissFbCouponBanner = function() {
+    try {
+        sessionStorage.setItem('dubis-fb-banner-dismissed', '1');
+        const banner = document.getElementById('fb-coupon-banner');
+        if (banner) banner.classList.remove('visible');
+        document.body.classList.remove('fb-banner-active');
+    } catch(e) {}
+};
+
+window.addEventListener('DOMContentLoaded', dubisShowFbCouponBanner);
+
 // Helper for checkout / orders.save — returns the first-touch attribution object,
 // or null if storage is unavailable. Always inspect both localStorage (long-lived)
 // and sessionStorage (current session) so we never accidentally credit (direct).

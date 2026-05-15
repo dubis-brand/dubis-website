@@ -32,6 +32,39 @@
     @keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.3}}
     .modal-urgency{display:flex;align-items:center;gap:8px;background:#2a1a0066;border:1px solid #c8a96e44;border-radius:8px;padding:8px 14px;margin:10px 0;font-size:12px;color:#c8a96e}
     .modal-urgency .fire{font-size:16px}
+
+    /* === FB visitor coupon banner (DUBIS15) === */
+    .fb-coupon-banner{display:none;background:linear-gradient(90deg,#C17E3A 0%,#9A6528 100%);color:#F5F0E8;border-bottom:1px solid #7a4f1d;position:fixed;top:38px;left:0;right:0;z-index:998;animation:fbBannerSlide .35s ease-out;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+    .fb-coupon-banner.visible{display:block}
+    body.fb-banner-active{padding-top:86px}
+    body.fb-banner-active .navbar{top:86px !important}
+    .fb-coupon-inner{max-width:1280px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:10px;padding:11px 52px 11px 16px;position:relative}
+    .fb-coupon-icon{font-size:18px;flex-shrink:0;line-height:1}
+    .fb-coupon-text{font-family:'Inter',-apple-system,sans-serif;font-size:13.5px;font-weight:500;letter-spacing:0.01em;line-height:1.45;text-align:center}
+    .fb-coupon-text strong.fb-coupon-code{font-weight:700;background:#F5F0E8;color:#2C2C2C;padding:2px 9px;border-radius:4px;margin:0 5px;letter-spacing:0.07em;font-family:'Inter',monospace}
+    .fb-coupon-close{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:#F5F0E8;font-size:24px;font-weight:300;cursor:pointer;padding:2px 8px;line-height:1;opacity:.82;border-radius:4px}
+    .fb-coupon-close:hover,.fb-coupon-close:focus{opacity:1;background:rgba(245,240,232,.12);outline:none}
+    @keyframes fbBannerSlide{from{transform:translateY(-100%);opacity:0}to{transform:translateY(0);opacity:1}}
+    @media (max-width:768px){
+        .fb-coupon-inner{padding:9px 44px 9px 12px;gap:6px}
+        .fb-coupon-text{font-size:12px;line-height:1.4}
+        .fb-coupon-text strong.fb-coupon-code{padding:1px 7px;margin:0 3px}
+        .fb-coupon-icon{font-size:15px}
+        body.fb-banner-active{padding-top:84px}
+        body.fb-banner-active .navbar{top:84px !important}
+    }
+
+    /* === FB / IG webview PayPal handoff notice === */
+    .fb-webview-notice{background:#FEF6E9;border:1px solid #C17E3A;border-radius:10px;padding:18px 16px;margin:0 0 12px;color:#3D3D3D;line-height:1.55}
+    .fb-webview-notice h4{margin:0 0 10px;font-size:15px;font-weight:700;color:#2C2C2C;text-align:center}
+    .fb-webview-notice p{margin:0 0 14px;font-size:13.5px;text-align:center}
+    .fb-webview-notice strong{background:#2C2C2C;color:#F5F0E8;padding:1px 7px;border-radius:4px;letter-spacing:0.05em;font-family:'Inter',monospace;font-size:12.5px}
+    .fb-webview-actions{display:flex;flex-direction:column;gap:8px}
+    .fb-webview-btn{display:block;width:100%;padding:13px;background:#2C2C2C;color:#F5F0E8;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;text-align:center;font-family:'Inter',-apple-system,sans-serif;box-sizing:border-box}
+    .fb-webview-btn:hover,.fb-webview-btn:focus{background:#1a1a1a;outline:none}
+    .fb-webview-btn.secondary{background:transparent;color:#2C2C2C;border:1.5px solid #2C2C2C}
+    .fb-webview-btn.secondary:hover,.fb-webview-btn.secondary:focus{background:#2C2C2C;color:#F5F0E8}
+    .fb-webview-hint{font-size:11.5px;color:#6b5630;margin-top:10px !important;text-align:center;opacity:.85}
     </style>
 
     <!-- SEO -->
@@ -128,6 +161,15 @@
                 <span class="trust-icon" aria-hidden="true">★</span>
                 <span class="trust-text" data-en="Real bodies. Real fit. Real reviews." data-he="גופים אמיתיים. גזרה אמיתית. ביקורות אמיתיות.">Real bodies. Real fit. Real reviews.</span>
             </div>
+        </div>
+    </div>
+
+    <!-- FACEBOOK VISITOR COUPON BANNER — auto-shown when arriving from FB (fbclid / utm_source=facebook / referrer). Hidden by default; main.js dubisShowFbCouponBanner() flips it visible after DOMContentLoaded. -->
+    <div id="fb-coupon-banner" class="fb-coupon-banner" role="region" aria-label="Welcome offer">
+        <div class="fb-coupon-inner">
+            <span class="fb-coupon-icon" aria-hidden="true">🎉</span>
+            <span class="fb-coupon-text" dir="rtl">ברוך הבא! קוד קופון לחברים: <strong class="fb-coupon-code">DUBIS15</strong> — 15% הנחה על כל הרכישה</span>
+            <button type="button" class="fb-coupon-close" onclick="dubisDismissFbCouponBanner()" aria-label="Dismiss welcome offer">×</button>
         </div>
     </div>
 
