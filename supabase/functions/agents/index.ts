@@ -134,6 +134,34 @@ function bytesToB64(bytes: Uint8Array): string {
 function seededPick<T>(seed: number, arr: T[]): T {
   return arr[seed % arr.length];
 }
+
+// Pick the URL of the REAL Gelato back-mockup for a product. The back is what
+// carries the slogan artwork, so this is what social posts should show.
+// Mirrors js/main.js pickDisplayColor: prefer non-Black/non-Charcoal so posts
+// don't all look like a dark-shirt wall. Seeded by taskId so the same task is
+// idempotent across reruns but two tasks for the same product vary their color.
+// Replaces the AI lifestyle-photo generation (Gemini/Pollinations) for the
+// auto post pipeline as of 2026-05-16: we now publish the real Gelato render
+// instead of an invented person wearing the garment.
+function pickGelatoBackMockupUrl(
+  productIdNumeric: number | string | null | undefined,
+  colors: unknown,
+  taskId: string | null | undefined,
+): string | null {
+  const id = String(productIdNumeric ?? '').trim();
+  if (!id) return null;
+  const all = Array.isArray(colors)
+    ? (colors as unknown[]).filter((c): c is string => typeof c === 'string' && c.length > 0)
+    : [];
+  if (all.length === 0) return null;
+  const colorful = all.filter(c => c !== 'Black' && c !== 'Charcoal');
+  const pool = colorful.length > 0 ? colorful : all;
+  const hex = (taskId || '').replace(/-/g, '').substring(0, 8);
+  const seed = hex ? (parseInt(hex, 16) || 0) : ((Number(id) || 0) * 2246822519);
+  const pick = pool[(seed >>> 0) % pool.length];
+  if (!pick) return null;
+  return `https://www.dubis.net/images/product-${id}-${pick.replace(/ /g, '-')}-back.jpg`;
+}
 function buildVisualVariation(taskId: string, titleLower: string): string {
   // 24 bits of entropy from the task UUID is plenty for picking from small arrays.
   const hex = (taskId || '').replace(/-/g, '').substring(0, 12) || '000000000000';
@@ -477,36 +505,28 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
             }
 
             let imageUrl = hasPermImg ? (cd.generated_image_url as string) : '';
-            // Try Gemini first — using a REAL product photo as reference so the
-            // generated image shows the actual garment (correct slogan/logo).
-            if (!imageUrl && geminiKey) {
-              // Resolve product_id_numeric + colors + back-design URLs so we can
-              // send BOTH the front product photo AND the back-print artwork to
-              // Gemini. Without the back ref, Gemini invents blank garments.
+            // 2026-05-16: stopped using Gemini to invent lifestyle photos. The
+            // social post now shows the REAL Gelato back-mockup — that's the
+            // image that carries the actual slogan artwork the customer buys.
+            // Resolve product_id + colors so we can pick the right back mockup.
+            if (!imageUrl) {
               let refPid: string = (cd.product_id as string) || '';
               let refColors: string[] = Array.isArray(cd.product_colors) ? (cd.product_colors as string[]) : [];
-              let refSloganDb = '';
-              let backDarkUrl: string | null = null;
-              let backWhiteUrl: string | null = null;
               const refSlogan = (cd.product_slogan as string) || '';
               try {
-                if (refPid) {
+                if (refPid && refColors.length === 0) {
                   const { data: pr } = await sb.from('dubis_products')
-                    .select('colors, slogan, design_back_dark_url, design_back_white_url')
+                    .select('colors')
                     .eq('active', true)
                     .eq('product_id_numeric', refPid)
                     .limit(1);
                   if (pr?.length) {
-                    const row = pr[0] as Record<string, unknown>;
-                    const c = row.colors;
-                    if (Array.isArray(c) && !refColors.length) refColors = c as string[];
-                    refSloganDb = (row.slogan as string) || '';
-                    backDarkUrl  = (row.design_back_dark_url  as string) || null;
-                    backWhiteUrl = (row.design_back_white_url as string) || null;
+                    const c = (pr[0] as Record<string, unknown>).colors;
+                    if (Array.isArray(c)) refColors = c as string[];
                   }
-                } else if (refSlogan) {
+                } else if (!refPid && refSlogan) {
                   const { data: hit } = await sb.from('dubis_products')
-                    .select('product_id_numeric, colors, slogan, design_back_dark_url, design_back_white_url')
+                    .select('product_id_numeric, colors')
                     .eq('active', true)
                     .ilike('slogan', refSlogan)
                     .limit(1);
@@ -515,73 +535,11 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
                     refPid = String(row.product_id_numeric);
                     const c = row.colors;
                     if (Array.isArray(c)) refColors = c as string[];
-                    refSloganDb = (row.slogan as string) || '';
-                    backDarkUrl  = (row.design_back_dark_url  as string) || null;
-                    backWhiteUrl = (row.design_back_white_url as string) || null;
                   }
                 }
               } catch { /* ignore */ }
-              // Dark colorways dominate our catalog → prefer the white-ink back
-              // artwork (the print that appears on dark shirts) as primary ref.
-              const preferredBack = backWhiteUrl || backDarkUrl;
-              const ref = refPid ? await fetchProductReferenceImage(refPid, refColors, preferredBack) : null;
-
-              // Scene description (no slogan text — Gemini will copy it from the reference).
-              // 2026-04-23: switched to buildVisualVariation() to stop mode collapse (Task #40).
-              // We intentionally IGNORE gen.image_prompt here — the caption LLM kept returning
-              // near-identical "person 40s couch" prompts which is exactly how we ended up
-              // with 5 identical IG posts in a row. The seeded matrix guarantees diversity.
-              const titleLower = (task.title as string).toLowerCase();
-              const scene = (cd.format as string) === 'quote_card'
-                ? 'Product laid flat on a moody dark charcoal textured surface, low-key directional lighting'
-                : buildVisualVariation(task.id as string, titleLower);
-
-              const sloganForPrompt = refSloganDb || refSlogan;
-              const hasBack = !!(ref && ref.back);
-              const refPrompt = `You are given ${hasBack ? 'TWO reference images' : 'ONE reference image'} for this post.
-
-IMAGE 1 = the EXACT DUBIS garment (front view). Use this for garment color, cut, fabric, fit, and the small "DUBIS™" chest logo placement.
-${hasBack ? `IMAGE 2 = the EXACT back-print artwork that MUST appear on the back of this garment. The slogan on the back reads: "${sloganForPrompt}". Reproduce this artwork verbatim on the back of the garment in the generated photo — every letter, every glyph, same typography, same size, same placement. Do NOT rephrase, translate, paraphrase, redesign, or omit any part of it.` : ''}
-
-HARD CONSTRAINTS (non-negotiable):
-- This is a photorealistic DSLR photograph — not an illustration, not a render, not a painting.
-- The BACK of the garment must be clearly visible in the final photo (see SCENE). The slogan${sloganForPrompt ? ` "${sloganForPrompt}"` : ''} must be readable in the image.
-- Do NOT invent, translate, rephrase, or redesign any text on the garment.
-- Square 1:1 framing. No watermarks. No borders. No overlaid captions. Do not add any text to the frame that is not already on the garment.
-
-SCENE: ${scene}.
-
-Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact garment, shot on a modern DSLR. The back slogan must be legible and match the artwork reference exactly.`;
-
-              const textOnlyPrompt = `${scene}. The person is wearing a DUBIS anti-fashion garment (dark minimal streetwear aesthetic). Photorealistic DSLR, square 1:1, no watermark, no overlaid text.`;
-
-              try {
-                const parts: unknown[] = [];
-                if (ref) {
-                  parts.push({ inlineData: { mimeType: ref.front.mimeType, data: ref.front.b64 } });
-                  if (ref.back) parts.push({ inlineData: { mimeType: ref.back.mimeType, data: ref.back.b64 } });
-                }
-                parts.push({ text: ref ? refPrompt : textOnlyPrompt });
-                const gRes = await fetch(
-                  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiKey}`,
-                  { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseModalities: ['IMAGE', 'TEXT'] } }),
-                    signal: AbortSignal.timeout(60000) },
-                );
-                if (gRes.ok) {
-                  const gData = await gRes.json();
-                  type GemPart = Record<string, unknown>;
-                  const imgPart = gData.candidates?.[0]?.content?.parts?.find((p: GemPart) => (p.inlineData as GemPart)?.mimeType?.toString().startsWith('image/'));
-                  if (imgPart?.inlineData) {
-                    const imgBytes = b64ToBytes(imgPart.inlineData.data as string);
-                    await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
-                    const fname = `ig-${task.id}.jpg`;
-                    await sb.storage.from('ig-images').upload(fname, imgBytes, { contentType: 'image/jpeg', upsert: true });
-                    const { data: { publicUrl } } = sb.storage.from('ig-images').getPublicUrl(fname);
-                    imageUrl = publicUrl;
-                  }
-                }
-              } catch { /* Gemini timeout — fall through to Pollinations */ }
+              const mockupUrl = pickGelatoBackMockupUrl(refPid, refColors, task.id as string);
+              if (mockupUrl) imageUrl = mockupUrl;
             }
             // Fallback: Pollinations
             if (!imageUrl) {
@@ -1482,99 +1440,38 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
         let imgError = '';
 
         if (!imageUrl) {
-          // Priority 1: Generate with Gemini using the REAL product photo as
-          // reference — preserves the exact slogan and logo on the garment.
+          // Priority 1 (2026-05-16): use the REAL Gelato back-mockup for the
+          // product. That's the image that actually shows the slogan artwork
+          // the customer is buying — no more Gemini lifestyle inventions.
           // Priority 2: Fall back to dubis_images gallery (pre-approved photos).
           const productSlogan = ((cd.product_slogan as string) || '').toLowerCase().trim();
           const productId = (cd.product_id as string) || '';
 
-          // Resolve colors + back-design URL from dubis_products so we pick
-          // a real front image AND send the exact back print to Gemini.
+          // Resolve colors from dubis_products so we pick a real back mockup.
           let productColors: string[] = [];
-          let productSloganDb = '';
-          let backDesignDarkUrl: string | null = null;
-          let backDesignWhiteUrl: string | null = null;
           try {
             if (productId) {
               const { data: pr } = await sb.from('dubis_products')
-                .select('colors, slogan, design_back_dark_url, design_back_white_url')
+                .select('colors')
                 .eq('active', true)
                 .eq('product_id_numeric', productId)
                 .limit(1);
               if (pr?.length) {
-                const row = pr[0] as Record<string, unknown>;
-                const c = row.colors;
+                const c = (pr[0] as Record<string, unknown>).colors;
                 if (Array.isArray(c)) productColors = c as string[];
-                productSloganDb = (row.slogan as string) || '';
-                backDesignDarkUrl  = (row.design_back_dark_url  as string) || null;
-                backDesignWhiteUrl = (row.design_back_white_url as string) || null;
               }
             }
           } catch { /* ignore */ }
 
-          if (geminiKey && productId) {
-            try {
-              // Dark colorways (default) use the white-ink back design; light
-              // colorways use the dark-ink back design. We're biased to dark
-              // garments in fetchProductReferenceImage, so prefer the white
-              // back artwork (i.e. design_back_white_url → the print that
-              // appears on dark shirts) as the primary reference.
-              const preferredBack = backDesignWhiteUrl || backDesignDarkUrl;
-              const ref = await fetchProductReferenceImage(productId, productColors, preferredBack);
-              if (ref) {
-                const titleLower = (task.title as string).toLowerCase();
-                // 2026-04-23: use the anti-mode-collapse variation matrix so every
-                // post gets a visually distinct subject+scene+lens combo (Task #40).
-                const scene = buildVisualVariation(task.id as string, titleLower);
-                const sloganForPrompt = productSloganDb || (cd.product_slogan as string) || '';
-                const hasBack = !!ref.back;
-                const refPrompt = `You are given ${hasBack ? 'TWO reference images' : 'ONE reference image'} for this post.
-
-IMAGE 1 = the EXACT DUBIS garment (front view). Use this for garment color, cut, fabric, fit, and the small "DUBIS™" chest logo placement.
-${hasBack ? `IMAGE 2 = the EXACT back-print artwork that MUST appear on the back of this garment. The slogan on the back reads: "${sloganForPrompt}". Reproduce this artwork verbatim on the back of the garment in the generated photo — every letter, every glyph, same typography, same size, same placement. Do NOT rephrase, translate, paraphrase, redesign, or omit any part of it.` : ''}
-
-HARD CONSTRAINTS (non-negotiable):
-- This is a photorealistic DSLR photograph — not an illustration, not a render, not a painting.
-- The BACK of the garment must be clearly visible in the final photo (see SCENE). The slogan "${sloganForPrompt}" must be readable in the image.
-- Do NOT invent, translate, rephrase, or redesign any text on the garment.
-- Square 1:1 framing. No watermarks. No borders. No overlaid captions. Do not add any text to the frame that is not already on the garment.
-
-SCENE: ${scene}.
-
-Goal: a real-world lifestyle photo of a real American 35-55 wearing this exact garment, shot on a modern DSLR. The back slogan must be legible and match the artwork reference exactly.`;
-                const parts: unknown[] = [{ inlineData: { mimeType: ref.front.mimeType, data: ref.front.b64 } }];
-                if (ref.back) parts.push({ inlineData: { mimeType: ref.back.mimeType, data: ref.back.b64 } });
-                parts.push({ text: refPrompt });
-                const gRes = await fetch(
-                  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiKey}`,
-                  { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      contents: [{ parts }],
-                      generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
-                    }),
-                    signal: AbortSignal.timeout(60000) },
-                );
-                if (gRes.ok) {
-                  const gData = await gRes.json();
-                  type GemPart = Record<string, unknown>;
-                  const imgPart = gData.candidates?.[0]?.content?.parts?.find((p: GemPart) => (p.inlineData as GemPart)?.mimeType?.toString().startsWith('image/'));
-                  if (imgPart?.inlineData) {
-                    const imgBytes = b64ToBytes(imgPart.inlineData.data as string);
-                    await sb.storage.createBucket('ig-images', { public: true }).catch(() => {});
-                    const fname = `ig-${task.id}.jpg`;
-                    await sb.storage.from('ig-images').upload(fname, imgBytes, { contentType: 'image/jpeg', upsert: true });
-                    const { data: { publicUrl } } = sb.storage.from('ig-images').getPublicUrl(fname);
-                    imageUrl = publicUrl;
-                  }
-                } else {
-                  imgError = `gemini_ref_http_${gRes.status}`;
-                }
-              } else {
-                imgError = 'no_product_reference_image';
-              }
-            } catch (e) {
-              imgError = `gemini_ref:${(e as Error).message}`;
+          if (productId) {
+            const mockupUrl = pickGelatoBackMockupUrl(productId, productColors, task.id as string);
+            if (mockupUrl) {
+              imageUrl = mockupUrl;
+            } else {
+              imgError = 'no_gelato_back_mockup';
             }
+          } else {
+            imgError = 'no_product_id';
           }
 
           try {
