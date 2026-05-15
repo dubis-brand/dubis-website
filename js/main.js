@@ -253,25 +253,41 @@ const translations = {
 };
 
 // ===== LANGUAGE DETECTION =====
-// US Pivot (2026-04-18): Default to EN for all new visitors (US audience focus).
-// Hebrew is NOT removed — full translations preserved in `translations.he` and
-// accessible via the manual lang-toggle button ("עב"). Returning users keep
-// whatever they chose last via localStorage.
-function detectLanguage() {
+// IL Re-entry (2026-05-15): US + Israeli market. Default EN for non-IL,
+// HE for IL visitors. Geo detected once per session via ipapi.co, cached
+// in sessionStorage. Returning users keep whatever they manually chose via
+// the lang-toggle ("עב") — that pick is persisted to localStorage; the
+// auto-detected default is NOT persisted, so a traveler isn't locked in.
+async function detectLanguage() {
   const saved = localStorage.getItem('dubis-lang');
-  if (saved) { setLanguage(saved); return; }
-  // New visitors → always EN (targeted US campaign audience)
-  setLanguage('en');
+  if (saved) { setLanguage(saved, false); return; }
+
+  let country = sessionStorage.getItem('dubis-country');
+  if (!country) {
+    try {
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 3000);
+      const res = await fetch('https://ipapi.co/json/', { signal: ctrl.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const data = await res.json();
+        country = data && data.country_code ? String(data.country_code) : '';
+        sessionStorage.setItem('dubis-country', country);
+      }
+    } catch { /* network error / timeout → fallback to EN */ }
+  }
+
+  setLanguage(country === 'IL' ? 'he' : 'en', false);
 }
 
-function setLanguage(lang) {
+function setLanguage(lang, persist = true) {
   currentLang = lang;
-  localStorage.setItem('dubis-lang', lang);
+  if (persist) localStorage.setItem('dubis-lang', lang);
   translateUI(lang);
 }
 
 function toggleLang() {
-  setLanguage(currentLang === 'en' ? 'he' : 'en');
+  setLanguage(currentLang === 'en' ? 'he' : 'en', true);
 }
 
 // ===== TRANSLATE ALL UI ELEMENTS =====
@@ -1406,7 +1422,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadCart();
   checkCookieConsent();
   await loadPriceOverrides();
-  detectLanguage(); // IP-based language detection → renders products after
+  await detectLanguage(); // IP-based geo (IL→HE, else EN); falls back to EN within 3s on failure
   initScrollAnimations();
   loadProductReviews(); // Load reviews for badges (non-blocking)
 });
