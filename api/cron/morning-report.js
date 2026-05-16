@@ -465,6 +465,32 @@ ${[
         return runContentPipeline(supabase, res);
     }
 
+    // ── Route: ?type=weekly-marketing-plan ─────────────────────────────
+    // Called by Vercel cron every Sunday 04:00 UTC (07:00 Israel) — proxy
+    // to the Edge Function which builds the 17-slot weekly plan.
+    // See: docs/plans/campaigns/DUBIS_WEEKLY_SOCIAL_PLAN_2026-05-16.html
+    if (urlType === 'weekly-marketing-plan') {
+        const agentsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1/agents';
+        const authToken  = process.env.CRON_SECRET || process.env.AGENT_SECRET || '';
+        try {
+            const force = req.query.force === '1' ? '&force=1' : '';
+            const r = await fetch(`${agentsBase}?type=weekly-marketing-plan${force}`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${authToken}` },
+            });
+            const data = await r.json();
+            console.log('[weekly-plan-cron]', JSON.stringify({
+                ok: data.ok, task_count: data.task_count,
+                week_start: data.plan?.week_start_date, status: data.plan?.status,
+                failures: data.failures?.length || 0,
+            }));
+            return res.status(r.ok ? 200 : 500).json(data);
+        } catch (e) {
+            console.error('[weekly-plan-cron] Error:', e.message);
+            return res.status(500).json({ success: false, error: e.message });
+        }
+    }
+
     // ── Route: ?type=video — weekly English Reel pipeline ───────────────
     // Called by Vercel cron every Sunday 14:00 UTC
     if (urlType === 'video') {

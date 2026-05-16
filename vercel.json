@@ -9,7 +9,8 @@
     { "path": "/api/cron/morning-report?type=content",  "schedule": "0 10 * * *" },
     { "path": "/api/cron/morning-report?type=auto-run",  "schedule": "0 12 * * *" },
     { "path": "/api/cron/morning-report?type=content",  "schedule": "0 16 * * *" },
-    { "path": "/api/cron/morning-report?type=security", "schedule": "0 3 * * 1"  }
+    { "path": "/api/cron/morning-report?type=security", "schedule": "0 3 * * 1"  },
+    { "path": "/api/cron/morning-report?type=weekly-marketing-plan", "schedule": "0 4 * * 0"  }
   ],
   "rewrites": [
     { "source": "/dub-console", "destination": "/admin.html"   },

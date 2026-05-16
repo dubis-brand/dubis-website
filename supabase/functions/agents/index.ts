@@ -2343,6 +2343,286 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     });
   }
 
+  // ── WEEKLY MARKETING PLAN ────────────────────────────────────────────
+  // IL pivot 2026-05-17 — generates the next week's 17-slot social plan.
+  // See: docs/plans/campaigns/DUBIS_WEEKLY_SOCIAL_PLAN_2026-05-16.html
+  // Cron: every Sunday 04:00 UTC (07:00 IL). Boss agent emails the plan
+  // to oren for approval; once approved, child agent_tasks become active.
+  //
+  // Skeleton MVP (2026-05-17): generates the slot calendar + product
+  // selection + placeholder agent_tasks rows. Gemini caption generation
+  // + Boss approval email are the NEXT batch — slots are created with
+  // status='backlog' and needs_copy=true so the system knows they're
+  // not yet ready to publish.
+  if (type === 'weekly-marketing-plan') {
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const token       = authHeader.replace('Bearer ', '').trim()
+                     || req.headers.get('x-agent-secret') || '';
+    const isAuthed = (cronSecret && token === cronSecret)
+                  || (agentSecret && token === agentSecret)
+                  || (svcKey && token === svcKey);
+    const adminOk = await verifyAdmin(req);
+    if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
+
+    const forceRegen = url.searchParams.get('force') === '1';
+
+    // ── 1. Compute target week start (upcoming Sunday in IL) ──────────
+    // IL is UTC+2 (winter) or UTC+3 (summer). For "week starts Sunday in IL",
+    // we anchor by UTC Sunday 00:00. Acceptable drift — slots use UTC anyway.
+    const today = new Date();
+    const dayOfWeek = today.getUTCDay(); // 0=Sun
+    const daysUntilNextSunday = dayOfWeek === 0 ? 0 : (7 - dayOfWeek);
+    const weekStart = new Date(today);
+    weekStart.setUTCDate(today.getUTCDate() + daysUntilNextSunday);
+    weekStart.setUTCHours(0, 0, 0, 0);
+    const weekStartDate = weekStart.toISOString().slice(0, 10); // YYYY-MM-DD
+
+    // ── 2. Check for existing plan ────────────────────────────────────
+    const { data: existing } = await sb
+      .from('weekly_marketing_plans')
+      .select('id, status, total_slots, task_ids, generated_at')
+      .eq('week_start_date', weekStartDate)
+      .maybeSingle();
+
+    if (existing && !forceRegen && existing.status !== 'draft') {
+      return json({
+        ok: true, skipped: true, reason: `Plan for ${weekStartDate} already exists (status=${existing.status}). Pass ?force=1 to regenerate.`,
+        plan: existing,
+      });
+    }
+
+    // ── 3. Fetch prior week's metrics ─────────────────────────────────
+    const priorWeekStart = new Date(weekStart);
+    priorWeekStart.setUTCDate(weekStart.getUTCDate() - 7);
+    const priorWeekStartIso = priorWeekStart.toISOString();
+    const priorWeekEndIso   = weekStart.toISOString();
+
+    const { count: postsCount } = await sb
+      .from('agent_tasks').select('id', { count: 'exact', head: true })
+      .eq('category', 'social_post').eq('status', 'done')
+      .gte('updated_at', priorWeekStartIso).lt('updated_at', priorWeekEndIso);
+    const { count: tiktoksCount } = await sb
+      .from('agent_tasks').select('id', { count: 'exact', head: true })
+      .eq('category', 'tiktok_post').eq('status', 'done')
+      .gte('updated_at', priorWeekStartIso).lt('updated_at', priorWeekEndIso);
+    const { count: ordersCount } = await sb
+      .from('orders').select('id', { count: 'exact', head: true })
+      .gte('created_at', priorWeekStartIso).lt('created_at', priorWeekEndIso);
+
+    const priorWeekMetrics = {
+      window_start: priorWeekStartIso,
+      window_end:   priorWeekEndIso,
+      posts_published: postsCount ?? 0,
+      tiktoks_published: tiktoksCount ?? 0,
+      orders_count: ordersCount ?? 0,
+      // Engagement metrics require Meta API call — deferred to next batch.
+    };
+
+    // ── 4. Slot calendar template (17 slots, HE-first per IL pivot) ───
+    // Day index: 0=Sun, 1=Mon, ..., 6=Sat (matches Date.getUTCDay)
+    type SlotTemplate = {
+      day_offset: number;  // days from week_start (Sunday=0)
+      hour_utc: number;
+      channel: 'ig_fb_feed' | 'ig_fb_reel' | 'ig_carousel' | 'tiktok';
+      format:  'feed_post' | 'reel' | 'carousel' | 'tiktok';
+      category: 'social_post' | 'tiktok_post';
+      lang: 'he' | 'en';
+    };
+    const SLOT_TEMPLATES: SlotTemplate[] = [
+      // ── Sunday ──
+      { day_offset: 0, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
+      // ── Monday ──
+      { day_offset: 1, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'he' },
+      { day_offset: 1, hour_utc: 10, channel: 'ig_fb_feed', format: 'feed_post', category: 'social_post', lang: 'he' },
+      { day_offset: 1, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'en' },
+      // ── Tuesday ──
+      { day_offset: 2, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'he' },
+      { day_offset: 2, hour_utc: 16, channel: 'ig_carousel',format: 'carousel',  category: 'social_post', lang: 'he' },
+      { day_offset: 2, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
+      // ── Wednesday ──
+      { day_offset: 3, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'en' },
+      { day_offset: 3, hour_utc: 10, channel: 'ig_fb_feed', format: 'feed_post', category: 'social_post', lang: 'he' },
+      { day_offset: 3, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'en' },
+      // ── Thursday ──
+      { day_offset: 4, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'he' },
+      { day_offset: 4, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
+      // ── Friday ──
+      { day_offset: 5, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'he' },
+      { day_offset: 5, hour_utc: 14, channel: 'ig_carousel',format: 'carousel',  category: 'social_post', lang: 'en' },
+      { day_offset: 5, hour_utc: 16, channel: 'ig_fb_feed', format: 'feed_post', category: 'social_post', lang: 'en' },
+      { day_offset: 5, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
+      // ── Saturday ──
+      { day_offset: 6, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
+    ];
+    // Sanity: 17 slots, 12 HE, 5 EN
+    const heCount = SLOT_TEMPLATES.filter(s => s.lang === 'he').length;
+    const enCount = SLOT_TEMPLATES.filter(s => s.lang === 'en').length;
+    if (SLOT_TEMPLATES.length !== 17 || heCount !== 12 || enCount !== 5) {
+      return json({ error: `slot template invariant broken: total=${SLOT_TEMPLATES.length}, he=${heCount}, en=${enCount}` }, 500);
+    }
+
+    // ── 5. Product selection — rotate across active catalog ───────────
+    const { data: products, error: prodErr } = await sb
+      .from('dubis_products')
+      .select('id, product_id_numeric, slogan, slogan_en, colors, clothing_type')
+      .eq('active', true)
+      .order('product_id_numeric', { ascending: true });
+    if (prodErr || !products || products.length === 0) {
+      return json({ error: 'No active products available for plan generation', detail: prodErr?.message }, 500);
+    }
+
+    // Get products NOT featured in the prior 7 days (variety rule)
+    const { data: recentFeatured } = await sb
+      .from('agent_tasks')
+      .select('content_data')
+      .in('category', ['social_post', 'tiktok_post'])
+      .gte('created_at', priorWeekStartIso)
+      .limit(100);
+    const recentProductIds = new Set<number>(
+      (recentFeatured || []).map((t: Record<string, unknown>) => {
+        const cd = (t.content_data as Record<string, unknown>) || {};
+        return Number(cd.product_id);
+      }).filter(n => Number.isFinite(n))
+    );
+    const freshProducts = products.filter((p: Record<string, unknown>) => !recentProductIds.has(p.product_id_numeric as number));
+    // Use fresh first, fall back to full list when exhausted
+    const productPool = freshProducts.length >= 6 ? freshProducts : products;
+
+    // ── 6. Build slot details + create placeholder agent_tasks ────────
+    const planDayLabels = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+    const taskIds: string[] = [];
+    const slotDetails: Record<string, unknown>[] = [];
+    const failures: string[] = [];
+
+    for (let i = 0; i < SLOT_TEMPLATES.length; i++) {
+      const slot = SLOT_TEMPLATES[i];
+      const product = productPool[i % productPool.length] as Record<string, unknown>;
+      const productId = product.product_id_numeric as number;
+
+      // Slot timestamp = weekStart + day_offset + hour_utc
+      const slotTime = new Date(weekStart);
+      slotTime.setUTCDate(weekStart.getUTCDate() + slot.day_offset);
+      slotTime.setUTCHours(slot.hour_utc, 0, 0, 0);
+      const slotIso = slotTime.toISOString();
+
+      const productSlogan = slot.lang === 'he'
+        ? (product.slogan as string)
+        : (product.slogan_en as string) || (product.slogan as string);
+
+      const title = `[${planDayLabels[slot.day_offset]} ${String(slot.hour_utc).padStart(2,'0')}:00 UTC] ${slot.format.toUpperCase()} ${slot.lang.toUpperCase()} — ${productSlogan ? productSlogan.slice(0,40) : 'product-' + productId}`;
+
+      const contentData = {
+        // Schedule
+        scheduled_for: slotIso,
+        day_label_he:  planDayLabels[slot.day_offset],
+        hour_utc:      slot.hour_utc,
+        // Channel + format
+        channel:       slot.channel,
+        format:        slot.format,
+        platform:      slot.format === 'tiktok' ? 'tiktok' : 'instagram+facebook',
+        lang:          slot.lang,
+        // Product
+        product_id:    productId,
+        product_slogan: productSlogan,
+        product_url:   `https://www.dubis.net/?p=${productId}`,
+        product_type:  product.clothing_type,
+        // Plan tracking
+        weekly_plan_week_start: weekStartDate,
+        auto_created: true,
+        created_by:   'weekly-marketing-plan',
+        // Copy generation gate — caption_he / caption_en filled by next batch
+        needs_copy:   true,
+        // QA gate — qa_score filled by ?type=copy-qa
+        qa_score:     null,
+      };
+
+      const { data: newTask, error: insertErr } = await sb
+        .from('agent_tasks')
+        .insert({
+          title,
+          agent_id:  'content',
+          category:  slot.category,
+          status:    'backlog',
+          priority:  'medium',
+          content_data: contentData,
+          due_date:  slotIso,
+        })
+        .select('id').single();
+
+      if (insertErr || !newTask) {
+        failures.push(`slot ${i} (${slot.format} ${slot.lang}): ${insertErr?.message || 'insert returned no id'}`);
+        continue;
+      }
+      const taskId = (newTask as Record<string, string>).id;
+      taskIds.push(taskId);
+      slotDetails.push({
+        slot_index: i,
+        task_id: taskId,
+        scheduled_for: slotIso,
+        ...slot,
+        product_id: productId,
+        product_slogan: productSlogan,
+      });
+    }
+
+    if (failures.length > 0) {
+      // Partial failure — log but continue. Caller decides whether to retry.
+      console.error('[weekly-marketing-plan] partial failures:', failures);
+    }
+
+    // ── 7. Upsert weekly_marketing_plans row ──────────────────────────
+    const planRow = {
+      week_start_date: weekStartDate,
+      status: failures.length === 0 ? 'awaiting_approval' : 'draft',
+      total_slots: taskIds.length,
+      he_slots: slotDetails.filter(s => (s as Record<string, unknown>).lang === 'he').length,
+      en_slots: slotDetails.filter(s => (s as Record<string, unknown>).lang === 'en').length,
+      task_ids: taskIds,
+      prior_week_metrics: priorWeekMetrics,
+      plan_summary: {
+        slots: slotDetails,
+        strategy_notes: `IL-focused HE-first cadence (${heCount} HE / ${enCount} EN). Prior week: ${postsCount ?? 0} posts, ${tiktoksCount ?? 0} TikToks, ${ordersCount ?? 0} orders. Phase 0 (IL personas) still blocking Reels production — slots created as placeholders.`,
+        failures,
+      },
+      notes: failures.length > 0 ? `${failures.length} slot inserts failed — see plan_summary.failures` : null,
+    };
+
+    const { data: plan, error: planErr } = await sb
+      .from('weekly_marketing_plans')
+      .upsert(planRow, { onConflict: 'week_start_date' })
+      .select()
+      .single();
+
+    if (planErr) {
+      return json({ error: 'plan upsert failed', detail: planErr.message, task_ids: taskIds }, 500);
+    }
+
+    // ── 8. Log to agent_runs ──────────────────────────────────────────
+    await sb.from('agent_runs').insert({
+      agent_id: 'marketing',
+      status: 'completed',
+      summary: `weekly-marketing-plan generated for ${weekStartDate}: ${taskIds.length} slots created (${heCount} HE / ${enCount} EN)`,
+      duration_ms: Date.now() - today.getTime(),
+      data: { plan_id: (plan as Record<string, unknown>)?.id, week_start_date: weekStartDate, failures },
+    }).catch(() => {});
+
+    return json({
+      ok: true,
+      plan,
+      task_count: taskIds.length,
+      task_ids: taskIds,
+      he_count: heCount,
+      en_count: enCount,
+      product_pool_size: productPool.length,
+      product_pool_fresh: freshProducts.length,
+      failures,
+      next_step: 'Boss should email this plan to oren for approval. Copy generation (Gemini + copy-playbook) happens after approval via the (not-yet-built) ?type=copy-qa route.',
+    });
+  }
+
   // ── QA-CONTENT ───────────────────────────────────────────────────────
   if (type === 'qa-content') {
     // Auth: admin JWT or service role key (same as content-run)
