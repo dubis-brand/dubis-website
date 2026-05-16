@@ -895,12 +895,18 @@ h1, h2, h3, h4 {
 .crew-carousel-viewport {
     overflow: hidden;
     border-radius: 12px;
+    /* Lock the carousel to LTR so RTL pages (HE) lay out cards left-to-right
+       and the translateX(-offset) math in the JS works identically in both
+       directions. Without this, HE flips card order and current=1 lands on a
+       blank slot instead of card[1]. */
+    direction: ltr;
 }
 .crew-carousel-track {
     display: flex;
     gap: 1.2rem;
     transition: transform 0.4s ease;
     will-change: transform;
+    direction: ltr;
 }
 
 /* Cards inside carousel */
