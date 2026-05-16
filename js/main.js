@@ -314,7 +314,29 @@ function translateUI(lang) {
   if (heroTagline) heroTagline.textContent = t.hero_tagline;
   if (heroSubtitle && t.hero_subtitle) heroSubtitle.textContent = t.hero_subtitle;
   if (heroDesc) heroDesc.textContent = t.hero_desc;
-  if (heroBtn) heroBtn.textContent = t.hero_btn;
+  // Currency-aware hero CTA. Static translation strings hard-code "$14",
+  // but in Hebrew we display ₪ (USD_TO_ILS-converted) so prices stay in
+  // one currency across the page.
+  if (heroBtn) {
+    const cheapestUsd = 14;
+    heroBtn.textContent = lang === 'he'
+      ? 'לחנות — החל מ-' + formatPrice(cheapestUsd)
+      : 'Shop the Drop — from ' + formatPrice(cheapestUsd);
+  }
+
+  // Trust bar (top of page) — "Free US shipping over $60" in EN,
+  // "משלוח חינם לארה״ב מעל ₪X" in HE (X computed from USD_TO_ILS).
+  const trustEls = qa('.trust-text');
+  trustEls.forEach(el => {
+    const en = el.getAttribute('data-en');
+    if (!en) return;
+    if (lang === 'he') {
+      if (/over \$60/i.test(en)) el.textContent = 'משלוח חינם לארה״ב מעל ' + freeShippingThreshold();
+      else if (el.getAttribute('data-he')) el.textContent = el.getAttribute('data-he');
+    } else {
+      el.textContent = en;
+    }
+  });
 
   // Urgency bar
   const urgText = document.getElementById('urgency-text');
@@ -933,7 +955,15 @@ function saveCart() {
 function loadCart() {
   try {
     const saved = localStorage.getItem('dubis-cart');
-    if (saved) { cart = JSON.parse(saved); updateCartCount(); }
+    if (!saved) return;
+    const parsed = JSON.parse(saved);
+    // Drop any saved item whose product no longer exists in the catalog
+    // (deleted/disabled SKUs). Without this, a customer who once added a
+    // since-removed product sees a "ghost" cart on every visit.
+    const validIds = new Set(products.map(p => p.id));
+    cart = parsed.filter(item => validIds.has(item.id));
+    if (cart.length !== parsed.length) saveCart();
+    updateCartCount();
   } catch(e) { cart = []; }
 }
 
