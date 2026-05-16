@@ -477,24 +477,27 @@ function translateUI(lang) {
   if (heroTagline) heroTagline.textContent = t.hero_tagline;
   if (heroSubtitle && t.hero_subtitle) heroSubtitle.textContent = t.hero_subtitle;
   if (heroDesc) heroDesc.textContent = t.hero_desc;
-  // Currency-aware hero CTA. Static translation strings hard-code "$14",
-  // but in Hebrew we display ₪ (USD_TO_ILS-converted) so prices stay in
-  // one currency across the page.
+  // Currency-aware hero CTA. The "from $X" anchor must reflect the actual
+  // cheapest product in the catalog so the button doesn't lie when prices
+  // change. Falls back to $14 only if products[] isn't loaded yet.
   if (heroBtn) {
-    const cheapestUsd = 14;
+    const cheapestUsd = Array.isArray(products) && products.length
+      ? Math.min(...products.map(p => p.price).filter(n => Number.isFinite(n) && n > 0))
+      : 14;
     heroBtn.textContent = lang === 'he'
       ? 'לחנות — החל מ-' + formatPrice(cheapestUsd)
       : 'Shop the Drop — from ' + formatPrice(cheapestUsd);
   }
 
-  // Trust bar (top of page) — "Free US shipping over $60" in EN,
-  // "משלוח חינם לארה״ב מעל ₪X" in HE (X computed from USD_TO_ILS).
+  // Trust bar (top of page) — "Free shipping over $60" / "משלוח חינם מעל ₪X"
+  // ("US" removed per oren 2026-05-16; site ships worldwide). HE threshold
+  // is computed from USD_TO_ILS so it stays in sync with the daily rate.
   const trustEls = qa('.trust-text');
   trustEls.forEach(el => {
     const en = el.getAttribute('data-en');
     if (!en) return;
     if (lang === 'he') {
-      if (/over \$60/i.test(en)) el.textContent = 'משלוח חינם לארה״ב מעל ' + freeShippingThreshold();
+      if (/over \$60/i.test(en)) el.textContent = 'משלוח חינם מעל ' + freeShippingThreshold();
       else if (el.getAttribute('data-he')) el.textContent = el.getAttribute('data-he');
     } else {
       el.textContent = en;
