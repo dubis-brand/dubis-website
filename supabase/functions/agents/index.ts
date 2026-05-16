@@ -2260,7 +2260,17 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     if (autoTodayCount >= MAX_DAILY_POSTS) {
       return json({ skipped: true, reason: `Already ${autoTodayCount} auto-content tasks today (max ${MAX_DAILY_POSTS})`, total_content_tasks_today: todayTasks?.length ?? 0 });
     }
-    const nextLang = 'en'; // US-PIVOT: EN only. No HE generation.
+    // IL pivot 2026-05-17: HE-first cadence is the target, but this auto-content
+    // route still defaults to EN until the new ?type=weekly-marketing-plan +
+    // ?type=copy-qa routes are built (those bypass auto-content/content-run
+    // entirely and write HE tasks straight to DB with caption_he pre-populated).
+    // The daily cron (2× per day) stays on EN for now to avoid breaking the
+    // existing publish chain that gates on caption_en. Pass `?lang=he` to test
+    // HE generation manually — note that downstream content-run still strips
+    // caption_he as of this commit. Full HE pipeline tracked in:
+    // docs/plans/campaigns/DUBIS_WEEKLY_SOCIAL_PLAN_2026-05-16.html
+    const langParam = (url.searchParams.get('lang') || '').toLowerCase();
+    const nextLang = (langParam === 'he' || langParam === 'en') ? langParam : 'en';
 
     // Find product not recently featured (check last N tasks)
     type TaskRow = Record<string, unknown>;

@@ -732,6 +732,43 @@ ${[
         publishedPosts = data;
     } catch (_) { publishedPosts = []; }
 
+    // ── 7b. Scheduled-for-today posts — IL pivot 2026-05-17 ──
+    // Forward-looking: what is queued/approved/pending_approval and supposed
+    // to ship in the next 24h (rolling). Two schedule sources, OR'd:
+    //   • content_data->>'scheduled_for'  (preferred — weekly-plan writes here)
+    //   • due_date                         (fallback — manual queueing)
+    // Today defined in Asia/Jerusalem so oren reading at 08:00 IL gets "today".
+    let scheduledToday = null;
+    try {
+        // Window: from now (≈05:00 UTC) → end of IL day (≈21:00 UTC)
+        const ilNow  = new Date();
+        const ilEndOfDay = new Date();
+        ilEndOfDay.setUTCHours(20, 59, 59, 999); // 23:59 IL ≈ 20:59 UTC (DST varies but acceptable)
+        if (ilEndOfDay < ilNow) ilEndOfDay.setUTCDate(ilEndOfDay.getUTCDate() + 1);
+        const fromIso = ilNow.toISOString();
+        const toIso   = ilEndOfDay.toISOString();
+
+        const { data } = await supabase
+            .from('agent_tasks')
+            .select('id, title, category, status, due_date, content_data, agent_id, created_at')
+            .in('category', ['social_post', 'tiktok_post', 'reel', 'carousel', 'content'])
+            .in('status',   ['pending_approval', 'approved', 'backlog', 'in_progress'])
+            .order('created_at', { ascending: false })
+            .limit(100);
+        // PostgREST filtering on jsonb is fragile — narrow to the time window in JS:
+        scheduledToday = (data || []).filter(t => {
+            const cdSched = t.content_data?.scheduled_for;
+            const when    = t.due_date || cdSched;
+            if (!when) return false;
+            const d = new Date(when);
+            return d >= ilNow && d <= ilEndOfDay;
+        }).sort((a, b) => {
+            const ta = new Date(a.due_date || a.content_data?.scheduled_for).getTime();
+            const tb = new Date(b.due_date || b.content_data?.scheduled_for).getTime();
+            return ta - tb;
+        });
+    } catch (_) { scheduledToday = []; }
+
     // ── 8. TikTok videos published in last 24h ──────────────────────
     let publishedTikToks = null;
     try {
@@ -1354,6 +1391,61 @@ ${[
         </div>`;
 
     // ═════════════════════════════════════════════════════════════════
+    //  📅 SCHEDULED FOR TODAY — forward-looking content plan
+    //  Added 2026-05-17 per oren directive (IL pivot session)
+    // ═════════════════════════════════════════════════════════════════
+    const categoryLabel = {
+        social_post: { icon: '📷', label: 'IG+FB פוסט', color: '#e1306c' },
+        tiktok_post: { icon: '🎵', label: 'TikTok',     color: '#000000' },
+        reel:        { icon: '🎬', label: 'Reel',       color: '#833ab4' },
+        carousel:    { icon: '🖼', label: 'קרוסלת IG',  color: '#e1306c' },
+        content:     { icon: '✍', label: 'תוכן',        color: '#666666' }
+    };
+    const statusLabel = {
+        pending_approval: { txt: 'ממתין לאישור', bg: '#fff9f0', fg: '#b7860b' },
+        approved:         { txt: 'מאושר',         bg: '#e6f4ea', fg: '#1e7a3a' },
+        in_progress:      { txt: 'בעבודה',        bg: '#e6eef7', fg: '#2b6fa6' },
+        backlog:          { txt: 'טיוטה',         bg: '#f0ebe0', fg: '#7a6a4d' }
+    };
+    const scheduledTodayHtml = (scheduledToday || []).length === 0
+        ? `<div style="background:#fafaf5;border:1px dashed #d8d0bc;border-radius:6px;padding:14px;font-size:12px;color:#888;text-align:center">
+            ⏳ אין תוכן מתוכנן ל-24 השעות הקרובות. <br>
+            <span style="font-size:11px;color:#aaa">סוכן השיווק עדיין לא בנה תוכנית שבועית — צפוי לרוץ בקרון של יום ראשון 04:00 UTC.</span>
+          </div>`
+        : (scheduledToday || []).map(t => {
+            const cd = t.content_data || {};
+            const cat = categoryLabel[t.category] || categoryLabel.content;
+            const st  = statusLabel[t.status]      || statusLabel.backlog;
+            const when = new Date(t.due_date || cd.scheduled_for);
+            const ts   = when.toLocaleString('he-IL', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', timeZone: 'Asia/Jerusalem' });
+            const slogan = cd.slogan || cd.product_slogan || '';
+            const lang   = cd.lang || (cd.caption_he ? 'HE' : (cd.caption_en ? 'EN' : '?'));
+            const imageUrl = cd.image_url || '';
+            const productUrl = cd.product_url || '';
+            const qaScore = cd.qa_score != null ? cd.qa_score : null;
+            const qaPill = qaScore != null
+                ? `<span style="background:${qaScore >= 75 ? '#e6f4ea' : qaScore >= 60 ? '#fdf1e0' : '#fce6e6'};color:${qaScore >= 75 ? '#1e7a3a' : qaScore >= 60 ? '#a86413' : '#a83232'};padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-right:6px">QA ${qaScore}</span>`
+                : '';
+            return `<div style="background:#fff;border:1px solid #e8e4d4;border-right:4px solid ${cat.color};border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;gap:10px;align-items:center">
+                ${imageUrl ? `<img src="${esc(imageUrl)}" alt="" style="width:42px;height:42px;border-radius:5px;object-fit:cover;flex-shrink:0">` : `<div style="width:42px;height:42px;border-radius:5px;background:#f5f0e8;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${cat.icon}</div>`}
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">
+                    <strong style="color:#2c2c2c;font-size:12.5px">${esc(t.title || slogan || '(ללא כותרת)')}</strong>
+                    <span style="background:${cat.color};color:#fff;font-size:9px;padding:1px 6px;border-radius:8px;font-weight:700">${cat.label}</span>
+                    <span style="background:${st.bg};color:${st.fg};font-size:9px;padding:1px 6px;border-radius:8px;font-weight:700">${st.txt}</span>
+                    ${lang !== '?' ? `<span style="background:#2c2c2c;color:#f5f0e8;font-size:9px;padding:1px 6px;border-radius:8px;font-weight:700">${lang}</span>` : ''}
+                    ${qaPill}
+                  </div>
+                  <div style="font-size:10.5px;color:#888">
+                    🕒 <strong style="color:#555">${ts}</strong>
+                    ${slogan ? `&nbsp;&middot;&nbsp;<span style="font-style:italic">"${esc(slogan.length > 50 ? slogan.slice(0,50)+'…' : slogan)}"</span>` : ''}
+                    ${productUrl ? `&nbsp;&middot;&nbsp;<a href="${esc(productUrl)}" style="color:#c8a96e;text-decoration:none">🛍 מוצר</a>` : ''}
+                  </div>
+                </div>
+            </div>`;
+        }).join('');
+
+    // ═════════════════════════════════════════════════════════════════
     //  POSTS PUBLISHED (24h) — IG + FB
     // ═════════════════════════════════════════════════════════════════
     const postsHtml = (publishedPosts || []).length === 0
@@ -1617,6 +1709,15 @@ ${[
       <tr><td style="height:10px"></td></tr>
 
       <!-- POSTS PUBLISHED (IG+FB) — last 24h -->
+      <!-- SCHEDULED FOR TODAY — forward-looking (oren 2026-05-17) -->
+      <tr><td style="background:#fff;border-radius:12px;padding:20px 24px">
+        <h2 style="margin:0 0 12px;font-size:15px;color:#2c2c2c;border-bottom:2px solid #f5f0e8;padding-bottom:8px">
+          📅 מתוכנן להיום <span style="color:#999;font-weight:400;font-size:11px">— ${(scheduledToday||[]).length} פיסות בתור ב-24h הקרובות</span>
+        </h2>
+        ${scheduledTodayHtml}
+      </td></tr>
+      <tr><td style="height:10px"></td></tr>
+
       <tr><td style="background:#fff;border-radius:12px;padding:20px 24px">
         <h2 style="margin:0 0 12px;font-size:15px;color:#2c2c2c;border-bottom:2px solid #f5f0e8;padding-bottom:8px">
           📷 פוסטים שעלו (24h) <span style="color:#999;font-weight:400;font-size:11px">— ${(publishedPosts||[]).length} ב-IG+FB</span>
