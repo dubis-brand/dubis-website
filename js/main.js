@@ -1121,29 +1121,36 @@ function refreshModalPrice(productId) {
   const selectedSize  = document.querySelector(`#modal-sizes-${productId} .size-btn.selected`)?.dataset.size  || product.sizes[0];
   const eff = getVariantPrice(productId, selectedColor, selectedSize, basePrice);
   priceEl.textContent = formatPrice(eff);
-  // Compute the cheapest variant for this product so we can show the surcharge
-  // (תוספת) above the base when the selected color/size costs more. Falls back
-  // to basePrice if no variant map exists for this product.
+
   const noteEl = document.getElementById(`modal-price-note-${productId}`);
-  if (noteEl) {
-    const map = window.__DUBIS_PRICE_MAP?.[productId];
-    let cheapest = basePrice;
-    let hasVariance = false;
-    if (map) {
-      const allPrices = [basePrice];
-      for (const c of Object.keys(map)) for (const s of Object.keys(map[c])) allPrices.push(map[c][s]);
-      cheapest = Math.min(...allPrices);
-      hasVariance = new Set(allPrices).size > 1;
-    }
-    const surcharge = Math.max(0, eff - cheapest);
-    if (surcharge > 0) {
-      // Show the exact surcharge for the currently-selected variant.
-      noteEl.textContent = (currentLang === 'he')
-        ? `תוספת ${formatPrice(surcharge)} עבור ${selectedColor} ${selectedSize}`
-        : `+${formatPrice(surcharge)} for ${selectedColor} ${selectedSize}`;
-      noteEl.style.display = '';
-    } else if (hasVariance) {
-      // Selected variant is the cheapest, but there are dearer ones. Hint that.
+  if (!noteEl) return;
+
+  const map = window.__DUBIS_PRICE_MAP?.[productId];
+  if (!map) { noteEl.style.display = 'none'; return; }
+
+  // Build full price universe for this product (basePrice + every variant).
+  const allPrices = [basePrice];
+  for (const c of Object.keys(map)) for (const s of Object.keys(map[c])) allPrices.push(map[c][s]);
+  const cheapest = Math.min(...allPrices);
+  const hasVariance = new Set(allPrices).size > 1;
+
+  // Decompose the surcharge so the customer sees WHY the price moved:
+  //   sizeDelta  = cheapest at current size (across all colors) − cheapest overall
+  //   colorDelta = current variant price − cheapest at current size
+  // This attributes Gelato's real pricing correctly. For products where colors
+  // differ at every size (p3, p6, p8 Forest Green at $32 vs $21), the color
+  // delta is non-zero at every size — the label must say that, not blame size.
+  const pricesAtCurrentSize = [];
+  for (const c of Object.keys(map)) {
+    const v = map[c]?.[selectedSize];
+    if (typeof v === 'number') pricesAtCurrentSize.push(v);
+  }
+  const cheapestAtSize = pricesAtCurrentSize.length ? Math.min(...pricesAtCurrentSize) : eff;
+  const sizeDelta  = Math.max(0, cheapestAtSize - cheapest);
+  const colorDelta = Math.max(0, eff - cheapestAtSize);
+
+  if (sizeDelta === 0 && colorDelta === 0) {
+    if (hasVariance) {
       noteEl.textContent = (currentLang === 'he')
         ? 'המחיר משתנה לפי צבע/מידה'
         : 'Price varies by color/size';
@@ -1151,7 +1158,21 @@ function refreshModalPrice(productId) {
     } else {
       noteEl.style.display = 'none';
     }
+    return;
   }
+
+  // Build a precise breakdown.
+  const parts = [];
+  if (currentLang === 'he') {
+    if (sizeDelta  > 0) parts.push(`${formatPrice(sizeDelta)} עבור מידה ${selectedSize}`);
+    if (colorDelta > 0) parts.push(`${formatPrice(colorDelta)} עבור צבע ${selectedColor}`);
+    noteEl.textContent = 'תוספת ' + parts.join(' + ');
+  } else {
+    if (sizeDelta  > 0) parts.push(`${formatPrice(sizeDelta)} for size ${selectedSize}`);
+    if (colorDelta > 0) parts.push(`${formatPrice(colorDelta)} for ${selectedColor}`);
+    noteEl.textContent = '+' + parts.join(' + ');
+  }
+  noteEl.style.display = '';
 }
 
 function selectColor(btn, color, productId) {
