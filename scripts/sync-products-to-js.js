@@ -138,6 +138,23 @@ function generateProductEntry(p) {
   let careStr = meta.care ? `care: ${meta.care},` : `care: [\n            "Spot clean only",\n            "Do not machine wash",\n            "Do not tumble dry",\n            "Reshape and air dry"\n        ],`;
   let sizeGuideStr = meta.sizeGuide ? `sizeGuide: ${meta.sizeGuide}` : `sizeGuide: [{ size: 'One Size', note: 'Adjustable strap, fits most head sizes' }]`;
 
+  // 2026-05-16: NEW badge — products launched within the last 30 days get
+  // a "NEW" badge on the site (front-end reads isNew + featuredUntil).
+  // launched_at is set by ?type=product-visual-approve when oren approves
+  // a product. Backfilled to created_at for legacy active products.
+  const launchedAt = p.launched_at ? `"${p.launched_at}"` : 'null';
+  let isNew = false;
+  let featuredUntil = null;
+  if (p.launched_at) {
+    const launched = new Date(p.launched_at);
+    const ageDays = (Date.now() - launched.getTime()) / 86400000;
+    if (ageDays < 30) {
+      isNew = true;
+      featuredUntil = new Date(launched.getTime() + 30 * 86400000).toISOString();
+    }
+  }
+  const featuredUntilStr = featuredUntil ? `"${featuredUntil}"` : 'null';
+
   const lines = [
     `    {`,
     `        id: ${p.product_id_numeric || p.id},`,
@@ -148,6 +165,9 @@ function generateProductEntry(p) {
     `        price: ${price},`,
     `        image: "images/product-${p.product_id_numeric || p.id}.jpg",`,
     `        colors: ${colors},`,
+    `        launchedAt: ${launchedAt},`,
+    `        isNew: ${isNew},`,
+    `        featuredUntil: ${featuredUntilStr},`,
     `        sizes: ${meta.sizes},`,
     `        description: "${escapeStr(p.description_en || p.description || '')}",`,
     `        description_he: "${escapeStr(p.description_he || '')}",`,

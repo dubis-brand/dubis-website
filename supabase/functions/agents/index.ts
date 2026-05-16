@@ -3004,20 +3004,26 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors
         }
       }
 
+      // 2026-05-16: NOT setting active=true here anymore. Pipeline produced
+      // the Gelato mockups, but oren still has to visually verify them via
+      // the admin "Approve & Publish" button (or the magic link in the email).
+      // The product stays active=false until product-visual-approve fires.
+      const visualToken = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '');
       const { error: prodErr } = await sb.from('dubis_products').update({
-        active: true,
-        publishing_status: 'live',
+        active: false,                              // still gated
+        publishing_status: 'pending_visual_approval',
+        pending_visual_approval: true,
+        visual_approval_token: visualToken,
         proof_of_completion: proof,
         ...(leadImage ? { image_url: leadImage } : {}),
       }).eq('id', productId);
 
       if (prodErr) {
-        // Trigger fired? Roll the queue row back to failed so we know.
         await sb.from('product_pipeline_queue').update({
           status: 'failed',
-          last_error: `activation_blocked: ${prodErr.message}`,
+          last_error: `pending_visual_set_failed: ${prodErr.message}`,
         }).eq('id', queueId ?? '');
-        return json({ error: 'activation_failed', detail: prodErr.message }, 500);
+        return json({ error: 'pending_visual_set_failed', detail: prodErr.message }, 500);
       }
 
       // Notify oren via Resend (best-effort).
@@ -3034,26 +3040,38 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors
                 ${u.back  ? `<img src="${u.back}"  alt="${color} back"  style="width:160px;border:1px solid #ddd;border-radius:4px;margin-right:4px"/>` : ''}
               </div>`;
           }).join('');
+          // Build the magic-link approval URL. Token-based so oren can approve
+          // straight from the email without a separate admin login.
+          const approveUrl = `https://www.dubis.net/dub-console#visual-approve=${productId}:${visualToken}`;
           await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
               from: 'DUBIS <orders@dubis.net>',
               to: ['teharlev1976@gmail.com'],
-              subject: `✅ מוצר חי באתר: #${numericId} — "${slogan}"`,
+              subject: `👀 מוקאפים מוכנים — מוצר #${numericId} ממתין לאישור ויזואלי`,
               html: `
                 <div dir="rtl" style="font-family:Arial,sans-serif;max-width:680px">
-                  <h2 style="color:#2d6a4f">המוצר עלה לאוויר</h2>
+                  <h2 style="color:#C17E3A">המוקאפים האמיתיים מ-Gelato מוכנים — אבל המוצר עדיין לא חי באתר</h2>
+                  <p>הצינור הוריד את המוקאפים שייצרה Gelato. הם <strong>לא יוצגו ללקוחות</strong> עד שתאשר ויזואלית.</p>
                   <p><strong>סלוגן:</strong> ${slogan}</p>
                   <p><strong>סוג:</strong> ${prod.clothing_type} / ${prod.gender}</p>
                   <p><strong>צבעים:</strong> ${colorList}</p>
-                  <p><strong>טיוטת Gelato לאישור חזותי:</strong> ${gelatoDraftId ? `<code>${gelatoDraftId}</code> — בדוק ב-<a href="https://dashboard.gelato.com/orders">Gelato Dashboard</a>` : 'לא נוצרה'}</p>
+                  <p><strong>טיוטת Gelato:</strong> ${gelatoDraftId ? `<code>${gelatoDraftId}</code> — בדוק גם ב-<a href="https://dashboard.gelato.com/orders">Gelato Dashboard</a>` : 'לא נוצרה'}</p>
                   <hr>
-                  <h3 style="color:#C17E3A">המוקאפים האמיתיים מ-Gelato (מה שיופיע באתר):</h3>
+                  <h3 style="color:#C17E3A">בדוק שהמוקאפים תקינים (חזית + גב), ואז:</h3>
+                  <div style="text-align:center;margin:24px 0">
+                    <a href="${approveUrl}"
+                       style="display:inline-block;background:#2d6a4f;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-size:16px;font-weight:700">
+                      ✅ אשר ופרסם באתר
+                    </a>
+                  </div>
+                  <p style="color:#6b7280;font-size:13px;text-align:center">אם המוקאפים פגומים — אל תלחץ. תיכנס לאדמין → "ממתינים לאישור" → לחץ "דחה" וטיפ הפיפליין יתחיל מחדש.</p>
+                  <hr>
+                  <h3 style="color:#C17E3A">המוקאפים שמחכים לאישורך:</h3>
                   <div>${previewBlocks || '<em>אין תמונות לתצוגה</em>'}</div>
                   <hr>
-                  <p>קישור לעמוד המוצר: <a href="https://www.dubis.net/#product-${numericId}">dubis.net/#product-${numericId}</a></p>
-                  <p style="color:#6b7280;font-size:13px">Workflow run: ${workflowRunId || 'n/a'}</p>
+                  <p style="color:#6b7280;font-size:12px">Workflow run: ${workflowRunId || 'n/a'} · Token יישרף אחרי השימוש הראשון</p>
                 </div>`,
             }),
             signal: AbortSignal.timeout(8000),
@@ -3061,14 +3079,14 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors
         }
       } catch { /* email best-effort */ }
 
-      // Close the agent_task.
+      // Don't close the agent_task yet — it's waiting for oren visual approval.
       await sb.from('agent_tasks').update({
-        status: 'done',
+        status: 'in_progress',
         updated_at: new Date().toISOString(),
-        notes: `✅ מוצר #${numericId} חי באתר — ${slogan}\nGelato draft: ${gelatoDraftId}\nMockups: ${Object.keys(gelatoPreviews).length} colors`,
+        notes: `👀 מוצר #${numericId} ממתין לאישור ויזואלי — ${slogan}\nGelato draft: ${gelatoDraftId}\nMockups: ${Object.keys(gelatoPreviews).length} colors`,
       }).eq('agent_id', 'product').filter('content_data->>product_id', 'eq', productId);
 
-      return json({ success: true, status: 'live', product_id: productId, product_id_numeric: numericId });
+      return json({ success: true, status: 'pending_visual_approval', product_id: productId, product_id_numeric: numericId, visual_approval_token: visualToken });
     }
 
     // status === 'failed'
@@ -3103,6 +3121,116 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors
     }).eq('agent_id', 'product').filter('content_data->>product_id', 'eq', productId);
 
     return json({ success: true, status: 'failed', product_id: productId, error: errorMsg });
+  }
+
+  // ── PRODUCT-VISUAL-APPROVE — oren clicks "Approve & Publish" ──────
+  // Two auth paths:
+  //   A. admin JWT (from admin UI button) — uses verifyAdmin
+  //   B. visual_approval_token from the email magic link — bypasses admin login
+  // On success: active=true, publishing_status='live', launched_at=now, token burned.
+  if (type === 'product-visual-approve') {
+    const productId = url.searchParams.get('product_id') || (body as Record<string, unknown>)?.product_id as string;
+    const token     = url.searchParams.get('token')      || (body as Record<string, unknown>)?.token      as string;
+    if (!productId) return json({ error: 'product_id required' }, 400);
+
+    const adminOk = await verifyAdmin(req);
+    if (!adminOk && !token) return json({ error: 'Unauthorized — admin JWT or visual_approval_token required' }, 401);
+
+    const { data: prodRow, error: fetchErr } = await sb.from('dubis_products')
+      .select('id, product_id_numeric, slogan, pending_visual_approval, visual_approval_token, proof_of_completion')
+      .eq('id', productId).single();
+    if (fetchErr || !prodRow) return json({ error: 'product_not_found' }, 404);
+    const p = prodRow as Record<string, unknown>;
+
+    if (!p.pending_visual_approval) {
+      return json({ error: 'not_pending_visual_approval', current_status: 'either already live or never went through pipeline' }, 400);
+    }
+    // Token check (only for the magic-link path — admin JWT skips this).
+    if (!adminOk && token && p.visual_approval_token !== token) {
+      return json({ error: 'invalid_token — possibly burned or wrong product' }, 401);
+    }
+
+    const { error: upErr } = await sb.from('dubis_products').update({
+      active: true,
+      publishing_status: 'live',
+      pending_visual_approval: false,
+      visual_approval_token: null,            // burn token (one-time use)
+      launched_at: new Date().toISOString(),
+    }).eq('id', productId);
+    if (upErr) return json({ error: 'activation_failed', detail: upErr.message }, 500);
+
+    // Update queue row (latest for this product) to status='live'
+    await sb.from('product_pipeline_queue').update({
+      status: 'live', completed_at: new Date().toISOString(),
+    }).eq('product_id', productId);
+
+    // Close the agent_task
+    await sb.from('agent_tasks').update({
+      status: 'done',
+      updated_at: new Date().toISOString(),
+      notes: `✅ מוצר #${p.product_id_numeric} חי באתר אחרי אישור ויזואלי — ${p.slogan}`,
+    }).eq('agent_id', 'product').filter('content_data->>product_id', 'eq', productId);
+
+    // Best-effort confirmation email
+    try {
+      const resendKey = Deno.env.get('RESEND_API_KEY') ?? '';
+      if (resendKey) {
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'DUBIS <orders@dubis.net>',
+            to: ['teharlev1976@gmail.com'],
+            subject: `✅ מוצר #${p.product_id_numeric} עלה לאוויר — "${p.slogan}"`,
+            html: `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px">
+                <h2 style="color:#2d6a4f">המוצר חי באתר</h2>
+                <p><strong>סלוגן:</strong> ${p.slogan}</p>
+                <p>קישור: <a href="https://www.dubis.net/#product-${p.product_id_numeric}">dubis.net/#product-${p.product_id_numeric}</a></p>
+                <p style="color:#6b7280;font-size:13px">המוצר יוצג עם תג "NEW" באתר במשך 30 ימים.</p>
+              </div>`,
+          }),
+          signal: AbortSignal.timeout(8000),
+        }).catch(() => {});
+      }
+    } catch { /* */ }
+
+    return json({ success: true, action: 'published', product_id: productId, product_id_numeric: p.product_id_numeric });
+  }
+
+  // ── PRODUCT-VISUAL-REJECT — oren clicks "Reject" on bad mockups ──────
+  // Marks the product as visually rejected. The Gelato draft + mockup files
+  // stay in the repo (for forensics) but the product can't be activated.
+  // To recover: re-run the pipeline via approve-product (creates a NEW draft).
+  if (type === 'product-visual-reject') {
+    const productId = url.searchParams.get('product_id') || (body as Record<string, unknown>)?.product_id as string;
+    const reason    = (body as Record<string, unknown>)?.reason as string || 'visual_rejected';
+    if (!productId) return json({ error: 'product_id required' }, 400);
+
+    const adminOk = await verifyAdmin(req);
+    if (!adminOk) return json({ error: 'Admin only' }, 401);
+
+    const { data: prodRow } = await sb.from('dubis_products')
+      .select('product_id_numeric, slogan, pending_visual_approval').eq('id', productId).single();
+    if (!prodRow) return json({ error: 'product_not_found' }, 404);
+
+    const { error: upErr } = await sb.from('dubis_products').update({
+      pending_visual_approval: false,
+      visual_approval_token: null,
+      publishing_status: 'visual_rejected',
+      proof_of_completion: {},
+    }).eq('id', productId);
+    if (upErr) return json({ error: 'reject_failed', detail: upErr.message }, 500);
+
+    await sb.from('product_pipeline_queue').update({
+      status: 'cancelled', last_error: `oren_visual_reject: ${reason}`, completed_at: new Date().toISOString(),
+    }).eq('product_id', productId);
+
+    await sb.from('agent_tasks').update({
+      status: 'failed', updated_at: new Date().toISOString(),
+      notes: `❌ אישור ויזואלי נדחה — ${(prodRow as Record<string, unknown>).slogan}\nסיבה: ${reason}`,
+    }).eq('agent_id', 'product').filter('content_data->>product_id', 'eq', productId);
+
+    return json({ success: true, action: 'rejected', product_id: productId });
   }
 
   // ── SYNC-PRODUCTS — Generate products.js and push to GitHub ──────

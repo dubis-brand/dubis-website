@@ -1829,6 +1829,7 @@
       <h2 style="margin:0;font-size:1.1rem;color:#e8e0d5">Product Catalog</h2>
       <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
         <button onclick="showProductSuggestions()" style="background:#9c27b0;color:#fff;border:none;padding:.5rem 1rem;border-radius:6px;cursor:pointer;font-size:.85rem;font-weight:600" id="btn-suggestions">📋 הצעות ממתינות <span id="suggestions-badge" style="background:#fff;color:#9c27b0;border-radius:10px;padding:0 .5rem;margin-right:.3rem;font-size:.75rem"></span></button>
+        <button onclick="showVisualApprovalQueue()" style="background:#c17e3a;color:#fff;border:none;padding:.5rem 1rem;border-radius:6px;cursor:pointer;font-size:.85rem;font-weight:600" id="btn-visual-approval">👀 ממתינים לאישור ויזואלי <span id="visual-approval-badge" style="background:#fff;color:#c17e3a;border-radius:10px;padding:0 .5rem;margin-right:.3rem;font-size:.75rem"></span></button>
         <button onclick="generateSlogans()" style="background:#1a3a5c;color:#fff;border:none;padding:.5rem 1rem;border-radius:6px;cursor:pointer;font-size:.85rem">+ סלוגן חדש</button>
         <div class="gender-filter-tabs">
           <button class="gender-filter-tab active" onclick="filterProductCards('all',this)">All</button>
@@ -7398,6 +7399,167 @@
       showProductSuggestions();
     } catch(e) { alert('שגיאה: ' + e.message); }
   }
+
+  // ══════════════════════════════════════════════════════════════
+  // VISUAL APPROVAL QUEUE — products waiting for oren to confirm mockups
+  // are correct before they go live on dubis.net. Pipeline produced the
+  // Gelato real mockups; oren visually verifies front+back; then publish.
+  // ══════════════════════════════════════════════════════════════
+
+  async function _fetchVisualApprovalQueue() {
+    const { data, error } = await _sb
+      .from('dubis_products')
+      .select('id, product_id_numeric, slogan, clothing_type, gender, colors, price_usd, image_url, proof_of_completion, visual_approval_token, created_at')
+      .eq('pending_visual_approval', true)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  async function _refreshVisualApprovalBadge() {
+    try {
+      const items = await _fetchVisualApprovalQueue();
+      const badge = document.getElementById('visual-approval-badge');
+      if (badge) badge.textContent = items.length > 0 ? items.length : '';
+    } catch (_) {}
+  }
+
+  window.showVisualApprovalQueue = async function showVisualApprovalQueue(highlightProductId) {
+    try {
+      const items = await _fetchVisualApprovalQueue();
+      const badge = document.getElementById('visual-approval-badge');
+      if (badge) badge.textContent = items.length > 0 ? items.length : '';
+
+      const old = document.getElementById('visual-approval-modal');
+      if (old) old.remove();
+
+      if (!items.length) {
+        alert('✅ אין מוצרים שממתינים לאישור ויזואלי כרגע.');
+        return;
+      }
+
+      let html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:1rem;overflow:auto" id="visual-approval-modal" onclick="if(event.target===this)this.remove()">';
+      html += '<div style="background:#1a1a1a;border-radius:12px;padding:2rem;max-width:1100px;width:100%;margin:1rem auto;border:1px solid #333">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem"><h3 style="color:#c17e3a;margin:0">👀 ממתינים לאישור ויזואלי <span style="background:#c17e3a;color:#000;border-radius:12px;padding:.1rem .6rem;margin-right:.5rem;font-size:.85rem">' + items.length + '</span></h3><button onclick="this.closest(\'#visual-approval-modal\').remove()" style="background:none;border:none;color:#999;font-size:1.5rem;cursor:pointer">✕</button></div>';
+      html += '<p style="color:#aaa;font-size:.9rem;margin-bottom:1.5rem">בדוק שכל מוקאפ (חזית + גב פר צבע) תקין. אם משהו עקום או חסר — לחץ "דחה". אישור = פרסום מיידי באתר.</p>';
+
+      for (const p of items) {
+        const previews = (p.proof_of_completion && p.proof_of_completion.gelato_preview_urls) || {};
+        const draftId  = (p.proof_of_completion && p.proof_of_completion.gelato_draft_id) || null;
+        const isHighlighted = highlightProductId && p.id === highlightProductId;
+        const cardStyle = 'background:#262626;border-radius:10px;padding:1.5rem;margin-bottom:1.25rem;border:' + (isHighlighted ? '2px solid #c17e3a' : '1px solid #333');
+
+        // Build mockup gallery — one row per color, front + back side by side
+        let gallery = '';
+        const colorEntries = Object.entries(previews);
+        if (colorEntries.length === 0) {
+          gallery = '<p style="color:#b91c1c;font-style:italic">⚠️ אין מוקאפים שמורים. הצינור כנראה נפל אחרי commit. דחה ופתח שוב.</p>';
+        } else {
+          gallery = '<div style="display:flex;flex-wrap:wrap;gap:1rem;margin:1rem 0">';
+          for (const [color, urls] of colorEntries) {
+            gallery += '<div style="background:#1a1a1a;border-radius:8px;padding:.75rem;text-align:center">';
+            gallery += '<p style="color:#fff;font-weight:600;margin:0 0 .5rem 0">' + color + '</p>';
+            if (urls && urls.front) {
+              gallery += '<div style="display:inline-block;margin:0 .25rem"><img src="' + urls.front + '" alt="' + color + ' front" style="width:140px;border:1px solid #444;border-radius:4px"/><div style="color:#999;font-size:.75rem;margin-top:.25rem">חזית</div></div>';
+            }
+            if (urls && urls.back) {
+              gallery += '<div style="display:inline-block;margin:0 .25rem"><img src="' + urls.back + '" alt="' + color + ' back" style="width:140px;border:1px solid #444;border-radius:4px"/><div style="color:#999;font-size:.75rem;margin-top:.25rem">גב</div></div>';
+            }
+            gallery += '</div>';
+          }
+          gallery += '</div>';
+        }
+
+        html += '<div style="' + cardStyle + '">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.5rem">';
+        html += '<div><h4 style="color:#fff;margin:0 0 .25rem 0">#' + p.product_id_numeric + ' — "' + p.slogan + '"</h4>';
+        html += '<p style="color:#c17e3a;font-size:.85rem;margin:0">' + p.clothing_type + ' · ' + p.gender + ' · $' + p.price_usd + ' · ' + (p.colors || []).join(', ') + '</p></div>';
+        if (draftId) {
+          html += '<a href="https://dashboard.gelato.com/orders" target="_blank" style="background:#333;color:#c17e3a;text-decoration:none;padding:.4rem .8rem;border-radius:6px;font-size:.8rem">Gelato Draft: ' + String(draftId).substring(0, 8) + '…</a>';
+        }
+        html += '</div>';
+        html += gallery;
+        html += '<div style="display:flex;gap:.6rem;margin-top:1rem">';
+        html += '<button onclick="visualApproveProduct(\'' + p.id + '\')" style="background:#2a7a2a;color:#fff;border:none;padding:.7rem 1.5rem;border-radius:6px;cursor:pointer;font-size:.95rem;font-weight:700;flex:2">✅ אשר ופרסם באתר</button>';
+        html += '<button onclick="visualRejectProduct(\'' + p.id + '\')" style="background:#7a2a2a;color:#fff;border:none;padding:.7rem 1.5rem;border-radius:6px;cursor:pointer;font-size:.95rem;flex:1">❌ דחה (פתח מחדש)</button>';
+        html += '</div>';
+        html += '</div>';
+      }
+
+      html += '</div></div>';
+      document.body.insertAdjacentHTML('beforeend', html);
+
+      if (highlightProductId) {
+        const card = document.querySelector('#visual-approval-modal [style*="border:2px solid #c17e3a"]');
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    } catch (e) { alert('שגיאה: ' + e.message); }
+  };
+
+  window.visualApproveProduct = async function visualApproveProduct(productId) {
+    if (!confirm('בטוח לאשר ולפרסם את המוצר באתר? תופיע ב-dubis.net תוך שניות.')) return;
+    try {
+      const { data: { session } } = await _sb.auth.getSession();
+      const res = await fetch(AGENTS_BASE + '?type=product-visual-approve', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: productId }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      alert('✅ מוצר #' + (data.product_id_numeric || '?') + ' חי באתר! יוצג עם תג "NEW" במשך 30 ימים.');
+      const modal = document.getElementById('visual-approval-modal');
+      if (modal) modal.remove();
+      _refreshVisualApprovalBadge();
+      showVisualApprovalQueue();
+    } catch (e) { alert('שגיאה: ' + e.message); }
+  };
+
+  window.visualRejectProduct = async function visualRejectProduct(productId) {
+    const reason = prompt('סיבת דחייה (לתיעוד):', 'mockup_visual_issue');
+    if (reason === null) return;
+    try {
+      const { data: { session } } = await _sb.auth.getSession();
+      const res = await fetch(AGENTS_BASE + '?type=product-visual-reject', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: productId, reason: reason.trim() || 'visual_rejected' }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      alert('❌ המוצר נדחה. ניתן לחדש את הצינור על ידי לחיצה על "אשר מוצר" שוב בהצעות הסלוגן.');
+      const modal = document.getElementById('visual-approval-modal');
+      if (modal) modal.remove();
+      _refreshVisualApprovalBadge();
+      showVisualApprovalQueue();
+    } catch (e) { alert('שגיאה: ' + e.message); }
+  };
+
+  // Magic-link router: when oren clicks the "Approve" button in the email,
+  // they land on /dub-console#visual-approve=<productId>:<token>. We auto-open
+  // the queue with that product highlighted.
+  (function _initVisualApprovalDeepLink() {
+    function handleHash() {
+      const m = (location.hash || '').match(/visual-approve=([0-9a-f-]+):([0-9a-f]+)/i);
+      if (m) {
+        // Wait until auth ready, then open the queue with the product highlighted.
+        const waitAndOpen = async () => {
+          for (let i = 0; i < 30; i++) {
+            const { data: { session } } = await _sb.auth.getSession();
+            if (session) { showVisualApprovalQueue(m[1]); break; }
+            await new Promise(r => setTimeout(r, 250));
+          }
+        };
+        waitAndOpen();
+      }
+    }
+    window.addEventListener('hashchange', handleHash);
+    if (location.hash) handleHash();
+  })();
+
+  // Refresh the visual-approval badge on page load + every 60s
+  setTimeout(_refreshVisualApprovalBadge, 1500);
+  setInterval(_refreshVisualApprovalBadge, 60000);
 
   // ══════════════════════════════════════════════════════════════
   // GELATO TOOLS — Draft Order creation from admin UI (2026-04-24)
