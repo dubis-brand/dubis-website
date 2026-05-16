@@ -143,60 +143,36 @@ const BACK_H = 3600;
 const BIG_SIZE   = 700;  // dominant word font size
 const SMALL_SIZE = 175;  // secondary text font size
 const AFTER_SIZE = 175;
-const DUBIS_SIZE =  65;  // watermark corner text
 
-/**
- * Generates one back design PNG.
- *
- * Layout math (2026-05-15 rewrite — fixes asymmetric gaps):
- *   All blocks share centerX = BACK_W/2 with textAlign='center'.
- *   Vertical positioning uses cap-height math (CAP_RATIO ≈ 0.74 for Impact)
- *   instead of relying on the alphabetic baseline alone. Each block's visual
- *   "top" (cap-top) is placed deterministically with a uniform VISUAL_GAP
- *   between blocks, so the BIG word has equal whitespace above AND below it.
- *
- *   Old code drew BIG at baseline = curY + BIG_SIZE, leaving a big invisible
- *   ascender area above (≈26% of font-size) but no compensating space below.
- *   Result: ~446px gap above LIMITED, ~35px below.
- *
- * @param {object} product
- * @param {string} color  'white' | 'dark'
- * @param {string} outPath
- */
-const CAP_RATIO       = 0.74; // Impact cap-height as fraction of font-size
-const VISUAL_GAP      = 110;  // px of clear space between stacked blocks
-const LINE_GAP_RATIO  = 0.10; // tight line spacing within a multi-line block
-const STACK_CENTER_Y  = BACK_H * 0.43; // vertical center of the entire stack
-
-function blockVisualHeight(text, fontSize) {
-  if (!text) return 0;
-  const lines = text.split('\n');
-  const cap   = fontSize * CAP_RATIO;
-  return cap * lines.length + fontSize * LINE_GAP_RATIO * (lines.length - 1);
-}
-
-/**
- * Draw a (possibly multi-line) text block whose CAP-TOP sits exactly at capTopY.
- * Each line is horizontally centered (textAlign must be 'center').
- */
-function drawBlockAtCapTop(ctx, text, fontSize, capTopY, centerX) {
-  setFont(ctx, fontSize);
-  const lines = text.split('\n');
-  const cap   = fontSize * CAP_RATIO;
-  const lineH = cap + fontSize * LINE_GAP_RATIO;
-  let y = capTopY;
-  for (const line of lines) {
-    // textBaseline='alphabetic': baseline = cap-top + cap-height
-    ctx.fillText(line, centerX, y + cap);
-    y += lineH;
-  }
-}
+// ---------------------------------------------------------------------------
+// 2026-05-16 rewrite — equal cap-to-cap gaps, fully color-independent.
+//
+// Layout algorithm:
+//   1. Flatten every block into individual visual lines (split on '\n').
+//   2. Each line's visual height = fontSize * CAP_RATIO.
+//   3. Total stack height = Σ(capHeights) + GAP * (n - 1).
+//   4. Center stack vertically: topY = (BACK_H - totalH) / 2.
+//   5. Walk lines top-down, drawing each at baselineY = topY + capHeight,
+//      then advancing topY by capHeight + GAP for the next line.
+//
+// GAP is a fixed pixel value, identical between every adjacent pair of lines.
+// Result: the keyword has the same whitespace above and below.
+//
+// CAP_RATIO calibrated to 0.72 for Impact (standard condensed display font
+// cap-height ratio). The previous 0.74 over-estimated cap-height slightly,
+// which compressed the apparent gap below the keyword vs above.
+// ---------------------------------------------------------------------------
+const CAP_RATIO = 0.72;
+const GAP       = 180;  // px of clear space between adjacent cap-blocks
+                        // (≈ 60px at 4500px reference scale × our 3600 height)
+                        // bumped from 110 → 180 so 2-line layouts (#4, #8, #12)
+                        // breathe like 3-line layouts.
 
 function generateBack(product, color, outPath) {
   const canvas = createCanvas(BACK_W, BACK_H);
   const ctx    = canvas.getContext('2d');
 
-  // Transparent background — canvas is transparent by default
+  // Transparent background
   ctx.clearRect(0, 0, BACK_W, BACK_H);
 
   const textColor = color === 'white' ? '#ffffff' : '#1a1a1a';
@@ -204,59 +180,53 @@ function generateBack(product, color, outPath) {
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'alphabetic';
 
+  // Single, canonical horizontal center for every line — no color or
+  // per-line offset of any kind. Eliminates the legacy X drift the user
+  // saw on "NAPPING IS MY / CARDIO".
   const centerX = BACK_W / 2;
 
-  // ---- layout: top-bottom (small → BIG → after) ----
+  // ---- 1) Build the ordered list of blocks for this layout ----
+  const blocks = [];
   if (product.layout === 'top-bottom') {
-    const hSmall = blockVisualHeight(product.small, SMALL_SIZE);
-    const hBig   = blockVisualHeight(product.big,   BIG_SIZE);
-    const hAfter = blockVisualHeight(product.after, AFTER_SIZE);
-
-    const presentBlocks = [hSmall, hBig, hAfter].filter(h => h > 0);
-    const totalH = presentBlocks.reduce((a, b) => a + b, 0)
-                 + VISUAL_GAP * Math.max(0, presentBlocks.length - 1);
-
-    let curY = STACK_CENTER_Y - totalH / 2;
-
-    if (product.small) {
-      drawBlockAtCapTop(ctx, product.small, SMALL_SIZE, curY, centerX);
-      curY += hSmall + VISUAL_GAP;
-    }
-    if (product.big) {
-      drawBlockAtCapTop(ctx, product.big, BIG_SIZE, curY, centerX);
-      curY += hBig + VISUAL_GAP;
-    }
-    if (product.after) {
-      drawBlockAtCapTop(ctx, product.after, AFTER_SIZE, curY, centerX);
-    }
+    if (product.small) blocks.push({ text: product.small, size: SMALL_SIZE });
+    if (product.big)   blocks.push({ text: product.big,   size: BIG_SIZE   });
+    if (product.after) blocks.push({ text: product.after, size: AFTER_SIZE });
+  } else if (product.layout === 'big-top') {
+    if (product.big)   blocks.push({ text: product.big,   size: BIG_SIZE   });
+    if (product.after) blocks.push({ text: product.after, size: AFTER_SIZE });
   }
 
-  // ---- layout: big-top (BIG → after, no small above) ----
-  else if (product.layout === 'big-top') {
-    const hBig   = blockVisualHeight(product.big,   BIG_SIZE);
-    const hAfter = blockVisualHeight(product.after, AFTER_SIZE);
-
-    const presentBlocks = [hBig, hAfter].filter(h => h > 0);
-    const totalH = presentBlocks.reduce((a, b) => a + b, 0)
-                 + VISUAL_GAP * Math.max(0, presentBlocks.length - 1);
-
-    let curY = STACK_CENTER_Y - totalH / 2;
-
-    if (product.big) {
-      drawBlockAtCapTop(ctx, product.big, BIG_SIZE, curY, centerX);
-      curY += hBig + VISUAL_GAP;
-    }
-    if (product.after) {
-      drawBlockAtCapTop(ctx, product.after, AFTER_SIZE, curY, centerX);
+  // ---- 2) Flatten multi-line blocks into individual visual lines ----
+  const lines = [];
+  for (const b of blocks) {
+    for (const sub of b.text.split('\n')) {
+      lines.push({ text: sub, size: b.size, cap: b.size * CAP_RATIO });
     }
   }
+  if (lines.length === 0) {
+    addNoise(ctx, BACK_W, BACK_H, 1);
+    const buf = canvas.toBuffer('image/png');
+    fs.writeFileSync(outPath, buf);
+    return buf.length;
+  }
 
-  // No DUBIS branding on back — slogan only (per brand rules)
+  // ---- 3) Total visual height of the stack ----
+  const totalH = lines.reduce((s, l) => s + l.cap, 0)
+               + GAP * (lines.length - 1);
 
-  // Subtle noise to ensure file size > 200 KB (defeats PNG compression)
+  // ---- 4) Center stack vertically in canvas ----
+  let topY = (BACK_H - totalH) / 2;
+
+  // ---- 5) Draw each line at its cap-top → baseline = topY + cap ----
+  for (const l of lines) {
+    setFont(ctx, l.size);
+    ctx.fillText(l.text, centerX, topY + l.cap);
+    topY += l.cap + GAP;
+  }
+
+  // Subtle noise to push file > 200 KB and satisfy Gelato's coverage gate.
   addNoise(ctx, BACK_W, BACK_H, 1);
 
-  // Write file
   const buffer = canvas.toBuffer('image/png');
   fs.writeFileSync(outPath, buffer);
   return buffer.length;
@@ -264,34 +234,33 @@ function generateBack(product, color, outPath) {
 
 // ---------------------------------------------------------------------------
 // Front logo generator  (3600 × 4200 px)
-// Oren directive 2026-04-23: chest-left polo-style logo, UNIFORM across all
-// 18 products. Replaces the 2026-04-21 "900px centered" approach which caused
-// the Hila test-order mismatch (site mockup showed small-left, print file
-// printed huge-center).
+// UNIFORM across all 18 products. Polo/Lacoste-style left-chest placement.
 //
-// NEW PLACEMENT:
-//   - DUBIS™ rendered in top-left quadrant of the 3600×4200 canvas
-//   - Horizontal center at x ≈ 22% from left (left-chest position)
-//   - Vertical center at y ≈ 17% from top (upper chest, below collar)
-//   - Font size 300px (≈ 2.5cm printed width — polo/Lacoste scale)
-//   - TM superscript rendered separately at ~0.6× size, offset up/right
+// PLACEMENT (2026-05-16 — heart/left-breast pocket position):
+//   - Vertical center at y ≈ 32% from top of canvas (heart level, below the
+//     collar zone). Previous 17% sat too close to the collar.
+//   - Horizontal center at x ≈ 85% from canvas-LEFT edge. Per the validated
+//     2026-04-24 Gelato fix, the print canvas matches the viewer's perspective
+//     (left edge of canvas = viewer's left side of garment = wearer's RIGHT
+//     chest). So polo-style wearer-LEFT-chest = canvas-right side ≈ 85%.
+//     This corresponds to "~14–16% from the wearer-left edge of the shirt",
+//     matching standard Polo/Lacoste placement.
+//   - Font size 300px (≈ 2.5cm printed width — polo/Lacoste scale).
+//   - TM superscript rendered separately at ~0.45× size, offset up/right.
 //
 // COVERAGE GATE:
 //   The Gelato ≥5% non-transparent pixel gate is satisfied by addNoise()
 //   adding a 1-alpha "ghost" dot to ~50% of pixels — invisible in print but
-//   counts as non-transparent in Gelato's validator. No need to inflate the
-//   logo itself.
+//   counts as non-transparent in Gelato's validator.
 // ---------------------------------------------------------------------------
 const FRONT_W = 3600;
 const FRONT_H = 4200;
 const LOGO_FONT_SIZE = 300;  // polo-style chest-left, ~2.5cm printed
 const TM_RATIO       = 0.45; // TM is ~45% of the main letter height
-// 2026-04-24 FIX: print file had x=0.22 which made Gelato print DUBIS on
-// WEARER'S RIGHT chest (confirmed by oren looking at live Gelato mockup).
-// Mirror to x=0.78 so it prints on WEARER'S LEFT (classic Polo/Lacoste).
-// Matches the website mockup position (composite-mockups.js x=0.60 on blank).
-const LOGO_CENTER_X_RATIO = 0.78; // wearer's left chest = viewer's right
-const LOGO_CENTER_Y_RATIO = 0.17; // upper chest, below collar
+const LOGO_CENTER_X_RATIO = 0.85; // wearer's left chest (≈ 15% in from the
+                                   // wearer-left edge of the shirt, viewer's
+                                   // right side of the canvas)
+const LOGO_CENTER_Y_RATIO = 0.32; // heart level — pocket position
 
 function generateFrontLogo(color, outPath) {
   const canvas = createCanvas(FRONT_W, FRONT_H);
