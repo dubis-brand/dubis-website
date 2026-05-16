@@ -58,12 +58,14 @@ const GELATO_API_BASE = 'https://order.gelatoapis.com';
 const DESIGN_BASE_URL = 'https://www.dubis.net/designs';
 // Bumped 2026-05-16 after the equal-spacing + polo-logo design fix landed.
 // Always bump after deploying new design files so Gelato re-fetches (cache-buster).
-const DESIGN_VERSION  = '2026051601';
+const DESIGN_VERSION  = '2026051602';
 const OUT_DIR         = process.env.MOCKUPS_OUT_DIR
                      || path.join(__dirname, '..', 'images', 'gelato-mockups');
 const PROGRESS_FILE   = path.join(OUT_DIR, 'progress.json');
 const BATCH_SIZE      = 3;
-const WAIT_MS         = 40_000; // 40s for Gelato to render
+const WAIT_MS         = 60_000; // 60s — preview_back takes longer than preview_default
+const MAX_FETCH_RETRIES = 3;    // retry order fetch every 30s if preview_back not ready
+const RETRY_WAIT_MS    = 30_000;
 
 // ─────────────────────────────────────────────────────────────────
 // GELATO MAPPINGS (copied verbatim from api/create-gelato-order.js — keep in sync)
@@ -224,21 +226,26 @@ async function fetchOrder(orderId) {
   return json;
 }
 
+// Gelato item.previews contains up to 4 types when fully rendered:
+//   preview_default   → realistic mockup, FRONT view (the "hero" image)
+//   preview_back      → realistic mockup, BACK view
+//   preview_flat      → flat technical view (design on flat shirt) — front-only
+//   preview_thumbnail → small thumb of preview_default (~18KB, useless for site)
+//
+// preview_back is rendered LAST — initial responses may only contain the first
+// three. Caller must retry-fetch until preview_back exists (or product has no
+// back design, e.g. caps).
 function pickPreviews(order) {
   const item = order?.items?.[0];
   if (!item) return { front: null, back: null, all: [] };
   const previews = item.previews || item.previewUrls || [];
   const all = previews.map(p => ({ type: (p.type || p.previewType || p.name || '').toLowerCase(), url: p.url || p.previewUrl }))
     .filter(p => p.url);
-  const findBy = (...needles) => {
-    for (const n of needles) {
-      const hit = all.find(p => p.type.includes(n));
-      if (hit) return hit.url;
-    }
-    return null;
-  };
-  const front = findBy('front') || findBy('thumbnail') || findBy('default');
-  const back  = findBy('back') || (front ? null : findBy('default'));
+  const exact = t => all.find(p => p.type === t)?.url || null;
+  // Front: prefer the realistic default mockup. preview_flat is a fallback
+  // (technical flat view). NEVER pick preview_thumbnail — it's an 18KB stub.
+  const front = exact('preview_default') || exact('preview_flat');
+  const back  = exact('preview_back');
   return { front, back, all };
 }
 
@@ -271,9 +278,21 @@ async function processCombo(product, color, progress) {
 async function fetchAndDownload(combo, progress) {
   const { key, product, color, orderId } = combo;
   const entry = progress.combos[key];
+  const needsBack = product.type !== 'cap';
   try {
-    const order = await fetchOrder(orderId);
-    const { front, back, all } = pickPreviews(order);
+    // Retry-fetch the order until preview_back is available (or attempts exhausted).
+    // Caps have no back design, so preview_back will never appear — skip the wait.
+    let order = null;
+    let front = null, back = null, all = [];
+    for (let attempt = 1; attempt <= MAX_FETCH_RETRIES; attempt++) {
+      order = await fetchOrder(orderId);
+      ({ front, back, all } = pickPreviews(order));
+      if (front && (back || !needsBack)) break;
+      if (attempt < MAX_FETCH_RETRIES) {
+        console.log(`  [retry ${attempt}/${MAX_FETCH_RETRIES - 1}] ${key}: waiting ${RETRY_WAIT_MS/1000}s for preview_back…`);
+        await sleep(RETRY_WAIT_MS);
+      }
+    }
     entry.previewsAll = all;
     entry.frontUrl    = front;
     entry.backUrl     = back;
@@ -292,6 +311,13 @@ async function fetchAndDownload(combo, progress) {
       entry.status = 'no-previews';
       entry.error  = 'No preview URLs in Gelato response';
       return { key, status: 'no-previews' };
+    }
+    if (needsBack && !back) {
+      entry.status = 'partial';
+      entry.error  = 'preview_back never appeared (front saved)';
+      entry.downloaded  = files;
+      entry.completedAt = new Date().toISOString();
+      return { key, status: 'partial', files };
     }
     entry.status      = 'done';
     entry.downloaded  = files;

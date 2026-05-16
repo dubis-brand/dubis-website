@@ -261,17 +261,19 @@ function generateBack(product, color, outPath) {
 // Front logo generator  (3600 × 4200 px)
 // UNIFORM across all 18 products. Polo/Lacoste-style left-chest placement.
 //
-// PLACEMENT (2026-05-16 — heart/left-breast pocket position):
+// PLACEMENT (2026-05-16 v2 — heart/left-breast pocket position):
 //   - Vertical center at y ≈ 32% from top of canvas (heart level, below the
-//     collar zone). Previous 17% sat too close to the collar.
-//   - Horizontal center at x ≈ 85% from canvas-LEFT edge. Per the validated
-//     2026-04-24 Gelato fix, the print canvas matches the viewer's perspective
-//     (left edge of canvas = viewer's left side of garment = wearer's RIGHT
-//     chest). So polo-style wearer-LEFT-chest = canvas-right side ≈ 85%.
-//     This corresponds to "~14–16% from the wearer-left edge of the shirt",
-//     matching standard Polo/Lacoste placement.
+//     collar zone).
+//   - Horizontal center at x = 0.78. Pulled IN from the v1 attempt at 0.85
+//     because Gelato's actual safe-print area on the printed garment is
+//     tighter than the full 3600px design canvas — at 0.85 the "™" sat
+//     close enough to the right edge that Gelato cropped it on the shirt.
+//     0.78 keeps DUBIS™ fully inside the safe-print zone while still landing
+//     on wearer's left chest (heart/pocket level). This is the same value
+//     validated against real Gelato output on 2026-04-24.
 //   - Font size 300px (≈ 2.5cm printed width — polo/Lacoste scale).
-//   - TM superscript rendered separately at ~0.45× size, offset up/right.
+//   - TM superscript rendered separately at ~0.45× size, offset up/right
+//     of the "S".
 //
 // COVERAGE GATE:
 //   The Gelato ≥5% non-transparent pixel gate is satisfied by addNoise()
@@ -282,9 +284,7 @@ const FRONT_W = 3600;
 const FRONT_H = 4200;
 const LOGO_FONT_SIZE = 300;  // polo-style chest-left, ~2.5cm printed
 const TM_RATIO       = 0.45; // TM is ~45% of the main letter height
-const LOGO_CENTER_X_RATIO = 0.85; // wearer's left chest (≈ 15% in from the
-                                   // wearer-left edge of the shirt, viewer's
-                                   // right side of the canvas)
+const LOGO_CENTER_X_RATIO = 0.78; // wearer's left chest, safe-print-zone validated
 const LOGO_CENTER_Y_RATIO = 0.32; // heart level — pocket position
 
 function generateFrontLogo(color, outPath) {
