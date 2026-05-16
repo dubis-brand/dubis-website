@@ -1356,6 +1356,15 @@ body[dir="rtl"] .product-price .price-from { margin-left: 2px; margin-right: 0; 
     line-height: 1;
     filter: none;
 }
+/* Sold-out variant: muted neutral, no fake-urgency styling. */
+.modal-urgency.sold-out,
+.stock-badge.sold-out {
+    background: rgba(108, 117, 125, 0.10);
+    border: 1px solid rgba(108, 117, 125, 0.30);
+    color: #555;
+    font-weight: 600;
+    text-transform: none;
+}
 
 /* ===== COOKIE BANNER ===== */
 .cookie-banner {

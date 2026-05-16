@@ -7,8 +7,23 @@ let currentLang  = 'en';
 let _activeFilter = 'all';
 let _activeGender = 'all';
 
+// True when every (color, size) variant of this product is OOS in the stock
+// map. Used to suppress fake-urgency badges and to gate the modal.
+function isProductFullyOOS(productId) {
+  const map = window.__DUBIS_STOCK_MAP?.[productId];
+  if (!map) return false; // no data yet → optimistic
+  for (const c of Object.keys(map)) for (const s of Object.keys(map[c])) {
+    if (map[c][s] !== false) return false; // anything true / undefined → not fully OOS
+  }
+  return true;
+}
+
 // ── Stock urgency (deterministic per product) ──
+// Pure FOMO number derived from product ID — NOT real stock. But: if the
+// stock map says every variant is OOS, return 0 so the UI can suppress the
+// "Only X left" badge entirely (it's misleading next to a SOLD OUT button).
 function getStockNum(id) {
+  if (isProductFullyOOS(id)) return 0;
   const seed = (id * 7 + 3) % 19;
   return seed < 4 ? seed + 3 : seed < 10 ? seed + 2 : seed;
 }
@@ -918,7 +933,13 @@ function renderProducts(filter, gender) {
               : formatPrice(product.price)
           }</div>
           <div class="product-shipping-note">${(translations[currentLang]||translations.en).shipping_note}</div>
-          <div class="stock-badge${getStockNum(product.id) > 10 ? ' ok' : ''}">${currentLang === 'he' ? `נשארו ${getStockNum(product.id)} יחידות` : `Only ${getStockNum(product.id)} left`}</div>
+          ${(() => {
+            const stockN = getStockNum(product.id);
+            if (stockN === 0) {
+              return `<div class="stock-badge sold-out">${currentLang === 'he' ? 'אזל מהמלאי' : 'Sold out'}</div>`;
+            }
+            return `<div class="stock-badge${stockN > 10 ? ' ok' : ''}">${currentLang === 'he' ? `נשארו ${stockN} יחידות` : `Only ${stockN} left`}</div>`;
+          })()}
         </div>
       </div>
     </div>
@@ -1056,10 +1077,18 @@ function openProductModal(productId) {
           : `Free over ${freeShippingThreshold()} · Shipping calculated at checkout`}</span>
         <span>&#8617;&#65039; ${currentLang === 'he' ? 'החזרה על פגמים תוך 30 יום' : '30-Day Defect Returns'}</span>
       </div>
-      <div class="modal-urgency">
-        <span class="fire">🔥</span>
-        <span>${currentLang === 'he' ? `נשארו רק ${getStockNum(product.id)} יחידות — הזמינו לפני שנגמר` : `Only ${getStockNum(product.id)} left — order before it's gone`}</span>
-      </div>
+      ${(() => {
+        const stockN = getStockNum(product.id);
+        if (stockN === 0) {
+          return `<div class="modal-urgency sold-out">
+            <span>${currentLang === 'he' ? 'המוצר אזל זמנית — חזור בקרוב' : 'Currently sold out — back soon'}</span>
+          </div>`;
+        }
+        return `<div class="modal-urgency">
+          <span class="fire">🔥</span>
+          <span>${currentLang === 'he' ? `נשארו רק ${stockN} יחידות — הזמינו לפני שנגמר` : `Only ${stockN} left — order before it's gone`}</span>
+        </div>`;
+      })()}
       <button class="btn-primary modal-add-btn" onclick="addToCartFromModal(${product.id})">
         ${t.modal_add}
       </button>
