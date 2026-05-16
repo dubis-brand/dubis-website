@@ -958,6 +958,7 @@
       <button class="nav-tab" id="nav-funnel" onclick="showSection('funnel',this)">📊 Funnel</button>
       <button class="nav-tab" id="nav-feedback" onclick="showSection('feedback',this)">📝 Feedback</button>
       <button class="nav-tab" id="nav-meta-campaigns" onclick="showSection('meta-campaigns',this)">📣 Meta Campaigns</button>
+      <button class="nav-tab" id="nav-carousel-approval" onclick="showSection('carousel-approval',this)">🖼️ קרוסלה לאישור</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -2580,6 +2581,72 @@
     </div>
   </div><!-- /section-meta-campaigns -->
 
+  <!-- ══ CAROUSEL APPROVAL SECTION ═══════════════════════════ -->
+  <section id="section-carousel-approval" style="display:none;padding:1.5rem" dir="rtl">
+    <div style="margin:0 0 1.5rem;padding:1.5rem;background:#1a1a1a;border-radius:12px;border:2px solid #c8922a">
+      <h2 style="color:#c8922a;margin-bottom:.5rem;font-size:1.1rem;letter-spacing:2px;text-transform:uppercase">🖼️ אישור תמונות קרוסלה חדשות</h2>
+      <p style="color:#ccc;margin-bottom:1.5rem;font-size:.85rem;line-height:1.6">6 תמונות חדשות מבוססות על מוצרי Gelato האמיתיים. בדוק ואשר לפני עדכון האתר.</p>
+
+      <div id="carousel-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1rem;margin-bottom:1.5rem">
+
+        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
+          <img src="/images/carousel/carousel-1.jpg" alt="Carousel 1" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem">
+            <div style="color:#e8e0d5;font-weight:700;font-size:.9rem;margin-bottom:.25rem">תמונה 1</div>
+            <div style="color:#c8a96e;font-size:.78rem;font-style:italic">"Built different. That's the point."</div>
+          </div>
+        </div>
+
+        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
+          <img src="/images/carousel/carousel-2.jpg" alt="Carousel 2" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem">
+            <div style="color:#e8e0d5;font-weight:700;font-size:.9rem;margin-bottom:.25rem">תמונה 2</div>
+            <div style="color:#c8a96e;font-size:.78rem;font-style:italic">"Low maintenance, high value."</div>
+          </div>
+        </div>
+
+        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
+          <img src="/images/carousel/carousel-3.jpg" alt="Carousel 3" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem">
+            <div style="color:#e8e0d5;font-weight:700;font-size:.9rem;margin-bottom:.25rem">תמונה 3</div>
+            <div style="color:#c8a96e;font-size:.78rem;font-style:italic">"Dressed for the life I actually built."</div>
+          </div>
+        </div>
+
+        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
+          <img src="/images/carousel/carousel-4.jpg" alt="Carousel 4" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem">
+            <div style="color:#e8e0d5;font-weight:700;font-size:.9rem;margin-bottom:.25rem">תמונה 4</div>
+            <div style="color:#c8a96e;font-size:.78rem;font-style:italic">"Not a model. Never wanted to be."</div>
+          </div>
+        </div>
+
+        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
+          <img src="/images/carousel/carousel-5.jpg" alt="Carousel 5" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem">
+            <div style="color:#e8e0d5;font-weight:700;font-size:.9rem;margin-bottom:.25rem">תמונה 5</div>
+            <div style="color:#c8a96e;font-size:.78rem;font-style:italic">"Comfortable in my skin. And my hoodie."</div>
+          </div>
+        </div>
+
+        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
+          <img src="/images/carousel/carousel-6.jpg" alt="Carousel 6" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem">
+            <div style="color:#e8e0d5;font-weight:700;font-size:.9rem;margin-bottom:.25rem">תמונה 6</div>
+            <div style="color:#c8a96e;font-size:.78rem;font-style:italic">"Fashion finally caught up."</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="display:flex;gap:1rem;flex-wrap:wrap">
+        <button onclick="approveCarousel()" style="background:#c8922a;color:#000;padding:.75rem 2rem;border:none;border-radius:8px;font-size:1rem;font-weight:bold;cursor:pointer">✅ אשר ועדכן קרוסלה</button>
+        <button onclick="rejectCarousel()" style="background:transparent;color:#c8922a;padding:.75rem 2rem;border:1px solid #c8922a;border-radius:8px;font-size:1rem;cursor:pointer">❌ דחה</button>
+      </div>
+      <div id="carousel-approval-toast" style="display:none;margin-top:1rem;padding:.75rem 1rem;background:#1d3a1d;border:1px solid #4caf50;border-radius:8px;color:#9fdc9f;font-size:.85rem"></div>
+    </div>
+  </section><!-- /section-carousel-approval -->
+
   <!-- Coupon Modal -->
   <div id="coupon-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
     <div style="background:#1e1e1e;border-radius:12px;padding:2rem;width:min(480px,90vw);max-height:90vh;overflow-y:auto">
@@ -3010,6 +3077,7 @@
     document.getElementById('section-funnel').style.display             = name === 'funnel'             ? '' : 'none';
     document.getElementById('section-feedback').style.display           = name === 'feedback'           ? '' : 'none';
     document.getElementById('section-meta-campaigns').style.display     = name === 'meta-campaigns'     ? '' : 'none';
+    document.getElementById('section-carousel-approval').style.display  = name === 'carousel-approval'  ? '' : 'none';
     if (name === 'gelato-tools') gtInit();
     if (name === 'meta-campaigns') mcInit();
     if (name === 'tax-nexus') loadTaxNexus();
@@ -3027,6 +3095,29 @@
     if (name === 'analytics' && !_analyticsLoaded) { _analyticsLoaded = true; loadAnalytics(); }
     if (name === 'products' && !_productsLoaded) { _productsLoaded = true; loadProducts(); }
     if (name === 'reviews' && !_reviewsLoaded) { _reviewsLoaded = true; loadReviews(); }
+  }
+
+  // ── Carousel Approval ─────────────────────────────────
+  function approveCarousel() {
+    console.log('[carousel] approved — 6 images ready to go live');
+    const toast = document.getElementById('carousel-approval-toast');
+    toast.style.display = 'block';
+    toast.style.background = '#1d3a1d';
+    toast.style.borderColor = '#4caf50';
+    toast.style.color = '#9fdc9f';
+    toast.textContent = '✅ הקרוסלה אושרה. ההפעלה בפועל תחווט לאחר אישור.';
+    setTimeout(() => { toast.style.display = 'none'; }, 5000);
+  }
+
+  function rejectCarousel() {
+    console.log('[carousel] rejected — 6 images sent back for revision');
+    const toast = document.getElementById('carousel-approval-toast');
+    toast.style.display = 'block';
+    toast.style.background = '#3a1d1d';
+    toast.style.borderColor = '#e74c3c';
+    toast.style.color = '#f5b8b0';
+    toast.textContent = '❌ הקרוסלה נדחתה. יוצרים גרסה חדשה.';
+    setTimeout(() => { toast.style.display = 'none'; }, 5000);
   }
 
   // ── Users: Load ───────────────────────────────────────
