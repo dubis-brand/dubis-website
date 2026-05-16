@@ -3481,6 +3481,22 @@
         if (!_productStockStatus[p.id]) _productStockStatus[p.id] = { total: 0, inStock: 0, hasData: false };
       });
     } catch (e) { console.warn('admin stock load failed', e); }
+    // ── Storage image URLs (final fallback when local /images/* are missing). ──
+    // Used by renderProductCards onerror chain for products whose per-color mockups
+    // haven't been generated yet (e.g. newly-added products with only a Supabase
+    // storage front render — previously rendered as broken-image icons in admin).
+    try {
+      window._productStorageUrl = window._productStorageUrl || {};
+      const { data: rows } = await _sb
+        .from('dubis_products')
+        .select('product_id_numeric,image_url')
+        .not('image_url', 'is', null);
+      for (const r of (rows || [])) {
+        if (r.product_id_numeric != null && r.image_url) {
+          window._productStorageUrl[r.product_id_numeric] = r.image_url;
+        }
+      }
+    } catch (e) { console.warn('admin storage-url load failed', e); }
   }
   function _stockSummary(pid) {
     const s = _productStockStatus[pid];
@@ -3537,6 +3553,10 @@
       const _defaultColor = (p.colors && p.colors.length > 0) ? p.colors[0] : 'Black';
       const _c2f = c => c.replace(/\s+/g, '-');
       const _defaultImg = `images/product-${p.id}-${_c2f(_defaultColor)}-front.jpg`;
+      // Final fallback: Supabase storage image_url cached on the product row (Product 19-style
+      // products that have no per-color mockup files yet still render something instead of a
+      // broken-image icon). Looked up on render via _productStorageUrl[p.id].
+      const _storageImg = (window._productStorageUrl && window._productStorageUrl[p.id]) || '';
       const _swatches = (p.colors || []).map((c, ci) => {
         const bg  = _colorCss[c] || '#888';
         const bdr = c === 'White' ? 'border:1px solid #555;' : '';
@@ -3545,7 +3565,7 @@
       const cardImgHtml = `
         <div class="product-img-wrapper" style="position:relative">
           <img id="pimg-${p.id}" src="${_defaultImg}" class="product-preview-img" alt="${p.phrase}" loading="lazy"
-               onerror="this.onerror=null;this.src='images/product-${p.id}.jpg';this.onerror=()=>{this.onerror=null;this.src='${(p.image||'').replace(/'/g,'')}'}">
+               onerror="this.onerror=null;this.src='images/product-${p.id}.jpg';this.onerror=()=>{this.onerror=null;this.src='${(p.image||'').replace(/'/g,'')}';this.onerror=()=>{this.onerror=null;if('${_storageImg.replace(/'/g,"\\'")}')this.src='${_storageImg.replace(/'/g,"\\'")}';else this.style.display='none';}}">
           <div class="fb-toggle">
             <button class="fb-btn active" onclick="switchProductSide(${p.id},'front',this)">Front</button>
             <button class="fb-btn"        onclick="switchProductSide(${p.id},'back', this)">Back</button>

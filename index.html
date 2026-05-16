@@ -133,11 +133,11 @@
     <!-- COOKIE CONSENT BANNER -->
     <div class="cookie-banner" id="cookie-banner">
         <div class="cookie-content">
-            <span>We use cookies to improve your experience. We keep it minimal — just what's needed.</span>
+            <span data-en="We use cookies to improve your experience. We keep it minimal — just what's needed." data-he="🐾 אנחנו משתמשים בעוגיות לשיפור החוויה. ממש מינימום, רק מה שצריך.">We use cookies to improve your experience. We keep it minimal — just what's needed.</span>
             <div class="cookie-buttons">
-                <button class="btn-cookie-accept" onclick="acceptCookies()">Accept</button>
-                <button class="btn-cookie-decline" onclick="declineCookies()">Decline</button>
-                <a href="#privacy" class="cookie-link">Privacy · Terms</a>
+                <button class="btn-cookie-accept" onclick="acceptCookies()" data-en="Accept" data-he="אישור">Accept</button>
+                <button class="btn-cookie-decline" onclick="declineCookies()" data-en="Decline" data-he="דחייה">Decline</button>
+                <a href="#privacy" class="cookie-link" data-en="Privacy · Terms" data-he="פרטיות · תנאים">Privacy · Terms</a>
             </div>
         </div>
     </div>
@@ -147,7 +147,7 @@
         <div class="trust-bar-inner">
             <div class="trust-item">
                 <span class="trust-icon" aria-hidden="true">🚚</span>
-                <span class="trust-text" data-en="Free US shipping over $60" data-he="משלוח חינם לארה״ב מעל $60">Free US shipping over $60</span>
+                <span class="trust-text" data-en="Free US shipping over $60" data-he="משלוח חינם בארה״ב מעל ₪220">Free US shipping over $60</span>
             </div>
             <div class="trust-item">
                 <span class="trust-icon" aria-hidden="true">↩</span>
@@ -183,11 +183,11 @@
                 <span></span><span></span><span></span>
             </button>
             <ul class="nav-links">
-                <li><a href="#home">Home</a></li>
-                <li><a href="#shop">Shop</a></li>
-                <li><a href="#real-people">Real People</a></li>
-                <li><a href="#about">About</a></li>
-                <li><a href="#contact">Contact</a></li>
+                <li><a href="#home" data-en="Home" data-he="ראשי">Home</a></li>
+                <li><a href="#shop" data-en="Shop" data-he="חנות">Shop</a></li>
+                <li><a href="#real-people" data-en="Real People" data-he="החבר'ה שלנו">Real People</a></li>
+                <li><a href="#about" data-en="About" data-he="אודות">About</a></li>
+                <li><a href="#contact" data-en="Contact" data-he="צור קשר">Contact</a></li>
             </ul>
             <div class="nav-right">
                 <button class="lang-toggle" onclick="toggleLang()">עב</button>
@@ -291,22 +291,22 @@
     <!-- SHOP SECTION -->
     <section id="shop" class="shop fade-in-section">
         <div class="section-header">
-            <h2>The Collection</h2>
-            <p>Wear what you mean. Mean what you wear.</p>
+            <h2 data-en="The Collection" data-he="הקולקציה">The Collection</h2>
+            <p data-en="Wear what you mean. Mean what you wear." data-he="תלבש מה שאתה מרגיש. לא מה שמצפים ממך.">Wear what you mean. Mean what you wear.</p>
         </div>
 
         <div class="gender-filter">
-            <button class="gender-btn active" onclick="setGenderFilter('all', this)">All</button>
-            <button class="gender-btn" onclick="setGenderFilter('men', this)">Men</button>
-            <button class="gender-btn" onclick="setGenderFilter('women', this)">Women</button>
+            <button class="gender-btn active" onclick="setGenderFilter('all', this)" data-en="All" data-he="הכל">All</button>
+            <button class="gender-btn" onclick="setGenderFilter('men', this)" data-en="Men" data-he="גברים">Men</button>
+            <button class="gender-btn" onclick="setGenderFilter('women', this)" data-en="Women" data-he="נשים">Women</button>
         </div>
 
         <div class="filter-tabs">
-            <button class="filter-btn active" onclick="filterProducts('all', this)">All</button>
-            <button class="filter-btn" onclick="filterProducts('tshirt', this)">T-Shirts</button>
-            <button class="filter-btn" onclick="filterProducts('hoodie', this)">Hoodies</button>
-            <button class="filter-btn" onclick="filterProducts('cap', this)">Caps</button>
-            <button class="filter-btn" onclick="filterProducts('longsleeve', this)">Long-Sleeves</button>
+            <button class="filter-btn active" onclick="filterProducts('all', this)" data-en="All" data-he="הכל">All</button>
+            <button class="filter-btn" onclick="filterProducts('tshirt', this)" data-en="T-Shirts" data-he="חולצות">T-Shirts</button>
+            <button class="filter-btn" onclick="filterProducts('hoodie', this)" data-en="Hoodies" data-he="קפוצונים">Hoodies</button>
+            <button class="filter-btn" onclick="filterProducts('cap', this)" data-en="Caps" data-he="כובעים">Caps</button>
+            <button class="filter-btn" onclick="filterProducts('longsleeve', this)" data-en="Long-Sleeves" data-he="ארוכות שרוול">Long-Sleeves</button>
         </div>
 
         <div class="products-grid" id="products-grid"></div>
@@ -317,27 +317,27 @@
         <div class="promise-container">
             <p class="section-eyebrow" data-en="Our promise to you" data-he="ההבטחה שלנו">Our promise to you</p>
             <h2 data-en="What You See Is What You Get" data-he="מה שאת/ה רואה — זה מה שמגיע">What You See Is What You Get</h2>
-            <p>We know the worry — ordering online and getting something that looks nothing like the photo. Here's our promise:</p>
+            <p data-en="We know the worry — ordering online and getting something that looks nothing like the photo. Here's our promise:" data-he="מזמינים אונליין ומקווים לטוב? אצלנו לא צריך לקוות. הנה מה שאנחנו מבטיחים:">We know the worry — ordering online and getting something that looks nothing like the photo. Here's our promise:</p>
             <div class="promise-grid">
                 <div class="promise-item">
                     <div class="promise-icon">🏭</div>
-                    <h3>Made Fresh For You</h3>
-                    <p>Every piece is made for you, the moment you order. Not sitting in a warehouse. Not pre-printed in bulk. Made fresh — because you deserve something made for you, not someone else.</p>
+                    <h3 data-en="Made Fresh For You" data-he="נתפר בשבילך, לא יושב במחסן">Made Fresh For You</h3>
+                    <p data-en="Every piece is made for you, the moment you order. Not sitting in a warehouse. Not pre-printed in bulk. Made fresh — because you deserve something made for you, not someone else." data-he="כל פריט נתפר ומודפס ברגע שהזמנת. לא סחורה מהמדף, לא מלאי ישן. הבגד הזה נעשה בדיוק בשבילך — כי ככה זה צריך לעבוד.">Every piece is made for you, the moment you order. Not sitting in a warehouse. Not pre-printed in bulk. Made fresh — because you deserve something made for you, not someone else.</p>
                 </div>
                 <div class="promise-item">
                     <div class="promise-icon">👕</div>
-                    <h3>Fabrics that live with you, not judge you.</h3>
-                    <p>100% breathable cotton and fits that actually understand your body. No annoying seams, no feeling like you need to change for the shirt. Just put it on, feel at home, and step out into the world.</p>
+                    <h3 data-en="Fabrics that live with you, not judge you." data-he="בד שזז איתך, לא נגדך.">Fabrics that live with you, not judge you.</h3>
+                    <p data-en="100% breathable cotton and fits that actually understand your body. No annoying seams, no feeling like you need to change for the shirt. Just put it on, feel at home, and step out into the world." data-he="100% כותנה שנושמת וגזרות שמכבדות את הגוף שלך. בלי תפרים שמציקים, בלי להרגיש שאתה צריך להתאים את עצמך לבגד. פשוט לובשים ויוצאים.">100% breathable cotton and fits that actually understand your body. No annoying seams, no feeling like you need to change for the shirt. Just put it on, feel at home, and step out into the world.</p>
                 </div>
                 <div class="promise-item">
                     <div class="promise-icon">🔍</div>
-                    <h3>Quality Control</h3>
-                    <p>Every item is checked before it reaches you. Print not sharp enough? Wrong color? We reprint it. You waited for this — it better be worth the wait.</p>
+                    <h3 data-en="Quality Control" data-he="עובר בדיקה לפני שיוצא">Quality Control</h3>
+                    <p data-en="Every item is checked before it reaches you. Print not sharp enough? Wrong color? We reprint it. You waited for this — it better be worth the wait." data-he="כל פריט עובר בדיקה לפני שהוא יוצא מהדלת. הדפסה לא חדה? צבע לא תקין? מייצרים מחדש. הזמנת — מגיע לך שזה יהיה מושלם.">Every item is checked before it reaches you. Print not sharp enough? Wrong color? We reprint it. You waited for this — it better be worth the wait.</p>
                 </div>
                 <div class="promise-item">
                     <div class="promise-icon">↩️</div>
-                    <h3>Easy Returns</h3>
-                    <p>30 days. No drama. No fine print. If it doesn't feel like you — send it back, full refund. We're real people. We get it.</p>
+                    <h3 data-en="Easy Returns" data-he="החזרות פשוטות">Easy Returns</h3>
+                    <p data-en="30 days. No drama. No fine print. If it doesn't feel like you — send it back, full refund. We're real people. We get it." data-he="30 יום. בלי דרמות. בלי אותיות קטנות. אם זה לא מרגיש לך — תחזיר, החזר מלא. אנחנו אנשים אמיתיים. אנחנו מבינים.">30 days. No drama. No fine print. If it doesn't feel like you — send it back, full refund. We're real people. We get it.</p>
                 </div>
             </div>
         </div>
@@ -347,11 +347,11 @@
     <section id="about" class="about fade-in-section">
         <div class="about-container">
             <div class="about-text">
-                <h2>Who are we at DUBIS?</h2>
-                <p>Sometime after 40, it hits you: Life is way too short for clothes that make you feel bad about your body. We've been around, built lives worth waking up for, and we absolutely refuse to apologize for enjoying them.</p>
-                <p>But when it comes to fashion? Suddenly it feels like we're expected to change ourselves. DUBIS was created to stop this nonsense. We stopped waiting for fashion brands to notice us — and made exactly what we were looking for.</p>
-                <p>Clothes for real people. No fake models, just maximum comfort, fits that flatter your actual body, and cynical quotes that tell the world: "This is me, and I own it."</p>
-                <p class="about-tagline">If you're tired of choosing between looking good and feeling comfortable — welcome home.</p>
+                <h2 data-en="Who are we at DUBIS?" data-he="מי אנחנו ב-DUBIS?">Who are we at DUBIS?</h2>
+                <p data-en="Sometime after 40, it hits you: Life is way too short for clothes that make you feel bad about your body. We've been around, built lives worth waking up for, and we absolutely refuse to apologize for enjoying them." data-he="יש רגע — בדרך כלל אחרי גיל 40 — שנופל לך האסימון: החיים קצרים מדי בשביל בגדים שמרגישים כאילו הם שייכים למישהו אחר. עברנו כבר כמה דברים, בנינו חיים שאנחנו מרוצים מהם, ואין לנו כוח להתנצל על זה.">Sometime after 40, it hits you: Life is way too short for clothes that make you feel bad about your body. We've been around, built lives worth waking up for, and we absolutely refuse to apologize for enjoying them.</p>
+                <p data-en="But when it comes to fashion? Suddenly it feels like we're expected to change ourselves. DUBIS was created to stop this nonsense. We stopped waiting for fashion brands to notice us — and made exactly what we were looking for." data-he="אבל כשמסתכלים על האופנה? פתאום מרגישים שמצפים מאיתנו להשתנות בשביל הבגד, לא להפך. DUBIS קם כדי לשים לזה סוף. הפסקנו לחכות שהמותגים יראו אותנו — וייצרנו את מה שתמיד חיפשנו.">But when it comes to fashion? Suddenly it feels like we're expected to change ourselves. DUBIS was created to stop this nonsense. We stopped waiting for fashion brands to notice us — and made exactly what we were looking for.</p>
+                <p data-en='Clothes for real people. No fake models, just maximum comfort, fits that flatter your actual body, and cynical quotes that tell the world: "This is me, and I own it."' data-he='בגדים לאנשים כמונו. בלי דוגמנים מפוטושפים, בלי מידות בלתי אפשריות. רק נוחות אמיתית, גזרות שמחמיאות לגוף כמו שהוא, וביטויים שאומרים לעולם: "ככה אני, ואני עף על זה."'>Clothes for real people. No fake models, just maximum comfort, fits that flatter your actual body, and cynical quotes that tell the world: "This is me, and I own it."</p>
+                <p class="about-tagline" data-en="If you're tired of choosing between looking good and feeling comfortable — welcome home." data-he="אם נמאס לכם לבחור בין להיראות טוב לבין להרגיש בנוח — הגעתם הביתה.">If you're tired of choosing between looking good and feeling comfortable — welcome home.</p>
             </div>
             <div class="about-paw">
                 <div class="about-mark" aria-hidden="true">D</div>
@@ -361,25 +361,25 @@
 
     <!-- CONTACT SECTION -->
     <section id="contact" class="contact fade-in-section">
-        <h2>Get in Touch</h2>
-        <p>Questions? Ideas? Just want to say hi?</p>
+        <h2 data-en="Get in Touch" data-he="צור קשר">Get in Touch</h2>
+        <p data-en="Questions? Ideas? Just want to say hi?" data-he="שאלות? רעיונות? רוצה להגיד שלום?">Questions? Ideas? Just want to say hi?</p>
         <a href="mailto:dubis.brand@gmail.com" class="btn-secondary">dubis.brand@gmail.com</a>
     </section>
 
     <!-- PRIVACY POLICY -->
     <section id="privacy" class="privacy-section">
         <div class="privacy-container">
-            <h2>Privacy Policy</h2>
-            <p><strong>Last updated:</strong> April 2026</p>
-            <p>DUBIS ("we", "us") respects your privacy. Here's what you need to know:</p>
-            <h3>What we collect</h3>
-            <p>When you make a purchase: name, email, shipping address, and payment info (processed securely — we never store card details).</p>
-            <h3>Cookies</h3>
-            <p>We use minimal cookies for essential site functionality only. We do not use tracking or advertising cookies without your consent.</p>
-            <h3>Third parties</h3>
-            <p>We use Gelato for fulfillment and a payment processor for transactions. Your data is shared only as needed to complete your order.</p>
-            <h3>Your rights</h3>
-            <p>You can request access, correction or deletion of your data at any time. Email us: <a href="mailto:dubis.brand@gmail.com">dubis.brand@gmail.com</a></p>
+            <h2 data-en="Privacy Policy" data-he="מדיניות פרטיות">Privacy Policy</h2>
+            <p><strong data-en="Last updated:" data-he="עודכן לאחרונה:">Last updated:</strong> <span data-en=" April 2026" data-he=" אפריל 2026"> April 2026</span></p>
+            <p data-en='DUBIS ("we", "us") respects your privacy. Here\'s what you need to know:' data-he='ב-DUBIS ("אנחנו") אנחנו מכבדים את הפרטיות שלך. הנה מה שחשוב לדעת:'>DUBIS ("we", "us") respects your privacy. Here's what you need to know:</p>
+            <h3 data-en="What we collect" data-he="מה אנחנו אוספים">What we collect</h3>
+            <p data-en="When you make a purchase: name, email, shipping address, and payment info (processed securely — we never store card details)." data-he="כשאתה רוכש: שם, אימייל, כתובת משלוח ופרטי תשלום (מעובדים בצורה מאובטחת — אנחנו לעולם לא שומרים פרטי כרטיס).">When you make a purchase: name, email, shipping address, and payment info (processed securely — we never store card details).</p>
+            <h3 data-en="Cookies" data-he="עוגיות">Cookies</h3>
+            <p data-en="We use minimal cookies for essential site functionality only. We do not use tracking or advertising cookies without your consent." data-he="אנחנו משתמשים במינימום עוגיות, רק לתפקוד הבסיסי של האתר. אנחנו לא משתמשים בעוגיות מעקב או פרסום ללא הסכמתך.">We use minimal cookies for essential site functionality only. We do not use tracking or advertising cookies without your consent.</p>
+            <h3 data-en="Third parties" data-he="צדדים שלישיים">Third parties</h3>
+            <p data-en="We use Gelato for fulfillment and a payment processor for transactions. Your data is shared only as needed to complete your order." data-he="אנחנו משתמשים ב-Gelato להפקה ובמעבד תשלומים לעסקאות. המידע שלך משותף רק לפי הצורך להשלמת ההזמנה.">We use Gelato for fulfillment and a payment processor for transactions. Your data is shared only as needed to complete your order.</p>
+            <h3 data-en="Your rights" data-he="הזכויות שלך">Your rights</h3>
+            <p><span data-en="You can request access, correction or deletion of your data at any time. Email us:" data-he="ניתן לבקש גישה, תיקון או מחיקה של המידע שלך בכל עת. שלחו לנו אימייל:">You can request access, correction or deletion of your data at any time. Email us:</span> <a href="mailto:dubis.brand@gmail.com">dubis.brand@gmail.com</a></p>
         </div>
     </section>
 
@@ -413,7 +413,7 @@
                         <span class="faq-icon">+</span>
                     </button>
                     <div class="faq-answer">
-                        <p data-he='משלוח: $8.99 (חינם בהזמנה מעל $60). ייצור בארה"ב: 2–3 ימי עסקים. משלוח US: 3–4 ימי עסקים. סה"כ ל-US: 5–7 ימי עסקים. שאר העולם: עד 14 ימי עסקים.'
+                        <p data-he='משלוח: ₪33 (חינם בהזמנה מעל ₪220). ייצור בארה"ב: 2–3 ימי עסקים. משלוח בארה"ב: 3–4 ימי עסקים. סה"כ לארה"ב: 5–7 ימי עסקים. שאר העולם: עד 14 ימי עסקים.'
                            data-en="Shipping: $8.99 (free on orders over $60). US production: 2–3 business days. US delivery: 3–4 business days. Total to US: 5–7 business days. Rest of world: up to 14 business days.">Shipping: $8.99 (free on orders over $60). US production: 2–3 business days. US delivery: 3–4 business days. Total to US: 5–7 business days.</p>
                     </div>
                 </div>
@@ -453,8 +453,8 @@
                         <span class="faq-icon">+</span>
                     </button>
                     <div class="faq-answer">
-                        <p data-he="כל מוצר מיוצר בהזמנה אישית — לא מיוצר במפעל בסין באלפים. DTG quality, חומרים פרימיום, עיצוב מקורי. $28-$80 למוצר שלובשים שנים."
-                           data-en="Every item is made to order — not mass-produced in a factory by the thousands. DTG quality, premium materials, original design. $28–$80 for a product you'll wear for years.">כל מוצר מיוצר בהזמנה אישית — לא מיוצר במפעל בסין באלפים. DTG quality, חומרים פרימיום, עיצוב מקורי. $28-$80 למוצר שלובשים שנים.</p>
+                        <p data-he="כל מוצר מיוצר בהזמנה אישית — לא מיוצר במפעל בסין באלפים. DTG quality, חומרים פרימיום, עיצוב מקורי. ₪102–₪300 למוצר שלובשים שנים."
+                           data-en="Every item is made to order — not mass-produced in a factory by the thousands. DTG quality, premium materials, original design. $28–$80 for a product you'll wear for years.">כל מוצר מיוצר בהזמנה אישית — לא מיוצר במפעל בסין באלפים. DTG quality, חומרים פרימיום, עיצוב מקורי. ₪102–₪300 למוצר שלובשים שנים.</p>
                     </div>
                 </div>
 
@@ -513,17 +513,17 @@
             <a href="https://www.facebook.com/profile.php?id=61577669910761" target="_blank" rel="noopener" aria-label="Facebook" class="footer-social-link" title="Facebook">Facebook</a>
         </div>
         <div class="footer-links">
-            <a href="#contact">Contact</a>
+            <a href="#contact" data-en="Contact" data-he="צור קשר">Contact</a>
             <span>·</span>
-            <a href="#shop">Shop</a>
+            <a href="#shop" data-en="Shop" data-he="חנות">Shop</a>
             <span>·</span>
-            <a href="#privacy">Privacy</a>
+            <a href="#privacy" data-en="Privacy" data-he="פרטיות">Privacy</a>
             <span>·</span>
-            <a href="/terms">Terms</a>
+            <a href="/terms" data-en="Terms" data-he="תנאים">Terms</a>
             <span>·</span>
-            <a href="/returns">Returns</a>
+            <a href="/returns" data-en="Returns" data-he="החזרות">Returns</a>
         </div>
-        <p>© 2026 DUBIS. All rights reserved. Built for you.</p>
+        <p data-en="© 2026 DUBIS. All rights reserved. Built for you." data-he="© 2026 DUBIS. כל הזכויות שמורות. בנוי בשבילך.">© 2026 DUBIS. All rights reserved. Built for you.</p>
     </footer>
 
     <!-- ═══ MODALS ═══════════════════════════════════════════════════ -->
@@ -631,12 +631,12 @@
             </div>
             <!-- Step 1: Contact details (rendered FIRST so customer enters country before seeing shipping) -->
             <div id="contact-step">
-                <p class="contact-step-title">Your details / פרטים ליצירת קשר</p>
-                <input id="checkout-name"  type="text"  placeholder="Full name / שם מלא" required autocomplete="name">
+                <p class="contact-step-title">Your details</p>
+                <input id="checkout-name"  type="text"  placeholder="Full name" required autocomplete="name">
                 <input id="checkout-email" type="email" placeholder="Email" required autocomplete="email">
-                <input id="checkout-phone" type="tel"   placeholder="Phone / טלפון" required autocomplete="tel">
+                <input id="checkout-phone" type="tel"   placeholder="Phone" required autocomplete="tel">
 
-                <p class="contact-step-title" style="margin-top:14px">Shipping address / כתובת משלוח</p>
+                <p class="contact-step-title" style="margin-top:14px">Shipping address</p>
                 <input id="checkout-addr1"   type="text" placeholder="Street address" required autocomplete="address-line1">
                 <input id="checkout-addr2"   type="text" placeholder="Apartment, suite, unit (optional)" autocomplete="address-line2">
                 <input id="checkout-city"    type="text" placeholder="City" required autocomplete="address-level2">

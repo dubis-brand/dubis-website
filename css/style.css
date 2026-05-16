@@ -647,6 +647,29 @@ h1, h2, h3, h4 {
     color: #c8a96e;
 }
 
+/* NEW badge — only shown on Boss-pipeline products within featuredUntil window */
+.product-new-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: var(--honey);
+    color: var(--cream);
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 5px 11px;
+    border-radius: 14px;
+    box-shadow: 0 2px 8px rgba(193, 126, 58, 0.45);
+    z-index: 4;
+    animation: dubisNewPulse 2.5s ease-in-out infinite;
+}
+@keyframes dubisNewPulse {
+    0%, 100% { transform: scale(1);    box-shadow: 0 2px 8px rgba(193, 126, 58, 0.45); }
+    50%      { transform: scale(1.06); box-shadow: 0 3px 14px rgba(193, 126, 58, 0.65); }
+}
+
 .color-dot {
     display: inline-block;
     width: 22px;
@@ -1268,6 +1291,29 @@ h1, h2, h3, h4 {
     padding: 5px 10px;
     border-radius: 20px;
     white-space: nowrap;
+}
+
+/* Urgency line ("Only N left — order before it's gone").
+   Lives between the trust badges and the Add-to-cart button. Was completely
+   unstyled until 2026-05-16 → rendered as a faded grey blob and looked broken. */
+.modal-urgency {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(193, 126, 58, 0.10);   /* honey @ 10% */
+    border: 1px solid rgba(193, 126, 58, 0.35);
+    color: #8b4f1a;                          /* honey-shadow — readable on cream */
+    padding: 8px 12px;
+    border-radius: 8px;
+    margin: 10px 0 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+.modal-urgency .fire {
+    font-size: 1rem;
+    line-height: 1;
+    filter: none;
 }
 
 /* ===== COOKIE BANNER ===== */

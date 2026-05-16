@@ -212,7 +212,7 @@ function _updateAuthUI() {
             adminLink.classList.toggle('hidden', !_isAdmin(_currentUser));
         }
     } else {
-        btn.innerHTML = `👤 <span>${t.sign_in || 'Sign In'}</span>`;
+        btn.innerHTML = `👤 <span>${t.account_signin || t.sign_in || 'Sign In'}</span>`;
         btn.onclick = () => openAuthModal('login');
 
         // Hide admin link when logged out

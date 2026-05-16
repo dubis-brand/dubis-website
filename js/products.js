@@ -290,26 +290,9 @@ const products = [
         care_he: CARE_TSHIRT_HE,
         sizeGuide: SIZE_GUIDE_TSHIRT
     },
-    {
-        id: 19,
-        phrase: "Just trying to MAINTAIN.",
-        type: "hoodie",
-        typeLabel: "Hoodie",
-        gender: "unisex",
-        price: 41,
-        image: "images/product-19.jpg",
-        colors: ["Black","White","Navy","Charcoal"],
-        sizes: SIZES_HOODIE,
-        description: "Life's a rollercoaster, and you're just trying to keep your coffee upright. This hoodie is for anyone whose daily goal is simply not to spontaneously combust.",
-        description_he: "החיים לפעמים מרגישים כמו מרוץ, ואתם רק מנסים להישאר עם הראש מעל המים. חולצה לכל מי שהשאיפה היומית שלו היא פשוט לשרוד בכבוד.",
-        fabric: "80% cotton, 20% polyester — heavyweight fleece",
-        fit: "Unisex, relaxed fit",
-        printMethod: "DTG — Direct-to-Garment",
-        printAreas: ["Front", "Back"],
-        care: CARE_HOODIE,
-        care_he: CARE_HOODIE_HE,
-        sizeGuide: SIZE_GUIDE_HOODIE
-    },
+    // Product 19 "Just trying to MAINTAIN." — deactivated 2026-05-16:
+    // no back_design files, no per-color mockups (only Supabase storage front image).
+    // Re-enable only after generate-designs.js + composite-mockups.js run for id=19.
 
     // ─── MEN'S ─────────────────────
 

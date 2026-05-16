@@ -117,6 +117,11 @@ function formatPriceFloat(usdPrice) {
   if (currentLang === 'he') return '₪' + Math.round(usdPrice * USD_TO_ILS);
   return '$' + Number(usdPrice).toFixed(2);
 }
+// Used inside hard-coded text to swap any "$N" or "$N.NN" into "₪M" when Hebrew.
+function localizeDollarsInText(text) {
+  if (currentLang !== 'he' || !text) return text;
+  return String(text).replace(/\$(\d+(?:\.\d+)?)/g, (_, n) => '₪' + Math.round(Number(n) * USD_TO_ILS));
+}
 
 // ===== COMPREHENSIVE TRANSLATIONS =====
 const translations = {
@@ -173,7 +178,7 @@ const translations = {
     faq_q1: 'What sizes do you offer?',
     faq_a1: 'Our products come in sizes S through 3XL. All sizes run comfortable and roomy — if you\'re between sizes, take the smaller one. A detailed size chart is available on every product page.',
     faq_q2: 'How long does shipping take?',
-    faq_a2: 'Shipping: $8.99 (free on orders over $60). Production: 3–5 business days (printed to order). Delivery: 5–12 business days. Total: 8–17 business days.',
+    faq_a2: 'Shipping is calculated at checkout based on your destination (free on orders over $60). Production: 3–5 business days (printed to order). Delivery: 5–12 business days depending on destination.',
     faq_q3: 'What is your return policy?',
     faq_a3: 'Returns only for defective, wrong, or lost items. Email dubis.brand@gmail.com within 30 days of delivery with a photo and order number.',
     faq_q4: 'Will the print peel off?',
@@ -184,6 +189,85 @@ const translations = {
     faq_a6: 'No. DUBIS is an online-only brand. That\'s how we keep prices fair.',
     faq_q7: 'How do I wash it?',
     faq_a7: 'Regular wash at 30°C, turn the garment inside out before washing, do not tumble dry. The print will survive.',
+    // Banner / trust bar (top of page)
+    banner_free_ship: 'Free US shipping over $60',
+    banner_returns: '30-day easy returns',
+    banner_made_to_order: 'Printed fresh, made to order',
+    banner_real: 'Real bodies. Real fit. Real reviews.',
+    // Footer trust strip
+    footer_trust_ssl: 'SSL secured checkout',
+    footer_trust_pay: 'PayPal · Visa · Mastercard · Amex',
+    footer_trust_data: 'Your data is never sold or shared',
+    footer_tagline: 'Built for the body you actually live in.',
+    // Account button + menu
+    account_signin: 'Sign In',
+    account_orders: 'My Orders',
+    account_signout: 'Sign Out',
+    account_admin: '⚙️ Admin Panel',
+    // Cart modal extras
+    cart_title_html: 'Your Cart',
+    cart_empty_html: 'Nothing here yet. The right things are one click away.',
+    cart_shipping_note_intl: '🚚 US orders: 5–7 business days · Int\'l: up to 14 days',
+    cart_customs_note: 'Customs/import fees may apply outside the US',
+    cart_tax_note: 'Sales tax not included where applicable. We comply with US economic nexus thresholds.',
+    // PayPal modal
+    paypal_modal_title: 'Complete Your Order',
+    paypal_contact_title: 'Your details',
+    paypal_shipping_title: 'Shipping address',
+    paypal_ph_name: 'Full name',
+    paypal_ph_email: 'Email',
+    paypal_ph_phone: 'Phone',
+    paypal_ph_addr1: 'Street address',
+    paypal_ph_addr2: 'Apartment, suite, unit (optional)',
+    paypal_ph_city: 'City',
+    paypal_ph_state: 'State (e.g. CA)',
+    paypal_ph_state_intl: 'State / Province',
+    paypal_ph_zip: 'ZIP',
+    paypal_continue: 'Continue to Payment →',
+    paypal_pay_with: 'Pay with PayPal',
+    paypal_secured: '🔒 Secured by PayPal · 30-day easy returns',
+    paypal_shipping_summary: '🚚 US orders: 5–7 business days · Int\'l: up to 14 days · Import fees may apply outside US',
+    paypal_tax_summary: 'Sales tax not included where applicable. We comply with US economic nexus thresholds.',
+    paypal_trust_ssl: '🔒 SSL Secured',
+    paypal_trust_pp: '✓ PayPal Protected',
+    paypal_trust_returns: '↩ 30-Day Returns',
+    coupon_placeholder: 'Coupon code',
+    coupon_apply: 'Apply',
+    // Success modal
+    success_title: 'Order Confirmed!',
+    success_text1: 'Good call. 🐾',
+    success_text2: 'Your order is on its way — real quality, made fresh for you.',
+    success_sub: 'You belong here. 🐻',
+    success_cta: 'Keep Exploring',
+    // Auth modal
+    auth_welcome: 'Welcome to DUBIS',
+    auth_sub: 'Save your address for faster checkout.',
+    auth_tab_login: 'Sign In',
+    auth_tab_register: 'Create Account',
+    auth_google: 'Continue with Google',
+    auth_or_email: 'or continue with email',
+    auth_email_ph: 'Email',
+    auth_password_ph: 'Password',
+    auth_login_btn: 'Sign In',
+    auth_register_btn: 'Create Account',
+    auth_switch_to_register: 'New here? Create an account →',
+    auth_switch_to_login: 'Already have an account? Sign in →',
+    auth_name_ph: 'Full Name *',
+    auth_email_req_ph: 'Email *',
+    auth_password_req_ph: 'Password (min 8 chars) *',
+    auth_phone_ph: 'Phone (optional)',
+    auth_note: '🔒 Your info is used only to fulfill your order. We never sell your data.',
+    // Orders modal
+    orders_title: 'My Orders',
+    orders_loading: 'Loading…',
+    // FB coupon banner
+    fb_coupon_text: 'Welcome! Friend coupon: <strong class="fb-coupon-code">DUBIS15</strong> — 15% off your order',
+    fb_coupon_dismiss_aria: 'Dismiss welcome offer',
+    // Real People eyebrow
+    real_people_eyebrow: 'Real DUBIS customers — not paid models',
+    quality_eyebrow: 'Our promise to you',
+    // Privacy section
+    privacy_title: 'Privacy Policy',
   },
   he: {
     nav_home: 'ראשי', nav_shop: 'חנות', nav_people: 'החבר\'ה שלנו',
@@ -191,7 +275,7 @@ const translations = {
     hero_tagline: 'אופנה שלא מבקשת ממך להכניס את הבטן.',
     hero_subtitle: 'מעוצב לגוף שאת/ה באמת חי/ה בו.',
     hero_desc: 'בגדים אמיתיים, גזרה אמיתית, אנשים אמיתיים. בלי התנצלויות. בלי מידות מזויפות. מודפס לפי הזמנה — כי מגיע לך משהו שנעשה עבורך.',
-    hero_btn: 'לחנות — החל מ-$14',
+    hero_btn: 'לחנות — החל מ-₪51',
     people_title: 'החבר\'ה של DUBIS 🐻',
     people_sub: 'אנשים כמוך. בלי פוזות. בלי תירוצים.',
     shop_title: 'הקולקציה', shop_sub: 'תלבש מה שאתה מרגיש. לא מה שמצפים ממך.',
@@ -222,8 +306,8 @@ const translations = {
     modal_returns: '↩️ פגם? מוצר שגוי? מחזירים בלי סיבוכים.',
     modal_add: 'זה שלי 🐾',
     tab_details: 'פרטים', tab_size: 'מדריך מידות', tab_care: 'טיפול',
-    shipping_note: '✈️ + משלוח · חינם מעל ₪222',
-    modal_ships: '🚚 משלוח תוך 5–9 ימי עסקים', modal_free_ship: 'משלוח חינם מעל ₪222',
+    shipping_note: '✈️ + משלוח · חינם מעל ₪220',
+    modal_ships: '🚚 משלוח תוך 5–9 ימי עסקים', modal_free_ship: 'משלוח חינם מעל ₪220',
     modal_dtg: 'DTG — הדפסה ישירה על הבד',
     modal_fabric: 'בד', modal_fit: 'גזרה', modal_print: 'הדפסה', modal_print_areas: 'אזורי הדפסה',
     size_size: 'מידה', size_chest: 'חזה (ס"מ)', size_length: 'אורך (ס"מ)',
@@ -238,17 +322,96 @@ const translations = {
     faq_q1: 'אילו מידות יש לכם?',
     faq_a1: 'S עד 3XL. כל המידות רחבות ונוחות — אם אתה בין מידות, קח את הקטנה. טבלת מידות מפורטת בכל עמוד מוצר.',
     faq_q2: 'כמה זמן לוקח המשלוח?',
-    faq_a2: 'משלוח: $8.99 (חינם בהזמנה מעל $60). זמן הכנה: 3–5 ימי עסקים (מודפס לפי הזמנה). משלוח: 5–12 ימי עסקים לפי היעד. סה"כ: 8–17 ימי עסקים.',
+    faq_a2: 'מחיר המשלוח מחושב בקופה לפי כתובת היעד (חינם בהזמנה מעל ₪220). זמן הכנה: 3–5 ימי עסקים (מודפס לפי הזמנה). משלוח: 5–12 ימי עסקים לפי היעד.',
     faq_q3: 'מה מדיניות ההחזרות?',
     faq_a3: 'החזרות רק במקרה של פגם, מוצר שגוי, או אבדן במשלוח. שלחו מייל ל-dubis.brand@gmail.com תוך 30 יום מהמסירה עם תמונה ומספר הזמנה.',
     faq_q4: 'ההדפסה מחזיקה?',
     faq_a4: 'אנחנו עובדים עם DTG — הדפסה ישירה על הבד, לא מדבקה. ההדפסה שורדת עשרות כביסות בלי בעיה.',
     faq_q5: 'למה המחיר כזה?',
-    faq_a5: 'כל פריט מיוצר בנפרד לפי הזמנה — לא קו ייצור של אלפים. DTG איכותי, בד טוב, עיצוב מקורי. מוצר שלובשים שנים.',
+    faq_a5: 'כל פריט מיוצר בנפרד לפי הזמנה — לא קו ייצור של אלפים. DTG איכותי, בד טוב, עיצוב מקורי. ₪102–₪300 למוצר שלובשים שנים.',
     faq_q6: 'יש חנות פיזית?',
     faq_a6: 'לא. DUBIS הוא אונליין בלבד. ככה שומרים על מחירים הוגנים.',
     faq_q7: 'איך מכבסים?',
     faq_a7: 'כביסה רגילה 30°C, הפוך לפני כביסה, לא לטמבור. ההדפסה תשרוד.',
+    // Banner / trust bar
+    banner_free_ship: 'משלוח חינם בארה״ב מעל ₪220',
+    banner_returns: 'החזרות 30 יום ללא דרמה',
+    banner_made_to_order: 'מודפס לפי הזמנה',
+    banner_real: 'גופים אמיתיים. גזרה אמיתית. ביקורות אמיתיות.',
+    // Footer trust strip
+    footer_trust_ssl: 'תשלום מאובטח SSL',
+    footer_trust_pay: 'PayPal · Visa · Mastercard · Amex',
+    footer_trust_data: 'המידע שלך לעולם לא נמכר או משותף',
+    footer_tagline: 'מעוצב לגוף שאת/ה באמת חי/ה בו.',
+    // Account button + menu
+    account_signin: 'התחבר/י',
+    account_orders: 'ההזמנות שלי',
+    account_signout: 'התנתק/י',
+    account_admin: '⚙️ ניהול אתר',
+    // Cart modal extras
+    cart_title_html: 'העגלה שלך',
+    cart_empty_html: 'עוד ריק. הדברים הנכונים במרחק קליק.',
+    cart_shipping_note_intl: '🚚 הזמנות ארה״ב: 5–7 ימי עסקים · בינ״ל: עד 14 יום',
+    cart_customs_note: 'מסי מכס/יבוא עשויים לחול מחוץ לארה״ב',
+    cart_tax_note: 'מע״מ ומסים מקומיים אינם כלולים. החיוב הסופי דרך PayPal יבוצע בדולרים.',
+    // PayPal modal
+    paypal_modal_title: 'השלמת ההזמנה',
+    paypal_contact_title: 'פרטים ליצירת קשר',
+    paypal_shipping_title: 'כתובת משלוח',
+    paypal_ph_name: 'שם מלא',
+    paypal_ph_email: 'אימייל',
+    paypal_ph_phone: 'טלפון',
+    paypal_ph_addr1: 'כתובת רחוב',
+    paypal_ph_addr2: 'דירה / קומה (לא חובה)',
+    paypal_ph_city: 'עיר',
+    paypal_ph_state: 'מדינה (לארה״ב: 2 אותיות)',
+    paypal_ph_state_intl: 'מחוז / מדינה',
+    paypal_ph_zip: 'מיקוד',
+    paypal_continue: 'המשך לתשלום ←',
+    paypal_pay_with: 'תשלום ב-PayPal',
+    paypal_secured: '🔒 מאובטח ע״י PayPal · החזרות 30 יום',
+    paypal_shipping_summary: '🚚 הזמנות ארה״ב: 5–7 ימי עסקים · בינ״ל: עד 14 יום · מסי יבוא עשויים לחול',
+    paypal_tax_summary: 'מע״מ ומסים מקומיים אינם כלולים. החיוב הסופי דרך PayPal יבוצע בדולרים.',
+    paypal_trust_ssl: '🔒 מאובטח SSL',
+    paypal_trust_pp: '✓ מוגן ע״י PayPal',
+    paypal_trust_returns: '↩ החזרות 30 יום',
+    coupon_placeholder: 'קוד קופון',
+    coupon_apply: 'החל/י',
+    // Success modal
+    success_title: 'ההזמנה אושרה!',
+    success_text1: 'בחירה מצוינת. 🐾',
+    success_text2: 'ההזמנה שלך בדרך — איכות אמיתית, נתפר במיוחד עבורך.',
+    success_sub: 'אתה שייך לכאן. 🐻',
+    success_cta: 'לחנות',
+    // Auth modal
+    auth_welcome: 'ברוכים הבאים ל-DUBIS',
+    auth_sub: 'שמור/י את הכתובת לתשלום מהיר בפעמים הבאות.',
+    auth_tab_login: 'התחברות',
+    auth_tab_register: 'יצירת חשבון',
+    auth_google: 'המשך/י עם Google',
+    auth_or_email: 'או המשך/י עם אימייל',
+    auth_email_ph: 'אימייל',
+    auth_password_ph: 'סיסמה',
+    auth_login_btn: 'התחבר/י',
+    auth_register_btn: 'יצירת חשבון',
+    auth_switch_to_register: 'חדש/ה כאן? צור/י חשבון ←',
+    auth_switch_to_login: 'כבר יש חשבון? התחבר/י ←',
+    auth_name_ph: 'שם מלא *',
+    auth_email_req_ph: 'אימייל *',
+    auth_password_req_ph: 'סיסמה (לפחות 8 תווים) *',
+    auth_phone_ph: 'טלפון (לא חובה)',
+    auth_note: '🔒 הפרטים שלך משמשים רק להשלמת ההזמנה. לעולם לא נמכור את המידע שלך.',
+    // Orders modal
+    orders_title: 'ההזמנות שלי',
+    orders_loading: 'טוען…',
+    // FB coupon banner
+    fb_coupon_text: 'ברוך הבא! קוד קופון לחברים: <strong class="fb-coupon-code">DUBIS15</strong> — 15% הנחה על כל הרכישה',
+    fb_coupon_dismiss_aria: 'סגירת ההצעה',
+    // Real People eyebrow
+    real_people_eyebrow: 'לקוחות אמיתיים של DUBIS — לא דוגמנים בתשלום',
+    quality_eyebrow: 'ההבטחה שלנו',
+    // Privacy section
+    privacy_title: 'מדיניות פרטיות',
   }
 };
 
@@ -420,10 +583,169 @@ function translateUI(lang) {
   // Lang toggle
   if (q('.lang-toggle')) q('.lang-toggle').textContent = t.lang_btn;
 
+  // ── Universal: process [data-en][data-he] elements (banner / hero / FAQ / footer) ──
+  // For these, the live currency-bearing text ("$60", "$8.99") is rewritten to ₪ via
+  // localizeDollarsInText() when language is Hebrew. The Hebrew variant text on disk
+  // already uses ₪ where appropriate.
+  qa('[data-en][data-he]').forEach(el => {
+    const raw = el.getAttribute(lang === 'he' ? 'data-he' : 'data-en');
+    if (!raw) return;
+    // Banner / nav / footer text doesn't contain HTML — safe to set textContent.
+    // FAQ answers may contain commas/em-dashes; still plain text.
+    el.textContent = localizeDollarsInText(raw);
+  });
+  // Placeholders that opt-in to translation
+  qa('[data-placeholder-en][data-placeholder-he]').forEach(el => {
+    const raw = el.getAttribute(lang === 'he' ? 'data-placeholder-he' : 'data-placeholder-en');
+    if (raw) el.setAttribute('placeholder', raw);
+  });
+
+  // ── Account button + dropdown menu ──
+  const accountBtnSpan = q('#account-btn span');
+  if (accountBtnSpan) accountBtnSpan.textContent = t.account_signin;
+  const accAdmin = q('#admin-menu-link');
+  if (accAdmin) accAdmin.textContent = t.account_admin;
+  const accMenuLinks = qa('#account-menu a');
+  // First link is admin-menu-link (already handled above), then orders, then signout
+  accMenuLinks.forEach(a => {
+    if (a.id === 'admin-menu-link') return;
+    const onclick = a.getAttribute('onclick') || '';
+    if (onclick.includes('openMyOrders')) a.textContent = t.account_orders;
+    else if (onclick.includes('authLogout')) a.textContent = t.account_signout;
+  });
+
+  // ── Cart modal — translate header + shipping note + tax note + checkout button ──
+  const cartH3 = q('.cart-modal .cart-header h3');
+  if (cartH3) cartH3.textContent = t.cart_title_html;
+  const cartShipNote = q('.cart-shipping-note');
+  if (cartShipNote) {
+    cartShipNote.innerHTML =
+      '🚚 ' + (lang === 'he'
+        ? 'הזמנות ארה״ב: 5–7 ימי עסקים · בינ״ל: עד 14 יום'
+        : 'US orders: 5–7 business days · Int\'l: up to 14 days') +
+      '<br><span>' + t.cart_customs_note + '</span>' +
+      '<br><span style="font-size:11px;color:#888">' + t.cart_tax_note + '</span>';
+  }
+  const cartCheckoutBtn = q('.cart-footer .btn-primary');
+  if (cartCheckoutBtn) cartCheckoutBtn.textContent = t.cart_checkout;
+
+  // ── PayPal checkout modal ──
+  const ppHeader = q('#paypal-modal .paypal-modal-header h2');
+  if (ppHeader) ppHeader.textContent = t.paypal_modal_title;
+  const ppContactTitles = qa('#contact-step .contact-step-title');
+  if (ppContactTitles[0]) ppContactTitles[0].textContent = t.paypal_contact_title;
+  if (ppContactTitles[1]) ppContactTitles[1].textContent = t.paypal_shipping_title;
+  // Inputs / select inside contact-step
+  const ppPh = {
+    'checkout-name':  t.paypal_ph_name,
+    'checkout-email': t.paypal_ph_email,
+    'checkout-phone': t.paypal_ph_phone,
+    'checkout-addr1': t.paypal_ph_addr1,
+    'checkout-addr2': t.paypal_ph_addr2,
+    'checkout-city':  t.paypal_ph_city,
+    'checkout-state': t.paypal_ph_state,
+    'checkout-zip':   t.paypal_ph_zip,
+  };
+  Object.keys(ppPh).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.setAttribute('placeholder', ppPh[id]);
+  });
+  const ppContinue = q('#btn-continue-to-payment');
+  if (ppContinue) ppContinue.textContent = t.paypal_continue;
+  const ppDivider = q('#payment-step .paypal-divider span');
+  if (ppDivider) ppDivider.textContent = t.paypal_pay_with;
+  const ppNotes = qa('#paypal-modal .paypal-note');
+  if (ppNotes[0]) ppNotes[0].textContent = t.paypal_secured;
+  if (ppNotes[1]) ppNotes[1].textContent = t.paypal_shipping_summary;
+  if (ppNotes[2]) ppNotes[2].textContent = t.paypal_tax_summary;
+  const ppTrust = qa('#paypal-modal .trust-badge');
+  if (ppTrust[0]) ppTrust[0].textContent = t.paypal_trust_ssl;
+  if (ppTrust[1]) ppTrust[1].textContent = t.paypal_trust_pp;
+  if (ppTrust[2]) ppTrust[2].textContent = t.paypal_trust_returns;
+  const couponInput = q('#coupon-input');
+  if (couponInput) couponInput.setAttribute('placeholder', t.coupon_placeholder);
+  const couponBtn = q('.coupon-apply-btn');
+  if (couponBtn) couponBtn.textContent = t.coupon_apply;
+
+  // ── Success modal ──
+  const successH2 = q('#success-modal h2');
+  if (successH2) successH2.textContent = t.success_title;
+  const successPs = qa('#success-modal .success-content > p');
+  if (successPs[0]) successPs[0].innerHTML = t.success_text1 + '<br>' + t.success_text2;
+  if (successPs[1]) successPs[1].textContent = t.success_sub;
+  const successBtn = q('#success-modal .btn-primary');
+  if (successBtn) successBtn.textContent = t.success_cta;
+
+  // ── Auth modal ──
+  const authH2 = q('#auth-modal .auth-modal-header h2');
+  if (authH2) authH2.textContent = t.auth_welcome;
+  const authSub = q('#auth-modal .auth-sub');
+  if (authSub) authSub.textContent = t.auth_sub;
+  const tabLogin = q('#tab-login');
+  if (tabLogin) tabLogin.textContent = t.auth_tab_login;
+  const tabReg = q('#tab-register');
+  if (tabReg) tabReg.textContent = t.auth_tab_register;
+  qa('#auth-modal .btn-google').forEach(b => {
+    // Keep the SVG, replace trailing text node
+    const lastNode = [...b.childNodes].find(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim());
+    if (lastNode) lastNode.textContent = ' ' + t.auth_google;
+  });
+  qa('#auth-modal .social-login-divider span').forEach(s => { s.textContent = t.auth_or_email; });
+  const loginEmail = q('#login-email');
+  if (loginEmail) loginEmail.setAttribute('placeholder', t.auth_email_ph);
+  const loginPass = q('#login-password');
+  if (loginPass) loginPass.setAttribute('placeholder', t.auth_password_ph);
+  const btnLogin = q('#btn-login');
+  if (btnLogin) btnLogin.textContent = t.auth_login_btn;
+  const regName = q('#reg-name');
+  if (regName) regName.setAttribute('placeholder', t.auth_name_ph);
+  const regEmail = q('#reg-email');
+  if (regEmail) regEmail.setAttribute('placeholder', t.auth_email_req_ph);
+  const regPass = q('#reg-password');
+  if (regPass) regPass.setAttribute('placeholder', t.auth_password_req_ph);
+  const regPhone = q('#reg-phone');
+  if (regPhone) regPhone.setAttribute('placeholder', t.auth_phone_ph);
+  const btnReg = q('#btn-register');
+  if (btnReg) btnReg.textContent = t.auth_register_btn;
+  // Switch links between login/register
+  const switchEls = qa('#auth-modal .auth-switch');
+  switchEls.forEach(sw => {
+    const a = sw.querySelector('a');
+    if (!a) return;
+    const oc = a.getAttribute('onclick') || '';
+    if (oc.includes("'register'")) {
+      sw.firstChild && (sw.firstChild.textContent = (lang === 'he' ? 'חדש/ה כאן? ' : 'New here? '));
+      a.textContent = lang === 'he' ? 'צור/י חשבון ←' : 'Create an account →';
+    } else if (oc.includes("'login'")) {
+      sw.firstChild && (sw.firstChild.textContent = (lang === 'he' ? 'כבר יש חשבון? ' : 'Already have an account? '));
+      a.textContent = lang === 'he' ? 'התחבר/י ←' : 'Sign in →';
+    }
+  });
+  const authNote = q('#auth-modal .auth-note');
+  if (authNote) authNote.textContent = t.auth_note;
+
+  // ── Orders modal ──
+  const ordersH2 = q('#orders-modal h2');
+  if (ordersH2) ordersH2.textContent = t.orders_title;
+  const ordersLoading = q('#orders-list .orders-loading');
+  if (ordersLoading) ordersLoading.textContent = t.orders_loading;
+
+  // ── FB coupon banner (language-aware so non-IL visitors see English) ──
+  const fbCouponText = q('#fb-coupon-banner .fb-coupon-text');
+  if (fbCouponText) {
+    fbCouponText.setAttribute('dir', lang === 'he' ? 'rtl' : 'ltr');
+    fbCouponText.innerHTML = t.fb_coupon_text;
+  }
+  const fbCouponClose = q('#fb-coupon-banner .fb-coupon-close');
+  if (fbCouponClose) fbCouponClose.setAttribute('aria-label', t.fb_coupon_dismiss_aria);
+
   // Re-render dynamic content
   renderProducts();
   injectProductStructuredData();
   if (q('.cart-modal.open')) renderCart();
+  if (q('#paypal-modal.open') && typeof renderOrderSummary === 'function') {
+    try { renderOrderSummary(); } catch (e) { /* may not be ready */ }
+  }
 }
 
 // ===== PRODUCT STRUCTURED DATA (JSON-LD for SEO) =====
@@ -495,7 +817,11 @@ function renderProducts(filter, gender) {
         <img class="img-view img-back"  src="${productImg(product.id, displayColor, 'back')}"  alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}';const c=this.closest('.product-card');if(c)c.classList.remove('show-back-default');" />
         <img class="img-view img-front" src="${productImg(product.id, displayColor, 'front')}" alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}'" />
         <div class="product-badge">${typeMap[product.type] || product.typeLabel}</div>
-        <div class="product-rating-badge" id="badge-${product.id}">${currentLang === 'he' ? 'NEW' : 'NEW'}</div>
+        ${(() => {
+          // NEW badge: only on products Boss pipeline added (is_new=true) within featuredUntil window.
+          const isNewActive = product.isNew === true && product.featuredUntil && new Date(product.featuredUntil) > new Date();
+          return isNewActive ? `<div class="product-new-badge">${currentLang === 'he' ? 'חדש' : 'NEW'}</div>` : '';
+        })()}
         <div class="product-hover-overlay"><span>${t.view_details}</span></div>
       </div>
       <div class="product-info">
@@ -644,7 +970,9 @@ function openProductModal(productId) {
       </div>
       <div class="modal-trust-badges">
         <span>&#128274; ${currentLang === 'he' ? 'תשלום מאובטח' : 'Secure Checkout'}</span>
-        <span>&#128666; ${currentLang === 'he' ? 'משלוח $8.99 · חינם מעל $60' : '$8.99 Shipping · Free over $60'}</span>
+        <span>&#128666; ${currentLang === 'he'
+          ? `חינם מעל ${freeShippingThreshold()} · משלוח מחושב בקופה`
+          : `Free over ${freeShippingThreshold()} · Shipping calculated at checkout`}</span>
         <span>&#8617;&#65039; ${currentLang === 'he' ? 'החזרה על פגמים תוך 30 יום' : '30-Day Defect Returns'}</span>
       </div>
       <div class="modal-urgency">
@@ -985,13 +1313,20 @@ function closeCart() {
 
 function renderCart() {
   const t = translations[currentLang];
-  const cartItems = document.getElementById('cart-items');
-  const cartTotal = document.getElementById('cart-total');
+  const cartItems  = document.getElementById('cart-items');
+  // Rebuild the total row every render so the #cart-total span is always live.
+  // Previously: setting parent.textContent destroyed the span, so the NEXT
+  // render's getElementById returned null and the empty-cart total update
+  // was silently skipped (oren bug 2026-05-16: emptied cart kept showing ₪254).
+  const totalRow = document.querySelector('.cart-footer .cart-total');
+  const labelText = currentLang === 'he' ? 'סה"כ: ' : 'Total: ';
+  const total = cart.reduce((sum, item) => sum + (item.price || 0), 0);
+  if (totalRow) {
+    totalRow.innerHTML = labelText + '<span id="cart-total">' + formatPrice(total) + '</span>';
+  }
 
   if (cart.length === 0) {
-    cartItems.innerHTML = `<p class="cart-empty">${t.cart_empty}</p>`;
-    const totalParentEmpty = cartTotal.parentElement;
-    if (totalParentEmpty) totalParentEmpty.textContent = (currentLang === 'he' ? 'סה"כ: ' : 'Total: ') + (currentLang === 'he' ? '₪0' : '$0');
+    cartItems.innerHTML = '<p class="cart-empty">' + t.cart_empty + '</p>';
     return;
   }
 
@@ -1014,13 +1349,6 @@ function renderCart() {
     </div>
   `;
   }).join('');
-
-  // Set the total WITH currency symbol so the cart matches the language.
-  // Also rewrite the "Total:" label prefix to remove the hardcoded "$" from HTML.
-  const total = cart.reduce((sum, item) => sum + item.price, 0);
-  cartTotal.textContent = '';
-  const totalParent = cartTotal.parentElement;
-  if (totalParent) totalParent.textContent = (currentLang === 'he' ? 'סה"כ: ' : 'Total: ') + formatPrice(total);
 }
 
 function removeFromCart(index) {
