@@ -18,6 +18,11 @@ const path = require('path');
 
 try { require('dotenv').config({ path: path.resolve(__dirname, '../.env.local') }); } catch {}
 
+// sharp is optional — only needed for --save-as-site-images JPG flatten.
+// Skip require failure so non-site-images mode still works without it.
+let sharp = null;
+try { sharp = require('sharp'); } catch {}
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const GELATO_KEY   = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
@@ -241,11 +246,46 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   }
   console.log(`\nCreated ${drafts.length}/${jobs.length} drafts.\n`);
 
-  // PHASE 2: wait for Gelato to render mockups
-  console.log('--- Phase 2: waiting 45s for Gelato to render mockups ---');
-  await sleep(45000);
+  // PHASE 2: wait for Gelato to render mockups.
+  // Initial 60s — preview_back renders LAST (often 30-60s after preview_default).
+  console.log('--- Phase 2: waiting 60s for Gelato to render mockups ---');
+  await sleep(60000);
 
-  // PHASE 3: fetch each order back and extract preview URLs
+  // ─────────────────────────────────────────────────────────────
+  // Helpers for STRICT preview-type matching + JPG conversion
+  // ─────────────────────────────────────────────────────────────
+  function pickPreviews(item) {
+    // Gelato preview types observed (memory: gelato-operations.md):
+    //   preview_default   = front view, the "hero" mockup
+    //   preview_flat      = technical flat view (rarely used as fallback)
+    //   preview_back      = back view (renders LAST — often missing on first fetch)
+    //   preview_thumbnail = 18KB stub of preview_default (USELESS — never pick this)
+    const previews = item?.previews || [];
+    const exact = (t) => (previews.find(p => String(p.type).toLowerCase() === t) || {}).url || null;
+    const front = exact('preview_default') || exact('preview_flat');
+    const back  = exact('preview_back');
+    return { front, back };
+  }
+  const isCap = (t) => normType(t) === 'cap' || normType(t) === 'capemb';
+  async function saveAsSiteImage(srcPath, productId, colorSafe, face) {
+    // Convert downloaded PNG → JPG with the canonical #D7D7D7 gray background.
+    // This matches the rest of the site catalog (see .claude/rules/gelato-operations.md).
+    if (!CLI_SAVE_AS_SITE) return srcPath;
+    if (!sharp) {
+      console.warn(`  [WARN] sharp not installed — keeping PNG for ${path.basename(srcPath)}`);
+      return srcPath;
+    }
+    const jpgPath = path.join(OUT_DIR, `product-${productId}-${colorSafe}-${face}.jpg`);
+    await sharp(srcPath)
+      .flatten({ background: { r: 215, g: 215, b: 215 } })   // #D7D7D7 — canonical site grey
+      .jpeg({ quality: 90, mozjpeg: true })
+      .toFile(jpgPath);
+    // Remove the intermediate PNG (we only commit the JPG).
+    try { fs.unlinkSync(srcPath); } catch {}
+    return jpgPath;
+  }
+
+  // PHASE 3: fetch each order back and extract preview URLs (STRICT match)
   console.log('\n--- Phase 3: fetching mockup URLs + downloading ---');
   let saved = 0;
   const savedFiles = [];
@@ -256,66 +296,62 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   for (const d of drafts) {
     const { job, draft } = d;
     const label = `p${job.productId}-${job.color}`;
+    const needsBack = !isCap(job.type);
+
+    // Retry-fetch the order until preview_back is available (or attempts exhausted).
     let order = await getOrder(draft.id);
     let attempts = 1;
-    // Retry up to 3x with backoff if no mockup yet
-    while (order && (!order.items?.[0]?.previews || order.items[0].previews.length === 0)
-                 && !order.items?.[0]?.mockupUrl
-                 && attempts < 4) {
-      await sleep(15000);
+    while (order && attempts < 5) {
+      const { front, back } = pickPreviews(order.items?.[0]);
+      if (front && (!needsBack || back)) break;
+      console.log(`  [wait ${attempts}/4] ${label} — front=${!!front} back=${!!back}, retrying in 30s…`);
+      await sleep(30000);
       order = await getOrder(draft.id);
       attempts++;
     }
     if (!order) { console.log(`  [SKIP] ${label} — order fetch returned null`); failed.push(label); continue; }
 
-    const item = order.items?.[0];
-    // Collect candidate preview URLs. Gelato's response shape varies — try all.
-    const candidates = [];
-    if (item?.mockupUrl) candidates.push({ type:'mockup', url:item.mockupUrl });
-    for (const p of (item?.previews || [])) {
-      candidates.push({ type: p.type || 'preview', url: p.url });
-    }
-
-    if (candidates.length === 0) {
-      console.log(`  [NONE] ${label} — no preview URLs after ${attempts} attempts`);
+    const { front: frontUrl, back: backUrl } = pickPreviews(order.items?.[0]);
+    if (!frontUrl) {
+      console.log(`  [NONE] ${label} — no preview_default after ${attempts} attempts`);
       failed.push(label);
       continue;
     }
-
-    // Identify front vs back. For caps, only front exists.
-    // Gelato preview types we've seen: 'preview_default', 'preview_thumbnail', 'mockup_front', 'mockup_back'
-    let frontUrl = null, backUrl = null;
-    for (const c of candidates) {
-      const t = String(c.type).toLowerCase();
-      if (!frontUrl && (t.includes('front') || t === 'mockup' || t.includes('default'))) frontUrl = c.url;
-      else if (!backUrl && t.includes('back')) backUrl = c.url;
+    if (needsBack && !backUrl) {
+      console.log(`  [PARTIAL] ${label} — preview_back never appeared, saving FRONT only`);
+      // Don't fail completely; we still have the front. Caller will flag back as missing.
     }
-    // Fallback: take first two candidates as front/back if labels weren't conclusive
-    if (!frontUrl && candidates[0]) frontUrl = candidates[0].url;
-    if (!backUrl  && candidates[1]) backUrl  = candidates[1].url;
 
     const colorSafe = job.color.replace(/\s+/g,'-');
     previewIndex[job.color] = previewIndex[job.color] || {};
     if (frontUrl) {
-      const out = path.join(OUT_DIR, `product-${job.productId}-${colorSafe}-front.png`);
+      const png = path.join(OUT_DIR, `product-${job.productId}-${colorSafe}-front.png`);
       try {
-        const bytes = await downloadTo(frontUrl, out);
-        console.log(`  [DL]  ${label} front → ${(bytes/1024).toFixed(1)} KB`);
-        savedFiles.push(path.basename(out));
+        const bytes = await downloadTo(frontUrl, png);
+        const final = await saveAsSiteImage(png, job.productId, colorSafe, 'front');
+        console.log(`  [DL]  ${label} front → ${(bytes/1024).toFixed(1)} KB raw → ${path.basename(final)}`);
+        savedFiles.push(path.basename(final));
         previewIndex[job.color].front = frontUrl;
         saved++;
       } catch (e) {
         console.log(`  [ERR] ${label} front — ${e.message}`);
       }
     }
-    if (backUrl && normType(job.type) !== 'cap' && normType(job.type) !== 'capemb') {
-      const out = path.join(OUT_DIR, `product-${job.productId}-${colorSafe}-back.png`);
+    if (backUrl && needsBack) {
+      const png = path.join(OUT_DIR, `product-${job.productId}-${colorSafe}-back.png`);
       try {
-        const bytes = await downloadTo(backUrl, out);
-        console.log(`  [DL]  ${label} back  → ${(bytes/1024).toFixed(1)} KB`);
-        savedFiles.push(path.basename(out));
-        previewIndex[job.color].back = backUrl;
-        saved++;
+        const bytes = await downloadTo(backUrl, png);
+        // Hard guard: preview_thumbnail is ~18KB. If somehow we got a tiny file, it's the stub.
+        if (bytes < 50_000) {
+          try { fs.unlinkSync(png); } catch {}
+          console.log(`  [STUB] ${label} back  → ${(bytes/1024).toFixed(1)} KB — discarded (stub, not real back)`);
+        } else {
+          const final = await saveAsSiteImage(png, job.productId, colorSafe, 'back');
+          console.log(`  [DL]  ${label} back  → ${(bytes/1024).toFixed(1)} KB raw → ${path.basename(final)}`);
+          savedFiles.push(path.basename(final));
+          previewIndex[job.color].back = backUrl;
+          saved++;
+        }
       } catch (e) {
         console.log(`  [ERR] ${label} back — ${e.message}`);
       }
