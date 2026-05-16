@@ -86,6 +86,20 @@ const TYPE_META = {
     sizes: 'SIZES_CAP',
     sizeGuide: null,  // inline for caps
   },
+  // 2026-05-16: Embroidered Flexfit 6245cm dad-hat — alternative to AS Colour 1114 DTF.
+  // Frontend treats 'capemb' as the Cap category for filtering (see js/main.js category resolution).
+  capemb: {
+    typeLabel: 'Cap',
+    fabric: '100% combed cotton, structured 6-panel dad cap',
+    fitUnisex: 'One Size, adjustable strap',
+    fitWomen: 'One Size, adjustable strap',
+    printMethod: 'Embroidery',
+    printAreas: '["Front"]',
+    care: null,
+    care_he: 'CARE_CAP_HE',
+    sizes: 'SIZES_CAP',
+    sizeGuide: null,
+  },
 };
 
 const PRICES = {
@@ -94,6 +108,7 @@ const PRICES = {
   ziphoodie: 46,
   longsleeve: 31,
   cap: 28,
+  capemb: 32,  // premium embroidered cap, slightly higher than DTF
 };
 
 async function fetchProducts() {
@@ -111,7 +126,7 @@ function escapeStr(s) {
   return (s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
 }
 
-const JS_TYPE_MAP = { 't-shirt': 'tshirt', 'hoodie': 'hoodie', 'zip-hoodie': 'ziphoodie', 'long-sleeve': 'longsleeve', 'cap': 'cap' };
+const JS_TYPE_MAP = { 't-shirt': 'tshirt', 'hoodie': 'hoodie', 'zip-hoodie': 'ziphoodie', 'long-sleeve': 'longsleeve', 'cap': 'cap', 'cap-emb': 'capemb' };
 
 function generateProductEntry(p) {
   const pType = JS_TYPE_MAP[p.clothing_type] || p.clothing_type || p.type || 'tshirt';

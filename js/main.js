@@ -883,7 +883,14 @@ function renderProducts(filter, gender) {
   const t = translations[currentLang];
   const grid = document.getElementById('products-grid');
   let filtered = products;
-  if (_activeFilter !== 'all') filtered = filtered.filter(p => p.type === _activeFilter);
+  // 2026-05-16: group cap variants under the same filter — 'cap' (AS Colour DTF)
+  // and 'capemb' (Flexfit embroidered) both belong in the "Caps" category.
+  if (_activeFilter !== 'all') {
+    filtered = filtered.filter(p =>
+      p.type === _activeFilter ||
+      (_activeFilter === 'cap' && p.type === 'capemb')
+    );
+  }
   if (_activeGender !== 'all') {
     filtered = filtered.filter(p => p.gender === _activeGender || p.gender === 'unisex');
   }
@@ -891,6 +898,7 @@ function renderProducts(filter, gender) {
     tshirt:     t.type_tshirt,
     hoodie:     t.type_hoodie,
     cap:        t.type_cap,
+    capemb:     t.type_cap,  // same display label as 'cap'
     ziphoodie:  t.type_ziphoodie,
     longsleeve: t.type_longsleeve,
   };
@@ -1000,6 +1008,7 @@ function openProductModal(productId) {
     tshirt:     t.type_tshirt,
     hoodie:     t.type_hoodie,
     cap:        t.type_cap,
+    capemb:     t.type_cap,  // embroidered cap shares the "Cap" label
     ziphoodie:  t.type_ziphoodie,
     longsleeve: t.type_longsleeve,
   };

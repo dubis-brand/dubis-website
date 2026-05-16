@@ -63,6 +63,9 @@ const TEMPLATES = {
   'longsleeve-unisex': { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '2400'   },
   'longsleeve-women':  { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'sols',             sku: '02075'  },
   'cap-unisex':        { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-dtf', brand: 'as-colour',        sku: '1114'   },
+  // 2026-05-16: Embroidered cap (Flexfit 6245cm). normType strips hyphen
+  // from clothing_type='cap-emb' → 'capemb' → templateKey 'capemb-unisex'.
+  'capemb-unisex':     { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-emb', brand: 'flexfit',          sku: '6245cm' },
 };
 
 const SIZE_MAP = { S:'s', M:'m', L:'l', XL:'xl', '2XL':'2xl', '3XL':'3xl', 'One Size':'onesize' };
@@ -80,6 +83,7 @@ const COLOR_MAP = {
   'longsleeve-unisex': { Black:'black', White:'white', Cream:'sand', Navy:'navy', 'Forest Green':'forest-green', Gray:'sports-grey' },
   'longsleeve-women':  { Black:'deep-black', White:'white', Navy:'french-navy' },
   'cap-unisex':        { Black:'black', White:'white', Cream:'ecru', Navy:'navy' },
+  'capemb-unisex':     { Black:'black', White:'white', Navy:'navy', Cream:'stone', Charcoal:'dark-grey' },
 };
 
 const DARK = new Set(['Black','Charcoal','Navy','Forest Green']);
@@ -207,7 +211,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       jobs.push({
         productId: id,
         color,
-        size: normType(p.clothing_type) === 'cap' ? 'One Size' : 'M',
+        // 2026-05-16: caps (both 'cap' AS Colour DTF and 'cap-emb' Flexfit embroidered) → One Size.
+        size: (normType(p.clothing_type) === 'cap' || normType(p.clothing_type) === 'capemb') ? 'One Size' : 'M',
         type: p.clothing_type,
         gender: p.gender,
         slogan: p.slogan,
@@ -303,7 +308,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         console.log(`  [ERR] ${label} front — ${e.message}`);
       }
     }
-    if (backUrl && normType(job.type) !== 'cap') {
+    if (backUrl && normType(job.type) !== 'cap' && normType(job.type) !== 'capemb') {
       const out = path.join(OUT_DIR, `product-${job.productId}-${colorSafe}-back.png`);
       try {
         const bytes = await downloadTo(backUrl, out);

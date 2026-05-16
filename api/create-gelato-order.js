@@ -45,6 +45,11 @@ const TEMPLATES = {
   // Caps were entirely broken pre-2026-05-15. Old `gca_dad-hat_gsc_classic` no
   // longer exists; the live shape is `gca_hat_gsc_dad-hat ... _as-colour_1114` (DTF).
   'cap-unisex':        { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-dtf', brand: 'as-colour',        sku: '1114'   },
+  // 2026-05-16: Embroidered cap (DUBIS™ stitched, not printed). Premium tier
+  // alongside the AS Colour DTF cap. Same dad-hat silhouette, different print
+  // method. Use clothing_type='cap-emb' in dubis_products to route here.
+  // normType strips hyphens so the key becomes 'capemb-unisex'.
+  'capemb-unisex':     { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-emb', brand: 'flexfit',          sku: '6245cm' },
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -125,6 +130,16 @@ const COLOR_MAP = {
     'Navy':  'navy',
     // No Charcoal variant on AS Colour 1114 dad-hat — Charcoal removed from product 7.
   },
+  // 2026-05-16: Embroidered Flexfit 6245cm dad-hat. 5 site-friendly colors that
+  // map to real Flexfit catalog entries (verified live against
+  // /v3/products/apparel_product_gca_hat_..._flexfit_6245cm).
+  'capemb-unisex': {
+    'Black':     'black',
+    'White':     'white',
+    'Navy':      'navy',
+    'Cream':     'stone',       // closest natural-cotton tone
+    'Charcoal':  'dark-grey',   // closest charcoal tone (Flexfit hex #2E2E2E)
+  },
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -172,9 +187,12 @@ function getGelatoColor(type, gender, dubisColor) {
 function getDesignFiles(productId, color, designRef, productType) {
   const variant  = DARK_COLORS.has(color) ? 'white' : 'dark';
   const designId = designRef || productId;
-  // Caps use different file naming: cap_design_*.png (front only, no back)
+  // Caps use different file naming: cap_design_*.png (front only, no back).
+  // 'cap' = AS Colour 1114 DTF. 'capemb' = Flexfit 6245cm embroidery (product 20).
+  // Both reuse the same single-color text design — embroidery engines accept
+  // the same flat PNG and Gelato converts to thread.
   const v = `?v=${DESIGN_VERSION}`;
-  if (productType === 'cap') {
+  if (productType === 'cap' || productType === 'capemb') {
     return [
       { type: 'front', url: `${DESIGN_BASE_URL}/cap_design_${variant}.png${v}` },
     ];

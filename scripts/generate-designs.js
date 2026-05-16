@@ -377,7 +377,8 @@ async function fetchProductFromDB(productNumeric) {
     small: p.typography_small || '',
     big: p.typography_big || '',
     after: p.typography_after || '',
-    type: p.clothing_type === 'cap' ? 'cap' : (p.type || undefined),
+    // 'cap' (AS Colour DTF) and 'cap-emb' (Flexfit embroidered) both have no back design.
+    type: (p.clothing_type === 'cap' || p.clothing_type === 'cap-emb') ? 'cap' : (p.type || undefined),
   };
 }
 
