@@ -52,7 +52,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: dubis-website/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: System deps — node-canvas + Anton font (Impact-equivalent)
         run: |
@@ -66,7 +66,7 @@ jobs:
           fc-list | grep -i anton || (echo "Anton font failed to install" && exit 1)
 
       - name: Install npm deps
-        working-directory: dubis-website
+        working-directory: .
         run: npm ci --no-audit --no-fund
 
       - name: Show context
@@ -85,7 +85,7 @@ jobs:
       # fetches them via DESIGN_BASE_URL when rendering the draft mockup.
       # ──────────────────────────────────────────────────────────
       - name: 1️⃣ Generate print files (3600×4200 PNGs for Gelato)
-        working-directory: dubis-website
+        working-directory: .
         env:
           DUBIS_FONT_PATH: /home/runner/.fonts/Anton-Regular.ttf
           DUBIS_FONT_FAMILY: Anton
@@ -101,7 +101,7 @@ jobs:
       # creating the Gelato draft or Gelato will get 404.
       # ──────────────────────────────────────────────────────────
       - name: 2️⃣ Commit + push print files (pre-Gelato)
-        working-directory: dubis-website
+        working-directory: .
         run: |
           git config user.name  "dubis-pipeline-bot"
           git config user.email "dubis-pipeline-bot@users.noreply.github.com"
@@ -126,7 +126,7 @@ jobs:
       # ──────────────────────────────────────────────────────────
       - name: 3️⃣ Create Gelato draft + download real Gelato mockups → images/
         id: gelato_draft
-        working-directory: dubis-website
+        working-directory: .
         env:
           GELATO_API_KEY: ${{ secrets.GELATO_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -151,7 +151,7 @@ jobs:
       # STEP 4 — Regenerate js/products.js from DB
       # ──────────────────────────────────────────────────────────
       - name: 4️⃣ Regenerate js/products.js from DB
-        working-directory: dubis-website
+        working-directory: .
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -161,7 +161,7 @@ jobs:
       # STEP 5 — Commit Gelato mockups + products.js
       # ──────────────────────────────────────────────────────────
       - name: 5️⃣ Commit + push Gelato mockups + products.js
-        working-directory: dubis-website
+        working-directory: .
         run: |
           git add images/ js/products.js
           if git diff --cached --quiet; then
