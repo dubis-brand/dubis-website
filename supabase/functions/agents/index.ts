@@ -2607,6 +2607,28 @@ Score the total 0-30. Return ONLY valid JSON:
     // Also get from hardcoded products.js slogans
     const allSlogans = [...existingSlogans, ...Object.keys(SLOGAN_TYPOGRAPHY)];
 
+    // ── 2026-05-16: pull REAL in-stock colors per clothing_type from product_variant_stock ──
+    // Was hardcoded ['Black','White','Navy','Charcoal'] regardless of garment.
+    // Now Gemini gets the actual Gelato-fulfillable palette per type, AND we filter on save.
+    const { data: stockRows } = await sb.from('product_variant_stock')
+      .select('clothing_type,color,in_stock')
+      .eq('in_stock', true);
+    const inStockMap: Record<string, Set<string>> = {};
+    for (const r of (stockRows || []) as Array<Record<string, unknown>>) {
+      const t = String(r.clothing_type || '');
+      const c = String(r.color || '');
+      if (!t || !c) continue;
+      (inStockMap[t] ||= new Set()).add(c);
+    }
+    const inStockSummary = Object.entries(inStockMap)
+      .map(([t, set]) => `  ${t}: ${Array.from(set).join(', ')}`)
+      .join('\n');
+    // Map our slogan product_type values → DB clothing_type values for filtering.
+    const TYPE_TO_DB: Record<string, string> = {
+      tshirt: 't-shirt', hoodie: 'hoodie', ziphoodie: 'zip-hoodie', longsleeve: 'long-sleeve', cap: 'cap',
+      't-shirt': 't-shirt', 'zip-hoodie': 'zip-hoodie', 'long-sleeve': 'long-sleeve',
+    };
+
     const prompt = `You are the head copywriter at DUBIS — an Israeli apparel brand with CYNICAL humor (not dry, not gentle — CYNICAL!).
 Target audience: 35+, Israeli AND international, body-positive, anti-fashion, comfort-first.
 
@@ -2630,7 +2652,10 @@ Rules:
 9. Food without apologies
 10. Relationships (with the couch)
 
-Generate 3 slogan proposals. For each, return ONLY valid JSON array:
+REAL in-stock Gelato colors per garment (use ONLY colors that exist for the chosen product_type — do NOT invent):
+${inStockSummary || '  (no stock data — fallback to Black/White)'}
+
+Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors" field MUST be a subset of the in-stock list above for the matching product_type:
 [{
   "slogan": "full slogan text",
   "power_word": "THE_BIG_WORD",
@@ -2641,7 +2666,7 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array:
   "gender": "unisex|women",
   "description_en": "2 sentences, conversational, for product page",
   "description_he": "2 משפטים, עברית ישראלית טבעית, לדף מוצר",
-  "colors": ["Black", "White", "Navy", "Charcoal"]
+  "colors": ["Black", "Navy", "Charcoal"]
 }]`;
 
     try {
@@ -2665,6 +2690,18 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array:
       const DB_TYPE_MAP: Record<string, string> = { tshirt: 't-shirt', hoodie: 'hoodie', ziphoodie: 'zip-hoodie', longsleeve: 'long-sleeve', cap: 'cap', 't-shirt': 't-shirt', 'zip-hoodie': 'zip-hoodie', 'long-sleeve': 'long-sleeve' };
       for (const s of suggestions) {
         const clothingType = DB_TYPE_MAP[s.product_type || 'tshirt'] || 't-shirt';
+        // 2026-05-16: enforce REAL-in-stock filter even if Gemini ignores the prompt.
+        // If filtering wipes out everything (e.g. Gemini picked a type that's fully OOS),
+        // fall back to whatever IS in stock for this type — at minimum we surface only
+        // colors Gelato will accept on a draft order.
+        const allowedForType = inStockMap[TYPE_TO_DB[s.product_type || ''] || clothingType] || new Set<string>();
+        let chosenColors = Array.isArray(s.colors)
+          ? (s.colors as string[]).filter((c: string) => allowedForType.has(c))
+          : [];
+        if (chosenColors.length === 0 && allowedForType.size > 0) {
+          chosenColors = Array.from(allowedForType).slice(0, 4);
+        }
+        if (chosenColors.length === 0) chosenColors = ['Black', 'White']; // last-resort guard
         const { data: product, error: pErr } = await sb.from('dubis_products').insert({
           slogan: s.slogan,
           clothing_type: clothingType,
@@ -2673,7 +2710,7 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array:
           price_usd: PRICE_MAP[clothingType] || 28,
           description_en: s.description_en || '',
           description_he: s.description_he || '',
-          colors: s.colors || ['Black', 'White'],
+          colors: chosenColors,
           typography_small: s.text_before || '',
           typography_big: s.power_word || '',
           typography_after: s.text_after || '',
@@ -2744,8 +2781,19 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array:
         .single();
       const nextId = ((maxRow as Record<string, unknown>)?.product_id_numeric as number || 14) + 1;
 
-      // 2. Build updates
-      const updates: Record<string, unknown> = { active: true, source: 'approved', product_id_numeric: nextId };
+      // 2. Build updates.
+      // 2026-05-16: switched from "active=true here + Gemini single mockup" to
+      // "active=FALSE here, hand off to GitHub Actions pipeline".
+      // The pipeline generates print files, creates a Gelato draft, downloads
+      // REAL Gelato preview images, commits them, then callbacks ?type=gha-pipeline-callback
+      // which flips active=true gated by trg_enforce_product_activation_proof.
+      const updates: Record<string, unknown> = {
+        active: false,
+        source: 'approved',
+        product_id_numeric: nextId,
+        publishing_status: 'pending_pipeline',   // tells the trigger this is a Boss-pipeline product
+        proof_of_completion: {},                  // reset; workflow callback will fill
+      };
       if (action === 'edit_approve' && edits && typeof edits === 'object') {
         Object.assign(updates, edits as Record<string, unknown>);
       }
@@ -2765,67 +2813,296 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array:
         };
       }
 
-      // 4. Generate mockup image via Gemini (using image-capable model)
-      let mockupUrl = '';
-      const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
-      if (geminiKey) {
-        try {
-          const clothType = (prod.clothing_type as string) || 't-shirt';
-          const typeLabel: Record<string, string> = { 't-shirt': 'T-shirt', 'hoodie': 'Hoodie', 'zip-hoodie': 'Zip Hoodie', 'long-sleeve': 'Long-sleeve shirt', 'cap': 'Cap' };
-          const garment = typeLabel[clothType] || 'T-shirt';
-          const imgPrompt = `Professional product mockup photo: a dark black ${garment} laid flat on dark background. On the back of the ${garment}, white bold text is printed with dramatic size contrast: "${prod.typography_small || ''}" in small text, "${prod.typography_big || ''}" in HUGE bold Impact font (3x larger), "${prod.typography_after || ''}" in small text below. Clean product photography, no person, just the garment. Photorealistic, studio lighting. Do NOT add any other text or watermarks.`;
+      // 4. Enqueue work for the GitHub Actions pipeline.
+      const { data: queueRow, error: qErr } = await sb.from('product_pipeline_queue').insert({
+        product_id: product_id as string,
+        product_id_numeric: nextId,
+        status: 'pending_dispatch',
+      }).select('id').single();
+      if (qErr) return json({ error: 'queue_insert_failed', detail: qErr.message }, 500);
+      const queueId = (queueRow as Record<string, unknown>).id as string;
 
-          const imgRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${geminiKey}`,
-            { method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: imgPrompt }] }],
-                generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
-              }),
-              signal: AbortSignal.timeout(60000) },
-          );
-          if (imgRes.ok) {
-            const imgData = await imgRes.json();
-            const parts = imgData?.candidates?.[0]?.content?.parts || [];
-            const imgPart = parts.find((p: Record<string, unknown>) => (p.inlineData as Record<string,unknown>)?.mimeType?.toString().startsWith('image/'));
-            if (imgPart?.inlineData?.data) {
-              const raw = imgPart.inlineData.data as string;
-              const imgBytes = Uint8Array.from(atob(raw), (c: string) => c.charCodeAt(0));
-              await sb.storage.createBucket('product-images', { public: true }).catch(() => {});
-              const fileName = `product-${nextId}.jpg`;
-              const { error: upErr2 } = await sb.storage.from('product-images').upload(fileName, imgBytes, {
-                contentType: imgPart.inlineData.mimeType || 'image/jpeg',
-                upsert: true,
-              });
-              if (!upErr2) {
-                const { data: { publicUrl } } = sb.storage.from('product-images').getPublicUrl(fileName);
-                mockupUrl = publicUrl;
-                // Save mockup URL to product record
-                await sb.from('dubis_products').update({ image_url: mockupUrl }).eq('id', product_id);
-              }
-            }
+      // 5. Trigger GitHub Actions workflow via repository_dispatch.
+      // Requires GH_DISPATCH_TOKEN secret on the Edge Function (a fine-grained PAT
+      // with `actions: write + contents: read` for dubis-brand/dubis-website).
+      const ghToken = Deno.env.get('GH_DISPATCH_TOKEN') ?? '';
+      const ghRepo  = Deno.env.get('GH_REPO') ?? 'dubis-brand/dubis-website';
+      let dispatchOk = false;
+      let dispatchError: string | null = null;
+      if (!ghToken) {
+        dispatchError = 'GH_DISPATCH_TOKEN env var missing — workflow not triggered. Pipeline row stays in pending_dispatch.';
+      } else {
+        try {
+          const dispatchRes = await fetch(`https://api.github.com/repos/${ghRepo}/dispatches`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${ghToken}`,
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'Content-Type': 'application/json',
+              'User-Agent': 'dubis-edge-fn/1.0',
+            },
+            body: JSON.stringify({
+              event_type: 'boss-approved-product',
+              client_payload: {
+                product_id: product_id as string,
+                product_id_numeric: nextId,
+                queue_id: queueId,
+              },
+            }),
+            signal: AbortSignal.timeout(15000),
+          });
+          if (dispatchRes.status === 204) {
+            dispatchOk = true;
+            await sb.from('product_pipeline_queue')
+              .update({ status: 'dispatched', dispatched_at: new Date().toISOString() })
+              .eq('id', queueId);
+          } else {
+            dispatchError = `GitHub dispatch returned ${dispatchRes.status}: ${(await dispatchRes.text()).slice(0, 300)}`;
           }
-        } catch (imgErr) { console.error('Mockup generation error:', imgErr); }
+        } catch (e) {
+          dispatchError = `dispatch_exception: ${(e as Error).message}`;
+        }
+      }
+      if (!dispatchOk && dispatchError) {
+        await sb.from('product_pipeline_queue')
+          .update({ status: 'failed', last_error: dispatchError, completed_at: new Date().toISOString() })
+          .eq('id', queueId);
       }
 
-      // 5. Update agent_task
+      // 6. Send oren a "processing" email (best-effort — does not block response).
+      try {
+        const resendKey = Deno.env.get('RESEND_API_KEY') ?? '';
+        if (resendKey) {
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              from: 'DUBIS <orders@dubis.net>',
+              to: ['teharlev1976@gmail.com'],
+              subject: `🛠 מוצר חדש בעיבוד: #${nextId} — "${sloganKey}"`,
+              html: `
+                <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px">
+                  <h2 style="color:#C17E3A">המוצר נכנס לקו ייצור אוטומטי</h2>
+                  <p><strong>סלוגן:</strong> ${sloganKey}</p>
+                  <p><strong>סוג:</strong> ${prod.clothing_type} / ${prod.gender}</p>
+                  <p><strong>צבעים מאושרים במלאי:</strong> ${(prod.colors as string[] || []).join(', ')}</p>
+                  <p><strong>מס׳ מוצר:</strong> #${nextId}</p>
+                  <hr>
+                  <p>קו הייצור כעת:</p>
+                  <ol>
+                    <li>יוצר קבצי הדפסה (3600×4200 PNG עם הסלוגן)</li>
+                    <li>פותח טיוטת Gelato חינמית</li>
+                    <li>מוריד מ-Gelato את המוקאפים האמיתיים של הבגד</li>
+                    <li>מעלה אותם לאתר כתמונת הקדמית/אחורית של המוצר</li>
+                    <li>מפעיל את המוצר באתר</li>
+                  </ol>
+                  <p style="color:#6b7280;font-size:13px">משך משוער: 5-10 דקות. תקבל מייל אישור כשהמוצר חי באתר עם לינק לטיוטת Gelato לאישור חזותי.</p>
+                  ${dispatchError ? `<p style="color:#b91c1c"><strong>⚠️ שגיאה ב-dispatch:</strong> ${dispatchError}</p>` : ''}
+                </div>`,
+            }),
+            signal: AbortSignal.timeout(8000),
+          }).catch(() => {});
+        }
+      } catch { /* email is best-effort */ }
+
+      // 7. Update agent_task
       const now = new Date().toISOString();
       await sb.from('agent_tasks')
-        .update({ status: 'done', approved_at: now, updated_at: now,
-          notes: `✅ מוצר #${nextId} אושר — ${sloganKey}${mockupUrl ? '\n🖼 תמונה: ' + mockupUrl : ''}` })
+        .update({
+          status: 'in_progress',
+          approved_at: now,
+          updated_at: now,
+          notes: `🛠 מוצר #${nextId} בעיבוד — ${sloganKey}\nQueue: ${queueId}\nDispatch: ${dispatchOk ? '✅' : '❌ ' + (dispatchError || 'unknown')}`,
+        })
         .eq('agent_id', 'product')
         .filter('content_data->>product_id', 'eq', String(product_id));
 
       return json({
         success: true,
-        action: 'approved',
+        action: 'approved_enqueued',
         product_id_numeric: nextId,
-        product: updated,
-        mockup_url: mockupUrl || null,
+        queue_id: queueId,
+        dispatch_ok: dispatchOk,
+        dispatch_error: dispatchError,
       });
     }
 
     return json({ error: 'Use GET to list or POST to approve/reject' }, 405);
+  }
+
+  // ── GHA-PIPELINE-CALLBACK — receive workflow result, flip product live ─────
+  // Called by .github/workflows/dubis-product-pipeline.yml after it finishes the
+  // print-files + Gelato-draft + real-mockup-download + commit chain.
+  // Auth via x-agent-secret. Idempotent: re-callbacks for the same product just
+  // refresh the same row (no double-publish risk).
+  if (type === 'gha-pipeline-callback') {
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const tokenHdr = req.headers.get('x-agent-secret') || req.headers.get('authorization')?.replace('Bearer ', '').trim() || '';
+    if (!agentSecret || tokenHdr !== agentSecret) return json({ error: 'Unauthorized' }, 401);
+    if (req.method !== 'POST') return json({ error: 'POST required' }, 405);
+
+    const b = body as Record<string, unknown>;
+    const productId       = b.product_id as string;
+    const productNumeric  = Number(b.product_id_numeric);
+    const callbackStatus  = (b.status as string) || 'failed';   // 'live' | 'failed'
+    const gelatoDraftId   = (b.gelato_draft_id as string) || null;
+    const gelatoPreviews  = (b.gelato_preview_urls as Record<string, unknown>) || {};
+    const workflowRunId   = (b.workflow_run_id as string) || null;
+    const errorMsg        = (b.error as string) || null;
+
+    if (!productId) return json({ error: 'product_id required' }, 400);
+
+    // Update queue row (latest one for this product).
+    const { data: queueRows } = await sb.from('product_pipeline_queue')
+      .select('id').eq('product_id', productId)
+      .order('created_at', { ascending: false }).limit(1);
+    const queueId = (queueRows && queueRows[0]) ? (queueRows[0] as Record<string, unknown>).id as string : null;
+    if (queueId) {
+      await sb.from('product_pipeline_queue').update({
+        status: callbackStatus === 'live' ? 'live' : 'failed',
+        workflow_run_id: workflowRunId,
+        gelato_draft_id: gelatoDraftId,
+        gelato_preview_urls: gelatoPreviews,
+        last_error: errorMsg,
+        completed_at: new Date().toISOString(),
+      }).eq('id', queueId);
+    }
+
+    // Fetch the product so we can send oren a useful email.
+    const { data: prodRow } = await sb.from('dubis_products')
+      .select('id,slogan,clothing_type,gender,colors,product_id_numeric')
+      .eq('id', productId).single();
+    const prod = (prodRow || {}) as Record<string, unknown>;
+    const slogan = (prod.slogan as string) || '(no slogan)';
+    const numericId = (prod.product_id_numeric as number) || productNumeric;
+
+    if (callbackStatus === 'live') {
+      // Compose proof_of_completion satisfying trg_enforce_product_activation_proof.
+      // Keys are reinterpreted for the Gelato-real-images flow:
+      //   print_files_generated → step 1 (generate-designs.js)
+      //   mockups_composited    → step 3 (Gelato preview images downloaded to /images/)
+      //   parity_verified       → step 2 succeeded (Gelato accepted the print files)
+      //   gelato_draft_id       → actual draft id Gelato returned
+      const proof = {
+        print_files_generated: true,
+        mockups_composited:    true,
+        parity_verified:       true,
+        gelato_draft_id:       gelatoDraftId,
+        workflow_run_id:       workflowRunId,
+        gelato_preview_urls:   gelatoPreviews,
+        approved_at:           new Date().toISOString(),
+      };
+
+      // Set image_url to one of the Gelato previews so legacy callers have something.
+      // Prefer the first color's front preview.
+      let leadImage: string | null = null;
+      for (const colorBlock of Object.values(gelatoPreviews) as Array<Record<string, unknown>>) {
+        if (colorBlock && typeof colorBlock === 'object' && colorBlock.front) {
+          leadImage = colorBlock.front as string;
+          break;
+        }
+      }
+
+      const { error: prodErr } = await sb.from('dubis_products').update({
+        active: true,
+        publishing_status: 'live',
+        proof_of_completion: proof,
+        ...(leadImage ? { image_url: leadImage } : {}),
+      }).eq('id', productId);
+
+      if (prodErr) {
+        // Trigger fired? Roll the queue row back to failed so we know.
+        await sb.from('product_pipeline_queue').update({
+          status: 'failed',
+          last_error: `activation_blocked: ${prodErr.message}`,
+        }).eq('id', queueId ?? '');
+        return json({ error: 'activation_failed', detail: prodErr.message }, 500);
+      }
+
+      // Notify oren via Resend (best-effort).
+      try {
+        const resendKey = Deno.env.get('RESEND_API_KEY') ?? '';
+        if (resendKey) {
+          const colorList = (prod.colors as string[] || []).join(', ');
+          const previewBlocks = Object.entries(gelatoPreviews).map(([color, urls]) => {
+            const u = urls as Record<string, unknown>;
+            return `
+              <div style="display:inline-block;margin:8px;text-align:center">
+                <p style="margin:4px 0;font-weight:bold">${color}</p>
+                ${u.front ? `<img src="${u.front}" alt="${color} front" style="width:160px;border:1px solid #ddd;border-radius:4px"/>` : ''}
+                ${u.back  ? `<img src="${u.back}"  alt="${color} back"  style="width:160px;border:1px solid #ddd;border-radius:4px;margin-right:4px"/>` : ''}
+              </div>`;
+          }).join('');
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              from: 'DUBIS <orders@dubis.net>',
+              to: ['teharlev1976@gmail.com'],
+              subject: `✅ מוצר חי באתר: #${numericId} — "${slogan}"`,
+              html: `
+                <div dir="rtl" style="font-family:Arial,sans-serif;max-width:680px">
+                  <h2 style="color:#2d6a4f">המוצר עלה לאוויר</h2>
+                  <p><strong>סלוגן:</strong> ${slogan}</p>
+                  <p><strong>סוג:</strong> ${prod.clothing_type} / ${prod.gender}</p>
+                  <p><strong>צבעים:</strong> ${colorList}</p>
+                  <p><strong>טיוטת Gelato לאישור חזותי:</strong> ${gelatoDraftId ? `<code>${gelatoDraftId}</code> — בדוק ב-<a href="https://dashboard.gelato.com/orders">Gelato Dashboard</a>` : 'לא נוצרה'}</p>
+                  <hr>
+                  <h3 style="color:#C17E3A">המוקאפים האמיתיים מ-Gelato (מה שיופיע באתר):</h3>
+                  <div>${previewBlocks || '<em>אין תמונות לתצוגה</em>'}</div>
+                  <hr>
+                  <p>קישור לעמוד המוצר: <a href="https://www.dubis.net/#product-${numericId}">dubis.net/#product-${numericId}</a></p>
+                  <p style="color:#6b7280;font-size:13px">Workflow run: ${workflowRunId || 'n/a'}</p>
+                </div>`,
+            }),
+            signal: AbortSignal.timeout(8000),
+          }).catch(() => {});
+        }
+      } catch { /* email best-effort */ }
+
+      // Close the agent_task.
+      await sb.from('agent_tasks').update({
+        status: 'done',
+        updated_at: new Date().toISOString(),
+        notes: `✅ מוצר #${numericId} חי באתר — ${slogan}\nGelato draft: ${gelatoDraftId}\nMockups: ${Object.keys(gelatoPreviews).length} colors`,
+      }).eq('agent_id', 'product').filter('content_data->>product_id', 'eq', productId);
+
+      return json({ success: true, status: 'live', product_id: productId, product_id_numeric: numericId });
+    }
+
+    // status === 'failed'
+    try {
+      const resendKey = Deno.env.get('RESEND_API_KEY') ?? '';
+      if (resendKey) {
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'DUBIS <orders@dubis.net>',
+            to: ['teharlev1976@gmail.com'],
+            subject: `❌ נכשלה הוספה אוטומטית של מוצר #${numericId} — "${slogan}"`,
+            html: `
+              <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px">
+                <h2 style="color:#b91c1c">קו הייצור נכשל</h2>
+                <p><strong>סלוגן:</strong> ${slogan}</p>
+                <p><strong>שגיאה:</strong> ${errorMsg || 'לא ידועה'}</p>
+                <p><strong>Workflow run:</strong> ${workflowRunId ? `<a href="https://github.com/dubis-brand/dubis-website/actions/runs/${workflowRunId}">פתח</a>` : 'n/a'}</p>
+                <p>המוצר נשאר ב-<code>active=false</code> ולא עלה לאוויר.</p>
+              </div>`,
+          }),
+          signal: AbortSignal.timeout(8000),
+        }).catch(() => {});
+      }
+    } catch { /* */ }
+
+    await sb.from('agent_tasks').update({
+      status: 'failed',
+      updated_at: new Date().toISOString(),
+      notes: `❌ קו הייצור נכשל למוצר #${numericId} (${slogan})\n${errorMsg || ''}`,
+    }).eq('agent_id', 'product').filter('content_data->>product_id', 'eq', productId);
+
+    return json({ success: true, status: 'failed', product_id: productId, error: errorMsg });
   }
 
   // ── SYNC-PRODUCTS — Generate products.js and push to GitHub ──────

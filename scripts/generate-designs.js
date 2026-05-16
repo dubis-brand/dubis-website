@@ -355,27 +355,29 @@ function generateCap(color, outPath) {
 }
 
 // ---------------------------------------------------------------------------
-// Fetch a single product from Supabase DB (for --product-id=X flag)
+// Fetch a single product from Supabase DB (for --product-numeric=N flag)
+// IMPORTANT: returns id = product_id_numeric (integer), NOT the row uuid —
+// the back-design filename must be back_design_19_white.png, not back_design_<uuid>_white.png.
 // ---------------------------------------------------------------------------
-async function fetchProductFromDB(productId) {
+async function fetchProductFromDB(productNumeric) {
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY for DB fetch');
   }
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/dubis_products?id=eq.${productId}&select=*`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/dubis_products?product_id_numeric=eq.${productNumeric}&select=*`, {
     headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
   });
   if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
   const rows = await res.json();
-  if (!rows.length) throw new Error(`Product ${productId} not found in DB`);
+  if (!rows.length) throw new Error(`Product with product_id_numeric=${productNumeric} not found in DB`);
   const p = rows[0];
   return {
-    id: p.id,
+    id: p.product_id_numeric,        // INTEGER — used in filename back_design_{id}_{color}.png
     phrase: p.phrase || p.slogan,
     layout: p.typography_layout || 'top-bottom',
     small: p.typography_small || '',
     big: p.typography_big || '',
     after: p.typography_after || '',
-    type: p.type
+    type: p.clothing_type === 'cap' ? 'cap' : (p.type || undefined),
   };
 }
 
@@ -399,16 +401,25 @@ async function main() {
   const warnings = [];
   let generated = 0;
 
-  // Check for --product-id=X flag
-  const productIdArg = process.argv.find(a => a.startsWith('--product-id='));
+  // Accept both --product-id=N (legacy) and --product-numeric=N (canonical, used by GHA workflow).
+  // Both expect an INTEGER matching dubis_products.product_id_numeric.
+  const productArg = process.argv.find(a => a.startsWith('--product-numeric=') || a.startsWith('--product-id='));
   let products = PRODUCTS;
 
-  if (productIdArg) {
-    const id = parseInt(productIdArg.split('=')[1]);
-    console.log(`Fetching product ${id} from Supabase...`);
-    const dbProduct = await fetchProductFromDB(id);
-    products = [dbProduct];
-    console.log(`Found: "${dbProduct.phrase}" (${dbProduct.layout})`);
+  if (productArg) {
+    const n = parseInt(productArg.split('=')[1]);
+    // If the product is already in the hardcoded array, prefer the hardcoded entry
+    // (it has hand-tuned typography). Otherwise fetch from DB (a freshly approved product).
+    const hardcoded = PRODUCTS.find(p => p.id === n);
+    if (hardcoded) {
+      products = [hardcoded];
+      console.log(`Product ${n}: using hardcoded entry → "${hardcoded.phrase}"`);
+    } else {
+      console.log(`Product ${n} not in hardcoded array — fetching from Supabase...`);
+      const dbProduct = await fetchProductFromDB(n);
+      products = [dbProduct];
+      console.log(`Found: "${dbProduct.phrase}" (${dbProduct.layout})`);
+    }
   }
 
   console.log('\n=== DUBIS Design Generator ===\n');
