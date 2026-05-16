@@ -1121,18 +1121,36 @@ function refreshModalPrice(productId) {
   const selectedSize  = document.querySelector(`#modal-sizes-${productId} .size-btn.selected`)?.dataset.size  || product.sizes[0];
   const eff = getVariantPrice(productId, selectedColor, selectedSize, basePrice);
   priceEl.textContent = formatPrice(eff);
-  // "Price varies" note — only show when this product has ≥ 1 variant priced differently from base.
+  // Compute the cheapest variant for this product so we can show the surcharge
+  // (תוספת) above the base when the selected color/size costs more. Falls back
+  // to basePrice if no variant map exists for this product.
   const noteEl = document.getElementById(`modal-price-note-${productId}`);
   if (noteEl) {
     const map = window.__DUBIS_PRICE_MAP?.[productId];
+    let cheapest = basePrice;
     let hasVariance = false;
     if (map) {
-      const allPrices = new Set();
-      allPrices.add(basePrice);
-      for (const c of Object.keys(map)) for (const s of Object.keys(map[c])) allPrices.add(map[c][s]);
-      hasVariance = allPrices.size > 1;
+      const allPrices = [basePrice];
+      for (const c of Object.keys(map)) for (const s of Object.keys(map[c])) allPrices.push(map[c][s]);
+      cheapest = Math.min(...allPrices);
+      hasVariance = new Set(allPrices).size > 1;
     }
-    noteEl.style.display = hasVariance ? '' : 'none';
+    const surcharge = Math.max(0, eff - cheapest);
+    if (surcharge > 0) {
+      // Show the exact surcharge for the currently-selected variant.
+      noteEl.textContent = (currentLang === 'he')
+        ? `תוספת ${formatPrice(surcharge)} עבור ${selectedColor} ${selectedSize}`
+        : `+${formatPrice(surcharge)} for ${selectedColor} ${selectedSize}`;
+      noteEl.style.display = '';
+    } else if (hasVariance) {
+      // Selected variant is the cheapest, but there are dearer ones. Hint that.
+      noteEl.textContent = (currentLang === 'he')
+        ? 'המחיר משתנה לפי צבע/מידה'
+        : 'Price varies by color/size';
+      noteEl.style.display = '';
+    } else {
+      noteEl.style.display = 'none';
+    }
   }
 }
 
