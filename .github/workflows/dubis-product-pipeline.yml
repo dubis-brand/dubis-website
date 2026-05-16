@@ -29,10 +29,16 @@ permissions:
   contents: write   # commits designs/ + images/ + js/products.js
   id-token: write
 
-# Serialize runs to avoid parallel-push races on main. Multiple approvals in
-# quick succession queue here instead of racing each other's git push.
+# Per-product concurrency: each product has its own group, so different
+# products run in parallel but the SAME product can't have two concurrent
+# runs. Git push races between products are handled by retry-with-rebase
+# in steps 2 + 5 (up to 5 attempts each).
+#
+# CRITICAL: a global concurrency group was tried previously and cancelled
+# 7 of 8 queued runs — GitHub Actions only keeps the latest-queued + the
+# in-progress, dropping all middle ones. Per-product avoids that trap.
 concurrency:
-  group: dubis-product-pipeline
+  group: dubis-product-pipeline-${{ github.event.client_payload.product_id || github.event.inputs.product_id }}
   cancel-in-progress: false
 
 jobs:
