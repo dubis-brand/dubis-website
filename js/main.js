@@ -70,6 +70,11 @@ window.__DUBIS_PRICE_MAP = window.__DUBIS_PRICE_MAP || null;
     }
     window.__DUBIS_STOCK_MAP = stockMap;
     window.__DUBIS_PRICE_MAP = priceMap;
+    // Re-render catalog cards so the "From X" prefix + premium-color marker
+    // appear once the variant prices land (the initial render used base price).
+    if (typeof renderProducts === 'function' && document.querySelector('.product-card')) {
+      try { renderProducts(); } catch (_) {}
+    }
     // Re-render modal if already open so badges appear without a reopen
     const openPid = document.querySelector('#product-modal.open [id^="modal-img-"]')?.id?.replace('modal-img-', '');
     if (openPid && typeof refreshStockUi === 'function') refreshStockUi(Number(openPid));
@@ -86,6 +91,47 @@ function getVariantPrice(productId, color, size, basePrice) {
   const c = p[color];        if (!c) return basePrice;
   const v = c[size];
   return (typeof v === 'number' && Number.isFinite(v)) ? v : basePrice;
+}
+
+// Returns the cheapest variant price for this product (used as the "from X"
+// price on catalog cards when there is price variance across color/size).
+function getCheapestVariantPrice(productId, basePrice) {
+  const map = window.__DUBIS_PRICE_MAP?.[productId];
+  if (!map) return basePrice;
+  let min = basePrice;
+  for (const c of Object.keys(map)) for (const s of Object.keys(map[c])) {
+    const v = map[c][s];
+    if (typeof v === 'number' && v < min) min = v;
+  }
+  return min;
+}
+
+// True when this product has ≥ 2 distinct prices across its variants — the
+// catalog card should then show "From ₪X" rather than a single flat price.
+function hasPriceVariance(productId, basePrice) {
+  const map = window.__DUBIS_PRICE_MAP?.[productId];
+  if (!map) return false;
+  const all = new Set([basePrice]);
+  for (const c of Object.keys(map)) for (const s of Object.keys(map[c])) all.add(map[c][s]);
+  return all.size > 1;
+}
+
+// "Premium color" = this color's cheapest size still costs more than the
+// product's overall cheapest variant. Used to mark swatches that carry a
+// color surcharge (Cream/Forest Green on hoodies, Forest Green on p8, etc.)
+// before the customer opens the modal.
+function isPremiumColor(productId, color) {
+  const map = window.__DUBIS_PRICE_MAP?.[productId];
+  if (!map || !map[color]) return false;
+  const colorPrices = Object.values(map[color]).filter(v => typeof v === 'number');
+  if (!colorPrices.length) return false;
+  const colorMin = Math.min(...colorPrices);
+  let overallMin = Infinity;
+  for (const c of Object.keys(map)) for (const s of Object.keys(map[c])) {
+    const v = map[c][s];
+    if (typeof v === 'number' && v < overallMin) overallMin = v;
+  }
+  return Number.isFinite(overallMin) && colorMin > overallMin;
 }
 
 function isVariantInStock(productId, color, size) {
@@ -854,16 +900,23 @@ function renderProducts(filter, gender) {
       <div class="product-info">
         <div class="product-phrase">"${product.phrase}"</div>
         <div class="product-colors">
-          ${product.colors.map(c => `
-            <span class="color-dot ${c === displayColor ? 'active-color' : ''}"
-              title="${c}"
+          ${product.colors.map(c => {
+            const premium = isPremiumColor(product.id, c);
+            const fromLabel = currentLang === 'he' ? 'תוספת לצבע פרימיום' : 'premium color surcharge';
+            return `
+            <span class="color-dot${c === displayColor ? ' active-color' : ''}${premium ? ' premium-color' : ''}"
+              title="${c}${premium ? ' — ' + fromLabel : ''}"
               style="background:${colorToHex(c)}"
               onclick="event.stopPropagation(); selectCardColor(${product.id}, '${c}', this)">
-            </span>
-          `).join('')}
+            </span>`;
+          }).join('')}
         </div>
         <div class="product-bottom">
-          <div class="product-price">${formatPrice(product.price)}</div>
+          <div class="product-price">${
+            hasPriceVariance(product.id, product.price)
+              ? `<span class="price-from">${currentLang === 'he' ? 'החל מ-' : 'From '}</span>${formatPrice(getCheapestVariantPrice(product.id, product.price))}`
+              : formatPrice(product.price)
+          }</div>
           <div class="product-shipping-note">${(translations[currentLang]||translations.en).shipping_note}</div>
           <div class="stock-badge${getStockNum(product.id) > 10 ? ' ok' : ''}">${currentLang === 'he' ? `נשארו ${getStockNum(product.id)} יחידות` : `Only ${getStockNum(product.id)} left`}</div>
         </div>

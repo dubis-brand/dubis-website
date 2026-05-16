@@ -679,12 +679,44 @@ h1, h2, h3, h4 {
     margin-right: 4px;
     cursor: pointer;
     transition: transform 0.15s, box-shadow 0.15s, outline 0.15s;
+    position: relative;
 }
 
 .color-dot.active-color {
     outline: 2px solid var(--charcoal);
     outline-offset: 2px;
 }
+
+/* Premium-color marker — small honey-tinted "+" badge top-right of the swatch.
+   Signals to the customer (BEFORE opening the modal) that this color carries
+   a surcharge. Tooltip on the dot explains why. */
+.color-dot.premium-color::after {
+    content: '+';
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--honey, #C17E3A);
+    color: #fff;
+    font-size: 10px;
+    line-height: 12px;
+    font-weight: 700;
+    text-align: center;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+}
+
+/* "From " prefix on the catalog price — slightly muted so the number stays
+   the dominant glyph, but still legible at small sizes. */
+.product-price .price-from {
+    font-size: 0.72em;
+    font-weight: 500;
+    color: var(--charcoal-60, #6b6b6b);
+    margin-right: 2px;
+}
+body[dir="rtl"] .product-price .price-from { margin-left: 2px; margin-right: 0; }
 
 /* ── Thumbnail strip ─────────────────────────────────────────── */
 .modal-thumbnails {
