@@ -3227,9 +3227,12 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors
   // Auth via x-agent-secret. Idempotent: re-callbacks for the same product just
   // refresh the same row (no double-publish risk).
   if (type === 'gha-pipeline-callback') {
-    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const agentSecret  = Deno.env.get('AGENT_SECRET') ?? '';
+    const ghaSecret    = Deno.env.get('GHA_CALLBACK_SECRET') ?? '';
     const tokenHdr = req.headers.get('x-agent-secret') || req.headers.get('authorization')?.replace('Bearer ', '').trim() || '';
-    if (!agentSecret || tokenHdr !== agentSecret) return json({ error: 'Unauthorized' }, 401);
+    // Accept either AGENT_SECRET (legacy) or GHA_CALLBACK_SECRET (preferred for GHA — separate so rotating one doesn't break the other).
+    const authed = (agentSecret && tokenHdr === agentSecret) || (ghaSecret && tokenHdr === ghaSecret);
+    if (!authed) return json({ error: 'Unauthorized' }, 401);
     if (req.method !== 'POST') return json({ error: 'POST required' }, 405);
 
     const b = body as Record<string, unknown>;
@@ -5134,6 +5137,6 @@ ${items.join('\n')}
   }
 
   return json({
-    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image, meta-ads-manage, shopping-feed, gelato-discovery',
+    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, weekly-marketing-plan, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image, meta-ads-manage, shopping-feed, gelato-discovery',
   }, 400);
 });
