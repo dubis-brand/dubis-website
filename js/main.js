@@ -1782,8 +1782,17 @@ async function loadProductReviews() {
 document.addEventListener('DOMContentLoaded', async () => {
   loadCart();
   checkCookieConsent();
+  // Wait for DB catalog (if products.js kicked off loadFromDB() async) BEFORE
+  // overriding prices and rendering — otherwise the hero CTA's Math.min runs
+  // against the stale static seed instead of the live catalog.
+  if (window.dubisProductsReady && typeof window.dubisProductsReady.then === 'function') {
+    try { await window.dubisProductsReady; } catch (e) { /* fall back to static */ }
+  }
   await loadPriceOverrides();
   await detectLanguage(); // IP-based geo (IL→HE, else EN); falls back to EN within 3s on failure
+  // Belt-and-suspenders: re-run translateUI on the next tick in case loadFromDB
+  // resolved late and mutated products[] after detectLanguage finished.
+  setTimeout(() => { try { translateUI(currentLang); } catch(e) {} }, 0);
   initScrollAnimations();
   loadProductReviews(); // Load reviews for badges (non-blocking)
 });
