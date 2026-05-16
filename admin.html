@@ -3465,22 +3465,43 @@
 
   // Fetches in_stock totals per product from product_variant_stock + annotates _allProducts
   let _productStockStatus = {}; // {pid: {total, inStock, hasData}}
+  let _productPricing = {};     // {pid: { variants: [{color,size,cost_us,cost_il,sell_price}], cost_us_min, cost_us_max, cost_il_min, cost_il_max }}
+  let _shipRates = { us: null, il: null }; // from app_config
   async function _loadStockDataForAdmin() {
     try {
-      const { data, error } = await _sb.from('product_variant_stock').select('product_id_numeric,in_stock');
+      // Select includes pricing columns added 2026-05-16 (per-color/size cost + sell).
+      const { data, error } = await _sb.from('product_variant_stock')
+        .select('product_id_numeric,color,size,in_stock,gelato_cost_us_usd,gelato_cost_usd,sell_price_usd,cost_synced_at');
       if (error || !Array.isArray(data)) return;
       _productStockStatus = {};
+      _productPricing = {};
       for (const row of data) {
         const pid = row.product_id_numeric;
         if (!_productStockStatus[pid]) _productStockStatus[pid] = { total: 0, inStock: 0, hasData: true };
         _productStockStatus[pid].total++;
         if (row.in_stock) _productStockStatus[pid].inStock++;
+        // Pricing aggregate
+        if (!_productPricing[pid]) _productPricing[pid] = { variants: [], cost_us_min: Infinity, cost_us_max: -Infinity, cost_il_min: Infinity, cost_il_max: -Infinity, has_pricing: false };
+        const cu = row.gelato_cost_us_usd != null ? Number(row.gelato_cost_us_usd) : null;
+        const ci = row.gelato_cost_usd    != null ? Number(row.gelato_cost_usd)    : null;
+        _productPricing[pid].variants.push({ color: row.color, size: row.size, cost_us: cu, cost_il: ci, sell_price: row.sell_price_usd != null ? Number(row.sell_price_usd) : null });
+        if (cu != null) { _productPricing[pid].has_pricing = true; if (cu < _productPricing[pid].cost_us_min) _productPricing[pid].cost_us_min = cu; if (cu > _productPricing[pid].cost_us_max) _productPricing[pid].cost_us_max = cu; }
+        if (ci != null) { _productPricing[pid].has_pricing = true; if (ci < _productPricing[pid].cost_il_min) _productPricing[pid].cost_il_min = ci; if (ci > _productPricing[pid].cost_il_max) _productPricing[pid].cost_il_max = ci; }
       }
       // Mark products without any stock rows as no-data (will be considered visible)
       _allProducts.forEach(p => {
         if (!_productStockStatus[p.id]) _productStockStatus[p.id] = { total: 0, inStock: 0, hasData: false };
+        if (!_productPricing[p.id]) _productPricing[p.id] = { variants: [], cost_us_min: null, cost_us_max: null, cost_il_min: null, cost_il_max: null, has_pricing: false };
       });
-    } catch (e) { console.warn('admin stock load failed', e); }
+    } catch (e) { console.warn('admin stock+pricing load failed', e); }
+    // Shipping rates from app_config (synced daily by gelato-stock-check)
+    try {
+      const { data: rows } = await _sb.from('app_config').select('key,value').in('key', ['gelato_ship_us_usd', 'gelato_ship_il_usd']);
+      for (const r of (rows || [])) {
+        if (r.key === 'gelato_ship_us_usd') _shipRates.us = Number(r.value);
+        if (r.key === 'gelato_ship_il_usd') _shipRates.il = Number(r.value);
+      }
+    } catch (e) { console.warn('admin ship-rates load failed', e); }
     // ── Storage image URLs (final fallback when local /images/* are missing). ──
     // Used by renderProductCards onerror chain for products whose per-color mockups
     // haven't been generated yet (e.g. newly-added products with only a Supabase
@@ -3583,41 +3604,60 @@
             <span class="product-stock-badge" style="background:${_stockSummary(p.id).color}22;color:${_stockSummary(p.id).color};border:1px solid ${_stockSummary(p.id).color}66;border-radius:4px;padding:2px 6px;font-size:0.7rem;font-weight:600;margin-inline-start:4px">${_stockSummary(p.id).label}</span>
           </div>
           <div class="product-phrase">"${p.phrase}"</div>
-          <div class="product-meta">$${p.price} · ${p.typeLabel}</div>
+          <div class="product-meta">$${p.price} base · ${p.typeLabel}</div>
           <div class="product-uid" title="${uid}">${uid.split('_gqa')[0]}</div>
           <div class="profit-grid" id="profit-grid-${p.id}">
-            <div class="cost-row">
-              <span>Gelato cost</span>
-              <span id="gc-${p.id}" class="cost-val">loading…</span>
-            </div>
-            <div class="cost-row" title="Gelato standard ground to a US address (CA, 90210). Real customer market.">
-              <span>Ship cost (US)</span>
-              <span id="sc-us-${p.id}" class="cost-val">~$5.99</span>
-            </div>
-            <div class="cost-row" style="opacity:0.55;font-size:11px" title="Test orders sent to Israel during QA. NOT what real US customers cost us.">
-              <span>Ship cost (IL test)</span>
-              <span>~$12.87</span>
-            </div>
-            <div class="cost-row" title="What the customer pays for shipping at checkout (free over $60).">
-              <span>Customer pays ship</span>
-              <span style="color:#7fb069">$8.99</span>
-            </div>
-            <div class="cost-row profit-row" title="Item margin only (sell - Gelato item cost). Shipping margin is separate: customer $8.99 - Gelato US ship.">
-              <span>Item profit</span>
-              <span id="gp-${p.id}" class="profit-val">—</span>
-            </div>
-            <div class="cost-row profit-row" title="Net per US order = item profit + (8.99 - ~5.99). If shipping > customer-paid, this goes red.">
-              <span>Net (US)</span>
-              <span id="np-us-${p.id}" class="profit-val">—</span>
-            </div>
+            ${(() => {
+              const pr = _productPricing[p.id] || { has_pricing: false };
+              const shipUs = _shipRates.us, shipIl = _shipRates.il;
+              if (!pr.has_pricing) return '<div class="cost-row" style="font-size:11px;color:#888;">⚠ אין נתוני עלות — הרץ sync</div>';
+              const range = (lo, hi) => lo === hi ? `$${lo.toFixed(2)}` : `$${lo.toFixed(2)}–$${hi.toFixed(2)}`;
+              // Margin = customer pays (sell_price + shipping) - (gelato_cost + gelato_shipping)
+              // Since shipping is full passthrough (customer pays = Gelato charges), margin = sell_price - gelato_cost.
+              const sellMin = pr.variants.reduce((m, v) => v.sell_price != null && v.sell_price < m ? v.sell_price : m, Infinity);
+              const sellMax = pr.variants.reduce((m, v) => v.sell_price != null && v.sell_price > m ? v.sell_price : m, -Infinity);
+              const baseSell = sellMin !== Infinity ? sellMin : Number(p.price);
+              const marginUsMin = baseSell - pr.cost_us_max;
+              const marginUsMax = (sellMax !== -Infinity ? sellMax : baseSell) - pr.cost_us_min;
+              const marginIlMin = baseSell - pr.cost_il_max;
+              const marginIlMax = (sellMax !== -Infinity ? sellMax : baseSell) - pr.cost_il_min;
+              const colorize = (n) => n < 0 ? '#c0392b' : n < 2 ? '#d4af37' : '#27ae60';
+              return `
+              <div class="cost-row" title="Gelato wholesale cost when fulfilling from US facility. Synced daily.">
+                <span>Cost US</span>
+                <span class="cost-val">${range(pr.cost_us_min, pr.cost_us_max)}</span>
+              </div>
+              <div class="cost-row" title="Gelato wholesale cost when fulfilling from EU/IL facility. Synced daily.">
+                <span>Cost IL</span>
+                <span class="cost-val">${range(pr.cost_il_min, pr.cost_il_max)}</span>
+              </div>
+              <div class="cost-row" title="Customer pays this verbatim at checkout — full Gelato passthrough.">
+                <span>Ship US (passthrough)</span>
+                <span class="cost-val">${shipUs != null ? '$' + shipUs.toFixed(2) : '—'}</span>
+              </div>
+              <div class="cost-row" title="Customer pays this verbatim at checkout — full Gelato passthrough.">
+                <span>Ship IL (passthrough)</span>
+                <span class="cost-val">${shipIl != null ? '$' + shipIl.toFixed(2) : '—'}</span>
+              </div>
+              <div class="cost-row profit-row" title="sell_price − Gelato US cost. Shipping margin is $0 (full passthrough).">
+                <span>Margin US</span>
+                <span class="profit-val" style="color:${colorize(marginUsMin)}">${marginUsMin === marginUsMax ? '$' + marginUsMin.toFixed(2) : '$' + marginUsMin.toFixed(2) + '–$' + marginUsMax.toFixed(2)}</span>
+              </div>
+              <div class="cost-row profit-row" title="sell_price − Gelato IL cost. NEGATIVE = losing money on every IL order.">
+                <span>Margin IL</span>
+                <span class="profit-val" style="color:${colorize(marginIlMin)}">${marginIlMin === marginIlMax ? '$' + marginIlMin.toFixed(2) : '$' + marginIlMin.toFixed(2) + '–$' + marginIlMax.toFixed(2)}</span>
+              </div>`;
+            })()}
           </div>
           <div class="price-edit">
-            <label>Price $</label>
+            <label>Base $</label>
             <input type="number" id="sp-${p.id}" value="${p.price}" min="1" max="999" step="0.5"
-                   onchange="saveProductPrice(${p.id}, +this.value, this)" />
+                   onchange="saveProductPrice(${p.id}, +this.value, this)"
+                   title="Base price in dubis_products. Per-variant overrides go in the 💵 modal." />
             <span class="price-save-status" id="ps-${p.id}">✓ saved</span>
           </div>
           <div class="product-actions">
+            <button class="btn-sm" onclick="openVariantPricing(${p.id}, this)" title="ערוך מחיר פר (color, size)" style="background:#c17e3a;color:white;border-color:#c17e3a;">💵 מחירים פר variant</button>
             <button class="btn-sm" onclick="regenFrontMockup(${p.id}, this)" title="צור תמונת FRONT חדשה עם DUBIS™">🔄 חדש</button>
             <button class="btn-sm" onclick="copyUid('${uid}', this)" title="Copy full UID">Copy UID</button>
             <a class="btn-sm" href="https://www.dubis.net/#product-${p.id}" target="_blank" rel="noopener" style="text-decoration:none">צפה באתר →</a>
@@ -3633,6 +3673,163 @@
       if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy UID', 1500); }
     }).catch(() => prompt('Copy this UID:', uid));
   }
+
+  // ── Per-variant pricing modal ──────────────────────────
+  // Opens a table of (color × size) → cost US / cost IL / sell_price (editable) / margin
+  // Writes to product_variant_stock via the authenticated admin policy
+  // (admin_update_pvs_pricing — column-restricted to sell_price_usd + audit fields).
+  let _vpDirty = false;
+  let _vpCurrentPid = null;
+  window.openVariantPricing = async function openVariantPricing(productId, btn) {
+    _vpCurrentPid = productId;
+    _vpDirty = false;
+    const product = (_allProducts || []).find(p => p.id === productId);
+    if (!product) return alert('Product not found');
+    // Re-fetch fresh variants for THIS product so we don't show stale data after another edit.
+    const { data: variants, error } = await _sb
+      .from('product_variant_stock')
+      .select('color,size,gelato_cost_us_usd,gelato_cost_usd,sell_price_usd,cost_synced_at,price_set_by,price_set_at')
+      .eq('product_id_numeric', productId)
+      .order('color').order('size');
+    if (error) return alert('Load failed: ' + error.message);
+    let modal = document.getElementById('variant-pricing-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'variant-pricing-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:9999;';
+      modal.innerHTML = '<div id="vpm-inner" style="background:white;border-radius:12px;max-width:980px;width:92vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,0.3);"></div>';
+      modal.addEventListener('click', (e) => { if (e.target === modal) closeVariantPricing(); });
+      document.body.appendChild(modal);
+    }
+    const sizes = Array.from(new Set(variants.map(v => v.size)));
+    const colors = Array.from(new Set(variants.map(v => v.color)));
+    const SIZE_ORDER = ['S','M','L','XL','2XL','3XL','One Size'];
+    sizes.sort((a, b) => SIZE_ORDER.indexOf(a) - SIZE_ORDER.indexOf(b));
+    const shipUs = _shipRates.us, shipIl = _shipRates.il;
+    const fmt = (n) => n == null || !Number.isFinite(+n) ? '—' : '$' + Number(n).toFixed(2);
+    const lookup = (c, s) => variants.find(v => v.color === c && v.size === s);
+    const basePrice = Number(product.price || 0);
+    const inner = document.getElementById('vpm-inner');
+    inner.innerHTML = `
+      <div style="padding:1.25rem 1.5rem;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:1.2rem;font-weight:700;color:#2c2c2c;">#${product.id} · "${product.phrase}"</div>
+          <div style="font-size:0.85rem;color:#666;margin-top:4px;">מחיר פר (color, size). Empty cell = fall back ל-base $${basePrice}. Shipping ${shipUs != null ? '$'+shipUs.toFixed(2) : '—'} US / ${shipIl != null ? '$'+shipIl.toFixed(2) : '—'} IL passthrough.</div>
+        </div>
+        <button onclick="closeVariantPricing()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#666;">×</button>
+      </div>
+      <div style="overflow:auto;padding:1rem 1.5rem;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+          <thead>
+            <tr style="background:#f5f0e8;">
+              <th style="padding:8px 10px;text-align:right;position:sticky;right:0;background:#f5f0e8;">Color / Size</th>
+              ${sizes.map(s => `<th style="padding:8px 10px;text-align:center;min-width:130px;">${s}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${colors.map(c => `
+              <tr>
+                <td style="padding:8px 10px;font-weight:600;position:sticky;right:0;background:white;border-bottom:1px solid #eee;">${c}</td>
+                ${sizes.map(s => {
+                  const v = lookup(c, s);
+                  if (!v) return '<td style="padding:8px 10px;text-align:center;color:#ccc;border-bottom:1px solid #eee;">—</td>';
+                  const cu = v.gelato_cost_us_usd != null ? Number(v.gelato_cost_us_usd) : null;
+                  const ci = v.gelato_cost_usd    != null ? Number(v.gelato_cost_usd)    : null;
+                  const sp = v.sell_price_usd     != null ? Number(v.sell_price_usd)     : null;
+                  const effSell = sp != null ? sp : basePrice;
+                  const mUs = cu != null ? effSell - cu : null;
+                  const mIl = ci != null ? effSell - ci : null;
+                  const color = (m) => m == null ? '#888' : m < 0 ? '#c0392b' : m < 2 ? '#d4af37' : '#27ae60';
+                  return `
+                  <td style="padding:6px 8px;text-align:center;border-bottom:1px solid #eee;font-size:11px;">
+                    <div style="color:#666;line-height:1.3;">US ${fmt(cu)} · IL ${fmt(ci)}</div>
+                    <input type="number" step="1" min="0" placeholder="${basePrice}" value="${sp != null ? sp : ''}"
+                           data-color="${c}" data-size="${s}"
+                           onchange="onVariantSellChange(this)"
+                           style="width:70px;padding:4px 6px;margin:4px auto;border:1px solid #ccc;border-radius:4px;text-align:center;font-size:13px;font-weight:600;" />
+                    <div style="font-size:10px;line-height:1.2;">
+                      <span style="color:${color(mUs)};">US: ${fmt(mUs)}</span> ·
+                      <span style="color:${color(mIl)};">IL: ${fmt(mIl)}</span>
+                    </div>
+                  </td>
+                `;}).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:1rem 1.5rem;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:center;background:#fafafa;border-radius:0 0 12px 12px;">
+        <div id="vpm-status" style="font-size:0.85rem;color:#666;">השאר ריק כדי לרשת ממחיר הבסיס ($${basePrice})</div>
+        <div>
+          <button onclick="closeVariantPricing()" style="padding:8px 16px;background:#eee;border:1px solid #ccc;border-radius:6px;margin-inline-start:8px;cursor:pointer;">ביטול</button>
+          <button id="vpm-save" onclick="saveVariantPricing()" style="padding:8px 18px;background:#c17e3a;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">שמור שינויים</button>
+        </div>
+      </div>
+    `;
+    modal.style.display = 'flex';
+  };
+
+  window.closeVariantPricing = function () {
+    if (_vpDirty && !confirm('יש שינויים לא שמורים. לסגור בכל זאת?')) return;
+    const modal = document.getElementById('variant-pricing-modal');
+    if (modal) modal.style.display = 'none';
+    _vpDirty = false;
+    _vpCurrentPid = null;
+  };
+
+  window.onVariantSellChange = function (inputEl) {
+    _vpDirty = true;
+    const status = document.getElementById('vpm-status');
+    if (status) status.innerHTML = '<span style="color:#d4af37;">● שינויים לא שמורים</span>';
+    inputEl.style.background = '#fff8e1';
+  };
+
+  window.saveVariantPricing = async function () {
+    if (!_vpCurrentPid) return;
+    const modal = document.getElementById('variant-pricing-modal');
+    const inputs = modal.querySelectorAll('input[type="number"][data-color]');
+    const status = document.getElementById('vpm-status');
+    const saveBtn = document.getElementById('vpm-save');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'שומר…';
+    const { data: { session } } = await _sb.auth.getSession();
+    const userEmail = session?.user?.email || 'unknown';
+    const updates = [];
+    inputs.forEach(inp => {
+      const v = inp.value.trim();
+      updates.push({
+        product_id_numeric: _vpCurrentPid,
+        color: inp.dataset.color,
+        size: inp.dataset.size,
+        sell_price_usd: v === '' ? null : Number(v),
+        price_set_by: v === '' ? null : userEmail,
+        price_set_at: v === '' ? null : new Date().toISOString(),
+      });
+    });
+    // Update each variant individually (column-restricted policy doesn't support bulk UPSERT on existing rows
+    // with onConflict syntax via PostgREST; explicit UPDATE per row is safer + auditable.)
+    let ok = 0, fail = 0;
+    for (const u of updates) {
+      const { error } = await _sb
+        .from('product_variant_stock')
+        .update({ sell_price_usd: u.sell_price_usd, price_set_by: u.price_set_by, price_set_at: u.price_set_at })
+        .match({ product_id_numeric: u.product_id_numeric, color: u.color, size: u.size });
+      if (error) { fail++; console.warn('variant update fail', u, error.message); }
+      else ok++;
+    }
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'שמור שינויים';
+    if (fail > 0) {
+      status.innerHTML = `<span style="color:#c0392b;">⚠ ${fail} variants failed to save</span>`;
+    } else {
+      _vpDirty = false;
+      status.innerHTML = `<span style="color:#27ae60;">✓ ${ok} variants נשמרו</span>`;
+      // Reload pricing cache + re-render cards so the new margin shows
+      await _loadStockDataForAdmin();
+      renderProductCards();
+      setTimeout(closeVariantPricing, 800);
+    }
+  };
 
   // ── Product card image helpers ─────────────────────────
   function switchProductColor(productId, color, swatchEl) {

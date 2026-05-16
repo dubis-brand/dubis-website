@@ -40,29 +40,53 @@ function pickDisplayColor(product) {
 // Shape: { [productId]: { [color]: { [size]: boolean } } }
 // Missing key → optimistic in-stock (matches edge-function default).
 window.__DUBIS_STOCK_MAP = window.__DUBIS_STOCK_MAP || null;
+// Per-variant override prices: { [pid]: { [color]: { [size]: number } } }
+// Populated alongside stock. Drives the modal/cart "this color costs more" UX
+// because some Gelato variants (heather colors, premium SKUs, 3XL sizes) carry
+// a higher wholesale cost. oren sets these manually in admin → product_variant_stock.sell_price_usd.
+window.__DUBIS_PRICE_MAP = window.__DUBIS_PRICE_MAP || null;
 (async function loadStockMap() {
   try {
     const url  = window.DUBIS_SUPABASE_URL;
     const anon = window.DUBIS_SUPABASE_ANON;
     if (!url || !anon) return;
-    const res = await fetch(`${url}/rest/v1/product_variant_stock?select=product_id_numeric,color,size,in_stock`, {
+    const res = await fetch(`${url}/rest/v1/product_variant_stock?select=product_id_numeric,color,size,in_stock,sell_price_usd`, {
       headers: { 'apikey': anon, 'Authorization': `Bearer ${anon}` }
     });
     if (!res.ok) return;
     const rows = await res.json();
-    const map = {};
+    const stockMap = {};
+    const priceMap = {};
     for (const r of rows) {
       const pid = r.product_id_numeric;
-      if (!map[pid]) map[pid] = {};
-      if (!map[pid][r.color]) map[pid][r.color] = {};
-      map[pid][r.color][r.size] = !!r.in_stock;
+      if (!stockMap[pid]) stockMap[pid] = {};
+      if (!stockMap[pid][r.color]) stockMap[pid][r.color] = {};
+      stockMap[pid][r.color][r.size] = !!r.in_stock;
+      if (r.sell_price_usd != null) {
+        if (!priceMap[pid]) priceMap[pid] = {};
+        if (!priceMap[pid][r.color]) priceMap[pid][r.color] = {};
+        priceMap[pid][r.color][r.size] = Number(r.sell_price_usd);
+      }
     }
-    window.__DUBIS_STOCK_MAP = map;
+    window.__DUBIS_STOCK_MAP = stockMap;
+    window.__DUBIS_PRICE_MAP = priceMap;
     // Re-render modal if already open so badges appear without a reopen
     const openPid = document.querySelector('#product-modal.open [id^="modal-img-"]')?.id?.replace('modal-img-', '');
     if (openPid && typeof refreshStockUi === 'function') refreshStockUi(Number(openPid));
+    if (openPid && typeof refreshModalPrice === 'function') refreshModalPrice(Number(openPid));
   } catch (_) { /* fail-open: site works without stock data */ }
 })();
+
+// Returns the effective sell price for a variant. Falls back to product.price
+// when no per-variant override is set (the common case — most colors share base).
+function getVariantPrice(productId, color, size, basePrice) {
+  const map = window.__DUBIS_PRICE_MAP;
+  if (!map) return basePrice;
+  const p = map[productId]; if (!p) return basePrice;
+  const c = p[color];        if (!c) return basePrice;
+  const v = c[size];
+  return (typeof v === 'number' && Number.isFinite(v)) ? v : basePrice;
+}
 
 function isVariantInStock(productId, color, size) {
   const map = window.__DUBIS_STOCK_MAP;
@@ -935,7 +959,8 @@ function openProductModal(productId) {
       <div class="modal-limited-badge">&#128293; ${currentLang === 'he' ? 'מהדורה מוגבלת' : 'Limited Edition'}</div>
       <h2 class="modal-phrase">"${product.phrase}"</h2>
       <div class="modal-recent-buyers">&#128101; ${(function(name){let h=0;for(let i=0;i<name.length;i++)h=(h*31+name.charCodeAt(i))>>>0;return 8+h%13;})(product.phrase)} ${currentLang === 'he' ? 'אנשים קנו את זה ב-30 הימים האחרונים' : 'people bought this in the last 30 days'}</div>
-      <div class="modal-price">${formatPrice(product.price)}</div>
+      <div class="modal-price" id="modal-price-${product.id}" data-base-price="${product.price}">${formatPrice(getVariantPrice(product.id, product.colors[0], product.sizes[0], product.price))}</div>
+      <div class="modal-price-note" id="modal-price-note-${product.id}" style="font-size:0.78rem;color:#888;margin-top:-4px;margin-bottom:6px;display:none;">${currentLang === 'he' ? 'המחיר משתנה לפי צבע/מידה' : 'Price varies by color/size'}</div>
       <div class="modal-shipping-info">${t.modal_ships} · <span class="free-ship-badge">${t.modal_free_ship}</span></div>
       <div class="modal-dtg-badge">${t.modal_dtg}</div>
       <div class="modal-option">
@@ -1083,6 +1108,34 @@ function showSizeGuideTab(productId) {
   tabEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+// Recomputes the visible .modal-price for the currently-selected (color, size).
+// Called from selectColor + selectSize and from the loadStockMap re-render hook.
+// Also flips the "Price varies" note on when this product has > 1 distinct sell_price.
+function refreshModalPrice(productId) {
+  const priceEl = document.getElementById(`modal-price-${productId}`);
+  if (!priceEl) return;
+  const product = products.find(p => p.id === productId);
+  if (!product) return;
+  const basePrice = Number(priceEl.dataset.basePrice || product.price);
+  const selectedColor = document.querySelector(`#modal-colors-${productId} .color-btn.selected`)?.dataset.color || product.colors[0];
+  const selectedSize  = document.querySelector(`#modal-sizes-${productId} .size-btn.selected`)?.dataset.size  || product.sizes[0];
+  const eff = getVariantPrice(productId, selectedColor, selectedSize, basePrice);
+  priceEl.textContent = formatPrice(eff);
+  // "Price varies" note — only show when this product has ≥ 1 variant priced differently from base.
+  const noteEl = document.getElementById(`modal-price-note-${productId}`);
+  if (noteEl) {
+    const map = window.__DUBIS_PRICE_MAP?.[productId];
+    let hasVariance = false;
+    if (map) {
+      const allPrices = new Set();
+      allPrices.add(basePrice);
+      for (const c of Object.keys(map)) for (const s of Object.keys(map[c])) allPrices.add(map[c][s]);
+      hasVariance = allPrices.size > 1;
+    }
+    noteEl.style.display = hasVariance ? '' : 'none';
+  }
+}
+
 function selectColor(btn, color, productId) {
   // Block clicks on OOS color swatches
   if (btn.classList.contains('oos')) {
@@ -1099,6 +1152,9 @@ function selectColor(btn, color, productId) {
 
   // Recompute per-size availability for the newly-chosen color
   refreshSizeAvailability(productId, color);
+
+  // Per-color sell_price may differ — re-render the price tag
+  refreshModalPrice(productId);
 
   // Update color name display
   const colorNameEl = document.getElementById(`modal-color-name-${productId}`);
@@ -1170,6 +1226,8 @@ function selectSize(btn, size, productId) {
     .forEach(b => b.classList.remove('selected'));
   btn.classList.add('selected');
   refreshAddToCartGuard(productId);
+  // Per-size sell_price may differ (e.g. 3XL upcharge) — re-render the price tag.
+  refreshModalPrice(productId);
 }
 
 // Re-mark size buttons as OOS/available given the currently selected color.
@@ -1254,12 +1312,16 @@ function addToCartFromModal(productId) {
     }
     return;
   }
-  cart.push({ ...product, selectedColor, selectedSize });
+  // Variant-aware price: overrides product.price when oren set a per-(color,size) override
+  // in admin → product_variant_stock.sell_price_usd. Frozen at add-to-cart time so subsequent
+  // admin price changes don't surprise someone mid-checkout.
+  const effectivePrice = getVariantPrice(productId, selectedColor, selectedSize, product.price);
+  cart.push({ ...product, price: effectivePrice, basePrice: product.price, selectedColor, selectedSize });
   saveCart();
-  if (window.dubisTrack) window.dubisTrack('add_to_cart', { id: product.id, phrase: product.phrase, type: product.type, price: product.price, color: selectedColor, size: selectedSize, source: 'modal' });
+  if (window.dubisTrack) window.dubisTrack('add_to_cart', { id: product.id, phrase: product.phrase, type: product.type, price: effectivePrice, color: selectedColor, size: selectedSize, source: 'modal' });
   // Meta Pixel — AddToCart event
   if (typeof fbq === 'function') {
-    fbq('track', 'AddToCart', { value: product.price, currency: 'USD', content_name: product.phrase, content_type: 'product' });
+    fbq('track', 'AddToCart', { value: effectivePrice, currency: 'USD', content_name: product.phrase, content_type: 'product' });
   }
   updateCartCount();
   showCartNotification(product.phrase);
@@ -1270,9 +1332,11 @@ function quickAddToCart(productId, btnEl) {
   const product = products.find(p => p.id === productId);
   const card = document.querySelector(`.product-card[data-id="${productId}"]`);
   const selectedColor = card?.dataset.selectedColor || product.colors[0];
-  cart.push({ ...product, selectedColor, selectedSize: product.sizes[2] || 'L' });
+  const selectedSize  = product.sizes[2] || 'L';
+  const effectivePrice = getVariantPrice(productId, selectedColor, selectedSize, product.price);
+  cart.push({ ...product, price: effectivePrice, basePrice: product.price, selectedColor, selectedSize });
   saveCart();
-  if (window.dubisTrack) window.dubisTrack('add_to_cart', { id: product.id, phrase: product.phrase, type: product.type, price: product.price, color: selectedColor, source: 'quick' });
+  if (window.dubisTrack) window.dubisTrack('add_to_cart', { id: product.id, phrase: product.phrase, type: product.type, price: effectivePrice, color: selectedColor, source: 'quick' });
   updateCartCount();
   showCartNotification(product.phrase);
   if (btnEl) animateAddToCart(btnEl);

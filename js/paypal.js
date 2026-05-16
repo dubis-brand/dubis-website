@@ -40,8 +40,40 @@ const SHIPPING_FEE_BY_COUNTRY = {
     ZA: 19.99,
 };
 const FALLBACK_INTL_SHIPPING = 19.99; // any other country Gelato accepts
+
+// ─── Dynamic shipping rates (full Gelato passthrough) ───────────────────
+// Per oren 2026-05-16: customer pays exactly what Gelato charges us — no
+// subsidy, no markup. Daily sync writes the current Gelato rate to app_config
+// (gelato_ship_us_usd, gelato_ship_il_usd). We override the legacy static
+// table above for US + IL specifically; other countries still fall back to
+// the table until we add them to the daily probe.
+window.__DUBIS_LIVE_SHIP = window.__DUBIS_LIVE_SHIP || { us: null, il: null };
+(async function loadLiveShipping() {
+    try {
+        const url  = window.DUBIS_SUPABASE_URL;
+        const anon = window.DUBIS_SUPABASE_ANON;
+        if (!url || !anon) return;
+        const r = await fetch(`${url}/rest/v1/app_config?select=key,value&key=in.(gelato_ship_us_usd,gelato_ship_il_usd)`, {
+            headers: { 'apikey': anon, 'Authorization': `Bearer ${anon}` },
+        });
+        if (!r.ok) return;
+        const rows = await r.json();
+        for (const row of rows) {
+            const v = Number(row.value);
+            if (Number.isFinite(v)) {
+                if (row.key === 'gelato_ship_us_usd') window.__DUBIS_LIVE_SHIP.us = v;
+                if (row.key === 'gelato_ship_il_usd') window.__DUBIS_LIVE_SHIP.il = v;
+            }
+        }
+    } catch (_) { /* fail-open to static table */ }
+})();
+
 function getShippingFee(country) {
     const c = (country || 'US').toUpperCase();
+    // Prefer live Gelato rate when available (synced daily by gelato-stock-check).
+    const live = window.__DUBIS_LIVE_SHIP || {};
+    if (c === 'US' && live.us != null) return live.us;
+    if (c === 'IL' && live.il != null) return live.il;
     return SHIPPING_FEE_BY_COUNTRY[c] != null ? SHIPPING_FEE_BY_COUNTRY[c] : FALLBACK_INTL_SHIPPING;
 }
 
