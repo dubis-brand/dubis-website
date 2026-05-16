@@ -134,6 +134,24 @@ function measureMaxWidth(ctx, text) {
   return Math.max(...text.split('\n').map(l => ctx.measureText(l).width));
 }
 
+/**
+ * Iteratively shrink fontSize until the widest line fits maxWidth.
+ * Fixes overflow clipping for long keywords like UNCOMFORTABLE / EXISTENCE.
+ * Returns the largest fontSize that fits, or minSize if even that overflows.
+ */
+function fitFontSize(ctx, text, startSize, maxWidth, shrinkRatio = 0.95, minSize = 40) {
+  if (!text) return startSize;
+  let size = startSize;
+  setFont(ctx, size);
+  let width = measureMaxWidth(ctx, text);
+  while (width > maxWidth && size > minSize) {
+    size = size * shrinkRatio;
+    setFont(ctx, size);
+    width = measureMaxWidth(ctx, text);
+  }
+  return size;
+}
+
 // ---------------------------------------------------------------------------
 // Back design generator  (3000 × 3600 px)
 // ---------------------------------------------------------------------------
@@ -185,15 +203,22 @@ function generateBack(product, color, outPath) {
   // saw on "NAPPING IS MY / CARDIO".
   const centerX = BACK_W / 2;
 
+  // Auto-fit safe widths: big keyword may use up to 85% of canvas width;
+  // small/after lines may use up to 90%. Anything wider gets shrunk so long
+  // keywords (UNCOMFORTABLE, EXISTENCE, EXHAUSTION) never clip the edges.
+  const SAFE_W_BIG   = BACK_W * 0.85;
+  const SAFE_W_SMALL = BACK_W * 0.90;
+
   // ---- 1) Build the ordered list of blocks for this layout ----
+  //     Each block's size is auto-shrunk if its widest line overflows.
   const blocks = [];
   if (product.layout === 'top-bottom') {
-    if (product.small) blocks.push({ text: product.small, size: SMALL_SIZE });
-    if (product.big)   blocks.push({ text: product.big,   size: BIG_SIZE   });
-    if (product.after) blocks.push({ text: product.after, size: AFTER_SIZE });
+    if (product.small) blocks.push({ text: product.small, size: fitFontSize(ctx, product.small, SMALL_SIZE, SAFE_W_SMALL) });
+    if (product.big)   blocks.push({ text: product.big,   size: fitFontSize(ctx, product.big,   BIG_SIZE,   SAFE_W_BIG)   });
+    if (product.after) blocks.push({ text: product.after, size: fitFontSize(ctx, product.after, AFTER_SIZE, SAFE_W_SMALL) });
   } else if (product.layout === 'big-top') {
-    if (product.big)   blocks.push({ text: product.big,   size: BIG_SIZE   });
-    if (product.after) blocks.push({ text: product.after, size: AFTER_SIZE });
+    if (product.big)   blocks.push({ text: product.big,   size: fitFontSize(ctx, product.big,   BIG_SIZE,   SAFE_W_BIG)   });
+    if (product.after) blocks.push({ text: product.after, size: fitFontSize(ctx, product.after, AFTER_SIZE, SAFE_W_SMALL) });
   }
 
   // ---- 2) Flatten multi-line blocks into individual visual lines ----
