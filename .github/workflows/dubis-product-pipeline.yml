@@ -29,6 +29,12 @@ permissions:
   contents: write   # commits designs/ + images/ + js/products.js
   id-token: write
 
+# Serialize runs to avoid parallel-push races on main. Multiple approvals in
+# quick succession queue here instead of racing each other's git push.
+concurrency:
+  group: dubis-product-pipeline
+  cancel-in-progress: false
+
 jobs:
   publish-product:
     name: Build print files + Gelato draft + real mockups for one product
@@ -110,7 +116,15 @@ jobs:
             echo "No new print files. Skipping commit."
           else
             git commit -m "feat(designs): print files for product $PRODUCT_NUMERIC (auto-pipeline)"
-            git push origin main
+            # Retry-push w/ rebase to handle parallel-pipeline races.
+            for i in 1 2 3 4 5; do
+              if git push origin main; then
+                echo "Pushed on attempt $i"; break
+              fi
+              echo "Push attempt $i rejected. Rebasing & retrying..."
+              git pull --rebase origin main
+              sleep $((RANDOM % 5 + 1))
+            done
           fi
 
       - name: 2️⃣b Wait 60s for Vercel deploy to serve new design files
@@ -168,7 +182,14 @@ jobs:
             echo "No image changes."
           else
             git commit -m "feat(product): Gelato real mockups for product $PRODUCT_NUMERIC — draft ${{ steps.gelato_draft.outputs.draft_id }}"
-            git push origin main
+            for i in 1 2 3 4 5; do
+              if git push origin main; then
+                echo "Pushed on attempt $i"; break
+              fi
+              echo "Push attempt $i rejected. Rebasing & retrying..."
+              git pull --rebase origin main
+              sleep $((RANDOM % 5 + 1))
+            done
           fi
 
       # ──────────────────────────────────────────────────────────
