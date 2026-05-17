@@ -77,6 +77,36 @@ function getShippingFee(country) {
     return SHIPPING_FEE_BY_COUNTRY[c] != null ? SHIPPING_FEE_BY_COUNTRY[c] : FALLBACK_INTL_SHIPPING;
 }
 
+// Countries that use US-style state/province codes and require them at checkout.
+// Everywhere else (IL, GB, most of Europe, etc.) either has no admin_area_1 or
+// treats it as optional — blocking those customers behind a required "STATE"
+// field killed IL conversions until 2026-05-17.
+const COUNTRIES_REQUIRING_STATE = new Set(['US','CA','AU','IN','BR','MX']);
+function countryNeedsState(code) {
+    return COUNTRIES_REQUIRING_STATE.has((code || 'US').toUpperCase());
+}
+function updateStateFieldForCountry(code) {
+    const stateEl = document.getElementById('checkout-state');
+    if (!stateEl) return;
+    const row    = document.getElementById('checkout-state-zip-row') || stateEl.parentElement;
+    const c      = (code || 'US').toUpperCase();
+    const isUS   = c === 'US';
+    if (countryNeedsState(c)) {
+        stateEl.style.display = '';
+        stateEl.required = true;
+        stateEl.placeholder = isUS ? 'State (e.g. CA)' : 'State / Province';
+        stateEl.maxLength = isUS ? 2 : 40;
+        stateEl.style.textTransform = isUS ? 'uppercase' : 'none';
+        if (row) row.style.gridTemplateColumns = '1fr 1fr';
+    } else {
+        // Hide + clear so a stale US value doesn't leak into PayPal/Gelato.
+        stateEl.style.display = 'none';
+        stateEl.required = false;
+        stateEl.value = '';
+        if (row) row.style.gridTemplateColumns = '1fr';
+    }
+}
+
 let paypalLoaded = false;
 let appliedCoupon = null; // { code, discount_amount, final_total, name }
 
@@ -166,6 +196,10 @@ async function checkout() {
     // Clear error
     const errEl = document.getElementById('contact-step-error');
     if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+
+    // Sync state-field visibility/required to currently-selected country.
+    const ctryElInit = document.getElementById('checkout-country');
+    updateStateFieldForCountry(ctryElInit?.value || 'US');
 }
 
 // ===== CONTACT STEP SUBMISSION =====
@@ -187,9 +221,12 @@ async function submitContactStep() {
     const addr1 = (addr1El?.value || '').trim();
     const addr2 = (addr2El?.value || '').trim();
     const city  = (cityEl?.value  || '').trim();
-    const state = (stateEl?.value || '').trim().toUpperCase();
     const zip   = (zipEl?.value   || '').trim();
     const ctry  = (ctryEl?.value  || 'US').trim().toUpperCase();
+    const needsState = countryNeedsState(ctry);
+    const state = needsState
+        ? (stateEl?.value || '').trim().toUpperCase()
+        : (stateEl?.value || '').trim();
 
     if (!name || name.length < 2) {
         errEl.textContent = 'Please enter your full name.';
@@ -221,7 +258,7 @@ async function submitContactStep() {
         cityEl?.focus();
         return;
     }
-    if (!state || state.length < 2) {
+    if (needsState && (!state || state.length < 2)) {
         errEl.textContent = ctry === 'US'
             ? 'Please enter your state (2-letter code, e.g. CA).'
             : 'Please enter your state / province.';
@@ -870,6 +907,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const ctryEl = document.getElementById('checkout-country');
     if (ctryEl) {
         ctryEl.addEventListener('change', () => {
+            try { updateStateFieldForCountry(ctryEl.value); } catch (e) { /* DOM not ready */ }
             try { renderOrderSummary(); } catch (e) { /* modal not open yet */ }
         });
     }

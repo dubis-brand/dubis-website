@@ -640,8 +640,8 @@
                 <input id="checkout-addr1"   type="text" placeholder="Street address" required autocomplete="address-line1">
                 <input id="checkout-addr2"   type="text" placeholder="Apartment, suite, unit (optional)" autocomplete="address-line2">
                 <input id="checkout-city"    type="text" placeholder="City" required autocomplete="address-level2">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-                    <input id="checkout-state" type="text" placeholder="State (e.g. CA)" required autocomplete="address-level1" maxlength="2" style="text-transform:uppercase">
+                <div id="checkout-state-zip-row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                    <input id="checkout-state" type="text" placeholder="State (e.g. CA)" autocomplete="address-level1">
                     <input id="checkout-zip"   type="text" placeholder="ZIP" required autocomplete="postal-code" inputmode="numeric" maxlength="10">
                 </div>
                 <select id="checkout-country" required autocomplete="country" style="width:100%;padding:11px 14px;margin-top:8px;border:1px solid #d8c9a8;border-radius:8px;background:#fff;font-size:14px">
