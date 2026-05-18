@@ -126,7 +126,8 @@ CRITICAL — the garment must look like an ACTUAL PRINTED PIECE OF CLOTHING THE 
 - The fabric must follow the body's contours, drape, wrinkle, and shadow naturally.
 - The chest badge must look printed on the fabric — it must move with the cloth, pick up the same lighting, slightly distort over folds.
 - Match the garment color from the reference image exactly.
-- Match the chest badge artwork from the reference image — same shape, same lettering, same position on the chest.
+- The chest logo MUST READ EXACTLY "DUBIS™" — the five letters D-U-B-I-S in bold uppercase, IMMEDIATELY followed by a clearly visible superscript ™ (trademark) symbol in the top-right corner of the wordmark. The ™ is mandatory, must be clearly legible, not a stray dot or smudge.
+- Match the chest badge artwork from the reference image — same shape, same lettering (DUBIS™), same position on the chest. The ™ in the reference image MUST be reproduced and must be visible at viewing scale.
 - Do NOT add any other text, logos, watermarks, or graphic elements anywhere in the frame.
 
 Photographic style: candid street/lifestyle photography. 35mm lens look. Slight grain. Authentic, documentary feel. Not a fashion editorial. Square 1:1 aspect ratio.`;
