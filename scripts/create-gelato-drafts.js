@@ -51,7 +51,7 @@ const CLI_JSON             = !!_getFlag('--json');
 
 const GELATO_API_BASE = 'https://order.gelatoapis.com';
 const DESIGN_BASE_URL = 'https://www.dubis.net/designs';
-const DESIGN_VERSION  = process.env.DESIGN_VERSION || '2026051601';
+const DESIGN_VERSION  = process.env.DESIGN_VERSION || '2026051801';
 const OUT_DIR         = CLI_SAVE_AS_SITE
   ? path.join(__dirname, '..', 'images')                    // production: site mockups
   : path.join(__dirname, '..', 'images', 'gelato-mockups'); // QA: separate folder

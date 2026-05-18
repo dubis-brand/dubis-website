@@ -56,9 +56,9 @@ if (!GELATO_API_KEY) {
 // ─────────────────────────────────────────────────────────────────
 const GELATO_API_BASE = 'https://order.gelatoapis.com';
 const DESIGN_BASE_URL = 'https://www.dubis.net/designs';
-// Bumped 2026-05-16 after the equal-spacing + polo-logo design fix landed.
+// Bumped 2026-05-18 after the product-12 COFFEE-emphasis design fix landed.
 // Always bump after deploying new design files so Gelato re-fetches (cache-buster).
-const DESIGN_VERSION  = '2026051602';
+const DESIGN_VERSION  = '2026051801';
 const OUT_DIR         = process.env.MOCKUPS_OUT_DIR
                      || path.join(__dirname, '..', 'images', 'gelato-mockups');
 const PROGRESS_FILE   = path.join(OUT_DIR, 'progress.json');
