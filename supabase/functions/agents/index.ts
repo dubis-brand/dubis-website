@@ -2375,23 +2375,49 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       ? langParam
       : ((autoTodayCount % 2 === 0) ? 'he' : 'en');
 
-    // Find product not recently featured (check last N tasks)
+    // LRU rotation — pick the product whose most recent auto-content task is
+    // oldest (or has never been posted). This guarantees every active product
+    // gets equal coverage regardless of how many products exist.
+    //
+    // BUG FIXED 2026-05-18: previous logic had two issues that left 5/18 active
+    // products with zero posts in a week:
+    //   1. `PRODUCTS.find(!recent.has)` always picked the LOWEST product_id not
+    //      in the recent set → biased toward low IDs.
+    //   2. Fallback `getDay() % PRODUCTS.length` returns 0–6 (since getDay() is
+    //      0–6), so with 18 products only the first 7 could ever be picked.
+    // New approach: scan a wide window (200 most recent auto-content tasks),
+    // build last_posted_at per product_id, then pick the product with the
+    // oldest last_posted_at (or never-posted first, tiebroken by product_id).
     type TaskRow = Record<string, unknown>;
     const { data: recentTasks } = await sb.from('agent_tasks')
-      .select('content_data')
+      .select('content_data, created_at')
       .eq('agent_id', 'content')
       .order('created_at', { ascending: false })
-      .limit(PRODUCTS.length);
-    const recentSlogans = new Set<string>((recentTasks || []).map((t: TaskRow) => {
+      .limit(200);
+    const lastPostedAt = new Map<number, string>();
+    for (const t of (recentTasks || []) as TaskRow[]) {
       const cd = (t.content_data as TaskRow) || {};
-      return (cd.product_slogan as string) || '';
-    }).filter(Boolean));
-
-    let picked = PRODUCTS.find(p => !recentSlogans.has(p.slogan));
-    if (!picked) {
-      // All products recently used — cycle by day of week
-      picked = PRODUCTS[new Date().getDay() % PRODUCTS.length];
+      // Only count actual auto-content posts toward rotation — admin/meeting
+      // tasks with agent_id='content' shouldn't influence product selection.
+      const isAutoContent = cd.created_by === 'auto-content-cron' || cd.auto_created === true;
+      if (!isAutoContent) continue;
+      const pid = Number(cd.product_id);
+      if (!pid) continue;
+      const ts = t.created_at as string;
+      if (!lastPostedAt.has(pid)) lastPostedAt.set(pid, ts);
     }
+    // Sort products: never-posted (no entry) first, then by oldest last_posted_at.
+    // Tiebreak by product_id ASC so the order is deterministic.
+    const ranked = [...PRODUCTS].sort((a, b) => {
+      const la = lastPostedAt.get(a.product_id);
+      const lb = lastPostedAt.get(b.product_id);
+      if (!la && !lb) return a.product_id - b.product_id;
+      if (!la) return -1;
+      if (!lb) return 1;
+      if (la !== lb) return la < lb ? -1 : 1;
+      return a.product_id - b.product_id;
+    });
+    const picked = ranked[0];
     // HARD GUARD: auto-content MUST have a product. Never create tasks without product_id.
     if (!picked?.product_id) {
       return json({ skipped: true, reason: 'No product with product_id available — refusing to create post without product link' });
