@@ -959,6 +959,7 @@
       <button class="nav-tab" id="nav-feedback" onclick="showSection('feedback',this)">📝 Feedback</button>
       <button class="nav-tab" id="nav-meta-campaigns" onclick="showSection('meta-campaigns',this)">📣 Meta Campaigns</button>
       <button class="nav-tab" id="nav-carousel-approval" onclick="showSection('carousel-approval',this)">🖼️ קרוסלה לאישור</button>
+      <button class="nav-tab" id="nav-lifestyle-preview" onclick="showSection('lifestyle-preview',this)">🌆 Lifestyle Preview</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -2639,6 +2640,33 @@
 
       </div>
 
+      <!-- Back-of-shirt images (new) -->
+      <h3 style="color:#c8922a;margin:1.5rem 0 .75rem;font-size:.95rem;letter-spacing:1px;text-transform:uppercase">גב החולצה — סלוגנים</h3>
+      <p style="color:#999;margin-bottom:.75rem;font-size:.8rem">3 תמונות גב חדשות, סלוגן גדול וקריא לאורך כל הגב.</p>
+      <div id="carousel-back-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1rem;margin-bottom:1.5rem">
+        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
+          <img src="/images/carousel/carousel-back-1.jpg" alt="Back 1" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem">
+            <div style="color:#e8e0d5;font-weight:700;font-size:.9rem;margin-bottom:.25rem">גב 1 — שחור</div>
+            <div style="color:#c8a96e;font-size:.78rem;font-style:italic">"BUILT DIFFERENT. THAT'S THE POINT."</div>
+          </div>
+        </div>
+        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
+          <img src="/images/carousel/carousel-back-2.jpg" alt="Back 2" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem">
+            <div style="color:#e8e0d5;font-weight:700;font-size:.9rem;margin-bottom:.25rem">גב 2 — קרם</div>
+            <div style="color:#c8a96e;font-size:.78rem;font-style:italic">"FASHION FINALLY CAUGHT UP."</div>
+          </div>
+        </div>
+        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
+          <img src="/images/carousel/carousel-back-3.jpg" alt="Back 3" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem">
+            <div style="color:#e8e0d5;font-weight:700;font-size:.9rem;margin-bottom:.25rem">גב 3 — אפור כהה</div>
+            <div style="color:#c8a96e;font-size:.78rem;font-style:italic">"LOW MAINTENANCE, HIGH VALUE."</div>
+          </div>
+        </div>
+      </div>
+
       <div style="display:flex;gap:1rem;flex-wrap:wrap">
         <button onclick="approveCarousel()" style="background:#c8922a;color:#000;padding:.75rem 2rem;border:none;border-radius:8px;font-size:1rem;font-weight:bold;cursor:pointer">✅ אשר ועדכן קרוסלה</button>
         <button onclick="rejectCarousel()" style="background:transparent;color:#c8922a;padding:.75rem 2rem;border:1px solid #c8922a;border-radius:8px;font-size:1rem;cursor:pointer">❌ דחה</button>
@@ -2646,6 +2674,40 @@
       <div id="carousel-approval-toast" style="display:none;margin-top:1rem;padding:.75rem 1rem;background:#1d3a1d;border:1px solid #4caf50;border-radius:8px;color:#9fdc9f;font-size:.85rem"></div>
     </div>
   </section><!-- /section-carousel-approval -->
+
+  <!-- ══ LIFESTYLE PREVIEW SECTION ═══════════════════════════ -->
+  <section id="section-lifestyle-preview" style="display:none;padding:1.5rem" dir="rtl">
+    <div style="margin:0 0 1.5rem;padding:1.5rem;background:#1a1a1a;border-radius:12px;border:2px solid #c8922a">
+      <h2 style="color:#c8922a;margin-bottom:.5rem;font-size:1.1rem;letter-spacing:2px;text-transform:uppercase">🌆 Lifestyle Preview</h2>
+      <p style="color:#ccc;margin-bottom:1.5rem;font-size:.85rem;line-height:1.6">6 תמונות לייפסטייל חדשות מהריצה האחרונה. השוואה ויזואלית — מה לבחור לאתר ולמודעות.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">
+        <div class="lifestyle-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
+          <img src="/images/lifestyle-preview/lifestyle-1.jpg" alt="Lifestyle 1" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem;color:#e8e0d5;font-weight:700;font-size:.9rem">לייפסטייל 1</div>
+        </div>
+        <div class="lifestyle-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
+          <img src="/images/lifestyle-preview/lifestyle-2.jpg" alt="Lifestyle 2" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem;color:#e8e0d5;font-weight:700;font-size:.9rem">לייפסטייל 2</div>
+        </div>
+        <div class="lifestyle-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
+          <img src="/images/lifestyle-preview/lifestyle-3.jpg" alt="Lifestyle 3" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem;color:#e8e0d5;font-weight:700;font-size:.9rem">לייפסטייל 3</div>
+        </div>
+        <div class="lifestyle-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
+          <img src="/images/lifestyle-preview/lifestyle-4.jpg" alt="Lifestyle 4" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem;color:#e8e0d5;font-weight:700;font-size:.9rem">לייפסטייל 4</div>
+        </div>
+        <div class="lifestyle-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
+          <img src="/images/lifestyle-preview/lifestyle-5.jpg" alt="Lifestyle 5" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem;color:#e8e0d5;font-weight:700;font-size:.9rem">לייפסטייל 5</div>
+        </div>
+        <div class="lifestyle-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
+          <img src="/images/lifestyle-preview/lifestyle-6.jpg" alt="Lifestyle 6" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
+          <div style="padding:.85rem 1rem;color:#e8e0d5;font-weight:700;font-size:.9rem">לייפסטייל 6</div>
+        </div>
+      </div>
+    </div>
+  </section><!-- /section-lifestyle-preview -->
 
   <!-- Coupon Modal -->
   <div id="coupon-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
@@ -3078,6 +3140,7 @@
     document.getElementById('section-feedback').style.display           = name === 'feedback'           ? '' : 'none';
     document.getElementById('section-meta-campaigns').style.display     = name === 'meta-campaigns'     ? '' : 'none';
     document.getElementById('section-carousel-approval').style.display  = name === 'carousel-approval'  ? '' : 'none';
+    document.getElementById('section-lifestyle-preview').style.display  = name === 'lifestyle-preview'  ? '' : 'none';
     if (name === 'gelato-tools') gtInit();
     if (name === 'meta-campaigns') mcInit();
     if (name === 'tax-nexus') loadTaxNexus();
