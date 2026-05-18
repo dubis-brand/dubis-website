@@ -12,6 +12,13 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["serve", ".", "--listen", "8080", "--no-clipboard"],
       "port": 8080
+    },
+    {
+      "name": "Static file server (worktree)",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", ".", "--no-clipboard"],
+      "port": 8090,
+      "autoPort": true
     }
   ]
 }
