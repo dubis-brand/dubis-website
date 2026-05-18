@@ -67,7 +67,8 @@ const PRODUCTS = [
   { id: 11, phrase: "She believed she could, so she took a nap", layout: 'top-bottom',
     small: "She believed she could,\nso she took a",  big: "NAP.", after: ""     },
   { id: 12, phrase: "I run on coffee and sarcasm",        layout: 'big-top',
-    small: "",                     big: "COFFEE",     after: "I run on coffee and sarcasm." },
+    small: "",                     big: "COFFEE",     after: "I run on COFFEE and sarcasm.",
+    emphasize: { word: "COFFEE", scale: 1.6 } },
   { id: 13, phrase: "Zero Motivation Club",               layout: 'top-bottom',
     small: "Zero Motivation",      big: "CLUB",       after: ""                  },
   { id: 14, phrase: "Emotionally attached to my couch",  layout: 'top-bottom',
@@ -152,6 +153,62 @@ function fitFontSize(ctx, text, startSize, maxWidth, shrinkRatio = 0.95, minSize
   return size;
 }
 
+/**
+ * Split a line of text into segments around an emphasized word.
+ * The emphasized word renders at baseSize * scale; everything else at baseSize.
+ * Returns null if the word is not found (caller falls back to uniform rendering).
+ */
+function splitWithEmphasis(text, word, baseSize, scale) {
+  const idx = text.indexOf(word);
+  if (idx < 0) return null;
+  return [
+    { text: text.slice(0, idx),               size: baseSize         },
+    { text: word,                              size: baseSize * scale },
+    { text: text.slice(idx + word.length),    size: baseSize         },
+  ];
+}
+
+/**
+ * Emphasis-aware max width across all lines in a (possibly multi-line) string.
+ * Uses the base size for non-emphasized parts and baseSize*scale for the
+ * emphasized word. Falls back to plain measureMaxWidth when emphasize is unset.
+ */
+function measureMaxWidthEmph(ctx, text, baseSize, emphasize) {
+  if (!emphasize) {
+    setFont(ctx, baseSize);
+    return measureMaxWidth(ctx, text);
+  }
+  return Math.max(...text.split('\n').map(line => {
+    const segs = splitWithEmphasis(line, emphasize.word, baseSize, emphasize.scale);
+    if (!segs) {
+      setFont(ctx, baseSize);
+      return ctx.measureText(line).width;
+    }
+    let w = 0;
+    for (const s of segs) {
+      setFont(ctx, s.size);
+      w += ctx.measureText(s.text).width;
+    }
+    return w;
+  }));
+}
+
+/**
+ * Emphasis-aware version of fitFontSize. Shrinks the base size until the
+ * emphasis-aware width fits maxWidth. Without an emphasize spec this is
+ * identical to fitFontSize.
+ */
+function fitFontSizeEmph(ctx, text, startSize, maxWidth, emphasize, shrinkRatio = 0.95, minSize = 40) {
+  if (!text) return startSize;
+  let size = startSize;
+  let width = measureMaxWidthEmph(ctx, text, size, emphasize);
+  while (width > maxWidth && size > minSize) {
+    size = size * shrinkRatio;
+    width = measureMaxWidthEmph(ctx, text, size, emphasize);
+  }
+  return size;
+}
+
 // ---------------------------------------------------------------------------
 // Back design generator  (3000 × 3600 px)
 // ---------------------------------------------------------------------------
@@ -211,21 +268,33 @@ function generateBack(product, color, outPath) {
 
   // ---- 1) Build the ordered list of blocks for this layout ----
   //     Each block's size is auto-shrunk if its widest line overflows.
+  //     `emphasize` (optional, only on the `after` block) lets a single word
+  //     inside the small sentence render larger — used by product #12 so the
+  //     word COFFEE matches the big-top header inside the sentence too.
   const blocks = [];
+  const emph = product.emphasize || null;
   if (product.layout === 'top-bottom') {
     if (product.small) blocks.push({ text: product.small, size: fitFontSize(ctx, product.small, SMALL_SIZE, SAFE_W_SMALL) });
     if (product.big)   blocks.push({ text: product.big,   size: fitFontSize(ctx, product.big,   BIG_SIZE,   SAFE_W_BIG)   });
-    if (product.after) blocks.push({ text: product.after, size: fitFontSize(ctx, product.after, AFTER_SIZE, SAFE_W_SMALL) });
+    if (product.after) blocks.push({ text: product.after, size: fitFontSizeEmph(ctx, product.after, AFTER_SIZE, SAFE_W_SMALL, emph), emphasize: emph });
   } else if (product.layout === 'big-top') {
     if (product.big)   blocks.push({ text: product.big,   size: fitFontSize(ctx, product.big,   BIG_SIZE,   SAFE_W_BIG)   });
-    if (product.after) blocks.push({ text: product.after, size: fitFontSize(ctx, product.after, AFTER_SIZE, SAFE_W_SMALL) });
+    if (product.after) blocks.push({ text: product.after, size: fitFontSizeEmph(ctx, product.after, AFTER_SIZE, SAFE_W_SMALL, emph), emphasize: emph });
   }
 
   // ---- 2) Flatten multi-line blocks into individual visual lines ----
+  //     Lines with an emphasized word carry a `segs` array; their cap-height
+  //     is driven by the largest segment so the stack still vertically aligns.
   const lines = [];
   for (const b of blocks) {
     for (const sub of b.text.split('\n')) {
-      lines.push({ text: sub, size: b.size, cap: b.size * CAP_RATIO });
+      const segs = b.emphasize
+        ? splitWithEmphasis(sub, b.emphasize.word, b.size, b.emphasize.scale)
+        : null;
+      const cap = segs
+        ? Math.max(...segs.map(s => s.size)) * CAP_RATIO
+        : b.size * CAP_RATIO;
+      lines.push({ text: sub, size: b.size, cap, segs });
     }
   }
   if (lines.length === 0) {
@@ -243,9 +312,29 @@ function generateBack(product, color, outPath) {
   let topY = (BACK_H - totalH) / 2;
 
   // ---- 5) Draw each line at its cap-top → baseline = topY + cap ----
+  //     Plain lines: single fillText centered on canvas.
+  //     Segmented lines (emphasis): measure total width, then walk segments
+  //     left-to-right starting at centerX - totalW/2, all sharing one baseline.
   for (const l of lines) {
-    setFont(ctx, l.size);
-    ctx.fillText(l.text, centerX, topY + l.cap);
+    const baselineY = topY + l.cap;
+    if (l.segs) {
+      let totalW = 0;
+      for (const s of l.segs) {
+        setFont(ctx, s.size);
+        totalW += ctx.measureText(s.text).width;
+      }
+      let x = centerX - totalW / 2;
+      ctx.textAlign = 'left';
+      for (const s of l.segs) {
+        setFont(ctx, s.size);
+        ctx.fillText(s.text, x, baselineY);
+        x += ctx.measureText(s.text).width;
+      }
+      ctx.textAlign = 'center';
+    } else {
+      setFont(ctx, l.size);
+      ctx.fillText(l.text, centerX, baselineY);
+    }
     topY += l.cap + GAP;
   }
 
