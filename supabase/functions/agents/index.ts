@@ -1340,19 +1340,23 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
           continue;
         }
 
-        // US-PIVOT (2026-04-18): gate on caption_en only. HE captions fully retired.
-        if (cd.caption_en && hasPermImg) {
+        // IL re-opened 2026-05-15: gate on the caption matching the post's language.
+        // auto-content writes content_data.language (he|en); legacy rows fall back to en.
+        const postLang = ((cd.language as string) || 'en').toLowerCase() === 'he' ? 'he' : 'en';
+        const existingCaption = postLang === 'he' ? (cd.caption_he as string) : (cd.caption_en as string);
+        if (existingCaption && hasPermImg) {
           await sb.from('agent_tasks').update({
             status: 'pending_approval',
-            content_data: { ...cd, product_url: productUrl, product_id: productId, product_price_usd: productPriceUsd, product_type: productType },
+            content_data: { ...cd, language: postLang, product_url: productUrl, product_id: productId, product_price_usd: productPriceUsd, product_type: productType },
             updated_at: now,
           }).eq('id', task.id);
-          taskResults.push(`✅ ${task.title}: content ready → pending_approval (linked → ${productUrl})`);
+          taskResults.push(`✅ ${task.title}: content ready (${postLang}) → pending_approval (linked → ${productUrl})`);
           continue;
         }
 
         let gen: Record<string, string> = {};
-        if (!cd.caption_en && geminiKey) {
+        const needsCaption = postLang === 'he' ? !cd.caption_he : !cd.caption_en;
+        if (needsCaption && geminiKey) {
           // Pick a random content angle to ensure variety
           const CONTENT_ANGLES = [
             'comfort — clothes that work for you, not the other way around',
@@ -1402,7 +1406,41 @@ IMPORTANT: Do NOT only talk about body weight or being fat. DUBIS is about MUCH 
 - "Your cardio is horizontal. Ours too. Welcome to the club."`;
 
           const isStory = cd.format === 'story';
-          const captionPrompt = `${dubisPrompt}
+          const hePrompt = `אתה הקופירייטר הבכיר של DUBIS — מותג אופנה אנטי-אופנתי ישראלי. סלוגן: "בשביל כל השאר".
+
+[קהל יעד — חזרה לישראל 2026-05-15]
+ישראלים גילאי 35-55, גופים אמיתיים, חיים אמיתיים. עייפים מתרבות הכושר, משפת האינפלואנסרים, ומבגדים שנראים טוב רק על בני 22. רוצים נוחות שלא מתנצלת ובגדים שבנויים לגוף שהם באמת חיים בו.
+
+[ה-DNA של DUBIS]
+DUBIS שובר את הבחירה השקרית בין "אופנתי אבל לא נוח" ל"נוח אבל בלתי נראה". בגדים שמתאימים לגוף אמיתי, מרגישים מעולה, ונושאים משפט שנון שאומר: "ככה אני".
+
+[הזווית להיום] ${todayAngle}
+חשוב: אל תדבר רק על משקל או גוף. DUBIS זה הרבה יותר — נוחות, הומור, אנטי-אופנה, חיים אחרי 35, איכות, קהילה.
+
+[כללי טון]
+- עברית ישראלית טבעית, כמו הודעה ל-WhatsApp לחבר (סלנג בסדר: יאללה, תכל'ס, אחי)
+- הומור יבש, ציני, חכם — לא תרגום מאנגלית
+- מילים אסורות: מושלם, מהמם, חובה, מטורף, מבצע, הנחה, יוקרתי, פרימיום, אקסקלוסיבי
+- ב-עברית: השתמש ב"קפוצון" ולא ב"הודי", "קפוצונים" ולא "הודיז"
+- אסור להציע ללקוח "לתקן" את עצמו
+- משפטים קצרים. בלי פלאף. שיחתי — לא ספרותי.
+
+--- משימה ---
+משימה: "${task.title}"
+סלוגן המוצר: "${productSloganRaw}"
+סוג מוצר: "${productType}"
+URL מוצר: "${productUrl}"
+מחיר: ${productPriceUsd != null ? `$${productPriceUsd}` : 'ראה דף מוצר'}
+פורמט: ${isStory ? 'STORY — 1-2 משפטים בלבד' : (cd.format || 'feed_post')}
+
+חובה:
+1. הסלוגן (שכתוב על הבגד באנגלית, למשל "NAPPING IS MY CARDIO") חייב להופיע בכיתוב בדיוק כפי שהוא — באנגלית כפי שכתוב על הבגד.
+2. אל תמציא URL בכיתוב. צינור הפרסום מוסיף את ה-URL האמיתי בעצמו.
+3. אל תכלול מחיר בגוף הכיתוב — שורת ה-shop מוסיפה את המחיר.
+
+החזר JSON תקני בלבד: {"caption_he":"...","hashtags":"#DUBIS #ForTheRestOfUs ...5-10 תגים רלוונטיים","image_prompt":"..."}`;
+
+          const enPrompt = `${dubisPrompt}
 
 --- TASK ---
 Task: "${task.title}"
@@ -1418,6 +1456,8 @@ MANDATORY:
 3. Do NOT include the price inside the caption body either. The shop line appends it.
 
 Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs ...5-10 US-relevant tags","image_prompt":"..."}`;
+
+          const captionPrompt = postLang === 'he' ? hePrompt : enPrompt;
           const cRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
             { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1428,22 +1468,31 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
           const cData = await cRes.json();
           const raw = cData.candidates?.[0]?.content?.parts?.[0]?.text || '';
           if (!raw) throw new Error('Gemini returned empty caption');
-          try { gen = JSON.parse(raw.replace(/```json|```/g, '').trim()); } catch { gen = { caption_en: raw.substring(0, 200) }; }
-          // US-PIVOT: drop any stray HE content if Gemini returns it
-          delete gen.caption_he;
-          if (!gen.caption_en) throw new Error('Caption generation empty');
+          try { gen = JSON.parse(raw.replace(/```json|```/g, '').trim()); } catch {
+            gen = postLang === 'he' ? { caption_he: raw.substring(0, 200) } : { caption_en: raw.substring(0, 200) };
+          }
+          if (postLang === 'he') {
+            if (gen.caption_he) gen.caption_he = fixHebrew(gen.caption_he);
+            if (!gen.caption_he) throw new Error('HE caption generation empty');
+          } else {
+            if (!gen.caption_en) throw new Error('EN caption generation empty');
+          }
         } else {
-          gen = { caption_en: cd.caption_en as string, hashtags: cd.hashtags as string };
+          gen = postLang === 'he'
+            ? { caption_he: cd.caption_he as string, hashtags: cd.hashtags as string }
+            : { caption_en: cd.caption_en as string, hashtags: cd.hashtags as string };
         }
 
         let imageUrl = hasPermImg ? (cd.generated_image_url as string) : '';
         let imgError = '';
 
         if (!imageUrl) {
-          // Priority 1 (2026-05-16): use the REAL Gelato back-mockup for the
-          // product. That's the image that actually shows the slogan artwork
-          // the customer is buying — no more Gemini lifestyle inventions.
-          // Priority 2: Fall back to dubis_images gallery (pre-approved photos).
+          // 2026-05-18: alternate between (a) approved lifestyle photos from
+          // dubis_images and (b) the real Gelato back-mockup. Lifestyle images
+          // (e.g. /images/carousel/v3/*) carry brand atmosphere; Gelato mockups
+          // carry the actual slogan artwork. Half-and-half mix keeps the feed
+          // varied without losing the product anchor every post.
+          // Priority 3 fallback: dubis_images gallery matched by product/slogan.
           const productSlogan = ((cd.product_slogan as string) || '').toLowerCase().trim();
           const productId = (cd.product_id as string) || '';
 
@@ -1463,15 +1512,62 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
             }
           } catch { /* ignore */ }
 
-          if (productId) {
-            const mockupUrl = pickGelatoBackMockupUrl(productId, productColors, task.id as string);
-            if (mockupUrl) {
-              imageUrl = mockupUrl;
+          // Seeded coin-flip per task.id — same task always picks the same
+          // image source so re-runs are idempotent.
+          const taskHex = (task.id as string).replace(/-/g, '').substring(0, 8);
+          const taskSeed = parseInt(taskHex, 16) || 0;
+          const tryLifestyleFirst = (taskSeed % 2) === 0;
+
+          // ── Lifestyle path ──
+          // Quality_score >= 8 + scene_type = 'lifestyle' selects the curated
+          // V3 carousel pool. Seeded pick keeps re-runs deterministic.
+          if (tryLifestyleFirst) {
+            try {
+              // dubis_images.quality_score is constrained 0-5; curated V3 lifestyle
+              // images are inserted at 5 (max). Other auto-generated images live at 0-3.
+              const { data: lifestyleImgs } = await sb.from('dubis_images')
+                .select('image_url')
+                .contains('tags', ['lifestyle'])
+                .eq('approved', true)
+                .gte('quality_score', 5)
+                .limit(50);
+              if (lifestyleImgs?.length) {
+                const pick = (lifestyleImgs as Array<{image_url: string}>)[taskSeed % lifestyleImgs.length];
+                if (pick?.image_url) imageUrl = pick.image_url;
+              }
+            } catch { /* fall through to Gelato mockup */ }
+          }
+
+          // ── Gelato back-mockup path ──
+          if (!imageUrl) {
+            if (productId) {
+              const mockupUrl = pickGelatoBackMockupUrl(productId, productColors, task.id as string);
+              if (mockupUrl) {
+                imageUrl = mockupUrl;
+              } else {
+                imgError = 'no_gelato_back_mockup';
+              }
             } else {
-              imgError = 'no_gelato_back_mockup';
+              imgError = 'no_product_id';
             }
-          } else {
-            imgError = 'no_product_id';
+          }
+
+          // ── Lifestyle path (second-half slot — if Gelato was tried first) ──
+          if (!imageUrl && !tryLifestyleFirst) {
+            try {
+              // dubis_images.quality_score is constrained 0-5; curated V3 lifestyle
+              // images are inserted at 5 (max). Other auto-generated images live at 0-3.
+              const { data: lifestyleImgs } = await sb.from('dubis_images')
+                .select('image_url')
+                .contains('tags', ['lifestyle'])
+                .eq('approved', true)
+                .gte('quality_score', 5)
+                .limit(50);
+              if (lifestyleImgs?.length) {
+                const pick = (lifestyleImgs as Array<{image_url: string}>)[taskSeed % lifestyleImgs.length];
+                if (pick?.image_url) imageUrl = pick.image_url;
+              }
+            } catch { /* fall through to legacy gallery match */ }
           }
 
           try {
@@ -1529,12 +1625,17 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
           }
         }
 
-        // US-PIVOT (2026-04-18): caption_en is the only caption we store/publish.
+        // IL re-opened 2026-05-15: store the caption for the post's language.
         // Note: the product URL is appended at PUBLISH time (shopLineIG/FB), not here —
-        // so caption_en stays clean and the publish step adds the clickable shop line.
-        const finalCapEn = gen.caption_en || (cd.caption_en as string) || '';
+        // so the caption body stays clean and publish adds the clickable shop line.
+        const finalCapHe = postLang === 'he'
+          ? (gen.caption_he || (cd.caption_he as string) || '')
+          : ((cd.caption_he as string) || '');
+        const finalCapEn = postLang === 'en'
+          ? (gen.caption_en || (cd.caption_en as string) || '')
+          : ((cd.caption_en as string) || '');
         const finalImageUrl = imageUrl || (cd.generated_image_url as string) || '';
-        const hasCaption = !!finalCapEn;
+        const hasCaption = postLang === 'he' ? !!finalCapHe : !!finalCapEn;
         const hasFinalImg = !!finalImageUrl;
         // 2026-05-03 fix: never advance to pending_approval without BOTH caption AND image.
         // publish-ready blocks no-image tasks anyway, and QA was approving them at 80/100
@@ -1543,12 +1644,12 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
         const newStatus = (hasCaption && hasFinalImg) ? 'pending_approval' : 'in_progress';
         await sb.from('agent_tasks').update({
           status: newStatus,
-          // Strip any legacy caption_he that may have been saved before the US pivot.
-          // Persist the hydrated product link fields so publish + QA can rely on them.
+          // Persist both caption fields + language so publish + QA can pick the right one.
           content_data: {
             ...cd,
-            caption_he: '',
+            caption_he: finalCapHe,
             caption_en: finalCapEn,
+            language:   postLang,
             hashtags: gen.hashtags || (cd.hashtags as string) || '',
             image_prompt: gen.image_prompt || '',
             generated_image_url: finalImageUrl,
@@ -1783,7 +1884,10 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
         results.push({ id: task.id, title: task.title, status: 'skipped', reason: claimErr?.message || 'lock-held-by-another-worker' });
         continue;
       }
-      const lang = (cd.lang as string) || 'he';
+      // Language can come from either `cd.language` (auto-content writes this)
+      // or `cd.lang` (weekly-marketing-plan writes this). Default to 'en' for
+      // legacy rows that have no language field.
+      const lang = (((cd.language as string) || (cd.lang as string) || 'en')).toLowerCase();
       // Instagram doesn't make URLs clickable in feed/Reel captions — only bio link works.
       // Facebook DOES make URLs clickable, so we link directly to the specific product page.
       // product_url is set by auto-content from dubis_products (active=true only).
@@ -1808,7 +1912,9 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       const shopLineIG   = `🛒 Shop this${priceTag} → ${igUrl}\n🔗 Tap link in bio @dubis.brand`;
       // FB: keep full https:// so it stays clickable in the FB feed.
       const shopLineFB   = `🛒 Shop this${priceTag} → ${productUrlQP}`;
-      const baseBody = (cd.caption_en as string) || (cd.caption_he as string) || task.title;
+      const baseBody = lang === 'he'
+        ? ((cd.caption_he as string) || (cd.caption_en as string) || task.title)
+        : ((cd.caption_en as string) || (cd.caption_he as string) || task.title);
       const tags = (cd.hashtags as string) || '#DUBIS #ForTheRestOfUs';
       // Strip any plain "www.dubis.net" the model may have added inside the body
       const cleanBody = baseBody.replace(/https?:\/\/(www\.)?dubis\.net\/?/gi, '').replace(/www\.dubis\.net\/?/gi, '').replace(/\n{3,}/g, '\n\n').trim();
@@ -2260,17 +2366,14 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     if (autoTodayCount >= MAX_DAILY_POSTS) {
       return json({ skipped: true, reason: `Already ${autoTodayCount} auto-content tasks today (max ${MAX_DAILY_POSTS})`, total_content_tasks_today: todayTasks?.length ?? 0 });
     }
-    // IL pivot 2026-05-17: HE-first cadence is the target, but this auto-content
-    // route still defaults to EN until the new ?type=weekly-marketing-plan +
-    // ?type=copy-qa routes are built (those bypass auto-content/content-run
-    // entirely and write HE tasks straight to DB with caption_he pre-populated).
-    // The daily cron (2× per day) stays on EN for now to avoid breaking the
-    // existing publish chain that gates on caption_en. Pass `?lang=he` to test
-    // HE generation manually — note that downstream content-run still strips
-    // caption_he as of this commit. Full HE pipeline tracked in:
-    // docs/plans/campaigns/DUBIS_WEEKLY_SOCIAL_PLAN_2026-05-16.html
+    // IL re-opened 2026-05-15: alternate HE/EN posts. Even auto-content count = HE
+    // (first post of the day in IL morning), odd = EN (second post in US morning).
+    // Manual override still respected via ?lang=he|en query param.
+    // Downstream content-run + publish are language-aware as of 2026-05-18.
     const langParam = (url.searchParams.get('lang') || '').toLowerCase();
-    const nextLang = (langParam === 'he' || langParam === 'en') ? langParam : 'en';
+    const nextLang = (langParam === 'he' || langParam === 'en')
+      ? langParam
+      : ((autoTodayCount % 2 === 0) ? 'he' : 'en');
 
     // Find product not recently featured (check last N tasks)
     type TaskRow = Record<string, unknown>;
@@ -2640,7 +2743,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
     if (!geminiKey) return json({ error: 'GEMINI_API_KEY not configured' }, 503);
 
-    // US-PIVOT: QA gate on caption_en. Legacy caption_he rows skipped.
+    // IL re-opened 2026-05-15: QA either caption_en or caption_he depending on language.
     type Task = Record<string, unknown>;
     const { data: tasks, error: fetchErr } = await sb.from('agent_tasks')
       .select('id, title, notes, content_data')
@@ -2651,7 +2754,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
 
     const unscored = ((tasks || []) as Task[]).filter((t) => {
       const cd = (t.content_data as Task) || {};
-      return cd.caption_en && !cd.qa_score;
+      return (cd.caption_en || cd.caption_he) && !cd.qa_score;
     });
 
     if (!unscored.length) return json({ checked: 0, passed: 0, failed: 0, results: [], summary: 'All content tasks already passed QA' });
@@ -2689,11 +2792,35 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
         qaDetails.slogan_completeness = true;
       }
 
-      // ── 1. English brand voice + grammar (30pts) — Gemini (US-PIVOT) ────
-      let voiceScore = 0;
+      // ── 1. Brand voice + grammar (30pts) — Gemini (language-aware) ────
+      // IL re-opened 2026-05-15: QA either HE or EN caption based on cd.language.
+      const qaLang = ((cd.language as string) || 'en').toLowerCase() === 'he' ? 'he' : 'en';
       const captionEn = (cd.caption_en as string) || '';
+      const captionHe = (cd.caption_he as string) || '';
+      const captionText = qaLang === 'he' ? captionHe : captionEn;
+      let voiceScore = 0;
       try {
-        const voicePrompt = `You are a DUBIS brand QA reviewer. DUBIS is a US anti-fashion apparel brand for people aged 35-55, tagline "For the rest of us."
+        const voicePrompt = qaLang === 'he'
+          ? `אתה QA reviewer של מותג DUBIS. DUBIS הוא מותג אופנה אנטי-אופנתי ישראלי לגילאי 35-55. סלוגן: "בשביל כל השאר".
+כללי קול המותג:
+- טון: הומור יבש מודע-עצמי, body-positive, שיחתי, אנטי-היפ
+- מילים אסורות בעברית: מושלם, מהמם, חובה, מטורף, מבצע, הנחה, יוקרתי, פרימיום, אקסקלוסיבי
+- חייב להשתמש ב"קפוצון" (לא "הודי") ו"קפוצונים" (לא "הודיז")
+- משפטים קצרים וחדים, גוף ראשון רבים ("אנחנו", "אצלנו")
+- בלי שפת דחיפות, בלי CTA מכירתיים
+- מתחבר לסלוגן המוצר ולאישיות המותג
+
+כיתוב בעברית לבדיקה: "${captionHe}"
+סלוגן המוצר על הבגד (באנגלית): "${productSlogan}"
+
+בדוק:
+1. איכות קול המותג בעברית — האם זה on-brand, שנון, אנטי-היפ? (0-20)
+2. תקינות דקדוקית של העברית (0-5)
+3. האם הסלוגן באנגלית קריא ותקין דקדוקית? (0-5)
+
+נקד סה"כ 0-30. החזר רק JSON תקני:
+{"score": <0-30>, "reason": "<משפט אחד>", "english_grammar_ok": <true/false>, "slogan_grammar_ok": <true/false>}`
+          : `You are a DUBIS brand QA reviewer. DUBIS is a US anti-fashion apparel brand for people aged 35-55, tagline "For the rest of us."
 Brand voice rules:
 - Tone: self-aware dry humor, body-positive, conversational, anti-hype
 - Banned words: perfect, stunning, must-have, insane, sale, discount, luxurious, premium, exclusive
@@ -2723,25 +2850,26 @@ Score the total 0-30. Return ONLY valid JSON:
         qaDetails.voice_reason = vParsed.reason || '';
         qaDetails.english_grammar_ok = vParsed.english_grammar_ok ?? true;
         qaDetails.slogan_grammar_ok = vParsed.slogan_grammar_ok ?? true;
-        if (vParsed.english_grammar_ok === false) failReasons.push('שגיאת דקדוק בכיתוב האנגלי');
+        qaDetails.qa_lang = qaLang;
+        if (qaLang === 'en' && vParsed.english_grammar_ok === false) failReasons.push('שגיאת דקדוק בכיתוב האנגלי');
         if (vParsed.slogan_grammar_ok === false) failReasons.push('סלוגן המוצר לא תקין דקדוקית באנגלית');
       } catch { voiceScore = 15; qaDetails.voice_reason = 'Gemini unavailable — default score'; }
       score += voiceScore;
       qaDetails.voice_score = voiceScore;
       if (voiceScore < 15) failReasons.push('קול המותג חלש');
 
-      // ── 2. Caption quality (25pts) — US-PIVOT: EN caption only ────
+      // ── 2. Caption quality (25pts) — language-aware ────
       let captionScore = 0;
-      const captionLen = captionEn.length;
-      const minLen = format === 'story' ? 10 : 50;
-      const maxLen = format === 'story' ? 150 : 500; // EN captions can run a bit longer than the old HE limit
+      const captionLen = captionText.length;
+      const minLen = format === 'story' ? 10 : (qaLang === 'he' ? 30 : 50);
+      const maxLen = format === 'story' ? 150 : (qaLang === 'he' ? 400 : 500);
       if (captionLen >= minLen && captionLen <= maxLen) {
         captionScore = 20;
         // +5 if caption references the slogan or brand mark
         const slogan2 = ((cd.product_slogan as string) || '').toLowerCase();
         const sloganWords2 = slogan2.split(/\s+/).filter((w: string) => w.length > 3);
-        const hasRef = sloganWords2.some((w: string) => captionEn.toLowerCase().includes(w));
-        if (hasRef || captionEn.includes('DUBIS') || captionEn.toLowerCase().includes('dubis')) captionScore = 25;
+        const hasRef = sloganWords2.some((w: string) => captionText.toLowerCase().includes(w));
+        if (hasRef || captionText.includes('DUBIS') || captionText.toLowerCase().includes('dubis')) captionScore = 25;
       } else if (captionLen > 0) {
         captionScore = 10; // has content but wrong length
       }
@@ -2790,11 +2918,13 @@ Score the total 0-30. Return ONLY valid JSON:
       qaDetails.image_url = imageUrl || null;
       if (imageScore === 0) failReasons.push('חסרה תמונה');
 
-      // ── 5. No forbidden words (10pts) — US-PIVOT: EN banned list ────
+      // ── 5. No forbidden words (10pts) — language-aware ────
       // Anti-hype brand voice — these are banned in any DUBIS customer-facing copy.
-      const forbidden = ['perfect', 'stunning', 'must-have', 'insane', 'sale', 'discount', 'luxurious', 'premium', 'exclusive'];
-      const captionEnLower = captionEn.toLowerCase();
-      const foundForbidden = forbidden.filter((w) => captionEnLower.includes(w));
+      const forbiddenEn = ['perfect', 'stunning', 'must-have', 'insane', 'sale', 'discount', 'luxurious', 'premium', 'exclusive'];
+      const forbiddenHe = ['מושלם', 'מהמם', 'חובה', 'מטורף', 'מבצע', 'הנחה', 'יוקרתי', 'פרימיום', 'אקסקלוסיבי', 'הודי', 'הודיז'];
+      const forbidden = qaLang === 'he' ? forbiddenHe : forbiddenEn;
+      const captionLower = captionText.toLowerCase();
+      const foundForbidden = forbidden.filter((w) => captionLower.includes(w.toLowerCase()));
       const forbiddenScore = foundForbidden.length === 0 ? 10 : 0;
       score += forbiddenScore;
       qaDetails.forbidden_score = forbiddenScore;
