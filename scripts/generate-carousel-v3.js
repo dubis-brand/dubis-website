@@ -111,6 +111,38 @@ const BACK_JOBS = [
     person: 'a woman around 49, plus size, short hair, walking with relaxed posture',
     setting: 'walking away on a city sidewalk near brick buildings, soft daylight',
   },
+  {
+    out: 'back-5.jpg',
+    ref: 'product-4-Black-back.jpg',
+    garment: 'black crew-neck t-shirt',
+    slogan: "I SURVIVED. THAT'S ENOUGH.",
+    person: 'a man around 52, average build with a bit of belly, salt-and-pepper beard, regular guy',
+    setting: 'walking away across a wide concrete plaza near a coffee shop, mid-afternoon sun',
+  },
+  {
+    out: 'back-6.jpg',
+    ref: 'product-18-White-back.jpg',
+    garment: 'white crew-neck t-shirt',
+    slogan: 'UNFASHIONABLY COMFORTABLE.',
+    person: 'a woman around 39, curvy real body, hair in a messy bun, no makeup',
+    setting: 'walking away down a leafy residential street with parked cars, late spring afternoon',
+  },
+  {
+    out: 'back-7.jpg',
+    ref: 'product-13-Navy-back.jpg',
+    garment: 'navy blue pullover hoodie',
+    slogan: 'ZERO MOTIVATION CLUB',
+    person: 'a woman around 46, plus size, dark hair pulled back, hands in hoodie pocket',
+    setting: 'walking away on a rainy-cool urban sidewalk, overcast diffuse light',
+  },
+  {
+    out: 'back-8.jpg',
+    ref: 'product-9-Charcoal-back.jpg',
+    garment: 'charcoal grey zip-up hoodie',
+    slogan: 'CERTIFIED OVERTHINKER',
+    person: 'a man around 41, dad-bod build, short hair, glasses, looks like a software engineer on a coffee run',
+    setting: 'walking away through an industrial neighborhood with brick warehouses, early evening warm light',
+  },
 ];
 
 function buildFrontPrompt(job) {
