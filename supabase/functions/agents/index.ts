@@ -4791,6 +4791,32 @@ Return ONLY valid JSON (no markdown):
         steps.push({ step: 'create_creative_or_ad', skipped: true, reason: `missing pageId (${!!pageId}) or images (women=${!!womenImg}, men=${!!menImg})` });
       }
 
+      // Step 5: persist to ad_campaigns so the morning report sees it.
+      // Schema has no campaign_id/name columns — Meta IDs go into `notes`.
+      // Row starts as 'paused' (mirrors the Meta objects); flip to 'active' when oren activates in Ads Manager.
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const adsetNote = Object.entries(adSetIds).map(([k, v]) => `${v} (${k})`).join(', ') || 'none';
+        const { error: rowErr } = await sb.from('ad_campaigns').insert({
+          platform: 'instagram+facebook',
+          goal: 'sales',
+          budget: dailyBudgetILS * segments.length,
+          budget_currency: 'ILS',
+          duration_days: 7,
+          audience: 'IL Men + Women 30-55 (CBO, 2 adsets)',
+          status: 'paused',
+          start_date: today,
+          end_date: endDate,
+          spend_to_date: 0,
+          type: 'campaign',
+          notes: `DUBIS IL Sales — W1 — ${today} | Meta campaign_id: ${campaignId} | Adsets: ${adsetNote} | Daily: ₪${dailyBudgetILS} CBO × ${segments.length}`,
+        });
+        steps.push({ step: 'persist_to_ad_campaigns', ok: !rowErr, error: rowErr?.message });
+      } catch (e) {
+        steps.push({ step: 'persist_to_ad_campaigns', error: (e as Error).message });
+      }
+
       results.success = true;
       results.campaign_id = campaignId;
       results.adset_ids = adSetIds;
