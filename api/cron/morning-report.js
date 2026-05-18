@@ -561,8 +561,8 @@ ${[
         }
     }
 
-    // ── Route: ?type=security — weekly security scan ──────────────────
-    // Called by Vercel cron every Monday 03:00 UTC (05:00 Israel)
+    // ── Route: ?type=security — daily security scan ───────────────────
+    // Called by Vercel cron every day 03:00 UTC (05:00 Israel)
     if (urlType === 'security') {
         const agentsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1/agents';
         const authToken  = process.env.CRON_SECRET || process.env.AGENT_SECRET || '';
@@ -1029,7 +1029,7 @@ ${[
         supply:        'מסנכרן סטטוס Gelato + tracking — אם לא רץ, לקוחות בלי tracking → תלונות.',
         site_audit:    'בודק שדפי המוצר עובדים — אם נשבר משהו, מאבדים מכירות שקטות.',
         email_monitor: 'סורק Gmail להזדמנויות + alerts — אם נופל, מפספסים פניות לקוחות.',
-        security:     'סריקה שבועית — לא יומי, לא רץ עכשיו זה בסדר.',
+        security:     'סריקה יומית — אם לא רץ אתמול, יש בעיה ב-cron או ב-Edge Function.',
     };
 
     // ═════════════════════════════════════════════════════════════════
@@ -1600,12 +1600,12 @@ ${[
     const secAge = lastSecurityRun
         ? Math.floor((Date.now() - new Date(lastSecurityRun.created_at).getTime()) / 86400000)
         : 999;
-    const secHealthy = secAge <= 10; // weekly cron — should be < 7-10 days
+    const secHealthy = secAge <= 2; // daily cron (0 3 * * *) — should be <= 1 day, allow 2 for slack
     const secStatus = lastSecurityRun?.status || 'never';
     const securityHtml = !lastSecurityRun
         ? `<div style="background:#fff5f5;border:1px solid #ffcfcf;border-radius:6px;padding:12px;font-size:13px;color:#c0392b">
-            🚨 <strong>סריקת אבטחה לא רצה כלל</strong> ב-14 הימים האחרונים. ה-cron מתוכנן לכל יום שני 03:00 UTC לפי AGENTS.md אבל לא קיים ב-agent_runs.<br>
-            <span style="font-size:11px;color:#7a1a1a;display:block;margin-top:6px">פעולה: אמת ב-Cowork scheduled-tasks או הוסף ל-Vercel cron.</span>
+            🚨 <strong>סריקת אבטחה לא רצה כלל</strong> ב-14 הימים האחרונים. ה-cron מתוכנן יומית ב-03:00 UTC (vercel.json → type=security) אבל לא קיים ב-agent_runs.<br>
+            <span style="font-size:11px;color:#7a1a1a;display:block;margin-top:6px">פעולה: בדוק Vercel cron logs ו-Supabase Edge Function logs לראות אם הסוכן רץ ונכשל באמת לכתוב ל-agent_runs.</span>
           </div>`
         : `<div style="background:${secHealthy ? '#f0fbf4' : '#fff9f0'};border:1px solid ${secHealthy ? '#cfeed4' : '#ffe0a0'};border-radius:6px;padding:12px">
             <div style="margin-bottom:6px">
@@ -1844,7 +1844,7 @@ ${[
       <!-- SECURITY -->
       <tr><td style="background:#fff;border-radius:12px;padding:20px 24px">
         <h2 style="margin:0 0 12px;font-size:15px;color:#2c2c2c;border-bottom:2px solid #f5f0e8;padding-bottom:8px">
-          🔒 אבטחה — סריקה שבועית
+          🔒 אבטחה — סריקה יומית
         </h2>
         ${securityHtml}
       </td></tr>

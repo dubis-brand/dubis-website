@@ -3842,7 +3842,7 @@ const CARE_CAP_HE = [
     });
   }
 
-  // ── SECURITY-SCAN — Security audit agent ──────────────────────────
+  // ── SECURITY-SCAN — Security audit agent (daily cron 0 3 * * *) ─────
   if (type === 'security-scan') {
     const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
@@ -3853,6 +3853,7 @@ const CARE_CAP_HE = [
     const adminOk = await verifyAdmin(req);
     if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
 
+    const scanStartedMs = Date.now();
     const findings: { severity: string; category: string; detail: string }[] = [];
     const siteUrl = 'https://www.dubis.net';
 
@@ -3931,6 +3932,24 @@ const CARE_CAP_HE = [
       priority: findings.some(f => f.severity === 'critical') ? 'urgent' : 'low',
       content_data: scanResult,
     });
+
+    // Log to agent_runs so the boss daily email (morning-report.js) can find it.
+    // Without this, lastSecurityRun is always null and the email shows "never ran".
+    try {
+      const runSummary = findings.length === 0
+        ? `סריקה יומית הסתיימה — 0 ממצאים. כל ה-headers, RLS, ומפתחות תקינים.`
+        : `סריקה יומית — ${findings.length} ממצאים (${scanResult.critical} critical, ${scanResult.high} high, ${scanResult.medium} medium, ${scanResult.low} low).\n` +
+          findings.slice(0, 8).map(f => `[${f.severity}] ${f.category}: ${f.detail}`).join('\n');
+      await sb.from('agent_runs').insert({
+        agent_id: 'security',
+        status: scanResult.critical > 0 ? 'completed_with_errors' : 'completed',
+        summary: runSummary,
+        tasks_created: 1,
+        duration_ms: Date.now() - scanStartedMs,
+        proof_verified: true,
+        error_message: scanResult.critical > 0 ? `${scanResult.critical} critical findings` : null,
+      });
+    } catch (_) { /* non-fatal */ }
 
     return json(scanResult);
   }

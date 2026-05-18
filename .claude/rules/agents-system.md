@@ -24,7 +24,7 @@ All customer-facing content (Instagram/Facebook captions, ads, landing copy) is 
 | Marketing | ✅ AUTO | auto-run 06:00+12:00 UTC | Analysis → auto-done |
 | Email Monitor | ✅ AUTO | Cowork 06:45 | Scan Gmail for invoices/alerts |
 | Product | ✅ AUTO | auto-run 06:00+12:00 UTC | Slogans + products → auto-done |
-| Security | ✅ AUTO | Weekly Mon 03:00 | Security scan |
+| Security | ✅ AUTO | Daily 03:00 UTC | Security scan (logs to agent_runs for boss email) |
 | Supply | ✅ AUTO | cron 00:00 UTC | Gelato sync → auto-done |
 | Site Audit | ✅ AUTO | Cowork 06:50 | SEO/UX scan |
 
