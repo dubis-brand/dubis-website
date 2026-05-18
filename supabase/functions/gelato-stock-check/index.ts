@@ -221,6 +221,261 @@ async function probeShippingRate(countryIsoCode: string, postCode: string): Prom
   } catch { return null; }
 }
 
+// ─── Gelato order-status monitor (2026-05-18) ─────────────────────────
+// Daily-pass companion to the inventory check. Walks every active order with
+// a Gelato order id and flags:
+//   - P0 critical: still pending/created/passed/draft after >3 days
+//   - P0 critical: shipment exception ("Failed", "On hold", "Exception", "Returned")
+//   - P1 high   : in-transit/shipped >14 days without delivery
+// Each flag becomes an `agent_tasks` row (agent_id=gelato_stock,
+// category=gelato_order_alert) so the morning-report picks it up. Idempotent:
+// if an open alert already exists for the same order+kind, we touch updated_at
+// and refresh notes instead of inserting a duplicate.
+const GELATO_ORDER_API_BASE = 'https://order.gelatoapis.com';
+const DAY_MS = 86_400_000;
+const PENDING_THRESHOLD_DAYS = 3;
+const TRANSIT_THRESHOLD_DAYS = 14;
+const EXCEPTION_KEYWORDS = ['fail', 'failed attempt', 'on hold', 'on_hold', 'exception', 'returned', 'undeliverable', 'lost', 'damaged', 'rejected'];
+
+type OrderFlag = {
+  order_id: string;
+  printful_order_id: string;
+  buyer_email: string | null;
+  total_amount: number | null;
+  kind: 'pending_too_long' | 'shipment_exception' | 'transit_too_long';
+  priority: 'critical' | 'high';
+  gelato_status: string;
+  days_since_create: number;
+  detail: string;
+};
+
+async function fetchGelatoOrder(printfulOrderId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const v4 = await fetch(`${GELATO_ORDER_API_BASE}/v4/orders/${printfulOrderId}`, {
+      headers: { 'X-API-KEY': GELATO_API_KEY, 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (v4.ok) return await v4.json();
+    if (v4.status !== 404) return null;
+    const v3 = await fetch(`${GELATO_ORDER_API_BASE}/v3/orders/${printfulOrderId}`, {
+      headers: { 'X-API-KEY': GELATO_API_KEY, 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (v3.ok) return await v3.json();
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function hasShipmentException(g: Record<string, unknown>): { hit: boolean; reason: string } {
+  const probes: string[] = [];
+  const collect = (v: unknown) => { if (typeof v === 'string') probes.push(v.toLowerCase()); };
+  collect((g as { status?: string }).status);
+  const shipment = (g as { shipment?: { status?: string; events?: Array<{ status?: string; description?: string }> } }).shipment;
+  if (shipment) {
+    collect(shipment.status);
+    for (const ev of shipment.events || []) {
+      collect(ev.status); collect(ev.description);
+    }
+  }
+  const shipments = (g as { shipments?: Array<{ status?: string; events?: Array<{ status?: string; description?: string }> }> }).shipments || [];
+  for (const s of shipments) {
+    collect(s.status);
+    for (const ev of s.events || []) { collect(ev.status); collect(ev.description); }
+  }
+  const fulfillments = (g as { fulfillments?: Array<{ status?: string }> }).fulfillments || [];
+  for (const f of fulfillments) collect(f.status);
+  for (const probe of probes) {
+    for (const kw of EXCEPTION_KEYWORDS) {
+      if (probe.includes(kw)) return { hit: true, reason: probe.slice(0, 120) };
+    }
+  }
+  return { hit: false, reason: '' };
+}
+
+function isPendingStatus(status: string): boolean {
+  const s = status.toLowerCase().replace(/[_-]/g, '');
+  return ['created', 'passed', 'draft', 'pending'].includes(s);
+}
+
+function isInTransitStatus(status: string, dubisStatus: string): boolean {
+  const s = status.toLowerCase().replace(/[_-]/g, '');
+  if (['intransit', 'shipped', 'dispatched'].includes(s)) return true;
+  return dubisStatus === 'shipped';
+}
+
+async function monitorGelatoOrders(sb: ReturnType<typeof createClient>): Promise<{
+  scanned: number;
+  with_gelato_id: number;
+  gelato_unreachable: number;
+  flags_created: number;
+  flags_refreshed: number;
+  flags: OrderFlag[];
+  errors: string[];
+}> {
+  const errors: string[] = [];
+  if (!GELATO_API_KEY) {
+    return { scanned: 0, with_gelato_id: 0, gelato_unreachable: 0, flags_created: 0, flags_refreshed: 0, flags: [], errors: ['no-gelato-key'] };
+  }
+
+  const { data: orders, error: ordErr } = await sb
+    .from('orders')
+    .select('id, status, printful_order_id, buyer_email, total_amount, created_at, shipped_at, tracking_number, refunded_at, is_test')
+    .in('status', ['pending', 'in_production', 'shipped', 'approved'])
+    .not('printful_order_id', 'is', null)
+    .is('refunded_at', null)
+    .neq('is_test', true)
+    .order('created_at', { ascending: true });
+  if (ordErr) {
+    errors.push(`orders-query: ${ordErr.message}`);
+    return { scanned: 0, with_gelato_id: 0, gelato_unreachable: 0, flags_created: 0, flags_refreshed: 0, flags: [], errors };
+  }
+
+  const list = orders || [];
+  const flags: OrderFlag[] = [];
+  let gelatoUnreachable = 0;
+  const now = Date.now();
+
+  for (const o of list as Array<Record<string, unknown>>) {
+    const orderId = String(o.id);
+    const printfulOrderId = String(o.printful_order_id);
+    const dubisStatus = String(o.status);
+    const buyerEmail = (o.buyer_email as string) ?? null;
+    const totalAmount = (o.total_amount as number) ?? null;
+    const createdAt = new Date(o.created_at as string).getTime();
+    const daysSinceCreate = Math.floor((now - createdAt) / DAY_MS);
+    const shippedAt = o.shipped_at ? new Date(o.shipped_at as string).getTime() : null;
+    const daysSinceShipped = shippedAt ? Math.floor((now - shippedAt) / DAY_MS) : null;
+
+    const g = await fetchGelatoOrder(printfulOrderId);
+    if (!g) {
+      gelatoUnreachable++;
+      // 14d+ unreachable on a pending order is itself a P0 — let the pending check below trigger.
+    }
+    const gStatus = String(((g as { status?: string }) || {}).status || dubisStatus);
+
+    // Exception flag takes precedence (P0 — needs ticket regardless of age)
+    if (g) {
+      const ex = hasShipmentException(g);
+      if (ex.hit) {
+        flags.push({
+          order_id: orderId,
+          printful_order_id: printfulOrderId,
+          buyer_email: buyerEmail,
+          total_amount: totalAmount,
+          kind: 'shipment_exception',
+          priority: 'critical',
+          gelato_status: gStatus,
+          days_since_create: daysSinceCreate,
+          detail: `Gelato shipment flagged: "${ex.reason}". Buyer: ${buyerEmail || 'unknown'}. Age: ${daysSinceCreate}d.`,
+        });
+        continue; // one flag per order per pass
+      }
+    }
+
+    // Pending too long (P0)
+    if (isPendingStatus(gStatus) && daysSinceCreate > PENDING_THRESHOLD_DAYS) {
+      flags.push({
+        order_id: orderId,
+        printful_order_id: printfulOrderId,
+        buyer_email: buyerEmail,
+        total_amount: totalAmount,
+        kind: 'pending_too_long',
+        priority: 'critical',
+        gelato_status: gStatus,
+        days_since_create: daysSinceCreate,
+        detail: `Order ${daysSinceCreate}d in "${gStatus}" at Gelato (threshold ${PENDING_THRESHOLD_DAYS}d). Buyer: ${buyerEmail || 'unknown'}. Gelato US SLA is 5-7d total — pending past day 3 means production never started.`,
+      });
+      continue;
+    }
+
+    // In-transit too long (P1)
+    const transitDays = daysSinceShipped ?? daysSinceCreate;
+    if (isInTransitStatus(gStatus, dubisStatus) && transitDays > TRANSIT_THRESHOLD_DAYS) {
+      flags.push({
+        order_id: orderId,
+        printful_order_id: printfulOrderId,
+        buyer_email: buyerEmail,
+        total_amount: totalAmount,
+        kind: 'transit_too_long',
+        priority: 'high',
+        gelato_status: gStatus,
+        days_since_create: daysSinceCreate,
+        detail: `In-transit ${transitDays}d without delivery confirmation (threshold ${TRANSIT_THRESHOLD_DAYS}d). Buyer: ${buyerEmail || 'unknown'}. Likely DHL/carrier delay — buyer probably already complaining.`,
+      });
+    }
+  }
+
+  // Persist flags as agent_tasks (idempotent per order+kind).
+  let created = 0; let refreshed = 0;
+  const today = new Date().toISOString().slice(0, 10);
+  for (const f of flags) {
+    // Look up an existing OPEN alert for the same order+kind
+    const { data: existing } = await sb
+      .from('agent_tasks')
+      .select('id, status, content_data')
+      .eq('agent_id', 'gelato_stock')
+      .eq('category', 'gelato_order_alert')
+      .in('status', ['pending', 'pending_approval', 'approved', 'in_progress'])
+      .contains('content_data', { order_id: f.order_id, kind: f.kind })
+      .limit(1);
+
+    const title = f.kind === 'pending_too_long'
+      ? `🚨 Gelato pending >${PENDING_THRESHOLD_DAYS}d — DUBIS-${(f.printful_order_id || '').slice(0, 8)} (${f.days_since_create}d)`
+      : f.kind === 'shipment_exception'
+        ? `🚨 Gelato shipment exception — DUBIS-${(f.printful_order_id || '').slice(0, 8)}`
+        : `⚠️ In-transit >${TRANSIT_THRESHOLD_DAYS}d — DUBIS-${(f.printful_order_id || '').slice(0, 8)} (${f.days_since_create}d)`;
+
+    const content_data: Record<string, unknown> = {
+      order_id: f.order_id,
+      printful_order_id: f.printful_order_id,
+      buyer_email: f.buyer_email,
+      total_amount: f.total_amount,
+      kind: f.kind,
+      gelato_status: f.gelato_status,
+      days_since_create: f.days_since_create,
+      flagged_at: new Date().toISOString(),
+      flagged_by: 'gelato_stock_order_monitor',
+    };
+
+    if (existing && existing.length > 0) {
+      const id = (existing[0] as { id: string }).id;
+      const prev = ((existing[0] as { content_data?: Record<string, unknown> }).content_data) || {};
+      await sb.from('agent_tasks').update({
+        notes: `${f.detail}\n(refreshed ${today})`,
+        content_data: { ...prev, ...content_data, last_seen: new Date().toISOString() },
+        updated_at: new Date().toISOString(),
+      }).eq('id', id);
+      refreshed++;
+    } else {
+      const { error: insErr } = await sb.from('agent_tasks').insert({
+        agent_id: 'gelato_stock',
+        title,
+        description: f.detail,
+        status: 'pending',
+        priority: f.priority,
+        category: 'gelato_order_alert',
+        content_data,
+        notes: `Auto-flagged by gelato_stock order monitor on ${today}.`,
+        requires_budget: false,
+      });
+      if (insErr) errors.push(`insert ${f.order_id}: ${insErr.message}`);
+      else created++;
+    }
+  }
+
+  return {
+    scanned: list.length,
+    with_gelato_id: list.length, // query already filters printful_order_id IS NOT NULL
+    gelato_unreachable: gelatoUnreachable,
+    flags_created: created,
+    flags_refreshed: refreshed,
+    flags,
+    errors,
+  };
+}
+
 async function authorized(req: Request): Promise<boolean> {
   const header = req.headers.get('x-agent-secret');
   if (header && AGENT_SECRET && header === AGENT_SECRET) return true;
@@ -369,6 +624,24 @@ Deno.serve(async (req: Request) => {
   }
   log('ship-rates', { us: shipUs, il: shipIl });
 
+  // ── Order-status monitor ── (P0/P1 alerts as agent_tasks)
+  let orderMonitor: Awaited<ReturnType<typeof monitorGelatoOrders>> = {
+    scanned: 0, with_gelato_id: 0, gelato_unreachable: 0, flags_created: 0, flags_refreshed: 0, flags: [], errors: ['skipped'],
+  };
+  try {
+    orderMonitor = await monitorGelatoOrders(sb);
+    log('orders-monitor', {
+      scanned: orderMonitor.scanned,
+      unreachable: orderMonitor.gelato_unreachable,
+      created: orderMonitor.flags_created,
+      refreshed: orderMonitor.flags_refreshed,
+      errors: orderMonitor.errors.length,
+    });
+  } catch (err) {
+    log('orders-monitor-error', { error: (err as Error).message });
+    orderMonitor.errors.push(`exception: ${(err as Error).message}`);
+  }
+
   // Log summary to agent_runs for observability
   await sb.from('agent_runs').insert({
     agent_id: 'gelato-stock-check',
@@ -376,11 +649,16 @@ Deno.serve(async (req: Request) => {
     started_at: new Date(t0).toISOString(),
     completed_at: new Date().toISOString(),
     duration_ms: Date.now() - t0,
-    summary: `checked=${checked} to_oos=${transitions.to_oos} back_in_stock=${transitions.back_in_stock} unchanged=${transitions.unchanged} overrides=${transitions.skipped_override} unmapped=${skippedUnmappable} ship_us=${shipUs} ship_il=${shipIl}`,
-    metadata: { transitions, skippedUnmappable, shipping: { us: shipUs, il: shipIl } },
+    summary: `checked=${checked} to_oos=${transitions.to_oos} back_in_stock=${transitions.back_in_stock} unchanged=${transitions.unchanged} overrides=${transitions.skipped_override} unmapped=${skippedUnmappable} ship_us=${shipUs} ship_il=${shipIl} orders_scanned=${orderMonitor.scanned} alerts_created=${orderMonitor.flags_created} alerts_refreshed=${orderMonitor.flags_refreshed}`,
+    metadata: {
+      transitions,
+      skippedUnmappable,
+      shipping: { us: shipUs, il: shipIl },
+      order_monitor: orderMonitor,
+    },
   });
 
-  log('done', { checked, ...transitions, skippedUnmappable, ship_us: shipUs, ship_il: shipIl, ms: Date.now() - t0 });
+  log('done', { checked, ...transitions, skippedUnmappable, ship_us: shipUs, ship_il: shipIl, alerts: orderMonitor.flags_created, ms: Date.now() - t0 });
 
   return new Response(JSON.stringify({
     ok: true,
@@ -388,6 +666,7 @@ Deno.serve(async (req: Request) => {
     transitions,
     skippedUnmappable,
     shipping: { us: shipUs, il: shipIl },
+    order_monitor: orderMonitor,
     duration_ms: Date.now() - t0,
     sample: results.slice(0, 5),
   }), { headers: { 'Content-Type': 'application/json' } });
