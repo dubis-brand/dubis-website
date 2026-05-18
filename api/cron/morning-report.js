@@ -417,16 +417,20 @@ ${[
 
     // ── Route: ?type=auto-run — Phase 2 autonomy: auto-execute all non-budget tasks ──
     // Called by Vercel cron at 06:00 + 12:00 UTC (08:00 + 14:00 Israel)
+    // Delegates to dubis-run-all (the cloud dispatcher that threads task_ids into
+    // tasks_completed_ids + proof_of_completion). The legacy agents?type=run loop
+    // wrote agent_runs rows with empty tasks_completed_ids → flagged as PHANTOM v3.
     if (urlType === 'auto-run') {
-        const agentsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1/agents';
-        const authToken  = process.env.CRON_SECRET || process.env.AGENT_SECRET || '';
+        const fnsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1';
+        const svcKey  = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.AGENT_SECRET || '';
         try {
-            const r = await fetch(`${agentsBase}?type=run`, {
+            const dispatchRes = await fetch(`${fnsBase}/dubis-run-all`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+                headers: { 'Authorization': `Bearer ${svcKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ trigger: 'vercel-auto-run', timestamp: new Date().toISOString() }),
             });
-            const data = await r.json();
-            return res.status(200).json({ success: true, auto_run: data });
+            const dispatchData = await dispatchRes.json();
+            return res.status(dispatchRes.ok ? 200 : 500).json({ ok: dispatchRes.ok, delegated: true, result: dispatchData });
         } catch (e) {
             return res.status(500).json({ success: false, error: e.message });
         }
