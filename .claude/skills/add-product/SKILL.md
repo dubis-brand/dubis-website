@@ -50,15 +50,28 @@ Slogan in slogan_candidates / agent_tasks (pending_approval)
     • Updates dubis_products: active=true, publishing_status='live', launched_at=now()
     • Burns visual_approval_token
     • Updates product_pipeline_queue: status='live'
-    • POSTs https://api.github.com/repos/dubis-brand/dubis-website/dispatches
-      event_type='oren-approved-visual', client_payload={product_id, product_id_numeric}
+    • POSTs GitHub /dispatches event_type='oren-approved-visual'  → dubis-sync-products.yml
+    • UPSERTs product_prices with dubis_products.price_usd as baseline (so admin renders
+      immediately; daily cron + manual sync refine to CEIL(MIN(gelato_cost_usd)))
+    • Fires dubis-cron-dispatcher?job=gelato-stock (fire-and-forget, upstream ~55s) →
+      seeds product_variant_stock with in_stock + gelato_cost_us_usd + gelato_cost_usd
     • Sends "✅ מוצר #N עלה לאוויר" confirmation email
     │
-    ▼
-.github/workflows/dubis-sync-products.yml  (~30s)
-    1. sync-products-to-js.js --write                    → js/products.js (NOW includes N — active=true)
-    2. Commit + push                                      → Vercel deploys → product live on dubis.net
+    ├──→ .github/workflows/dubis-sync-products.yml (~30s)
+    │      1. sync-products-to-js.js --write          → js/products.js NOW includes N
+    │      2. Commit + push                            → Vercel deploys → product live
+    │
+    └──→ gelato-stock-check Edge Function (~55s, parallel)
+           • Iterates (product × color × size) → Gelato API → upsert product_variant_stock
+           • Sets in_stock + gelato_cost_us_usd + gelato_cost_usd + gelato_ship_*
+           • Admin Product Catalog card refreshes to show Margin US/IL
 ```
+
+After both branches complete (~90s), the admin shows the new product fully populated:
+stock badges (לא במלאי / במלאי), Margin US, Margin IL, per-variant pricing modal. No
+manual "הרץ sync" click needed. The selling_price stays at the baseline; refine to
+the rule-#7 CEIL(MIN(gelato_cost_usd)) via the runbook entry "Re-base prices after
+Gelato cost change" or wait for the next daily 5 UTC cron.
 
 ## When to use this skill
 
