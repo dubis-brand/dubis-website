@@ -105,6 +105,26 @@ RETURNING id, product_id_numeric;
 - Set `active=false, publishing_status='pending_pipeline'` so `trg_enforce_product_activation_proof` allows the row through.
 - `next_id` = `SELECT MAX(product_id_numeric)+1 FROM dubis_products`.
 
+**Available `clothing_type` values + their Gelato cost & color matrix (verified 2026-05-19):**
+
+| clothing_type | Gender | Cost IL (M) | Cost US (M) | Base $ | Available colors | Notes |
+|---|---|---|---|---|---|---|
+| `t-shirt` | unisex | $20.20 | $15.39 | $21 | Black/White/Cream/Navy/Charcoal/Red/Gray/Forest Green | Gildan 64000 (Forest→Next Level 3600) |
+| `t-shirt` | women  | $19.92 | varies | $21 | Black/White/Cream/Navy | Bella+Canvas 6004 |
+| `hoodie` | unisex  | $35.47 | $27.89 | $36 | Black/White/Cream/Navy/Charcoal/Forest Green/Gray | Gildan 18500 |
+| `hoodie` | women   | varies | varies | $36 | Black/White/Navy/Charcoal | Brand-less alias |
+| `zip-hoodie` | unisex | varies | varies | $36 | Black/White/Navy/Charcoal | Brand-less alias |
+| `long-sleeve` | unisex | $27.40 | $19.89 | $28 | Black/White/Cream/Navy/Forest Green/Gray | Gildan 2400, cost via brand-less fallback |
+| `long-sleeve` | women  | varies | varies | $28 | Black/White/Navy | SOLS 02075 |
+| `cap` | unisex | varies | varies | $16 | Black/White/Cream/Navy | AS Colour 1114 DTF |
+| `cap-emb` | unisex | varies | varies | $32 | Black/White/Navy/Cream/Charcoal | Flexfit 6245cm embroidered (premium) |
+| **`v-neck` (new 2026-05-19)** | unisex | **$29.44** | **$20.85** | **$30** | **Black/White/Navy/Red** | Premium-tier brand-less alias |
+| **`v-neck` (new 2026-05-19)** | women  | **$25.03** | **$17.49** | **$26** | **Black/White/Navy** | Premium-tier brand-less alias |
+| **`tank-top` (new 2026-05-19)** | unisex | **$27.11** | **$19.07** | **$28** | **Black/White/Navy/Red** | Premium-tier brand-less alias |
+| **`tank-top` (new 2026-05-19)** | women  | **$31.11** | **$21.32** | **$32** | **Black only** | Premium-tier brand-less alias |
+
+For all sizes 2XL adds ~$3-4, 3XL adds ~$6-10 to base cost — passed through via per-variant `sell_price_usd` overrides.
+
 ### Step 2 — Trigger the GHA pipeline
 
 ```bash
