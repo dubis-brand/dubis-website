@@ -1,170 +1,218 @@
-﻿---
+---
 name: add-product
-description: Add a new product to DUBIS catalog with full mockup + print parity (B+ pipeline). Last updated 2026-04-25 after the 9-iteration logo position calibration with oren.
+description: Add a new product to DUBIS catalog through the two-stage GHA pipeline (slogan approval → Gelato real-mockup pipeline → visual approval → auto-sync). Replaces the legacy B+ composite-mockup procedure that was retired 2026-05-16 because Gemini blanks never matched what Gelato actually prints. Last updated 2026-05-19 after the visual-approve auto-sync wiring landed.
 ---
 
-# Add New Product - Full Checklist (B+ Pipeline)
+# Add New Product — End-to-End (Two-Stage GHA Pipeline)
 
-CRITICAL: This procedure ensures site mockups EXACTLY match what Gelato prints. Skipping any step risks Hila-style bugs (customer sees A, gets B). Read memory/checkout-guardrails.md section 1 and memory/reference_dubis_mockup_pipeline_bplus.md before starting.
+CRITICAL: This is the ONLY supported flow as of 2026-05-19. The legacy `generate-blanks` + `composite-mockups` + `verify-parity` scripts are deprecated — they produced node-canvas mockups that diverged from real Gelato prints (caught on the Hila test order). All catalog mockups now come from real Gelato draft-order preview images downloaded by the pipeline.
 
-## Architecture overview
+Read `memory/checkout-guardrails.md` §1 (site mockup MUST equal what Gelato prints — non-negotiable) before starting.
 
-DUBIS has TWO image pipelines, both must stay in sync:
+## Architecture overview — what runs where
 
-| Pipeline | Output | Used by |
-|---|---|---|
-| Print files (scripts/generate-designs.js) | designs/*.png (3600x4200) | Gelato fulfillment - what gets printed |
-| Site mockups (scripts/generate-blanks.js + scripts/composite-mockups.js) | images/product-N-Color-{front|back}.jpg | Website - what customer sees |
+```
+Slogan in slogan_candidates / agent_tasks (pending_approval)
+    │
+    │  oren clicks ✅ Approve in admin "🎨 הצעות לאישור"
+    ▼
+?type=approve-product (agents/index.ts)
+    • Allocates next product_id_numeric (max+1)
+    • Updates dubis_products: active=false, publishing_status='pending_pipeline'
+    • INSERTs product_pipeline_queue: status='pending_dispatch'
+    • POSTs https://api.github.com/repos/dubis-brand/dubis-website/dispatches
+      event_type='boss-approved-product', client_payload={product_id, product_id_numeric, queue_id}
+    │
+    ▼
+.github/workflows/dubis-product-pipeline.yml  (~10 min)
+    1. generate-designs.js --product-numeric=N           → designs/back_design_N_{white,dark}.png
+    2. Commit + push designs/                            → Vercel deploys → Gelato can fetch
+    3. Sleep 60s                                         (wait for Vercel)
+    4. create-gelato-drafts.js --product=N
+         --save-as-site-images --json                    → images/product-N-{Color}-{front,back}.jpg
+                                                          (real Gelato preview JPGs, gray bg, mozjpeg q90)
+    5. sync-products-to-js.js --write                    → js/products.js (STILL filters out N — active=false)
+    6. Commit + push images/ + js/products.js
+    7. POST ?type=gha-pipeline-callback
+         status='live', gelato_draft_id, gelato_preview_urls
+    │
+    ▼
+?type=gha-pipeline-callback (agents/index.ts)
+    • Updates dubis_products: pending_visual_approval=true, visual_approval_token=<rand>
+    • Writes proof_of_completion {gelato_draft_id, workflow_run_id, gelato_preview_urls}
+    • Sends oren "🛠 מוצר חדש לאישור ויזואלי" email with embedded mockup previews
+      + magic-link approve URL: dubis.net/dub-console#visual-approve={uuid}:{token}
+    │
+    │  oren reviews real Gelato mockups in email or admin
+    │  Clicks ✅ Approve (admin UI button OR email magic link)
+    ▼
+?type=product-visual-approve (agents/index.ts)
+    • Updates dubis_products: active=true, publishing_status='live', launched_at=now()
+    • Burns visual_approval_token
+    • Updates product_pipeline_queue: status='live'
+    • POSTs https://api.github.com/repos/dubis-brand/dubis-website/dispatches
+      event_type='oren-approved-visual', client_payload={product_id, product_id_numeric}
+    • Sends "✅ מוצר #N עלה לאוויר" confirmation email
+    │
+    ▼
+.github/workflows/dubis-sync-products.yml  (~30s)
+    1. sync-products-to-js.js --write                    → js/products.js (NOW includes N — active=true)
+    2. Commit + push                                      → Vercel deploys → product live on dubis.net
+```
 
-Both use the SAME Impact font and matching positions (X=0.78 on print canvas vs X=0.60 on blank canvas - they map to the same physical chest spot).
+## When to use this skill
 
-## Locked-in design conventions (DO NOT change without oren approval)
+- A slogan candidate is approved by oren and you want to add it as a real product.
+- You want to add a product manually (without going through Boss slogan review) — see "Manual entry" below.
+- Something in the pipeline broke and you need to recover.
 
-| Property | Value | Why |
-|---|---|---|
-| Front logo X (print canvas) | 0.78 | Wearer's left chest. 0.22 was wearer's right (wrong) - Hila test |
-| Front logo Y (print canvas) | 0.17 | Upper chest, just below collar |
-| Front logo font size | 300px Impact | ~2.5cm printed - Polo/Lacoste scale |
-| TM superscript ratio | 0.45 of main letter | Discreet, professional |
-| Back BIG word size | 0.11 of canvas height | Calibrated for hoodies + tshirts (was 0.16 - too tall) |
-| Back small text size | 0.033 of canvas height | |
-| Back y_start | tshirt 0.26, hoodie/ziphoodie 0.30, longsleeve 0.22 | Per-type, calibrated 2026-04-24 |
-| Cap front logo X / Y | 0.50 / 0.40 | Center of front panel (not chest position) |
-| Cap front width ratio | 0.12 | Slightly larger than chest logos |
-| Composite blank X | 0.60 (chest-pocket area) | 9 oren iterations - sweet spot |
-| Composite blank Y | 0.33 (heart level) | |
-| Composite logo width ratio | 0.09 of canvas width | ~9% width - fits within shirt body |
+## Manual entry — bypass slogan_candidates
 
-## Step 0: Decide product structure
+Use when oren hands you a slogan + type directly (skip Boss queue). You'll insert into `dubis_products` and then trigger the pipeline.
 
-- Type: tshirt | hoodie | ziphoodie | longsleeve | cap
-- Slogan layout:
-  - top-bottom: small text â†’ BIG WORD â†’ after text
-  - big-top: BIG word at top, small text below
-  - cap: special - only DUBIS embroidered on front
-- Colors: subset of Black, White, Cream, Navy, Red, Charcoal, Forest Green. Verify each exists in api/create-gelato-order.js COLOR_MAP[type].
-
-## Step 1: Add product to DB (dubis_products)
+### Step 1 — Add product row to DB
 
 ```sql
 INSERT INTO dubis_products
-(product_id_numeric, slogan, clothing_type, category, colors, price_usd,
- typography_layout, typography_small, typography_big, typography_after,
- active, source, design_back_dark_url, design_back_white_url,
- description_en, description_he)
+  (product_id_numeric, slogan, clothing_type, gender, colors, price_usd,
+   typography_layout, typography_small, typography_big, typography_after,
+   active, publishing_status, source,
+   description_en, description_he)
 VALUES
-(19, 'New slogan', 'tshirt', 'men', '["Black","White","Navy"]', 14.0,
- 'top-bottom', 'small text', 'BIGWORD', 'after text',
- false, 'manual',
- 'https://www.dubis.net/designs/back_design_19_dark.png',
- 'https://www.dubis.net/designs/back_design_19_white.png',
- 'English description', 'Hebrew description');
+  (<next_id>, 'Your new slogan', 'tshirt', 'unisex',
+   '["Black","White","Navy","Cream"]'::jsonb, 28.0,
+   'top-bottom', 'lead-in text', 'PUNCHWORD', 'tail text',
+   false, 'pending_pipeline', 'manual',
+   'English copy in DUBIS voice', 'תיאור בעברית בקול המותג')
+RETURNING id, product_id_numeric;
 ```
 
-Set active=false until all later steps verified. DB column is slogan (NOT phrase). Confirmed 2026-04-24.
+- DB column is `slogan`, NOT `phrase` (legacy ambiguity confirmed 2026-04-24).
+- `colors` must each exist in `dubis-website/scripts/download-gelato-mockups.js` COLOR_MAP for the (type, gender) combo — `Honey Brown` famously does not exist in Gelato's catalog despite being marketable (2026-04-22 Hila bug).
+- Set `active=false, publishing_status='pending_pipeline'` so `trg_enforce_product_activation_proof` allows the row through.
+- `next_id` = `SELECT MAX(product_id_numeric)+1 FROM dubis_products`.
 
-## Step 2: Add product to scripts
-
-### 2a. scripts/generate-designs.js PRODUCTS array
-{ id: 19, phrase: "New slogan", layout: 'top-bottom', small: "small text", big: "BIGWORD", after: "after text" }
-
-### 2b. scripts/generate-blanks.js PRODUCTS array
-{ id: 19, type: 'tshirt', colors: ['Black','White','Navy'] }
-
-### 2c. scripts/composite-mockups.js PRODUCTS array
-{ id: 19, type: 'tshirt', colors: ['Black','White','Navy'], phrase: "New slogan", layout: 'top-bottom', small: "small text", big: "BIGWORD", after: "after text" }
-
-### 2d. scripts/verify-mockup-parity.js PRODUCTS array
-Same (id, type, colors) triple.
-
-### 2e. scripts/fix-front-images.js and scripts/fix-back-images.js
-LEGACY - DO NOT USE FOR NEW PRODUCTS. Deprecated 2026-04-24. Kept only for emergency rollback.
-
-## Step 3: Generate print files
+### Step 2 — Trigger the GHA pipeline
 
 ```bash
-cd dubis-website
-node scripts/generate-designs.js
+gh workflow run dubis-product-pipeline.yml \
+  --repo dubis-brand/dubis-website \
+  -f product_id=<uuid_from_step_1> \
+  -f product_id_numeric=<numeric_id_from_step_1>
 ```
 
-Outputs designs/back_design_19_white.png and back_design_19_dark.png. Front logo + cap files are shared - only back is product-specific.
-Verify: ls -la designs/back_design_19_*.png - both >200KB.
-
-## Step 4: Generate Gemini blanks (only if new typeÃ—color combo)
-
-If new combo:
+Or via Edge Function (if oren already has an `agent_tasks` row for the slogan in `pending_approval`):
 ```bash
-node scripts/generate-blanks.js --missing-only
+curl -X POST "https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=approve-product" \
+  -H "Authorization: Bearer <oren-admin-JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"product_id":"<uuid>","action":"approve"}'
 ```
-Costs ~$0.05 per blank. Skips existing blanks.
 
-## Step 5: Composite mockups
-
-```bash
-node scripts/composite-mockups.js --product=19
-```
-Outputs images/product-19-{Color}-{front|back}.jpg. Fast (no API).
-
-## Step 6: Verify parity
+### Step 3 — Watch the pipeline
 
 ```bash
-node scripts/verify-mockup-parity.js
+gh run watch <run_id> --repo dubis-brand/dubis-website --exit-status
 ```
-Must pass. If mtime drift >48h - re-run step 5.
 
-## Step 7: Bump DESIGN_VERSION
+~10 minutes. On success, commits land for `designs/` + `images/` + `js/products.js`, callback fires, oren gets an email.
 
-In api/create-gelato-order.js:
-```js
-const DESIGN_VERSION = process.env.DESIGN_VERSION || '2026MMDD01';
-```
-Forces Gelato to re-fetch from CDN.
+### Step 4 — oren visually approves
 
-## Step 8: Deploy
+Wait for oren to click the magic-link email or the admin button. Don't bypass — `proof_of_completion` validation requires the visual approval step.
+
+### Step 5 — Auto-sync fires + verify
+
+The visual approval automatically dispatches `dubis-sync-products.yml`. Within ~60s it commits `sync(products): post visual-approve refresh for #N`. Verify:
 
 ```bash
-git add scripts/ designs/ images/ blanks/ api/ memory/
-git commit -m "feat(product): add product 19 - New slogan"
-git push origin main
+# Live products.js has the new product?
+curl -s "https://www.dubis.net/js/products.js?cb=$(date +%s)" | grep -c "id: <N>"  # → 1
+
+# Mockups all serving?
+for c in <colors>; do for f in front back; do
+  curl -s -o /dev/null -w "$c-$f: %{http_code}\n" \
+    "https://www.dubis.net/images/product-<N>-$c-$f.jpg"
+done; done
+
+# Modal opens?
+curl -sI "https://www.dubis.net/#product-<N>" | head -1
 ```
 
-Verify URLs return 200:
-- https://www.dubis.net/designs/back_design_19_white.png?v=DESIGN_VERSION
-- https://www.dubis.net/images/product-19-Black-front.jpg
-
-## Step 9: QA via Gelato Draft (FREE)
-
-1. Go to dubis.net/admin â†’ Gelato Tools tab
-2. Select product 19, pick a color, ship to US
-3. Click "Create DRAFT (free, mockup only)"
-4. Review the Gelato draft preview - should match the site mockup
-5. If mismatch - fix and redo from step 3
-
-See .claude/skills/gelato-draft/SKILL.md for full draft procedure.
-
-## Step 10: Activate
-
-```sql
-UPDATE dubis_products SET active = true WHERE product_id_numeric = 19;
+If the auto-sync didn't fire (e.g. `GH_DISPATCH_TOKEN` rate limited), trigger it manually:
+```bash
+gh workflow run dubis-sync-products.yml --repo dubis-brand/dubis-website -f product_id_numeric=<N>
 ```
+
+## Locked-in design conventions (NEVER change without oren approval)
+
+These are baked into `scripts/generate-designs.js`. The numbers come from oren-led calibration sessions; deviating breaks the wearer-left-chest illusion or pushes text into Gelato's safe zone.
+
+| Property | Value | Why |
+|---|---|---|
+| Front logo X (print canvas) | 0.78 | Wearer's left chest (= viewer's right when worn). `0.22` is wearer's right — the 2026-04-24 Hila mirror bug. |
+| Front logo Y (print canvas) | 0.17 | Upper chest, just below collar |
+| Front logo font size | 300 px Impact | ~2.5 cm printed — Polo/Lacoste scale |
+| TM superscript ratio | 0.45 of main letter | Discreet, professional |
+| Back BIG word height | 0.11 of canvas | Calibrated for hoodies + tshirts (0.16 was too tall) |
+| Back small text height | 0.033 of canvas | |
+| Back y_start | tshirt 0.26, hoodie/ziphoodie 0.30, longsleeve 0.22 | Per-type, 2026-04-24 |
+| Cap front X / Y | 0.50 / 0.40 | Center of front panel (NOT chest position — caps don't have one) |
+| Cap front width ratio | 0.12 | Slightly larger than chest logos |
+
+If you change any of these:
+1. Bump `DESIGN_VERSION` in `api/create-gelato-order.js` AND `scripts/download-gelato-mockups.js` (Gelato CDN cache-buster).
+2. Re-run the pipeline for EVERY active product (not just the one you tested) — `gh workflow run dubis-product-pipeline.yml` per product.
+3. Add a `memory/decisions.md` entry explaining the change.
+
+## What scripts NOT to touch
+
+The legacy `generate-blanks.js`, `composite-mockups.js`, `verify-mockup-parity.js`, `fix-front-images.js`, `fix-back-images.js` are deprecated. They produce node-canvas mockups that diverge from real Gelato prints (font kerning, color saturation, fabric texture all differ). If you find yourself reaching for these, STOP and use the GHA pipeline instead.
+
+The current source of truth for catalog mockups is `dubis-website/images/product-{N}-{Color}-{front|back}.jpg` — produced by step 4 of `dubis-product-pipeline.yml` from Gelato's `preview_default` + `preview_back` URLs, flattened to `#D7D7D7` gray + mozjpeg q90.
+
+## Recovery scenarios
+
+### Pipeline failed at step 4 (Gelato draft creation)
+Common: a color in `colors[]` isn't in `COLOR_MAP` for that (type, gender). Fix: either remove the bad color from `dubis_products.colors` and re-trigger, OR add the color to `COLOR_MAP` in BOTH `api/create-gelato-order.js` AND `scripts/download-gelato-mockups.js`.
+
+### Pipeline succeeded but oren says mockups look wrong
+Use the QA flow: dubis.net/admin → "🧪 Gelato Tools" → create a free draft order for the suspect product/color → review in Gelato dashboard. If genuinely wrong, fix the design + bump `DESIGN_VERSION` + re-trigger pipeline.
+
+See `.claude/skills/gelato-draft/SKILL.md` for the full draft procedure.
+
+### Visual approval fired but product not on site
+Means the auto-dispatch to `dubis-sync-products.yml` didn't fire (env var missing, rate limited, or Edge Function not deployed with the 2026-05-19 change). Manual recovery:
+```bash
+gh workflow run dubis-sync-products.yml --repo dubis-brand/dubis-website -f product_id_numeric=<N>
+```
+Then check `memory/runbook.md` § "A visually-approved product doesn't appear on the site" for the long-term fix.
+
+### Edge Function changed locally but autonomous dispatch not firing
+Run `dubis-website/deploy-edge-only.bat` (clean deploy, no stale auto-commit). Verify with `mcp__supabase__get_edge_function function_slug=agents` and grep for the new code marker.
 
 ## Common mistakes (from postmortems)
 
 | Mistake | Postmortem | Fix |
 |---|---|---|
-| Forgot to bump DESIGN_VERSION â†’ Gelato uses cached old file | 2026-04-23 Hila bug | Always bump on print file changes |
-| phrase vs slogan column name | 2026-04-24 admin tools | DB column is slogan |
-| active=true before mockups exist â†’ broken images | Multiple early issues | Keep active=false until step 6 passes |
-| Hardcoded color in COLOR_MAP that does not exist in Gelato | "Honey Brown" 2026-04-22 | Verify color via GET /v3/products/{uid} first |
-| Mismatch between print x=0.22 and mockup x=0.60 â†’ wearer's right chest in print | 2026-04-24 mirror bug | Print MUST be x=0.78, mockup MUST be x=0.60 |
-| Generated images without ?v= cache bust | various | Always use ?v=DESIGN_VERSION in Gelato calls |
-| Cap front logo at chest x/y â†’ falls on cap brim (curved, distorted) | 2026-04-24 cap visual | Cap uses x=0.50 y=0.40 |
-| Back text y_start same for all types â†’ too high on hoodies | 2026-04-24 hoodie feedback | Per-type: tshirt 0.26, hoodie 0.30, longsleeve 0.22 |
+| Visually approved but product invisible on site | 2026-05-19 product #31 | Edge Function had no auto-dispatch — fixed by NEW `dubis-sync-products.yml` workflow + dispatch in `?type=product-visual-approve` |
+| Forgot to bump DESIGN_VERSION → Gelato cached old print | 2026-04-23 Hila | Always bump on print file changes |
+| `phrase` vs `slogan` column name | 2026-04-24 admin tools | DB column is `slogan` |
+| `active=true` set before mockups exist → broken images | Multiple early issues | Trust the pipeline — never flip `active=true` manually |
+| Color in DB that doesn't exist in Gelato | "Honey Brown" 2026-04-22 | Verify each color exists in COLOR_MAP for the product's (type, gender) before INSERT |
+| Print x=0.22 + mockup x=0.60 → wearer's-right chest | 2026-04-24 mirror | Print 0.78, mockup 0.60 — the geometry maps to the same physical spot |
+| Cap front logo at chest x/y → falls on brim | 2026-04-24 cap visual | Caps use x=0.50 y=0.40 |
+| Back text y_start uniform across types → too high on hoodies | 2026-04-24 | Per-type: tshirt 0.26, hoodie 0.30, longsleeve 0.22 |
+| Used legacy `generate-blanks.js` + `composite-mockups.js` | 2026-05-16 retirement | Use the GHA pipeline — node-canvas drift from Gelato reality |
 
 ## References
 
-- memory/reference_dubis_mockup_pipeline_bplus.md - full architecture
-- memory/checkout-guardrails.md - guardrails (especially #1)
-- memory/troubleshooting.md - known issues
-- .claude/skills/gelato-draft/SKILL.md - QA via free draft orders
-- docs/plans/DUBIS_GELATO_TOOLS_ADMIN_2026-04-24.html - feature design memo
+- `.github/workflows/dubis-product-pipeline.yml` — Stage 1 pipeline source
+- `.github/workflows/dubis-sync-products.yml` — Stage 2 sync workflow (added 2026-05-19)
+- `dubis-website/scripts/generate-designs.js` — print PNG generator
+- `dubis-website/scripts/create-gelato-drafts.js` — Stage 1 draft creator (real mockups)
+- `dubis-website/scripts/sync-products-to-js.js` — DB → static products.js
+- `dubis-website/.claude/skills/gelato-draft/SKILL.md` — QA via free drafts
+- `memory/checkout-guardrails.md` — §1 site=Gelato parity rule
+- `memory/troubleshooting.md` — §"Visually-approved product silently absent from site (2026-05-19)"
+- `memory/runbook.md` — § "A visually-approved product doesn't appear on the site"
