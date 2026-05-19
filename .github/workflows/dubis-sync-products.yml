@@ -1,0 +1,79 @@
+name: DUBIS Sync Products
+
+# Triggered by Edge Function (?type=product-visual-approve) via repository_dispatch
+# when oren approves a product visually, flipping it active=true. Pulls the
+# active-product set from Supabase and regenerates js/products.js so the static
+# site picks up the new product.
+#
+# Background — why this exists separate from dubis-product-pipeline.yml:
+# dubis-product-pipeline runs sync-products-to-js BEFORE the product becomes
+# active=true (active is only set on visual-approve, which happens hours later).
+# So products.js misses the newly-approved product. This workflow runs AFTER
+# visual approval, picking up the now-active row.
+
+on:
+  repository_dispatch:
+    types: [oren-approved-visual]
+  workflow_dispatch:
+    inputs:
+      product_id_numeric:
+        description: 'product_id_numeric just visually-approved (for the commit message)'
+        required: false
+
+permissions:
+  contents: write
+
+# Sync runs are cheap (~30s). Queue them serially so two near-simultaneous
+# approvals don't race the push.
+concurrency:
+  group: dubis-sync-products
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      PRODUCT_NUMERIC: ${{ github.event.client_payload.product_id_numeric || github.event.inputs.product_id_numeric }}
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Regenerate js/products.js from DB
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/sync-products-to-js.js --write
+
+      - name: Commit + push (retry-with-rebase on conflict)
+        run: |
+          git config user.name  "dubis-pipeline-bot"
+          git config user.email "dubis-pipeline-bot@users.noreply.github.com"
+          git add js/products.js
+          if git diff --cached --quiet; then
+            echo "products.js already in sync — no commit needed."
+            exit 0
+          fi
+          MSG="sync(products): post visual-approve refresh${PRODUCT_NUMERIC:+ for #$PRODUCT_NUMERIC}"
+          git commit -m "$MSG"
+          for i in 1 2 3 4 5; do
+            if git push origin main; then
+              echo "Pushed on attempt $i"; exit 0
+            fi
+            echo "Push attempt $i rejected. Rebasing & retrying..."
+            git -c rebase.autostash=true pull --rebase --autostash origin main || true
+            sleep $((RANDOM % 5 + 2))
+          done
+          echo "FAILED to push after 5 attempts"
+          exit 1

@@ -3613,6 +3613,38 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors
       status: 'live', completed_at: new Date().toISOString(),
     }).eq('product_id', productId);
 
+    // 2026-05-19: dispatch dubis-sync-products.yml so the static js/products.js
+    // picks up the newly-active row. Without this the site reads the previous
+    // pipeline run's products.js (regenerated BEFORE active=true), and the
+    // product gets the ✅ "live" email but never appears on dubis.net.
+    // Best-effort: if GH_DISPATCH_TOKEN is missing or GitHub rejects, we still
+    // return success — the product is active in DB, oren can run the workflow
+    // manually if needed.
+    try {
+      const ghToken = Deno.env.get('GH_DISPATCH_TOKEN') ?? '';
+      const ghRepo  = Deno.env.get('GH_REPO') ?? 'dubis-brand/dubis-website';
+      if (ghToken) {
+        await fetch(`https://api.github.com/repos/${ghRepo}/dispatches`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${ghToken}`,
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+            'Content-Type': 'application/json',
+            'User-Agent': 'dubis-edge-fn/1.0',
+          },
+          body: JSON.stringify({
+            event_type: 'oren-approved-visual',
+            client_payload: {
+              product_id: productId,
+              product_id_numeric: p.product_id_numeric,
+            },
+          }),
+          signal: AbortSignal.timeout(15000),
+        }).catch(() => {});
+      }
+    } catch { /* dispatch is best-effort */ }
+
     // Close the agent_task
     await sb.from('agent_tasks').update({
       status: 'done',

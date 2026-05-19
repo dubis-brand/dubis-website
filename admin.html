@@ -7490,10 +7490,13 @@
       if (el) { el.style.transition = 'all .3s'; el.style.opacity = '0'; el.style.transform = 'translateX(20px)'; setTimeout(() => el.remove(), 300); }
       if (action === 'approve') {
         const pid = data.product_id_numeric || '?';
-        // 2026-05-02: stopped calling sync-products. The customer site reads
-        // products from dubis_products at runtime via the DB loader in js/products.js,
-        // so rewriting the static file is now redundant AND it kept stripping the
-        // loader code. The product appears on the site automatically within seconds.
+        // 2026-05-19: js/products.js is the truth for the customer site (there is
+        // NO runtime DB loader — the 2026-05-02 comment that claimed otherwise was
+        // wrong and has been deleted). It's regenerated in two places:
+        //   1. GHA dubis-product-pipeline.yml step 4 — right after Gelato mockup
+        //      download, but BEFORE active=true (product is still pending visual approval).
+        //   2. GHA dubis-sync-products.yml — dispatched by Edge Function
+        //      ?type=product-visual-approve right after oren flips active=true.
         // Trigger a FRONT mockup regen so the small-DUBIS-logo image (not the back
         // text design from the legacy approve-product handler) becomes the primary.
         let frontStatus = '';
