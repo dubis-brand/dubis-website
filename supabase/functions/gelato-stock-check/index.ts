@@ -46,6 +46,11 @@ const TEMPLATES: Record<string, Template> = {
   'longsleeve-unisex': { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '2400'   },
   'longsleeve-women':  { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'sols',             sku: '02075'  },
   'cap-unisex':        { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-dtf', brand: 'as-colour',        sku: '1114'   },
+  // 2026-05-19: V-neck + Tank-top (prm/4-4 brand-less). Verified via Gelato API.
+  'vneck-unisex':      { cat: 't-shirt', sub: 'v-neck',          cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
+  'vneck-women':       { cat: 't-shirt', sub: 'v-neck',          cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
+  'tanktop-unisex':    { cat: 't-shirt', sub: 'tank-top',        cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
+  'tanktop-women':     { cat: 't-shirt', sub: 'tank-top',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
 };
 
 const COLOR_MAP: Record<string, Record<string, ColorEntry>> = {
@@ -76,6 +81,19 @@ const COLOR_MAP: Record<string, Record<string, ColorEntry>> = {
   },
   'cap-unisex': {
     'Black': 'black', 'White': 'white', 'Cream': 'ecru', 'Navy': 'navy',
+  },
+  // 2026-05-19: V-neck + Tank-top — verified colors via /v3/products/...gco_{color}
+  'vneck-unisex': {
+    'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Red': 'red',
+  },
+  'vneck-women': {
+    'Black': 'black', 'White': 'white', 'Navy': 'navy',
+  },
+  'tanktop-unisex': {
+    'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Red': 'red',
+  },
+  'tanktop-women': {
+    'Black': 'black',
   },
 };
 

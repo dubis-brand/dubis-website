@@ -1851,6 +1851,8 @@
           <select id="type-filter" onchange="filterProductsByType(this.value)" style="background:#1a1a1a;border:1px solid #444;color:#e8e0d5;padding:.45rem .7rem;border-radius:6px;font-size:.85rem;margin-right:8px">
             <option value="all">כל הסוגים</option>
             <option value="t-shirt">T-Shirt</option>
+            <option value="v-neck">V-Neck</option>
+            <option value="tank-top">Tank Top</option>
             <option value="hoodie">Hoodie</option>
             <option value="zip-hoodie">Zip Hoodie</option>
             <option value="long-sleeve">Long-Sleeve</option>
@@ -3722,7 +3724,7 @@
     renderProductCards();
   }
   // Map JS-side product.type values back to DB clothing_type values for filter matching
-  const _TYPE_JS_TO_DB = { tshirt: 't-shirt', hoodie: 'hoodie', ziphoodie: 'zip-hoodie', longsleeve: 'long-sleeve', cap: 'cap', capemb: 'cap' };
+  const _TYPE_JS_TO_DB = { tshirt: 't-shirt', hoodie: 'hoodie', ziphoodie: 'zip-hoodie', longsleeve: 'long-sleeve', cap: 'cap', capemb: 'cap', vneck: 'v-neck', tanktop: 'tank-top' };
   function _productMatchesType(p, filter) {
     if (filter === 'all') return true;
     const dbType = _TYPE_JS_TO_DB[p.type] || p.type;
@@ -4122,19 +4124,15 @@
           statusEl.classList.add('visible');
           setTimeout(() => statusEl.classList.remove('visible'), 2000);
         }
-        // Recalculate profit display
-        const p = currentProducts.find(p => p.id === productId);
-        if (p && p.gelatoCost != null) {
-          const profit = newPrice - p.gelatoCost; // shipping paid by customer separately
-          const pct = ((profit / newPrice) * 100).toFixed(0);
-          const gpEl = document.getElementById(`gp-${productId}`);
-          if (gpEl) {
-            gpEl.textContent = `$${profit.toFixed(2)} (${pct}%)`;
-            gpEl.className = `profit-val ${profit >= 0 ? 'profit-positive' : 'profit-negative'}`;
-          }
-        }
+        // 2026-05-19: re-render the Margin US/IL grid so the new price flows
+        // through to the displayed margins. The previous code wrote to a
+        // legacy `gp-${id}` element that doesn't exist anymore and used
+        // `currentProducts` (also gone — `_allProducts` is the truth now).
+        const p = _allProducts.find(p => p.id === productId);
+        if (p) p.price = newPrice;
+        renderProductCards();
       }
-    } catch (e) {}
+    } catch (e) { console.warn('saveProductPrice failed', e); }
   }
 
   // ── Analytics (Enhanced) ──────────────────────────────

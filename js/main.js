@@ -226,6 +226,7 @@ const translations = {
     add_btn: '+ Add', view_details: 'View Details',
     type_tshirt: 'T-Shirt', type_hoodie: 'Hoodie', type_cap: 'Cap',
     type_ziphoodie: 'Zip Hoodie', type_longsleeve: 'Long-Sleeve',
+    type_vneck: 'V-Neck', type_tanktop: 'Tank Top',
     quality_title: 'What You See Is What You Get 🐾',
     quality_sub: 'We know the worry — ordering online and getting something that looks nothing like the photo. Here\'s our promise:',
     q1_title: 'Made Fresh For You', q2_title: 'Fabrics that live with you, not judge you.', q3_title: 'Quality Control', q4_title: 'Defective? Wrong Item? We Fix It.',
@@ -370,6 +371,7 @@ const translations = {
     add_btn: '+ הוסף', view_details: 'פרטים',
     type_tshirt: 'חולצה', type_hoodie: 'קפוצון', type_cap: 'כובע',
     type_ziphoodie: 'קפוצון רוכסן', type_longsleeve: 'ארוכת שרוול',
+    type_vneck: 'חולצת V', type_tanktop: 'גופייה',
     quality_title: 'מה שרואים זה מה שמקבלים 🐾',
     quality_sub: 'מזמינים אונליין ומקווים לטוב? אצלנו לא צריך לקוות. הנה מה שאנחנו מבטיחים:',
     q1_title: 'נתפר בשבילך, לא יושב במחסן', q2_title: 'בד שזז איתך, לא נגדך.', q3_title: 'עובר בדיקה לפני שיוצא', q4_title: 'פגם? מוצר שגוי? מתקנים.',
@@ -901,6 +903,8 @@ function renderProducts(filter, gender) {
     capemb:     t.type_cap,  // same display label as 'cap'
     ziphoodie:  t.type_ziphoodie,
     longsleeve: t.type_longsleeve,
+    vneck:      t.type_vneck,
+    tanktop:    t.type_tanktop,
   };
 
   grid.innerHTML = filtered.map(product => {
@@ -1011,6 +1015,8 @@ function openProductModal(productId) {
     capemb:     t.type_cap,  // embroidered cap shares the "Cap" label
     ziphoodie:  t.type_ziphoodie,
     longsleeve: t.type_longsleeve,
+    vneck:      t.type_vneck,
+    tanktop:    t.type_tanktop,
   };
   const modal = document.getElementById('product-modal');
   const overlay = document.getElementById('product-modal-overlay');

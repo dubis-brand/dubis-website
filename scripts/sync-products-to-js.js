@@ -100,6 +100,32 @@ const TYPE_META = {
     sizes: 'SIZES_CAP',
     sizeGuide: null,
   },
+  // 2026-05-19: V-neck — premium-tier brand-less alias (Bella+Canvas-class fabric).
+  vneck: {
+    typeLabel: 'V-Neck',
+    fabric: '100% combed ring-spun cotton',
+    fitUnisex: 'Unisex, regular fit',
+    fitWomen: "Women's fitted cut",
+    printMethod: 'DTG — Direct-to-Garment',
+    printAreas: '["Front", "Back"]',
+    care: 'CARE_TSHIRT',
+    care_he: 'CARE_TSHIRT_HE',
+    sizes: 'SIZES_TSHIRT',
+    sizeGuide: 'SIZE_GUIDE_TSHIRT',
+  },
+  // 2026-05-19: Tank-top — premium-tier brand-less alias.
+  tanktop: {
+    typeLabel: 'Tank Top',
+    fabric: '100% combed ring-spun cotton, lightweight jersey',
+    fitUnisex: 'Unisex, regular fit',
+    fitWomen: "Women's fitted cut",
+    printMethod: 'DTG — Direct-to-Garment',
+    printAreas: '["Front", "Back"]',
+    care: 'CARE_TSHIRT',
+    care_he: 'CARE_TSHIRT_HE',
+    sizes: 'SIZES_TSHIRT',
+    sizeGuide: 'SIZE_GUIDE_TSHIRT',
+  },
 };
 
 const PRICES = {
@@ -109,6 +135,11 @@ const PRICES = {
   longsleeve: 31,
   cap: 28,
   capemb: 32,  // premium embroidered cap, slightly higher than DTF
+  // 2026-05-19 — defaults per rule #7 (CEIL of cheapest IL cost):
+  // vneck unisex $29.44 → $30, womens $25.03 → $26
+  // tanktop unisex $27.11 → $28, womens $31.11 → $32
+  vneck: 30,
+  tanktop: 30,
 };
 
 async function fetchProducts() {
@@ -126,7 +157,7 @@ function escapeStr(s) {
   return (s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
 }
 
-const JS_TYPE_MAP = { 't-shirt': 'tshirt', 'hoodie': 'hoodie', 'zip-hoodie': 'ziphoodie', 'long-sleeve': 'longsleeve', 'cap': 'cap', 'cap-emb': 'capemb' };
+const JS_TYPE_MAP = { 't-shirt': 'tshirt', 'hoodie': 'hoodie', 'zip-hoodie': 'ziphoodie', 'long-sleeve': 'longsleeve', 'cap': 'cap', 'cap-emb': 'capemb', 'v-neck': 'vneck', 'tank-top': 'tanktop' };
 
 function generateProductEntry(p) {
   const pType = JS_TYPE_MAP[p.clothing_type] || p.clothing_type || p.type || 'tshirt';

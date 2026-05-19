@@ -50,6 +50,16 @@ const TEMPLATES = {
   // method. Use clothing_type='cap-emb' in dubis_products to route here.
   // normType strips hyphens so the key becomes 'capemb-unisex'.
   'capemb-unisex':     { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-emb', brand: 'flexfit',          sku: '6245cm' },
+  // 2026-05-19: V-neck + Tank-top — brand-less Gelato aliases (premium quality,
+  // 4-4 = front+back print). Verified via /v3/products/{uid} (200) AND
+  // /v3/products/{uid}/prices (200) with real cost data. Same brand-less-alias
+  // pattern as longsleeve-unisex and hoodie-women — Gelato resolves these to a
+  // canonical default brand internally. Use clothing_type='v-neck' / 'tank-top'
+  // in dubis_products (normType strips hyphens → 'vneck' / 'tanktop' keys).
+  'vneck-unisex':      { cat: 't-shirt', sub: 'v-neck',          cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
+  'vneck-women':       { cat: 't-shirt', sub: 'v-neck',          cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
+  'tanktop-unisex':    { cat: 't-shirt', sub: 'tank-top',        cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
+  'tanktop-women':     { cat: 't-shirt', sub: 'tank-top',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -139,6 +149,32 @@ const COLOR_MAP = {
     'Navy':      'navy',
     'Cream':     'stone',       // closest natural-cotton tone
     'Charcoal':  'dark-grey',   // closest charcoal tone (Flexfit hex #2E2E2E)
+  },
+  // 2026-05-19: V-neck unisex (prm/4-4 brand-less). Verified colors against
+  // /v3/products/...gco_{color}: black/white/navy/red return 200.
+  // charcoal/cream/forest-green return 404 — do NOT add them.
+  'vneck-unisex': {
+    'Black': 'black',
+    'White': 'white',
+    'Navy':  'navy',
+    'Red':   'red',
+  },
+  // V-neck womens: verified colors black/white/navy only.
+  'vneck-women': {
+    'Black': 'black',
+    'White': 'white',
+    'Navy':  'navy',
+  },
+  // Tank-top unisex: verified black/white/navy/red.
+  'tanktop-unisex': {
+    'Black': 'black',
+    'White': 'white',
+    'Navy':  'navy',
+    'Red':   'red',
+  },
+  // Tank-top womens: ONLY black in Gelato catalog as of 2026-05-19.
+  'tanktop-women': {
+    'Black': 'black',
   },
 };
 
