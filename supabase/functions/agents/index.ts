@@ -3032,6 +3032,165 @@ Score the total 0-30. Return ONLY valid JSON:
     return json({ checked: unscored.length, passed, failed, results });
   }
 
+  // ── COPY-QA — single-shot caption scoring against Copy Playbook ───
+  // Used by orchestrator skills (higgsfield-reels, dubis-design) as a service call.
+  // Different from qa-content: takes inputs directly, returns single score, does NOT batch over DB.
+  // Body: { caption_he?, caption_en?, slogan, product_id, lang, persona_id? }
+  // Returns: { score: 0-100, issues: string[], fix_suggestions: string[], breakdown: {...} }
+  if (type === 'copy-qa') {
+    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const cronSecret = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader = req.headers.get('authorization') ?? '';
+    const token = url.searchParams.get('token') || authHeader.replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
+    const isAuthed = (svcKey && token === svcKey) || (agentSecret && token === agentSecret) || (cronSecret && token === cronSecret);
+    const adminOk = await verifyAdmin(req);
+    if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
+
+    const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+    if (!geminiKey) return json({ error: 'GEMINI_API_KEY not configured' }, 503);
+
+    let body: Record<string, unknown> = {};
+    try { body = await req.json(); } catch { return json({ error: 'Invalid JSON body' }, 400); }
+
+    const captionHe = String(body.caption_he ?? '').trim();
+    const captionEn = String(body.caption_en ?? '').trim();
+    const slogan    = String(body.slogan ?? '').trim();
+    const productId = Number(body.product_id ?? 0);
+    const lang      = (String(body.lang ?? 'he').toLowerCase() === 'en') ? 'en' : 'he';
+    const personaId = String(body.persona_id ?? '').trim();
+    const caption   = lang === 'he' ? captionHe : captionEn;
+
+    if (!caption) return json({ error: 'caption required (caption_he or caption_en per lang)' }, 400);
+    if (!productId) return json({ error: 'product_id required' }, 400);
+
+    // Verify product exists + slogan matches
+    const { data: product } = await sb.from('dubis_products')
+      .select('product_id_numeric, slogan, active')
+      .eq('product_id_numeric', productId)
+      .maybeSingle();
+
+    if (!product) return json({ error: `product_id ${productId} not found` }, 404);
+    if (!product.active) return json({ error: `product_id ${productId} is not active` }, 400);
+    const sloganMismatch = slogan && product.slogan && slogan.trim().toLowerCase() !== String(product.slogan).trim().toLowerCase();
+
+    // Verify product URL is present in caption (DUBIS hard rule)
+    const productUrl = `dubis.net/#product-${productId}`;
+    const productUrlAlt = `dubis.net/?p=${productId}`;
+    const urlPresent = caption.includes(productUrl) || caption.includes(productUrlAlt) || caption.includes(`#product-${productId}`);
+
+    // Copy Playbook system_instruction (matches memory/copy-playbook.md verbatim)
+    const systemInstruction = lang === 'he' ? `אתה QA reviewer של מותג DUBIS לפי Copy Playbook.
+
+כללי הפסילה (כל אחד = ציון נמוך משמעותי):
+1. **אחת ממילות ה-blacklist בעברית:** מושלם, מהמם, חובה, מטורף (כשבח), לייף סטייל, מבצע שאסור לפספס, להשתפר, הטרנד הבא
+2. **תרגום מאנגלית** — אם זה נשמע כמו translation ולא כמו עברית מקורית רק עכשיו (אנטי-תרגום rule). עוגנים אמיתיים: מרפסת ת"א, פינג'אן, פקקים, חמסין, ארוחת שישי, סופ"ש
+3. **CTA טרנזקציוני** — "קנו עכשיו", "הנחה 20%", "אל תפספסו" — DUBIS לעולם לא מוכרת ככה. CTA זהותי בלבד.
+4. **Self-deprecating של חולשה** — "אני שמן/שמנה ויודע/ת זאת". הומור מותר רק מתוך עוצמה.
+5. **חסר Product URL** — חייב להופיע dubis.net/#product-{id} או דומה גלוי בקפשן
+6. **חסר 3-beat structure** — Hook ציני → Agitation אמיתית → DUBIS Drop. צריך לראות את שלושת השלבים.
+
+נקד 0-100:
+- מבנה 3-beat: 30 נקודות (10 לכל beat)
+- שפה מקורית עברית (אנטי-תרגום): 20
+- אין מילות blacklist: 20 (-10 לכל מילה)
+- CTA זהותי לא טרנזקציוני: 15
+- Product URL נוכח: 10
+- Slogan המוצר משולב נכון: 5
+
+החזר רק JSON תקני:
+{"score": <0-100>, "issues": ["<בעיה 1>", ...], "fix_suggestions": ["<תיקון 1>", ...], "breakdown": {"three_beat": <0-30>, "rooted_hebrew": <0-20>, "no_blacklist": <0-20>, "identity_cta": <0-15>, "product_url": <0-10>, "slogan_match": <0-5>}}`
+      : `You are a DUBIS brand QA reviewer per the Copy Playbook.
+
+Blacklist words (each one = significant deduction):
+- perfect, stunning, must-have, don't miss out, upgrade yourself, the next trend, crazy/insane (as praise)
+
+Required:
+1. **3-beat structure** — Cynical Hook → Real-life Agitation → DUBIS Drop
+2. **Identity-based CTA** — never "Buy now 20% off". "For the rest of us: dubis.net" style.
+3. **Product URL visible** — dubis.net/#product-{id} or similar literal text in caption
+4. **No self-deprecating-of-weakness humor** — humor from strength only
+5. **Slogan integration** — the product's actual slogan should be present or paraphrased
+
+Score 0-100:
+- 3-beat structure: 30 points (10 per beat)
+- No blacklist words: 20 (-10 per occurrence)
+- Identity CTA (not transactional): 15
+- Product URL present: 10
+- Slogan integration correct: 5
+- Voice match (anti-stunning, self-aware sardonic): 20
+
+Return JSON only:
+{"score": <0-100>, "issues": ["<issue 1>", ...], "fix_suggestions": ["<fix 1>", ...], "breakdown": {"three_beat": <0-30>, "no_blacklist": <0-20>, "identity_cta": <0-15>, "product_url": <0-10>, "slogan_match": <0-5>, "voice_match": <0-20>}}`;
+
+    const userPrompt = `Caption to evaluate (${lang.toUpperCase()}):
+"""
+${caption}
+"""
+
+Product slogan (on the garment): "${product.slogan ?? slogan}"
+Product ID: ${productId} (URL pattern: dubis.net/#product-${productId})
+${personaId ? `Persona: ${personaId}\n` : ''}${sloganMismatch ? '⚠️ NOTE: provided slogan does NOT match DB product slogan — flag in issues.\n' : ''}${!urlPresent ? '⚠️ NOTE: product URL not detected verbatim in caption — verify and flag if missing.\n' : ''}`;
+
+    try {
+      const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${geminiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemInstruction }] },
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 1024, responseMimeType: 'application/json' },
+        }),
+      });
+      if (!gRes.ok) {
+        const errBody = await gRes.text();
+        return json({ error: 'Gemini call failed', status: gRes.status, detail: errBody.slice(0, 500) }, 502);
+      }
+      const gJson = await gRes.json();
+      const responseText = gJson.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
+      let parsed: Record<string, unknown> = {};
+      try { parsed = JSON.parse(responseText); } catch {
+        return json({ error: 'Gemini returned non-JSON', raw: responseText.slice(0, 500) }, 502);
+      }
+
+      // Apply hard-rule deductions on top of Gemini score
+      const baseScore = Number(parsed.score ?? 0);
+      const hardIssues: string[] = Array.isArray(parsed.issues) ? [...(parsed.issues as string[])] : [];
+      const hardFixes: string[] = Array.isArray(parsed.fix_suggestions) ? [...(parsed.fix_suggestions as string[])] : [];
+      let finalScore = baseScore;
+
+      if (!urlPresent) {
+        finalScore = Math.min(finalScore, 65); // cap at 65 if URL missing
+        hardIssues.push(lang === 'he' ? 'חסר Product URL גלוי בקפשן (חוק קשיח DUBIS)' : 'Product URL not visible in caption (DUBIS hard rule)');
+        hardFixes.push(lang === 'he' ? `הוסף "dubis.net/#product-${productId}" בשורה האחרונה` : `Add "dubis.net/#product-${productId}" on the last line`);
+      }
+      if (sloganMismatch) {
+        finalScore = Math.max(0, finalScore - 10);
+        hardIssues.push(lang === 'he' ? `אי-התאמת סלוגן: caller שלח "${slogan}" אבל ה-DB מראה "${product.slogan}"` : `Slogan mismatch: caller passed "${slogan}" but DB says "${product.slogan}"`);
+      }
+
+      const passed = finalScore >= 75;
+      const reviewNeeded = finalScore >= 60 && finalScore < 75;
+
+      return json({
+        score: finalScore,
+        gemini_score: baseScore,
+        passed,
+        review_needed: reviewNeeded,
+        issues: hardIssues,
+        fix_suggestions: hardFixes,
+        breakdown: parsed.breakdown ?? {},
+        product_id: productId,
+        product_slogan_db: product.slogan,
+        lang,
+        url_present: urlPresent,
+        slogan_match: !sloganMismatch,
+      });
+    } catch (e) {
+      return json({ error: 'copy-qa failed', detail: (e as Error).message }, 500);
+    }
+  }
+
   // ── GENERATE-SLOGAN — Product Creator Agent ────────────────────────
   if (type === 'generate-slogan') {
     const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';

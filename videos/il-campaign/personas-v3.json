@@ -1,0 +1,130 @@
+{
+  "_meta": {
+    "version": "v3.1",
+    "rebuilt_at": "2026-05-19",
+    "rebuilt_reason": "Original v3 lost from disk + git + Supabase Storage. Reconstructed from memory/personas-soul-ids.md + copy-playbook.md + Storage MP3 narrations (10 mp3 files in video-assets bucket, 2026-05-11).",
+    "anti_translation_note": "HE narration is written rooted-local Israeli (anchors: מרפסת ת״א, פינג'אן, פקקים). EN narration is its own original copy, not a translation."
+  },
+  "personas": [
+    {
+      "id": "men-1",
+      "gender": "men",
+      "age": 45,
+      "body_anchor": "average build, slight belly, balding crown, gold-frame glasses",
+      "scene_anchor": "פינג'אן בשלוש בלילה אחרי שהילדים סוף סוף נרדמו",
+      "product_default": 3,
+      "narration_he": "כולם רצים בשש בבוקר לאסיק. אני? אני מאסטר ב-Power Nap. זה הקרדיו האמיתי. קפוצון לכל השאר.",
+      "narration_en": "Everyone's at the 6 AM CrossFit. I'm a master of the power nap. That's the real cardio. A hoodie for the rest of us.",
+      "soul_id": null,
+      "soul_cinema_id": null
+    },
+    {
+      "id": "men-2",
+      "gender": "men",
+      "age": 48,
+      "body_anchor": "average, gray stubble + lines, weekend-stretched t-shirt",
+      "scene_anchor": "מרפסת ת״א בשעה 18:00, בירה ראשונה של שישי",
+      "product_default": 6,
+      "narration_he": "תקופה שלמה הילדים אמרו לי שאני לא דוגמן. תכלס, גם לא רציתי. חולצה לאלה שהפסיקו להעמיד פנים.",
+      "narration_en": "My kids spent a decade telling me I'm not a model. Truth is, I never wanted to be. A shirt for everyone who stopped pretending.",
+      "soul_id": null,
+      "soul_cinema_id": null
+    },
+    {
+      "id": "men-3",
+      "gender": "men",
+      "age": 42,
+      "body_anchor": "slight belly, salt-pepper hair, three-day stubble",
+      "scene_anchor": "פקק על איילון בשבע בערב, ידיים על ההגה",
+      "product_default": 15,
+      "narration_he": "אופנה? עזבו אותי. אני רוצה נוחות. הקפוצון הזה לא דורש ממני כלום. בדיוק כמוני.",
+      "narration_en": "Fashion? Let it go. I want comfort. This hoodie doesn't ask anything of me. Same.",
+      "soul_id": null,
+      "soul_cinema_id": null
+    },
+    {
+      "id": "men-4",
+      "gender": "men",
+      "age": 50,
+      "body_anchor": "completely bald, full salt-pepper beard, average build",
+      "scene_anchor": "סופר ביום שישי בבוקר, חמסין, מאוורר על הראש",
+      "product_default": 9,
+      "narration_he": "מומחה עולמי לחשיבת יתר. הוצאתי ספריות. הקפוצון הזה אומר את האמת בקול שאני לא צריך.",
+      "narration_en": "World-class overthinker. I've taken libraries home. This zip-hoodie says it out loud so I don't have to.",
+      "soul_id": null,
+      "soul_cinema_id": null
+    },
+    {
+      "id": "men-5",
+      "gender": "men",
+      "age": 39,
+      "body_anchor": "average build, sun-tanned face, short dark hair, weathered hands",
+      "scene_anchor": "אחרי משמרת ביום ראשון, חולצה ארוכה מעל הג'ינס",
+      "product_default": 10,
+      "narration_he": "נולדתי לישון. אילצו אותי לעבוד. את שני המסרים האלה לובש על הגב. בכבוד.",
+      "narration_en": "Born to nap, forced to work. Both messages, on my back. With respect.",
+      "soul_id": null,
+      "soul_cinema_id": null
+    },
+    {
+      "id": "women-1",
+      "gender": "women",
+      "age": 41,
+      "body_anchor": "post-kids body, freckles, no makeup, natural wavy brown hair",
+      "scene_anchor": "מטבח אחרי ארוחת שישי, מנקה משם בשעה 23:00",
+      "product_default": 11,
+      "narration_he": "האמינו בי שאוכל. אז לקחתי שלוף קצר. מסתבר שזה היה הדבר הכי חכם של היום.",
+      "narration_en": "They believed she could. So she took a nap. Turns out that was the smartest move of the day.",
+      "soul_id": null,
+      "soul_cinema_id": null
+    },
+    {
+      "id": "women-2",
+      "gender": "women",
+      "age": 47,
+      "body_anchor": "curvy body, gray streaks in dark hair, real skin texture, kind eyes",
+      "scene_anchor": "ספה אחרי שהילדים הלכו לישון, ספר בידיים, חמסין בחוץ",
+      "product_default": 13,
+      "narration_he": "ארגנו לי כל החיים סדנאות מוטיבציה. הצטרפתי למועדון אפס-מוטיבציה. הקפוצון פה לחיי הנצח.",
+      "narration_en": "I sat through every motivation workshop. Then I joined the Zero Motivation Club. The hoodie's lifetime membership.",
+      "soul_id": null,
+      "soul_cinema_id": null
+    },
+    {
+      "id": "women-3",
+      "gender": "women",
+      "age": 38,
+      "body_anchor": "average build, natural tight curls, slight smile lines, freckled cheeks",
+      "scene_anchor": "סטודיו עבודה ב-בוקר ראשון, קפה שלישי",
+      "product_default": 16,
+      "narration_he": "המטרה שלי: קיום מינימלי. כן, גם זה הישג. גם זה כותרת. גם זה אני.",
+      "narration_en": "My goal: minimal existence. Yes, that's a goal too. Yes, that's a headline too. Yes, that's me.",
+      "soul_id": null,
+      "soul_cinema_id": null
+    },
+    {
+      "id": "women-4",
+      "gender": "women",
+      "age": 52,
+      "body_anchor": "lived-in body, crow's feet, smile lines, ash-blonde shoulder-length, post-menopause",
+      "scene_anchor": "סופ״ש בקיבוץ, חצר מאחורנית, כיסא פלסטיק",
+      "product_default": 17,
+      "narration_he": "אני מנוסה בתשישות. אקרדיטציה, רשיון, וטרינר. הזיפ-הודי הזה אומר את זה בלי שאצטרך לדבר.",
+      "narration_en": "Experienced in exhaustion. Licensed, certified, accredited. This zip-hoodie says it for me so I don't have to talk.",
+      "soul_id": null,
+      "soul_cinema_id": null
+    },
+    {
+      "id": "women-5",
+      "gender": "women",
+      "age": 44,
+      "body_anchor": "post-kids body, sun spots, natural dark hair tied back, no makeup",
+      "scene_anchor": "חוף בשישי, חולצה מעל הבגד-ים, אחרי הצהריים",
+      "product_default": 31,
+      "narration_he": "את יפה יותר כשנוח לך. הם אמרו לי לפני עשרים שנה. רק עכשיו אני מתחילה להאמין.",
+      "narration_en": "You're prettier when you're comfortable. Someone told me twenty years ago. I'm only starting to believe it now.",
+      "soul_id": null,
+      "soul_cinema_id": null
+    }
+  ]
+}
