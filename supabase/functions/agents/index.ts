@@ -3484,7 +3484,7 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors
             headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
               from: 'DUBIS <orders@dubis.net>',
-              to: ['teharlev1976@gmail.com'],
+              to: ['dubis.brand@gmail.com'],
               subject: `🛠 מוצר חדש בעיבוד: #${nextId} — "${sloganKey}"`,
               html: `
                 <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px">
@@ -3656,7 +3656,7 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors
             headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
               from: 'DUBIS <orders@dubis.net>',
-              to: ['teharlev1976@gmail.com'],
+              to: ['dubis.brand@gmail.com'],
               subject: `👀 מוקאפים מוכנים — מוצר #${numericId} ממתין לאישור ויזואלי`,
               html: `
                 <div dir="rtl" style="font-family:Arial,sans-serif;max-width:680px">
@@ -3706,7 +3706,7 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors
           headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             from: 'DUBIS <orders@dubis.net>',
-            to: ['teharlev1976@gmail.com'],
+            to: ['dubis.brand@gmail.com'],
             subject: `❌ נכשלה הוספה אוטומטית של מוצר #${numericId} — "${slogan}"`,
             html: `
               <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px">
@@ -3850,7 +3850,7 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors
           headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             from: 'DUBIS <orders@dubis.net>',
-            to: ['teharlev1976@gmail.com'],
+            to: ['dubis.brand@gmail.com'],
             subject: `✅ מוצר #${p.product_id_numeric} עלה לאוויר — "${p.slogan}"`,
             html: `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px">
                 <h2 style="color:#2d6a4f">המוצר חי באתר</h2>

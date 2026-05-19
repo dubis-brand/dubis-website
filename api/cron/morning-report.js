@@ -264,12 +264,12 @@ module.exports = async function handler(req, res) {
     }
 
     // ── Route: ?type=feedback-apology — fix-and-apology email after RLS bug discovered 2026-04-30 ──
-    // ?test=1 → send only to teharlev1976@gmail.com (preview before broadcast)
+    // ?test=1 → send only to dubis.brand@gmail.com (preview before broadcast)
     if (urlType === 'feedback-apology') {
         if (!process.env.RESEND_API_KEY) return res.status(500).json({ error: 'RESEND_API_KEY missing' });
         const isTest = new URL(req.url, `https://${req.headers.host}`).searchParams.get('test') === '1';
         const ALL = isTest ? [
-            { name: 'Oren', email: 'teharlev1976@gmail.com' }
+            { name: 'Oren', email: 'dubis.brand@gmail.com' }
         ] : [
             { name: 'הילה', email: 'hilateharlev@gmail.com' },
             { name: 'שרון', email: 'sharonshabi@gmail.com' },
@@ -403,7 +403,7 @@ ${[
                 headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     from: 'DUBIS Reports <orders@dubis.net>',
-                    to: ['dubis.brand@gmail.com', 'teharlev1976@gmail.com'],
+                    to: ['dubis.brand@gmail.com', 'dubis.brand@gmail.com'],
                     subject: `📝 פיידבק חדש מ-${r.tester_name || r.tester_email || 'אנונימי'}`,
                     html,
                 }),

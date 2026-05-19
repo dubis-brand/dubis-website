@@ -1844,6 +1844,19 @@
           <button class="gender-filter-tab stock-filter-tab" onclick="filterProductsByStock('in_stock',this)" style="border-color:#27ae60;color:#27ae60">✅ במלאי</button>
           <button class="gender-filter-tab stock-filter-tab" onclick="filterProductsByStock('oos',this)" style="border-color:#c0392b;color:#c0392b">❌ אזל</button>
         </div>
+        <div class="gender-filter-tabs" style="margin-top:8px">
+          <button class="gender-filter-tab new-filter-tab active" onclick="filterProductsByAge('all',this)">הכל</button>
+          <button class="gender-filter-tab new-filter-tab" onclick="filterProductsByAge('new',this)" style="border-color:#c17e3a;color:#c17e3a">✨ חדשים (30 ימים)</button>
+          <button class="gender-filter-tab new-filter-tab" onclick="filterProductsByAge('established',this)">מבוססים</button>
+          <select id="type-filter" onchange="filterProductsByType(this.value)" style="background:#1a1a1a;border:1px solid #444;color:#e8e0d5;padding:.45rem .7rem;border-radius:6px;font-size:.85rem;margin-right:8px">
+            <option value="all">כל הסוגים</option>
+            <option value="t-shirt">T-Shirt</option>
+            <option value="hoodie">Hoodie</option>
+            <option value="zip-hoodie">Zip Hoodie</option>
+            <option value="long-sleeve">Long-Sleeve</option>
+            <option value="cap">Cap</option>
+          </select>
+        </div>
       </div>
     </div>
     <div class="loading" id="products-loading" style="display:none">Loading catalog… 🐾</div>
@@ -3669,7 +3682,10 @@
 
   function filterProductCards(gender, btn) {
     _productsGender = gender;
-    document.querySelectorAll('.gender-filter-tab').forEach(b => b.classList.remove('active'));
+    // 2026-05-19: scope to gender row only — was using .gender-filter-tab which
+    // also matches the stock + new + type filters in the next rows, clobbering
+    // their "active" state.
+    btn.parentElement.querySelectorAll('.gender-filter-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     renderProductCards();
   }
@@ -3681,6 +3697,38 @@
     if (btn) btn.classList.add('active');
     renderProductCards();
   }
+
+  // 2026-05-19: filter by product age (NEW = launched within 30 days)
+  let _productsAgeFilter = 'all'; // 'all' | 'new' | 'established'
+  function filterProductsByAge(val, btn) {
+    _productsAgeFilter = val;
+    document.querySelectorAll('.new-filter-tab').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderProductCards();
+  }
+  function _isNewProduct(p) {
+    if (p.isNew === true) return true;
+    if (p.launchedAt) {
+      const ageDays = (Date.now() - new Date(p.launchedAt).getTime()) / 86400000;
+      return ageDays < 30;
+    }
+    return false;
+  }
+
+  // 2026-05-19: filter by clothing type
+  let _productsTypeFilter = 'all'; // 'all' | 't-shirt' | 'hoodie' | ...
+  function filterProductsByType(val) {
+    _productsTypeFilter = val;
+    renderProductCards();
+  }
+  // Map JS-side product.type values back to DB clothing_type values for filter matching
+  const _TYPE_JS_TO_DB = { tshirt: 't-shirt', hoodie: 'hoodie', ziphoodie: 'zip-hoodie', longsleeve: 'long-sleeve', cap: 'cap', capemb: 'cap' };
+  function _productMatchesType(p, filter) {
+    if (filter === 'all') return true;
+    const dbType = _TYPE_JS_TO_DB[p.type] || p.type;
+    return dbType === filter;
+  }
+
   function renderProductCards() {
     const grid = document.getElementById('products-grid');
     let filtered = _productsGender === 'all'
@@ -3693,6 +3741,12 @@
         if (_productsStockFilter === 'oos') return s.badge === 'oos';
         return true;
       });
+    }
+    if (_productsAgeFilter !== 'all') {
+      filtered = filtered.filter(p => _productsAgeFilter === 'new' ? _isNewProduct(p) : !_isNewProduct(p));
+    }
+    if (_productsTypeFilter !== 'all') {
+      filtered = filtered.filter(p => _productMatchesType(p, _productsTypeFilter));
     }
 
     if (filtered.length === 0) {
@@ -3723,8 +3777,14 @@
         const bdr = c === 'White' ? 'border:1px solid #555;' : '';
         return `<span class="color-swatch${ci===0?' active':''}" style="background:${bg};${bdr}" title="${c}" onclick="switchProductColor(${p.id},'${c}',this)"></span>`;
       }).join('');
+      // 2026-05-19: NEW badge on the card image when product was launched in last 30 days
+      const _isNew = _isNewProduct(p);
+      const _newBadgeHtml = _isNew
+        ? `<div class="card-new-badge" style="position:absolute;top:8px;inset-inline-start:8px;background:#c17e3a;color:#fff;font-size:.65rem;font-weight:700;letter-spacing:1px;padding:3px 8px;border-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,.4);z-index:5">✨ NEW</div>`
+        : '';
       const cardImgHtml = `
         <div class="product-img-wrapper" style="position:relative">
+          ${_newBadgeHtml}
           <img id="pimg-${p.id}" src="${_defaultImg}" class="product-preview-img" alt="${p.phrase}" loading="lazy"
                onerror="this.onerror=null;this.src='images/product-${p.id}.jpg';this.onerror=()=>{this.onerror=null;this.src='${(p.image||'').replace(/'/g,'')}';this.onerror=()=>{this.onerror=null;if('${_storageImg.replace(/'/g,"\\'")}')this.src='${_storageImg.replace(/'/g,"\\'")}';else this.style.display='none';}}">
           <div class="fb-toggle">

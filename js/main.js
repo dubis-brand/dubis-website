@@ -1041,7 +1041,6 @@ function openProductModal(productId) {
       <div class="modal-type">${typeMap[product.type] || product.typeLabel}</div>
       <div class="modal-limited-badge">&#128293; ${currentLang === 'he' ? 'מהדורה מוגבלת' : 'Limited Edition'}</div>
       <h2 class="modal-phrase">"${product.phrase}"</h2>
-      <div class="modal-recent-buyers">&#128101; ${(function(name){let h=0;for(let i=0;i<name.length;i++)h=(h*31+name.charCodeAt(i))>>>0;return 8+h%13;})(product.phrase)} ${currentLang === 'he' ? 'אנשים קנו את זה ב-30 הימים האחרונים' : 'people bought this in the last 30 days'}</div>
       <div class="modal-price" id="modal-price-${product.id}" data-base-price="${product.price}">${formatPrice(getVariantPrice(product.id, product.colors[0], product.sizes[0], product.price))}</div>
       <div class="modal-price-note" id="modal-price-note-${product.id}" style="font-size:0.78rem;color:#888;margin-top:-4px;margin-bottom:6px;display:none;">${currentLang === 'he' ? 'המחיר משתנה לפי צבע/מידה' : 'Price varies by color/size'}</div>
       <div class="modal-shipping-info">${t.modal_ships} · <span class="free-ship-badge">${t.modal_free_ship}</span></div>

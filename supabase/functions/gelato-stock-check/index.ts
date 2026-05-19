@@ -141,8 +141,25 @@ async function checkVariant(productUid: string): Promise<CheckResult> {
       const v = pick?.price;
       return (typeof v === 'number' && Number.isFinite(v)) ? Math.round(v * 100) / 100 : null;
     }
-    const cost_us_usd = await firstPrice(priceUsRes);
-    const cost_il_usd = await firstPrice(priceIlRes);
+    let cost_us_usd = await firstPrice(priceUsRes);
+    let cost_il_usd = await firstPrice(priceIlRes);
+
+    // 2026-05-19: brand-suffix prices-API fallback.
+    // For some apparel UIDs (notably longsleeve-crew/unisex/gildan_2400 — products
+    // 10 + 29), the /prices endpoint returns 404 even though /products returns 200.
+    // Dropping the `_brand_sku` suffix returns valid prices for the same garment.
+    // Retry without the suffix when either currency call missed.
+    if ((cost_us_usd == null || cost_il_usd == null) && /_[a-z][a-z-]*_[0-9a-z]+$/.test(productUid)) {
+      const brandless = productUid.replace(/_[a-z][a-z-]*_[0-9a-z]+$/, '');
+      try {
+        const [retryUs, retryIl] = await Promise.all([
+          fetch(`${GELATO_API_BASE}/products/${brandless}/prices?country=US`, { headers: { 'X-API-KEY': GELATO_API_KEY, 'Accept': 'application/json' } }),
+          fetch(`${GELATO_API_BASE}/products/${brandless}/prices?country=IL`, { headers: { 'X-API-KEY': GELATO_API_KEY, 'Accept': 'application/json' } }),
+        ]);
+        if (cost_us_usd == null) cost_us_usd = await firstPrice(retryUs);
+        if (cost_il_usd == null) cost_il_usd = await firstPrice(retryIl);
+      } catch (_) { /* swallow — keep nulls */ }
+    }
 
     const res = existRes;
     if (res.status === 404) {

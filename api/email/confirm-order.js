@@ -13,7 +13,7 @@
 
 const rateLimit = require('../_rateLimit');
 
-const ADMIN_MAIL_TO = 'teharlev1976@gmail.com';
+const ADMIN_MAIL_TO = 'dubis.brand@gmail.com';
 
 module.exports = async function handler(req, res) {
     if (req.method !== 'POST') {
