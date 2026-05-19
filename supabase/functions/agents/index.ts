@@ -3814,11 +3814,17 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors
       // (a) Seed product_prices with dubis_products.price_usd as baseline so admin
       // has SOMETHING to render. Daily cron + manual sync refine to
       // CEIL(MIN(gelato_cost_usd)) once cost data lands.
-      const { data: prodPrice } = await sb.from('dubis_products')
-        .select('price_usd').eq('id', productId).single();
-      const baselinePrice = Number((prodPrice as Record<string, unknown>)?.price_usd ?? 28);
-      await sb.from('product_prices')
-        .upsert({ product_id: p.product_id_numeric, selling_price: baselinePrice, updated_at: new Date().toISOString() }, { onConflict: 'product_id' });
+      // 2026-05-19 (corrected same day): INSERT-only, never UPSERT — overriding an
+      // existing selling_price would clobber a higher rule-#7 price set earlier
+      // (was dropping product 31 from $27 → $21 every time visual-approve re-fired).
+      const { data: existingPrice } = await sb.from('product_prices').select('product_id').eq('product_id', p.product_id_numeric).maybeSingle();
+      if (!existingPrice) {
+        const { data: prodPrice } = await sb.from('dubis_products')
+          .select('price_usd').eq('id', productId).single();
+        const baselinePrice = Number((prodPrice as Record<string, unknown>)?.price_usd ?? 28);
+        await sb.from('product_prices')
+          .insert({ product_id: p.product_id_numeric, selling_price: baselinePrice, updated_at: new Date().toISOString() });
+      }
 
       // (b) Fire gelato-stock-check via cron dispatcher. Returns immediately
       // (~2s budget here); upstream takes ~55s. Check product_variant_stock
