@@ -125,6 +125,30 @@ RETURNING id, product_id_numeric;
 
 For all sizes 2XL adds ~$3-4, 3XL adds ~$6-10 to base cost — passed through via per-variant `sell_price_usd` overrides.
 
+## Default color palette per (type, gender) — CATALOG_COLORS constant
+
+These are verified-in-Gelato palettes used by `?type=generate-slogan` when no `product_variant_stock` data exists for a fresh type. Defined in `agents/index.ts` at the top of the `generate-slogan` handler.
+
+**Never add a color to this map that isn't in Gelato's catalog for that (type, gender) combo.** Trigger `gelato-stock-check` after adding a new color row to a product to confirm it's reachable.
+
+| clothing_type:gender | Verified Gelato colors |
+|---|---|
+| `t-shirt:unisex` | Black, White, Cream, Navy, Charcoal, Red, Gray, Forest Green (8) |
+| `t-shirt:women` | Black, White, Cream, Navy (4) |
+| `hoodie:unisex` | Black, White, Cream, Navy, Charcoal, Forest Green, Gray (7) |
+| `hoodie:women` | Black, White, Navy, Charcoal (4) |
+| `zip-hoodie:unisex` | Black, White, Navy, Charcoal (4) |
+| `long-sleeve:unisex` | Black, White, Cream, Navy, Forest Green, Gray (6) |
+| `long-sleeve:women` | Black, White, Navy (3) |
+| `cap:unisex` | Black, White, Cream, Navy (4) |
+| `cap-emb:unisex` | Black, White, Navy, Cream, Charcoal (5) |
+| `v-neck:unisex` | Black, White, Navy, Red (4) |
+| `v-neck:women` | Black, White, Navy (3) |
+| `tank-top:unisex` | Black, White, Navy, Red (4) |
+| `tank-top:women` | Black (1) |
+
+Per oren 2026-05-19: new products should get the **full palette up to 8 colors** (was capped at 4). The `MAX_COLORS=8` constant in `generate-slogan` controls this. Reducing the cap is a deliberate UX decision — every color slot adds 1 Gelato draft + 8 mockup files (front+back × N colors) + bigger admin scroll. 8 is the practical ceiling.
+
 ### Step 2 — Trigger the GHA pipeline
 
 ```bash

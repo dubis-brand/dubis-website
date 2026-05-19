@@ -3229,9 +3229,35 @@ ${personaId ? `Persona: ${personaId}\n` : ''}${sloganMismatch ? '⚠️ NOTE: pr
       .map(([t, set]) => `  ${t}: ${Array.from(set).join(', ')}`)
       .join('\n');
     // Map our slogan product_type values → DB clothing_type values for filtering.
+    // 2026-05-19: added vneck + tanktop + capemb after Phase F catalog expansion.
     const TYPE_TO_DB: Record<string, string> = {
       tshirt: 't-shirt', hoodie: 'hoodie', ziphoodie: 'zip-hoodie', longsleeve: 'long-sleeve', cap: 'cap',
+      vneck: 'v-neck', tanktop: 'tank-top', capemb: 'cap-emb',
       't-shirt': 't-shirt', 'zip-hoodie': 'zip-hoodie', 'long-sleeve': 'long-sleeve',
+      'v-neck': 'v-neck', 'tank-top': 'tank-top', 'cap-emb': 'cap-emb',
+    };
+
+    // 2026-05-19: CATALOG_COLORS — full color palette per (clothing_type, gender)
+    // verified live against Gelato API. Used as fallback when product_variant_stock
+    // has no rows yet for this type (e.g. brand-new clothing_type, or first product
+    // of a sub-category). Without this, generate-slogan defaulted to ['Black','White']
+    // for any fresh type — that was the "only 4 boring colors" complaint from oren
+    // on 2026-05-19. NEVER add colors that aren't in Gelato's catalog for the (type,
+    // gender) combo — verified colors only (the 2026-04-22 Honey Brown rule).
+    const CATALOG_COLORS: Record<string, string[]> = {
+      't-shirt:unisex':     ['Black', 'White', 'Cream', 'Navy', 'Charcoal', 'Red', 'Gray', 'Forest Green'],
+      't-shirt:women':      ['Black', 'White', 'Cream', 'Navy'],
+      'hoodie:unisex':      ['Black', 'White', 'Cream', 'Navy', 'Charcoal', 'Forest Green', 'Gray'],
+      'hoodie:women':       ['Black', 'White', 'Navy', 'Charcoal'],
+      'zip-hoodie:unisex':  ['Black', 'White', 'Navy', 'Charcoal'],
+      'long-sleeve:unisex': ['Black', 'White', 'Cream', 'Navy', 'Forest Green', 'Gray'],
+      'long-sleeve:women':  ['Black', 'White', 'Navy'],
+      'cap:unisex':         ['Black', 'White', 'Cream', 'Navy'],
+      'cap-emb:unisex':     ['Black', 'White', 'Navy', 'Cream', 'Charcoal'],
+      'v-neck:unisex':      ['Black', 'White', 'Navy', 'Red'],
+      'v-neck:women':       ['Black', 'White', 'Navy'],
+      'tank-top:unisex':    ['Black', 'White', 'Navy', 'Red'],
+      'tank-top:women':     ['Black'],
     };
 
     const prompt = `You are the head copywriter at DUBIS — an Israeli apparel brand with CYNICAL humor (not dry, not gentle — CYNICAL!).
@@ -3291,22 +3317,45 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors
 
       // Save each suggestion to dubis_products (active=false) + agent_task
       const savedProducts: unknown[] = [];
-      const PRICE_MAP: Record<string, number> = { 't-shirt': 28, hoodie: 41, 'zip-hoodie': 46, 'long-sleeve': 31, cap: 28 };
-      const DB_TYPE_MAP: Record<string, string> = { tshirt: 't-shirt', hoodie: 'hoodie', ziphoodie: 'zip-hoodie', longsleeve: 'long-sleeve', cap: 'cap', 't-shirt': 't-shirt', 'zip-hoodie': 'zip-hoodie', 'long-sleeve': 'long-sleeve' };
+      // 2026-05-19: PRICE_MAP refreshed for the Phase F catalog — vneck/tank/cap-emb added.
+      // Defaults per rule #7 (CEIL of cheapest IL cost from gelato-stock-check).
+      const PRICE_MAP: Record<string, number> = {
+        't-shirt': 28, hoodie: 41, 'zip-hoodie': 46, 'long-sleeve': 31,
+        cap: 28, 'cap-emb': 32, 'v-neck': 30, 'tank-top': 30,
+      };
+      const DB_TYPE_MAP: Record<string, string> = {
+        tshirt: 't-shirt', hoodie: 'hoodie', ziphoodie: 'zip-hoodie', longsleeve: 'long-sleeve',
+        cap: 'cap', capemb: 'cap-emb', vneck: 'v-neck', tanktop: 'tank-top',
+        't-shirt': 't-shirt', 'zip-hoodie': 'zip-hoodie', 'long-sleeve': 'long-sleeve',
+        'v-neck': 'v-neck', 'tank-top': 'tank-top', 'cap-emb': 'cap-emb',
+      };
+      // 2026-05-19: how many colors to give a new product. Was hardcoded slice(0, 4)
+      // — too narrow. Bump to 8 so we surface the FULL Gelato palette when available
+      // (t-shirt unisex has 8 colors, others have 3-7).
+      const MAX_COLORS = 8;
       for (const s of suggestions) {
         const clothingType = DB_TYPE_MAP[s.product_type || 'tshirt'] || 't-shirt';
-        // 2026-05-16: enforce REAL-in-stock filter even if Gemini ignores the prompt.
-        // If filtering wipes out everything (e.g. Gemini picked a type that's fully OOS),
-        // fall back to whatever IS in stock for this type — at minimum we surface only
-        // colors Gelato will accept on a draft order.
+        const genderKey = s.gender === 'women' ? 'women' : 'unisex';
+        // 2026-05-19: 3-tier color selection.
+        // 1. Filter Gemini's picks by what's REAL-in-stock (best — proven catalog AND inventory).
+        // 2. If none in stock OR fresh type, use CATALOG_COLORS (verified Gelato palette,
+        //    may include OOS colors but won't include phantom ones).
+        // 3. Last-resort guard ['Black','White'] only if both above empty.
         const allowedForType = inStockMap[TYPE_TO_DB[s.product_type || ''] || clothingType] || new Set<string>();
+        const catalogKey = `${clothingType}:${genderKey}`;
+        const catalogColors = CATALOG_COLORS[catalogKey] || [];
         let chosenColors = Array.isArray(s.colors)
-          ? (s.colors as string[]).filter((c: string) => allowedForType.has(c))
+          ? (s.colors as string[]).filter((c: string) => allowedForType.has(c) || catalogColors.includes(c))
           : [];
         if (chosenColors.length === 0 && allowedForType.size > 0) {
-          chosenColors = Array.from(allowedForType).slice(0, 4);
+          chosenColors = Array.from(allowedForType).slice(0, MAX_COLORS);
+        }
+        if (chosenColors.length === 0 && catalogColors.length > 0) {
+          chosenColors = catalogColors.slice(0, MAX_COLORS);
         }
         if (chosenColors.length === 0) chosenColors = ['Black', 'White']; // last-resort guard
+        // Cap whatever was chosen at MAX_COLORS for UX cleanliness.
+        chosenColors = chosenColors.slice(0, MAX_COLORS);
         const { data: product, error: pErr } = await sb.from('dubis_products').insert({
           slogan: s.slogan,
           clothing_type: clothingType,
