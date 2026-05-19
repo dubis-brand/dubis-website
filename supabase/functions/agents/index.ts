@@ -3804,6 +3804,36 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors
       }
     } catch { /* dispatch is best-effort */ }
 
+    // 2026-05-19: seed product_prices with a fallback baseline + fire gelato-stock-check
+    // so product_variant_stock auto-populates with in_stock + gelato_cost_usd within
+    // ~60s. Without this the admin Product Catalog card shows "לא נבדק" + "אין נתוני
+    // עלות" until the next daily 5 UTC cron. The async stock check feeds Margin US/IL
+    // columns; a later sync sets product_prices.selling_price = CEIL(MIN(gelato_cost_usd))
+    // per rule #7 of memory/checkout-guardrails.md. Both calls are best-effort.
+    try {
+      // (a) Seed product_prices with dubis_products.price_usd as baseline so admin
+      // has SOMETHING to render. Daily cron + manual sync refine to
+      // CEIL(MIN(gelato_cost_usd)) once cost data lands.
+      const { data: prodPrice } = await sb.from('dubis_products')
+        .select('price_usd').eq('id', productId).single();
+      const baselinePrice = Number((prodPrice as Record<string, unknown>)?.price_usd ?? 28);
+      await sb.from('product_prices')
+        .upsert({ product_id: p.product_id_numeric, selling_price: baselinePrice, updated_at: new Date().toISOString() }, { onConflict: 'product_id' });
+
+      // (b) Fire gelato-stock-check via cron dispatcher. Returns immediately
+      // (~2s budget here); upstream takes ~55s. Check product_variant_stock
+      // 60-90s later for cost data.
+      const supaUrl = Deno.env.get('SUPABASE_URL') ?? '';
+      const PG_CRON_TOKEN = 'dubis-pg-cron-trigger-a554cd187bdfaf88a0a5dd8dcf571bea32658e1eb8ec217c';
+      if (supaUrl) {
+        fetch(`${supaUrl.replace('/rest/v1', '')}/functions/v1/dubis-cron-dispatcher?job=gelato-stock&token=${encodeURIComponent(PG_CRON_TOKEN)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(2000),
+        }).catch(() => {});  // swallow — upstream keeps running
+      }
+    } catch { /* baseline price + stock fire are best-effort */ }
+
     // Close the agent_task
     await sb.from('agent_tasks').update({
       status: 'done',
