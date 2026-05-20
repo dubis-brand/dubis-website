@@ -4151,14 +4151,28 @@
 
   async function saveProductPrice(productId, newPrice, inputEl) {
     if (!newPrice || newPrice < 1) return;
-    // 2026-05-20: rule #7 enforcement — selling_price must cover cheapest IL cost.
-    // If new base is below that floor, refuse with explicit message.
+    // 2026-05-20 H2: rule #7 → confirm() (was hard-block). oren has final say —
+    // sometimes a loss leader is intentional (launch promo, IL closeout, A/B test).
+    // Warn loudly, show the per-order loss, but proceed if oren confirms.
     const pricing = _productPricing[productId] || {};
     const minCostIl = (pricing.has_pricing && pricing.cost_il_min != null && isFinite(pricing.cost_il_min)) ? Math.ceil(pricing.cost_il_min) : null;
+    const minCostUs = (pricing.has_pricing && pricing.cost_us_min != null && isFinite(pricing.cost_us_min)) ? Math.ceil(pricing.cost_us_min) : null;
     if (minCostIl != null && newPrice < minCostIl) {
-      window._dubisToast(`❌ מחיר $${newPrice} נמוך מהעלות המינימלית IL $${minCostIl}. כל הזמנה IL = הפסד.\nהצעה: $${minCostIl}+ (כלל #7).`, '#c0392b', 5500);
-      if (inputEl) inputEl.value = minCostIl; // bump back up
-      return;
+      const lossPerIlOrder = (minCostIl - newPrice).toFixed(2);
+      const lossPerUsOrder = (minCostUs != null && newPrice < minCostUs) ? (minCostUs - newPrice).toFixed(2) : null;
+      const msg = `⚠️ אזהרת רווחיות (כלל #7 ב-checkout-guardrails):\n\n`
+        + `מחיר $${newPrice} נמוך מעלות IL מינימלית $${minCostIl}.\n`
+        + `כל הזמנה IL ≈ הפסד של $${lossPerIlOrder}.\n`
+        + (lossPerUsOrder ? `כל הזמנה US ≈ הפסד של $${lossPerUsOrder}.\n` : `הזמנות US עדיין רווחיות (עלות US מינימלית $${minCostUs ?? '?'}).\n`)
+        + `\nשילוח הוא passthrough — הלקוח משלם אותו, לא משפיע על המרווח.\n`
+        + `\nלהמשיך בכל זאת ולשמור $${newPrice}?`;
+      if (!confirm(msg)) {
+        if (inputEl) inputEl.value = minCostIl; // bumped back if rejected
+        window._dubisToast(`↩️ ביטלת. מחיר נשאר על $${minCostIl} (רצפת rule #7)`, '#888', 2500);
+        return;
+      }
+      // oren confirmed — show a persistent warning toast (longer, red border)
+      window._dubisToast(`⚠️ שמרתי $${newPrice} למרות הפסד IL של $${lossPerIlOrder} להזמנה. רשום ב-DB עם price_set_by='admin-override-below-cost'.`, '#c17e3a', 6000);
     }
     try {
       // 1. Update base selling_price.
@@ -4169,15 +4183,18 @@
       });
       if (priceErr) throw priceErr;
 
-      // 2. Mass-update per-variant sell_price_usd = MAX(newPrice, CEIL(cost_il)).
-      // This is what makes the Margin US/IL grid actually change — those columns
-      // read from product_variant_stock.sell_price_usd, not from product_prices.
-      // Premium variants (Cream 2XL etc.) stay priced at their cost+1 floor.
-      // Variants without cost data fall to the base.
+      // 2. Mass-update per-variant sell_price_usd.
+      // 2026-05-20 H2: per oren — admin has final say. If newPrice is below cost,
+      // we already confirmed above. Now respect oren's decision: set ALL variants
+      // to newPrice (not MAX(newPrice, cost)). Otherwise oren's $21 silently
+      // becomes $27/$32/$35 per variant — defeating the manual override.
+      // Premium colors/sizes still get a different price only via the explicit
+      // "💵 מחירים פר variant" modal.
       const product = _allProducts.find(p => p.id === productId);
-      const numericId = product?.id; // already the numeric id in _allProducts
+      const numericId = product?.id;
+      const belowFloor = (minCostIl != null && newPrice < minCostIl);
+      const tag = belowFloor ? 'admin-override-below-cost' : 'admin-base-update';
       if (numericId != null) {
-        // Pull current variants, compute new per-variant prices, batch-upsert
         const { data: variants } = await _sb.from('product_variant_stock')
           .select('color,size,gelato_cost_usd')
           .eq('product_id_numeric', numericId);
@@ -4186,8 +4203,8 @@
             product_id_numeric: numericId,
             color: v.color,
             size: v.size,
-            sell_price_usd: Math.max(newPrice, Math.ceil(Number(v.gelato_cost_usd || 0))),
-            price_set_by: 'admin-base-update-' + new Date().toISOString().slice(0, 10),
+            sell_price_usd: newPrice,  // respect oren's chosen base for ALL variants
+            price_set_by: tag + '-' + new Date().toISOString().slice(0, 10),
             price_set_at: new Date().toISOString(),
           }));
           const { error: varErr } = await _sb.from('product_variant_stock')
@@ -4201,7 +4218,10 @@
       const p = _allProducts.find(p => p.id === productId);
       if (p) p.price = newPrice;
       renderProductCards();
-      window._dubisToast(`✅ Base $${newPrice} נשמר — variants עודכנו (קצף ≥ עלות IL)`, '#27ae60', 3000);
+      // Don't double-toast if we already showed the below-cost override toast.
+      if (!belowFloor) {
+        window._dubisToast(`✅ Base $${newPrice} נשמר — כל ה-variants עודכנו`, '#27ae60', 3000);
+      }
     } catch (e) {
       console.warn('saveProductPrice failed', e);
       window._dubisToast('❌ שגיאת שמירה: ' + (e.message || e), '#c0392b', 5000);
