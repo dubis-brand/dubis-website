@@ -3921,7 +3921,14 @@
             <button class="btn-sm" onclick="regenFrontMockup(${p.id}, this)" title="צור תמונת FRONT חדשה עם DUBIS™">🔄 חדש</button>
             <button class="btn-sm" onclick="copyUid('${uid}', this)" title="Copy full UID">Copy UID</button>
             <a class="btn-sm" href="https://www.dubis.net/#product-${p.id}" target="_blank" rel="noopener" style="text-decoration:none">צפה באתר →</a>
-            <button class="btn-gelato" onclick="openGelatoToolsForProduct(${p.id})" title="פתח את לשונית Gelato Tools עם המוצר הזה ממולא — תוכל ליצור Draft חינמי ולקבל URL מדויק">🎨 Gelato Tools →</button>
+            ${(() => {
+              // 2026-05-20 I4: external link to Gelato — shows brand+SKU oren is charged for.
+              const g = _gelatoInfo(p);
+              const tooltip = `מותג: ${g.brand} · SKU: ${g.sku}\nproductUid: ${g.productUid}\n(לחיצה כפולה להעתקה)`;
+              return `<a class="btn-gelato" href="${g.url}" target="_blank" rel="noopener"
+                      ondblclick="event.preventDefault();navigator.clipboard.writeText('${g.productUid}').then(()=>window._dubisToast('הועתק: ${g.productUid.slice(0,40)}…','#27ae60',2500));"
+                      title="${tooltip.replace(/"/g, '&quot;')}">🎨 ${g.label} →</a>`;
+            })()}
           </div>
         </div>
       </div>`;
@@ -7909,44 +7916,53 @@
   // ══════════════════════════════════════════════════════════════
   let _gtProducts = null;  // cached product list
 
-  // 2026-05-20 I3: open the Gelato Tools tab pre-filled with a specific product.
-  // Called from the 🎨 Gelato Tools → button on each catalog card. Replaces the
-  // earlier "deep link to dashboard.gelato.com/orders/{id}" approach which
-  // landed on the dashboard home (the path didn't resolve to a specific draft).
-  // This gives oren a deterministic in-admin flow: tab opens → product+color+size
-  // selected → 'Create Draft' button gives a fresh dashboard URL every time.
-  window.openGelatoToolsForProduct = async function openGelatoToolsForProduct(productIdNumeric) {
-    try {
-      // 1. Switch to the Gelato Tools tab — also sets the nav highlight.
-      const navBtn = document.getElementById('nav-gelato-tools');
-      showSection('gelato-tools', navBtn);
-      // 2. gtInit is idempotent — it loads _gtProducts only on first call.
-      // We need to wait until the product dropdown is populated.
-      let tries = 0;
-      while (tries < 40) {  // up to 8 seconds
-        const sel = document.getElementById('gt-product');
-        const ready = sel && sel.options.length > 1;
-        if (ready) break;
-        await new Promise(r => setTimeout(r, 200));
-        tries++;
-      }
-      // 3. Pre-fill the product dropdown.
-      const productSelect = document.getElementById('gt-product');
-      if (!productSelect) { window._dubisToast('❌ לא נמצאה לשונית Gelato Tools', '#c0392b'); return; }
-      productSelect.value = String(productIdNumeric);
-      // Trigger the change handler so colors populate.
-      if (typeof gtOnProductChange === 'function') gtOnProductChange();
-      else productSelect.dispatchEvent(new Event('change'));
-      // 4. Scroll so oren can see the prefilled form.
-      const toolsSection = document.getElementById('section-gelato-tools');
-      if (toolsSection) toolsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      // 5. Visual confirmation.
-      window._dubisToast(`🎨 Gelato Tools פתוח עם מוצר #${productIdNumeric} — בחר צבע/מידה ולחץ "צור Draft"`, '#c8a96e', 4000);
-    } catch (e) {
-      console.error('openGelatoToolsForProduct failed:', e);
-      window._dubisToast('❌ שגיאה: ' + (e.message || e), '#c0392b', 5000);
-    }
+  // 2026-05-20 I4: Resolve a (clothing_type, gender) to the Gelato brand+SKU
+  // we get charged for + the catalog URL. Mirrors api/create-gelato-order.js
+  // TEMPLATES. Brand-less aliases (hoodie women, vneck, tanktop, zip-hoodie)
+  // have brand=null in the API response — Gelato uses internal defaults but
+  // doesn't expose a brand-specific catalog page. Those fall back to the
+  // category page (which oren confirmed works).
+  // Each row: [brand, sku, catalogUrl]
+  const _GELATO_PRODUCT_MAP = {
+    't-shirt:unisex':    ['Gildan',           '64000', 'https://www.gelato.com/custom/mens-clothing/t-shirts'],
+    't-shirt:women':     ['Bella+Canvas',     '6004',  'https://www.gelato.com/custom/womens-clothing/t-shirts'],
+    'hoodie:unisex':     ['Gildan',           '18500', 'https://www.gelato.com/custom/mens-clothing/hoodies'],
+    'hoodie:women':      ['Gelato premium',   '—',     'https://www.gelato.com/custom/womens-clothing/hoodies'],
+    'zip-hoodie:unisex': ['Gelato classic',   '—',     'https://www.gelato.com/custom/mens-clothing/hoodies'],
+    'long-sleeve:unisex':['Gildan',           '2400',  'https://www.gelato.com/custom/mens-clothing/long-sleeve-shirts'],
+    'long-sleeve:women': ['SOL\'S',           '02075', 'https://www.gelato.com/custom/womens-clothing/long-sleeve-shirts'],
+    'cap:unisex':        ['AS Colour',        '1114',  'https://www.gelato.com/custom/hats/dad-hats'],
+    'cap-emb:unisex':    ['Flexfit',          '6245CM','https://www.gelato.com/custom/hats/dad-hats'],
+    'v-neck:unisex':     ['Gelato premium',   '—',     'https://www.gelato.com/custom/mens-clothing/t-shirts'],
+    'v-neck:women':      ['Gelato premium',   '—',     'https://www.gelato.com/custom/womens-clothing/t-shirts/v-neck'],
+    'tank-top:unisex':   ['Gelato premium',   '—',     'https://www.gelato.com/custom/mens-clothing/tank-tops'],
+    'tank-top:women':    ['Gelato premium',   '—',     'https://www.gelato.com/custom/womens-clothing/tank-tops'],
   };
+  // JS-type → DB-clothing_type, so the lookup key matches our naming.
+  const _JS_TO_DB_TYPE = { tshirt: 't-shirt', hoodie: 'hoodie', ziphoodie: 'zip-hoodie', longsleeve: 'long-sleeve', cap: 'cap', capemb: 'cap-emb', vneck: 'v-neck', tanktop: 'tank-top' };
+  // Returns { brand, sku, url, label, productUid } for a product card.
+  // productUid is the FULL Gelato apparel UID — the exact string they charge by.
+  function _gelatoInfo(p) {
+    const dbType = _JS_TO_DB_TYPE[p.type] || p.type;
+    const genderKey = p.gender === 'women' ? 'women' : 'unisex';
+    const [brand, sku, url] = _GELATO_PRODUCT_MAP[`${dbType}:${genderKey}`] || ['Gelato', '?', 'https://www.gelato.com/custom'];
+    // Build the productUid for size=M, color=first available — same shape as
+    // buildProductUid() in api/create-gelato-order.js. Oren can copy this string
+    // and search Gelato support / dashboard with it.
+    const firstColor = (p.colors && p.colors[0]) ? p.colors[0].toLowerCase().replace(/\s+/g, '-') : 'black';
+    const gpr = (dbType === 'cap' || dbType === 'cap-emb') ? '4-0-dtf' : '4-4';
+    const cat = (dbType === 'cap' || dbType === 'cap-emb') ? 'hat' : (dbType === 'hoodie' || dbType === 'zip-hoodie') ? 'hoodie' : 't-shirt';
+    const sub = ({ 't-shirt': 'crewneck', 'hoodie': 'pullover', 'zip-hoodie': 'zip', 'long-sleeve': 'longsleeve-crew', 'cap': 'dad-hat', 'cap-emb': 'dad-hat', 'v-neck': 'v-neck', 'tank-top': 'tank-top' })[dbType] || dbType;
+    const cut = genderKey === 'women' ? 'womens' : 'unisex';
+    const qa = ({ 't-shirt:unisex': 'classic', 't-shirt:women': 'prm', 'hoodie:unisex': 'classic', 'hoodie:women': 'prm', 'zip-hoodie:unisex': 'classic', 'long-sleeve:unisex': 'classic', 'long-sleeve:women': 'prm', 'cap:unisex': 'classic', 'cap-emb:unisex': 'classic', 'v-neck:unisex': 'prm', 'v-neck:women': 'prm', 'tank-top:unisex': 'prm', 'tank-top:women': 'prm' })[`${dbType}:${genderKey}`] || 'classic';
+    // brand/sku in productUid use lowercase + hyphens (gelato format).
+    const brandLc = brand.toLowerCase().replace(/\s+/g, '-').replace(/['+]/g, '');
+    const skuLc = sku.toLowerCase().replace(/[+\s]/g, '');
+    const brandSuffix = sku !== '—' ? `_${brandLc.replace('bella-canvas','bella-and-canvas')}_${skuLc}` : '';
+    const productUid = `apparel_product_gca_${cat}_gsc_${sub}_gcu_${cut}_gqa_${qa}_gsi_m_gco_${firstColor}_gpr_${gpr}${brandSuffix}`;
+    const label = sku !== '—' ? `${brand} ${sku}` : brand;
+    return { brand, sku, url, label, productUid };
+  }
 
   async function gtInit() {
     if (_gtProducts) return;  // already loaded
