@@ -428,40 +428,33 @@ function renderPayPalButtons() {
         const itemTotal = cart.reduce((sum, i) => sum + i.price, 0);
         const ctry      = (window.checkoutAddress && window.checkoutAddress.country_code) || 'US';
 
-        // 2026-05-20: PRE-CAPTURE STOCK PROBE — gate that prevents capture-
-        // then-stock-refusal forever. Runs BEFORE actions.order.create(),
-        // so if any cart item is unavailable at Gelato in the shipping
-        // country, NO PayPal capture happens. The user sees a clear modal
-        // explaining which item(s) are out of stock.
+        // 2026-05-20: PRE-CAPTURE STOCK PROBE — gate via Gelato /v4/orders:quote
+        // (authoritative — uses the SAME routing logic as real order placement,
+        // so quote success ≈ guaranteed fulfillable). Runs BEFORE order create.
         try {
             const probeRes = await fetch('/api/create-gelato-order?action=stock-probe', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     country: ctry,
+                    shippingAddress: window.checkoutAddress || null,
                     cartItems: cart.map(item => ({
                         id: item.id, type: item.type, gender: item.gender || 'unisex',
                         selectedColor: item.selectedColor, selectedSize: item.selectedSize,
+                        designRef: item.designRef || null,
                         typeLabel: item.typeLabel,
                     })),
                 }),
             });
             const probe = await probeRes.json().catch(() => ({ ok: true, skipped: 'parse_error' }));
-            if (probe.ok === false && Array.isArray(probe.oosItems) && probe.oosItems.length > 0) {
-                // Build a friendly message naming the OOS items.
-                const lines = probe.oosItems.map(o => `• ${o.label || (o.type + ' ' + o.color + ' ' + o.size)}`).join('\n');
-                const msg = `Sorry — the following item(s) are currently out of stock and cannot be ordered to your country (${ctry}):\n\n${lines}\n\nPlease remove them from your cart or pick a different color/size, then try again.`;
+            if (probe.ok === false) {
+                const oosLines = (probe.oosItems || []).map(o => `• ${o.label || (o.type + ' ' + o.color + ' ' + o.size)}`).join('\n');
+                const reason = probe.reason || 'one or more items are out of stock for your country';
+                const msg = `Sorry — ${reason}\n\n${oosLines || ''}\n\nPlease remove the affected item(s) or pick a different color/size, then try again.`;
                 showPaymentError(msg);
-                // Reject by THROWING so PayPal does NOT create the order.
-                // PayPal will fire onError; our onError shows a banner but
-                // the showPaymentError above is the authoritative UI.
                 throw new Error('stock_probe_failed');
             }
         } catch (probeErr) {
-            // Probe network error → fail OPEN (let PayPal proceed). The
-            // server-side body-canceled detection + handler-exception
-            // safety net still cover us. Only the explicit OOS path
-            // throws above — actual network errors here fall through.
             if (probeErr && probeErr.message === 'stock_probe_failed') throw probeErr;
             console.warn('Stock probe network error — proceeding to PayPal:', probeErr && probeErr.message);
         }
@@ -560,6 +553,42 @@ function renderPayPalButtons() {
 
     const onApprove = async (data, actions) => {
             try {
+                // 2026-05-20 round-2 PROBE — re-validate stock IMMEDIATELY before
+                // capture. The createOrder probe may have run 30 sec to 2 min ago;
+                // Gelato stock can change in that window. This second probe runs
+                // milliseconds before actions.order.capture(), closing the race
+                // window to ~1 second. If it fails, throw — no capture happens.
+                try {
+                    const ctry2 = (window.checkoutAddress && window.checkoutAddress.country_code) || 'US';
+                    const reProbe = await fetch('/api/create-gelato-order?action=stock-probe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            country: ctry2,
+                            shippingAddress: window.checkoutAddress || null,
+                            cartItems: cart.map(item => ({
+                                id: item.id, type: item.type, gender: item.gender || 'unisex',
+                                selectedColor: item.selectedColor, selectedSize: item.selectedSize,
+                                designRef: item.designRef || null,
+                                typeLabel: item.typeLabel,
+                            })),
+                        }),
+                    });
+                    const reProbeData = await reProbe.json().catch(() => ({ ok: true, skipped: 'parse_error' }));
+                    if (reProbeData.ok === false) {
+                        const oosLines = (reProbeData.oosItems || []).map(o => `• ${o.label || (o.type + ' ' + o.color + ' ' + o.size)}`).join('\n');
+                        const reason = reProbeData.reason || 'one or more items just went out of stock';
+                        showPaymentError(`Sorry — ${reason}\n\n${oosLines || ''}\n\nYour card was NOT charged. Please refresh the cart and try again.`);
+                        // PayPal already authorized but NOT yet captured — by throwing
+                        // here, actions.order.capture() is never called, the auth
+                        // expires harmlessly, and no money moves.
+                        throw new Error('stock_probe_failed_pre_capture');
+                    }
+                } catch (probeErr) {
+                    if (probeErr && probeErr.message === 'stock_probe_failed_pre_capture') throw probeErr;
+                    console.warn('Pre-capture re-probe network error — proceeding to capture:', probeErr && probeErr.message);
+                }
+
                 const details  = await actions.order.capture();
                 const shipping = details.purchase_units[0]?.shipping;
                 if (window.dubisTrack) window.dubisTrack('purchase', { paypal_id: details.id, items: cart.length, total: cart.reduce((s,i)=>s+i.price,0) });

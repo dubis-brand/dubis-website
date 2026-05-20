@@ -1375,41 +1375,25 @@ async function handleSubmitCorrectedAddress(req, res) {
   }
 }
 
-// 2026-05-20: PRE-CAPTURE STOCK PROBE
-// Customer clicks "Continue to Payment" → paypal.js calls this BEFORE
-// actions.order.create() → if any cart item is unavailable at Gelato
-// in the customer's region, we abort BEFORE PayPal takes any money.
-//
-// This is the gate that prevents capture-then-stock-refusal forever.
-// Combined with the daily catalog cron, this is also our defense
-// against race conditions where Gelato stock changes between sync
-// passes.
+// 2026-05-20 REV 2 — QUOTE-BASED probe.
+// First version used /v3/stock/region-availability which returns per-region
+// "in-stock / out-of-stock / unavailable" — but Gelato's actual fulfillment
+// routing for IL doesn't match the region we'd guess (Hila's 5th capture
+// today: region-availability said EU/AS in-stock, Gelato refused order
+// with stock anyway). The /v4/orders:quote endpoint is the AUTHORITATIVE
+// source — Gelato runs the exact same routing logic it uses for real
+// order placement. If quote returns a valid quote → fulfillment will work.
+// If quote returns refusalReasonCode or empty quotes[] → stock issue.
 async function handleStockProbe(req, res) {
   const GELATO_API_KEY = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
   if (!GELATO_API_KEY) {
     return res.status(200).json({ ok: true, skipped: 'no_api_key' });
   }
 
-  const { cartItems = [], country = 'US' } = req.body || {};
+  const { cartItems = [], country = 'US', shippingAddress = null } = req.body || {};
   if (!Array.isArray(cartItems) || cartItems.length === 0) {
     return res.status(400).json({ error: 'cart_empty', message: 'No items to probe' });
   }
-
-  // Map ISO country → set of Gelato stock regions where stock counts as
-  // "fulfillable for this customer". Gelato routes orders to the cheapest
-  // warehouse with stock, so ANY of these regions being in-stock means
-  // the order can ship. Conservative — we include multiple regions per
-  // country so we don't false-positive an OOS on something that would
-  // actually ship.
-  const REGION_SETS = {
-    IL: ['EU', 'AS', 'ROW', 'UK'],   // Israel is typically fulfilled from EU; AS/UK as backups
-    US: ['US-CA', 'ROW'],
-    CA: ['US-CA', 'ROW'],
-    GB: ['UK', 'EU', 'ROW'],
-    AU: ['OC', 'AS', 'ROW'],
-    NZ: ['OC', 'AS', 'ROW'],
-  };
-  const regions = REGION_SETS[country] || ['ROW', 'EU', 'AS', 'US-CA', 'UK'];
 
   // Build (cartIdx → productUid) for items that can be mapped. Items that
   // can't map at all (e.g. unsupported color) get flagged as OOS too —
@@ -1419,100 +1403,199 @@ async function handleStockProbe(req, res) {
     return { i, item, uid };
   });
 
-  // Items that don't map → immediate OOS flag.
+  // Items that don't map → immediate OOS flag, no Gelato call needed.
   const unmapped = probeList.filter(p => !p.uid);
   const mappable = probeList.filter(p => p.uid);
 
-  // Bulk-probe the mappable UIDs.
-  const uniqueUids = [...new Set(mappable.map(p => p.uid))];
-  let availabilityMap = new Map(); // uid → bool in-stock for our regions
-
-  if (uniqueUids.length > 0) {
-    try {
-      const gRes = await fetch('https://product.gelatoapis.com/v3/stock/region-availability', {
-        method:  'POST',
-        headers: { 'X-API-KEY': GELATO_API_KEY, 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ products: uniqueUids }),
-      });
-      if (!gRes.ok) {
-        // Gelato API hiccup — fail OPEN (let order through). The
-        // post-capture safety nets (bodyCanceled detection + webhook
-        // refund) still cover us. We log so this is visible in the
-        // daily report.
-        const body = await gRes.text().catch(() => '');
-        derr('stock-probe-gelato-error', { httpStatus: gRes.status, body: body.slice(0, 200) });
-        return res.status(200).json({
-          ok: true,
-          skipped: 'gelato_http_' + gRes.status,
-          fallback: 'allowing_order',
-        });
-      }
-      const data = await gRes.json();
-      const arr = data && data.productsAvailability;
-      if (Array.isArray(arr)) {
-        for (const entry of arr) {
-          const uid = entry.productUid;
-          const av  = Array.isArray(entry.availability) ? entry.availability : [];
-          // In-stock for our customer = any of our region set is "in-stock"
-          const ok = av.some(r => regions.includes(r.stockRegionUid) && r.status === 'in-stock');
-          availabilityMap.set(uid, ok);
-        }
-      }
-    } catch (e) {
-      // Network/parse error — fail OPEN, same reasoning as above.
-      derr('stock-probe-exception', { message: e.message });
-      return res.status(200).json({
-        ok: true,
-        skipped: 'fetch_exception',
-        fallback: 'allowing_order',
-      });
-    }
-  }
-
-  // Assemble per-item results.
-  const oosItems = [];
-  for (const p of probeList) {
-    if (!p.uid) {
-      oosItems.push({
+  if (mappable.length === 0) {
+    // Every cart item failed mapping. Don't call Gelato — return the unmapped list.
+    return res.status(200).json({
+      ok: false,
+      country,
+      mode: 'all_unmapped',
+      oosItems: unmapped.map(p => ({
         cartIndex: p.i,
         type:  p.item.type,
         color: p.item.selectedColor,
         size:  p.item.selectedSize,
         reason: 'unsupported_variant',
         label: `${p.item.typeLabel || p.item.type} ${p.item.selectedColor} ${p.item.selectedSize}`,
+      })),
+      cartCount: cartItems.length,
+    });
+  }
+
+  // 2026-05-20: AUTHORITATIVE probe via Gelato's /v4/orders:quote endpoint.
+  // Quote runs the SAME stock+routing logic as real order placement, so a
+  // successful quote ≈ guaranteed-fulfillable order (modulo seconds-level
+  // race conditions which the post-capture safety nets cover).
+  //
+  // Required shape per Gelato v4 docs:
+  //   { orderReferenceId, currency, recipient: {...}, products: [{...}] }
+  // Each product needs `fileUrl` — pass any reachable URL; we use a real
+  // print file so the quote also validates file reachability.
+  const recipientCountry = (shippingAddress && shippingAddress.country_code) || country || 'US';
+  const recipient = {
+    firstName: (shippingAddress && (shippingAddress.full_name || '').split(' ')[0]) || 'Probe',
+    lastName:  (shippingAddress && ((shippingAddress.full_name || '').split(' ').slice(1).join(' ') || 'Probe')) || 'Probe',
+    addressLine1: (shippingAddress && shippingAddress.address_line_1) || 'Probe St 1',
+    city:         (shippingAddress && shippingAddress.admin_area_2) || (recipientCountry === 'IL' ? 'Tel Aviv' : 'Los Angeles'),
+    postCode:     normalizePostCode((shippingAddress && shippingAddress.postal_code) || (recipientCountry === 'IL' ? '6473207' : '90210'), recipientCountry),
+    country:      recipientCountry,
+    state:        (shippingAddress && shippingAddress.admin_area_1) || (recipientCountry === 'US' ? 'CA' : ''),
+    email:        (shippingAddress && shippingAddress.email) || 'probe@dubis.net',
+    phone:        (shippingAddress && shippingAddress.phone) || '+10000000000',
+  };
+  const products = mappable.map(p => {
+    const files = getDesignFiles(p.item.id, p.item.selectedColor, p.item.designRef, p.item.type);
+    // Quote requires at least one fileUrl per product — use front if available.
+    const fileUrl = (files.find(f => f.type === 'front') || files[0] || {}).url || `${DESIGN_BASE_URL}/front_logo_white.png`;
+    return {
+      itemReferenceId: `probe-${p.i}`,
+      productUid: p.uid,
+      quantity: 1,
+      fileUrl,
+    };
+  });
+
+  let quoteResponse = null;
+  try {
+    const gRes = await fetch('https://order.gelatoapis.com/v4/orders:quote', {
+      method:  'POST',
+      headers: { 'X-API-KEY': GELATO_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderReferenceId: `dubis-probe-${Date.now()}`,
+        currency: 'USD',
+        recipient,
+        products,
+      }),
+    });
+    quoteResponse = await gRes.json().catch(() => null);
+    if (!gRes.ok) {
+      // Gelato hiccup OR Gelato returned 4xx with a refusal reason. If the
+      // body has refusalReasonCode/refusalReason, surface it; otherwise
+      // fail OPEN (post-capture safety nets cover the residual risk).
+      const refusalCode   = quoteResponse && (quoteResponse.refusalReasonCode || quoteResponse.code);
+      const refusalReason = quoteResponse && (quoteResponse.refusalReason || quoteResponse.message);
+      derr('stock-probe-quote-http-error', {
+        httpStatus: gRes.status,
+        refusalCode,
+        refusalReason: (refusalReason || '').slice(0, 200),
+      });
+      if (refusalCode === 'stock' || /out of stock/i.test(refusalReason || '')) {
+        return res.status(200).json({
+          ok: false,
+          country: recipientCountry,
+          mode: 'quote_refused_stock',
+          reason: refusalReason || 'Gelato refused: stock',
+          oosItems: mappable.map(p => ({
+            cartIndex: p.i,
+            type:  p.item.type,
+            color: p.item.selectedColor,
+            size:  p.item.selectedSize,
+            reason: 'gelato_quote_stock_refusal',
+            label: `${p.item.typeLabel || p.item.type} ${p.item.selectedColor} ${p.item.selectedSize}`,
+            productUid: p.uid,
+          })).concat(unmapped.map(p => ({
+            cartIndex: p.i, type: p.item.type, color: p.item.selectedColor, size: p.item.selectedSize,
+            reason: 'unsupported_variant',
+            label: `${p.item.typeLabel || p.item.type} ${p.item.selectedColor} ${p.item.selectedSize}`,
+          }))),
+          cartCount: cartItems.length,
+        });
+      }
+      return res.status(200).json({
+        ok: true,
+        skipped: 'gelato_http_' + gRes.status,
+        fallback: 'allowing_order_post_capture_safety_nets_apply',
+      });
+    }
+  } catch (e) {
+    derr('stock-probe-quote-exception', { message: e.message });
+    return res.status(200).json({
+      ok: true,
+      skipped: 'fetch_exception',
+      fallback: 'allowing_order_post_capture_safety_nets_apply',
+    });
+  }
+
+  // Success path: quote returned 2xx. Validate it actually has a usable quote
+  // with shipping options for each item. An empty quotes[] or any item missing
+  // a price means Gelato couldn't fulfill — treat as OOS.
+  const quoteRefusal = quoteResponse && (quoteResponse.refusalReasonCode || quoteResponse.refusalReason);
+  if (quoteRefusal) {
+    derr('stock-probe-quote-refused-2xx', {
+      refusalCode: quoteResponse.refusalReasonCode,
+      refusalReason: (quoteResponse.refusalReason || '').slice(0, 200),
+    });
+    return res.status(200).json({
+      ok: false,
+      country: recipientCountry,
+      mode: 'quote_refused_in_body',
+      reason: quoteResponse.refusalReason || 'Gelato refused: stock',
+      oosItems: mappable.map(p => ({
+        cartIndex: p.i, type: p.item.type, color: p.item.selectedColor, size: p.item.selectedSize,
+        reason: 'gelato_quote_refused', productUid: p.uid,
+        label: `${p.item.typeLabel || p.item.type} ${p.item.selectedColor} ${p.item.selectedSize}`,
+      })),
+      cartCount: cartItems.length,
+    });
+  }
+  const quotes = (quoteResponse && quoteResponse.quotes) || [];
+  if (quotes.length === 0) {
+    return res.status(200).json({
+      ok: false,
+      country: recipientCountry,
+      mode: 'quote_empty',
+      reason: 'Gelato returned no fulfillment quote — likely stock or routing issue',
+      oosItems: mappable.map(p => ({
+        cartIndex: p.i, type: p.item.type, color: p.item.selectedColor, size: p.item.selectedSize,
+        reason: 'gelato_quote_empty', productUid: p.uid,
+        label: `${p.item.typeLabel || p.item.type} ${p.item.selectedColor} ${p.item.selectedSize}`,
+      })),
+      cartCount: cartItems.length,
+    });
+  }
+  // Verify every cart item was priced. Items absent from quote.products → OOS.
+  const quotedItemIds = new Set();
+  for (const q of quotes) {
+    for (const prod of (q.products || [])) {
+      quotedItemIds.add(prod.itemReferenceId);
+    }
+  }
+  const oosItems = [];
+  for (const p of probeList) {
+    if (!p.uid) {
+      oosItems.push({
+        cartIndex: p.i, type: p.item.type, color: p.item.selectedColor, size: p.item.selectedSize,
+        reason: 'unsupported_variant',
+        label: `${p.item.typeLabel || p.item.type} ${p.item.selectedColor} ${p.item.selectedSize}`,
       });
       continue;
     }
-    // If availabilityMap doesn't contain this uid (Gelato didn't return it),
-    // err on the side of allowing the order — the post-capture path will
-    // catch it if it really fails.
-    if (availabilityMap.has(p.uid) && availabilityMap.get(p.uid) !== true) {
+    if (!quotedItemIds.has(`probe-${p.i}`)) {
       oosItems.push({
-        cartIndex: p.i,
-        type:  p.item.type,
-        color: p.item.selectedColor,
-        size:  p.item.selectedSize,
-        reason: 'out_of_stock_in_region',
+        cartIndex: p.i, type: p.item.type, color: p.item.selectedColor, size: p.item.selectedSize,
+        reason: 'not_in_quote', productUid: p.uid,
         label: `${p.item.typeLabel || p.item.type} ${p.item.selectedColor} ${p.item.selectedSize}`,
-        productUid: p.uid,
       });
     }
   }
 
   const allOk = oosItems.length === 0;
-  dlog('stock-probe-result', {
-    country,
-    regions,
+  dlog('stock-probe-quote-result', {
+    country: recipientCountry,
     cartCount: cartItems.length,
-    probedUids: uniqueUids.length,
+    quotedCount: quotedItemIds.size,
     oosCount: oosItems.length,
     allOk,
+    quoteCount: quotes.length,
   });
 
   return res.status(200).json({
     ok: allOk,
-    country,
-    regions,
+    country: recipientCountry,
+    mode: 'quote_ok',
     oosItems,
     cartCount: cartItems.length,
   });
