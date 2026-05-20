@@ -1667,32 +1667,56 @@ module.exports = async function handler(req, res) {
     const data = await gRes.json();
     const gelatoDuration = Date.now() - gelatoT0;
 
+    // 2026-05-20 (Hila round 3): Gelato may return HTTP 200 with a body that
+    // says financialStatus='canceled' + refusalReasonCode='stock' — the order
+    // was accepted into their system then immediately refused at warehouse-
+    // stock level. Treating this as success captures customer money with no
+    // fulfillment. Detect explicit failure in the response body even on 2xx.
+    const bodyCanceled = data && (
+      data.financialStatus === 'canceled' ||
+      data.financialStatus === 'cancelled' ||
+      data.fulfillmentStatus === 'failed' ||
+      !!data.refusalReasonCode
+    );
+
     dlog('gelato-response', {
       paypalOrderId,
       httpStatus: gRes.status,
       ok: gRes.ok,
+      bodyCanceled,
+      financialStatus: data ? data.financialStatus : null,
+      fulfillmentStatus: data ? data.fulfillmentStatus : null,
+      refusalReasonCode: data ? data.refusalReasonCode : null,
+      refusalReason:     data ? (data.refusalReason || '').slice(0, 200) : null,
       gelatoDurationMs: gelatoDuration,
       responseId: data && (data.id || data.orderId || data.orderReferenceId) || null,
       responseKeys: data ? Object.keys(data).slice(0, 20) : [],
     });
 
-    if (!gRes.ok) {
+    if (!gRes.ok || bodyCanceled) {
       derr('gelato-api-error', {
         paypalOrderId,
         httpStatus: gRes.status,
+        bodyCanceled,
+        refusalReasonCode: data ? data.refusalReasonCode : null,
         errorData: data,
         productUids: gelatoOrder.items.map(i => i.productUid),
       });
       logManualOrder('GELATO API ERROR', { paypalOrderId, error: data, gelatoOrder });
 
       // ── AUTO-REFUND — Gelato won't fulfill, customer's money must go back ──
-      // Triggers on: out-of-stock (400/422), invalid product, any 4xx/5xx
-      // Lesson from incident 2026-04-22: manual-only left hila's $20.89 stuck.
-      const errMsg = (data && (data.message || data.error || JSON.stringify(data))) || '';
-      dlog('auto-refund-start', { paypalOrderId, gelatoHttpStatus: gRes.status, reason: errMsg.slice(0, 120) });
+      // Triggers on: out-of-stock (400/422 OR 200+canceled), invalid product, any 4xx/5xx.
+      // 2026-05-20 round 3: Gelato refuses by stock with HTTP 200 +
+      // financialStatus='canceled' + refusalReasonCode='stock'. The bodyCanceled
+      // check above catches this case.
+      const refusalCode = data && data.refusalReasonCode;
+      const errMsg = (data && (data.refusalReason || data.message || data.error || JSON.stringify(data))) || '';
+      dlog('auto-refund-start', { paypalOrderId, gelatoHttpStatus: gRes.status, bodyCanceled, refusalCode, reason: errMsg.slice(0, 120) });
       const refundResult = await refundOrder({
         paypalOrderId,
-        reason: `gelato_${gRes.status}_${(errMsg.match(/out of stock/i) ? 'out_of_stock' : 'api_error')}`,
+        reason: bodyCanceled
+          ? `gelato_canceled_${refusalCode || 'unknown'}`
+          : `gelato_${gRes.status}_${(errMsg.match(/out of stock/i) ? 'out_of_stock' : 'api_error')}`,
       });
       dlog('auto-refund-done', { paypalOrderId, refunded: refundResult.refunded, refundId: refundResult.refundId || null, refundReason: refundResult.reason || null });
 
