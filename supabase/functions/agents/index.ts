@@ -1859,6 +1859,50 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
 
     for (const task of readyTasks) {
       const cd = (task.content_data as Task) || {};
+
+      // ── 2026-05-20 PHASE C — Content dedup (7-day window) ──────────
+      // Rule: never publish a post that uses the same product_id OR same slogan
+      // as another published post in the last 7 days. If duplicate found, push
+      // the task back to pending_approval with a reason — oren reviews in admin.
+      // Per DUBIS_BOSS_AUTONOMY_UPGRADE_2026-05-20 plan Phase C.10 + C.11.
+      const dedupWindow = new Date(Date.now() - 7*86400000).toISOString();
+      const myProductId = cd.product_id != null ? String(cd.product_id) : null;
+      const mySlogan    = ((cd.slogan as string) || (cd.product_slogan as string) || '').trim();
+      let dedupReason: string | null = null;
+      if (myProductId) {
+        const { data: sameProduct } = await sb.from('agent_tasks')
+          .select('id, updated_at')
+          .eq('agent_id', 'content').eq('status', 'done')
+          .neq('id', task.id)
+          .gte('updated_at', dedupWindow)
+          .filter('content_data->>product_id', 'eq', myProductId)
+          .limit(1);
+        if (sameProduct && sameProduct.length > 0) {
+          dedupReason = `same product_id (${myProductId}) published within last 7 days (task ${(sameProduct[0] as Task).id})`;
+        }
+      }
+      if (!dedupReason && mySlogan && mySlogan.length > 8) {
+        const { data: sameSlogan } = await sb.from('agent_tasks')
+          .select('id, updated_at')
+          .eq('agent_id', 'content').eq('status', 'done')
+          .neq('id', task.id)
+          .gte('updated_at', dedupWindow)
+          .filter('content_data->>slogan', 'eq', mySlogan)
+          .limit(1);
+        if (sameSlogan && sameSlogan.length > 0) {
+          dedupReason = `same slogan ("${mySlogan.slice(0,40)}") published within last 7 days (task ${(sameSlogan[0] as Task).id})`;
+        }
+      }
+      if (dedupReason) {
+        await sb.from('agent_tasks').update({
+          status: 'pending_approval',
+          content_data: { ...cd, duplicate_skip_reason: dedupReason, duplicate_detected_at: new Date().toISOString() },
+          updated_at: new Date().toISOString(),
+        }).eq('id', task.id);
+        results.push({ id: task.id, title: task.title, status: 'skipped-duplicate', reason: dedupReason });
+        continue;
+      }
+
       // ── 2026-04-25 ATOMIC CLAIM ─────────────────────────────────────
       // Race-safe lock: only one concurrent run can transition the task into
       // 'publishing'. The .in() filter ensures the UPDATE only succeeds if the
