@@ -1615,6 +1615,55 @@ async function handleStockProbe(req, res) {
       cartCount: cartItems.length,
     });
   }
+  // 2026-05-21 (Hila round 6, $361+ stuck): even with HTTP 200 + non-empty
+  // quotes[] + no refusalReasonCode, the quote can encode partial-OOS via
+  //   - shipmentMethods[].shipmentMethodUid containing "out_of_stock"
+  //     (e.g. "api_out_of_stock_for_part_order")
+  //   - any product in quote.products[] with price === 0 (zero price means
+  //     Gelato couldn't quote that variant from the chosen warehouse)
+  // Both signals fired on the failed order DUBIS-73K316186J403870S — the
+  // longsleeve had price=0 and the shipment method was "api_out_of_stock_for_part_order".
+  // We detect either and treat the cart as not fulfillable.
+  const partialOosFlags = [];
+  for (const q of quotes) {
+    for (const sm of (q.shipmentMethods || [])) {
+      if (sm && sm.shipmentMethodUid && /out[_-]of[_-]stock|stock/i.test(sm.shipmentMethodUid)) {
+        partialOosFlags.push({ quoteId: q.id, shipmentMethodUid: sm.shipmentMethodUid });
+      }
+    }
+    for (const prod of (q.products || [])) {
+      if (prod && (prod.price === 0 || prod.price === null || prod.price === undefined)) {
+        partialOosFlags.push({ quoteId: q.id, productUid: prod.productUid, price: prod.price });
+      }
+    }
+  }
+  if (partialOosFlags.length > 0) {
+    derr('stock-probe-quote-partial-oos', { paypalOrderId: null, country: recipientCountry, flags: partialOosFlags.slice(0, 10) });
+    // Identify the offending items by matching their productUid back to cart positions.
+    const oosUidSet = new Set(partialOosFlags.filter(f => f.productUid).map(f => f.productUid));
+    const oosItemsByCart = [];
+    for (const p of probeList) {
+      // Flag the items with zero price OR — if we only have a shipment-level flag,
+      // mark every item in the cart since we can't tell which one is the problem.
+      if (oosUidSet.size > 0 ? oosUidSet.has(p.uid) : true) {
+        oosItemsByCart.push({
+          cartIndex: p.i, type: p.item.type, color: p.item.selectedColor, size: p.item.selectedSize,
+          reason: 'partial_stock_in_fulfillment_warehouse', productUid: p.uid,
+          label: `${p.item.typeLabel || p.item.type} ${p.item.selectedColor} ${p.item.selectedSize}`,
+        });
+      }
+    }
+    return res.status(200).json({
+      ok: false,
+      country: recipientCountry,
+      mode: 'quote_partial_oos',
+      reason: 'Gelato cannot fulfill all items from a single warehouse for your country — some items are out of stock at the chosen production facility.',
+      flags: partialOosFlags.slice(0, 10),
+      oosItems: oosItemsByCart,
+      cartCount: cartItems.length,
+    });
+  }
+
   // Verify every cart item was priced. Items absent from quote.products → OOS.
   const quotedItemIds = new Set();
   for (const q of quotes) {
