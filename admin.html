@@ -3921,29 +3921,7 @@
             <button class="btn-sm" onclick="regenFrontMockup(${p.id}, this)" title="צור תמונת FRONT חדשה עם DUBIS™">🔄 חדש</button>
             <button class="btn-sm" onclick="copyUid('${uid}', this)" title="Copy full UID">Copy UID</button>
             <a class="btn-sm" href="https://www.dubis.net/#product-${p.id}" target="_blank" rel="noopener" style="text-decoration:none">צפה באתר →</a>
-            ${(() => {
-              // 2026-05-20 I1: Prefer the deep-link to the specific Gelato draft
-              // (shows THIS product's exact mockups + print files) over the
-              // generic catalog page. window._productGelatoDraftId is populated
-              // by _loadStockDataForAdmin from proof_of_completion.gelato_draft_id.
-              const draftIdOrUrl = (window._productGelatoDraftId || {})[p.id];
-              let gelatoUrl;
-              let badge;
-              if (draftIdOrUrl && /^https?:\/\//.test(draftIdOrUrl)) {
-                // Already a full URL (legacy gelato_dashboard_url column)
-                gelatoUrl = draftIdOrUrl;
-                badge = '🎨 Draft';
-              } else if (draftIdOrUrl) {
-                // Bare draft UUID → deep link to dashboard
-                gelatoUrl = _gelatoUrl(p.type, p.gender, draftIdOrUrl);
-                badge = '🎨 Gelato Draft';
-              } else {
-                // No draft → generic catalog page for the (type, gender) combo
-                gelatoUrl = _gelatoUrl(p.type, p.gender, null);
-                badge = '🎨 Gelato';
-              }
-              return `<a class="btn-gelato" href="${gelatoUrl}" target="_blank" rel="noopener" title="${draftIdOrUrl ? 'דאשבורד Gelato — דרפט הספציפי של המוצר' : 'דף קטלוג כללי ל-' + p.typeLabel}">${badge} →</a>`;
-            })()}
+            <button class="btn-gelato" onclick="openGelatoToolsForProduct(${p.id})" title="פתח את לשונית Gelato Tools עם המוצר הזה ממולא — תוכל ליצור Draft חינמי ולקבל URL מדויק">🎨 Gelato Tools →</button>
           </div>
         </div>
       </div>`;
@@ -7930,6 +7908,45 @@
   // GELATO TOOLS — Draft Order creation from admin UI (2026-04-24)
   // ══════════════════════════════════════════════════════════════
   let _gtProducts = null;  // cached product list
+
+  // 2026-05-20 I3: open the Gelato Tools tab pre-filled with a specific product.
+  // Called from the 🎨 Gelato Tools → button on each catalog card. Replaces the
+  // earlier "deep link to dashboard.gelato.com/orders/{id}" approach which
+  // landed on the dashboard home (the path didn't resolve to a specific draft).
+  // This gives oren a deterministic in-admin flow: tab opens → product+color+size
+  // selected → 'Create Draft' button gives a fresh dashboard URL every time.
+  window.openGelatoToolsForProduct = async function openGelatoToolsForProduct(productIdNumeric) {
+    try {
+      // 1. Switch to the Gelato Tools tab — also sets the nav highlight.
+      const navBtn = document.getElementById('nav-gelato-tools');
+      showSection('gelato-tools', navBtn);
+      // 2. gtInit is idempotent — it loads _gtProducts only on first call.
+      // We need to wait until the product dropdown is populated.
+      let tries = 0;
+      while (tries < 40) {  // up to 8 seconds
+        const sel = document.getElementById('gt-product');
+        const ready = sel && sel.options.length > 1;
+        if (ready) break;
+        await new Promise(r => setTimeout(r, 200));
+        tries++;
+      }
+      // 3. Pre-fill the product dropdown.
+      const productSelect = document.getElementById('gt-product');
+      if (!productSelect) { window._dubisToast('❌ לא נמצאה לשונית Gelato Tools', '#c0392b'); return; }
+      productSelect.value = String(productIdNumeric);
+      // Trigger the change handler so colors populate.
+      if (typeof gtOnProductChange === 'function') gtOnProductChange();
+      else productSelect.dispatchEvent(new Event('change'));
+      // 4. Scroll so oren can see the prefilled form.
+      const toolsSection = document.getElementById('section-gelato-tools');
+      if (toolsSection) toolsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // 5. Visual confirmation.
+      window._dubisToast(`🎨 Gelato Tools פתוח עם מוצר #${productIdNumeric} — בחר צבע/מידה ולחץ "צור Draft"`, '#c8a96e', 4000);
+    } catch (e) {
+      console.error('openGelatoToolsForProduct failed:', e);
+      window._dubisToast('❌ שגיאה: ' + (e.message || e), '#c0392b', 5000);
+    }
+  };
 
   async function gtInit() {
     if (_gtProducts) return;  // already loaded
