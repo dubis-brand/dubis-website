@@ -5,6 +5,38 @@
 const { createClient } = require('@supabase/supabase-js');
 const rateLimit        = require('../_rateLimit');
 
+// ── Defense-in-depth address smoke-test ────────────────────────────
+// The primary validation lives in create-gelato-order.js; this is a
+// smaller, conservative check that runs at the DB-write boundary. Goal:
+// if the upstream gate is bypassed or silently fails (network blip,
+// future refactor, malicious client), we still flag the order as
+// pending_address_confirmation instead of letting Gelato/admin tooling
+// treat it as a normal "pending" order.
+//
+// We DON'T duplicate the full validation here — just look for the
+// catastrophic cases: missing required fields, Hebrew script in any
+// address line (DHL/USPS label can't render U+0590..U+05FF). That's
+// the surface area that produced real undeliverable packages in May 2026.
+const _HEBREW_RE = /[֐-׿]/;
+function _addressLooksUnshippable(addr) {
+    if (!addr || typeof addr !== 'object') return true;
+    const trim = (v) => (v == null ? '' : String(v).trim());
+    const a1   = trim(addr.address_line_1);
+    const city = trim(addr.admin_area_2);
+    const zip  = trim(addr.postal_code);
+    const ctry = trim(addr.country_code).toUpperCase();
+    if (a1.length   < 3) return true;
+    if (city.length < 2) return true;
+    if (zip.length  < 3) return true;
+    if (!/^[A-Z]{2}$/.test(ctry)) return true;
+    // Hebrew in any of the printable address lines breaks the shipping label.
+    if (_HEBREW_RE.test(a1)) return true;
+    if (_HEBREW_RE.test(city)) return true;
+    if (_HEBREW_RE.test(trim(addr.address_line_2))) return true;
+    if (_HEBREW_RE.test(trim(addr.admin_area_1)))   return true;
+    return false;
+}
+
 // Structured logger — single-line JSON for Vercel runtime-log grep
 function olog(stage, data = {}) {
     try { console.log(`[DUBIS-ORDER] ${stage} ${JSON.stringify(data)}`); }
@@ -142,13 +174,29 @@ module.exports = async function handler(req, res) {
         });
     }
 
+    // 2026-05-20: held orders with incomplete or Hebrew address get a
+    // distinct status so admin tooling + Gelato sync skips them. Two
+    // independent triggers — explicit flag from create-gelato-order, OR
+    // a local smoke test (defense-in-depth) that catches the same red
+    // flags. Either route wins.
+    const localSmokeUnshippable = _addressLooksUnshippable(shippingAddress);
+    const holdForAddress = pendingAddressConfirmation === true || localSmokeUnshippable;
+    if (localSmokeUnshippable && pendingAddressConfirmation !== true) {
+        oerr('address-smoke-flagged', {
+            paypalOrderId,
+            note: 'pendingAddressConfirmation flag was NOT set but address looks unshippable — forcing hold',
+        });
+    }
+
     const insertData = {
         user_id:           userId,
         paypal_order_id:   paypalOrderId,
-        printful_order_id: printfulOrderId || null,
-        // 2026-05-20: held orders with incomplete address get a distinct status
-        // so admin tooling + Gelato sync skips them until customer corrects.
-        status:            pendingAddressConfirmation === true ? 'pending_address_confirmation' : 'pending',
+        // Never auto-link a Gelato order id when we're holding for address —
+        // create-gelato-order shouldn't have produced one anyway, but if a
+        // future refactor changes that, we don't want to label a held order
+        // as fulfilled.
+        printful_order_id: holdForAddress ? null : (printfulOrderId || null),
+        status:            holdForAddress ? 'pending_address_confirmation' : 'pending',
         buyer_email:       buyerEmail || '',
         shipping_address:  shippingAddress,
         items:             cartItems,

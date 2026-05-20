@@ -597,7 +597,8 @@ function renderPayPalButtons() {
                     }
                     if (pfData.addressMissing || pfData.reason === 'address_missing') {
                         addressHoldInfo = {
-                            missingFields:     pfData.missingFields || [],
+                            missingFields:     pfData.missingFields  || [],
+                            hebrewFields:      pfData.hebrewFields   || [],
                             confirmationToken: pfData.confirmationToken || null,
                         };
                     }
@@ -880,18 +881,38 @@ function showAddressHoldModal(info) {
     if (!modal) return;
     const content = modal.querySelector('.modal-content') || modal.firstElementChild || modal;
     const missing = Array.isArray(info?.missingFields) ? info.missingFields : [];
+    const hebrew  = Array.isArray(info?.hebrewFields)  ? info.hebrewFields  : [];
     const fieldLabels = {
-        name: 'name', address_line_1: 'street address', city: 'city',
+        name: 'name', address_line_1: 'street address', address_line_2: 'apartment',
+        city: 'city', state: 'state / province',
         postal_code: 'ZIP/postal code', country: 'country',
         phone: 'phone', email: 'email',
     };
-    const missingText = missing.length
-        ? missing.map(f => fieldLabels[f] || f).join(', ')
-        : 'a few address fields';
+    const missingText = missing.map(f => fieldLabels[f] || f).join(', ');
+    const hebrewText  = hebrew.map(f => fieldLabels[f] || f).join(', ');
+
+    // Different lead copy depending on the failure mode. Hebrew-only is the
+    // most common IL case — be explicit so the customer understands what to fix.
+    let body;
+    if (hebrew.length && !missing.length) {
+        body = `
+            <p style="margin:0 0 12px;color:#374151">Your payment went through, but the shipping address has Hebrew text in <strong>${hebrewText}</strong>. Our shipping carrier can only print Latin characters on the label, so we need to re-enter it in English.</p>`;
+    } else if (hebrew.length && missing.length) {
+        body = `
+            <p style="margin:0 0 12px;color:#374151">Your payment went through, but the shipping address needs a fix:</p>
+            <ul style="margin:0 0 12px;padding-left:20px;color:#374151;line-height:1.7">
+                <li>Missing: <strong>${missingText}</strong></li>
+                <li>In Hebrew (needs English): <strong>${hebrewText}</strong></li>
+            </ul>`;
+    } else {
+        body = `
+            <p style="margin:0 0 12px;color:#374151">Your payment went through, but we need to confirm your shipping address before we can send the order to print. We're missing: <strong>${missingText || 'a few address fields'}</strong>.</p>`;
+    }
+
     if (content) {
         content.innerHTML = `
             <h2 style="color:#b45309;margin:0 0 16px;font-size:22px">Payment received — one more thing</h2>
-            <p style="margin:0 0 12px;color:#374151">Your payment went through, but we need to confirm your shipping address before we can send the order to print. We're missing: <strong>${missingText}</strong>.</p>
+            ${body}
             <p style="margin:0 0 12px;color:#374151">We've emailed you a link to confirm the address. If you don't see it within a few minutes, check spam or reply to <a href="mailto:hello@dubis.net" style="color:#c8a96e">hello@dubis.net</a>.</p>
             <p style="margin:0 0 20px;color:#6b7280;font-size:13px">Your money is safe — nothing ships until you confirm.</p>
             <button onclick="closeSuccessModal()" style="display:block;width:100%;padding:12px;background:#111;color:#fff;border:none;cursor:pointer;font-size:14px;border-radius:4px">Got it</button>

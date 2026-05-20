@@ -305,11 +305,33 @@ function isCountryCodePresent(value) {
   return /^[A-Z]{2}$/.test(s);
 }
 
+// Hebrew character range U+0590..U+05FF. Israeli customers sometimes
+// fill the address form in Hebrew — Gelato's print partner / DHL labels
+// can't read Hebrew script, so the package ships and bounces. Reject
+// at the gate and ask the customer to re-enter in English.
+// We DO NOT flag Hebrew in `name` — recipient name in Hebrew is fine
+// on the label as long as the address is Latin-script.
+const HEBREW_RE = /[֐-׿]/;
+function containsHebrew(value) {
+  if (value === null || value === undefined) return false;
+  return HEBREW_RE.test(String(value));
+}
+
 function validateShippingAddress(shippingAddress = {}, buyerEmail = '') {
   const missing = [];
+  const hebrewFields = [];
   if (!isFieldPresent(shippingAddress.name, { minLen: 2 })) missing.push('name');
+
   if (!isFieldPresent(shippingAddress.address_line_1, { minLen: 3 })) missing.push('address_line_1');
+  else if (containsHebrew(shippingAddress.address_line_1)) hebrewFields.push('address_line_1');
+
   if (!isFieldPresent(shippingAddress.admin_area_2, { minLen: 2 })) missing.push('city');
+  else if (containsHebrew(shippingAddress.admin_area_2)) hebrewFields.push('city');
+
+  // Optional fields: only flag if PRESENT and Hebrew (don't add to missing).
+  if (shippingAddress.address_line_2 && containsHebrew(shippingAddress.address_line_2)) hebrewFields.push('address_line_2');
+  if (shippingAddress.admin_area_1   && containsHebrew(shippingAddress.admin_area_1))   hebrewFields.push('state');
+
   if (!isFieldPresent(shippingAddress.postal_code, { minLen: 3 })) missing.push('postal_code');
   if (!isCountryCodePresent(shippingAddress.country_code)) missing.push('country');
   if (!isPhonePresent(shippingAddress.phone)) missing.push('phone');
@@ -317,7 +339,7 @@ function validateShippingAddress(shippingAddress = {}, buyerEmail = '') {
   if (!isFieldPresent(buyerEmail, { minLen: 5 }) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(buyerEmail).trim())) {
     missing.push('email');
   }
-  return { valid: missing.length === 0, missing };
+  return { valid: missing.length === 0 && hebrewFields.length === 0, missing, hebrewFields };
 }
 
 // Confirmation token = HMAC(paypal_order_id) using a secret already
@@ -338,29 +360,65 @@ function verifyOrderToken(paypalOrderId, token) {
   }
 }
 
+// HTML-escape helper shared by both email templates below.
+function _addrEscHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+const ADDR_FIELD_LABELS = {
+  name:           'Full name',
+  address_line_1: 'Street address',
+  address_line_2: 'Apartment / suite',
+  city:           'City',
+  state:          'State / Province',
+  postal_code:    'ZIP / postal code',
+  country:        'Country',
+  phone:          'Phone number',
+  email:          'Email',
+};
+
 // ─────────────────────────────────────────────────────────────────
 // Customer email — "your order is paid, we need your address"
 // Sent via Resend (same provider as confirm-order.js).
+// Handles two scenarios:
+//   - missingFields:  required fields blank/garbage   → "what's missing"
+//   - hebrewFields:   address typed in Hebrew script  → "please use English"
+// Both can coexist (e.g. blank postal_code + Hebrew city).
 // ─────────────────────────────────────────────────────────────────
-async function sendAddressConfirmationEmail({ buyerEmail, buyerName, paypalOrderId, missingFields, confirmUrl }) {
+async function sendAddressConfirmationEmail({ buyerEmail, buyerName, paypalOrderId, missingFields, hebrewFields, confirmUrl }) {
   if (!process.env.RESEND_API_KEY) {
     dlog('address-email-skipped', { reason: 'no_resend_key', paypalOrderId });
     return { ok: false, reason: 'no_resend_key' };
   }
-  const esc = s => String(s || '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const esc = _addrEscHtml;
   const firstName = (buyerName || buyerEmail || '').split(/[\s@]/)[0] || 'there';
-  const fieldLabels = {
-    name:           'Full name',
-    address_line_1: 'Street address',
-    city:           'City',
-    postal_code:    'ZIP / postal code',
-    country:        'Country',
-    phone:          'Phone number',
-    email:          'Email',
-  };
-  const missingList = (missingFields || []).map(f => `<li>${esc(fieldLabels[f] || f)}</li>`).join('');
+  const missing = Array.isArray(missingFields) ? missingFields : [];
+  const hebrew  = Array.isArray(hebrewFields)  ? hebrewFields  : [];
+
+  const missingBlock = missing.length ? `
+          <p style="margin:0 0 8px;color:#888;font-size:13px;text-transform:uppercase;letter-spacing:1px">What's missing</p>
+          <ul style="margin:0 0 20px;padding-left:20px;color:#e8e0d5;font-size:14px;line-height:1.7">
+            ${missing.map(f => `<li>${esc(ADDR_FIELD_LABELS[f] || f)}</li>`).join('')}
+          </ul>` : '';
+
+  const hebrewBlock = hebrew.length ? `
+          <p style="margin:0 0 8px;color:#888;font-size:13px;text-transform:uppercase;letter-spacing:1px">Please re-enter in English</p>
+          <p style="margin:0 0 8px;color:#bbb;font-size:14px;line-height:1.55">
+            Our shipping carrier (DHL/USPS) can only read Latin characters on the shipping label. We found Hebrew text in:
+          </p>
+          <ul style="margin:0 0 20px;padding-left:20px;color:#e8e0d5;font-size:14px;line-height:1.7">
+            ${hebrew.map(f => `<li>${esc(ADDR_FIELD_LABELS[f] || f)}</li>`).join('')}
+          </ul>
+          <p style="margin:0 0 20px;color:#888;font-size:13px;line-height:1.55">
+            Examples: <em>Tel Aviv</em> instead of תל אביב, <em>Herzl 5</em> instead of הרצל 5.
+          </p>` : '';
+
+  const intro = hebrew.length && !missing.length
+    ? `Hey ${esc(firstName)} — your payment went through, but the shipping address has Hebrew text in some fields. Couriers can't read those characters on the label, so the package would never reach you. We've held the order until you can re-enter the address in English (Latin script).`
+    : `Hey ${esc(firstName)} — your payment went through, but a few details we need to ship your order didn't come through correctly. Your money is safe and we've held off sending anything to the printer until we have a valid address.`;
+
   const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><title>Confirm your DUBIS shipping address</title></head>
 <body style="margin:0;padding:0;background:#0d0d0d;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif">
@@ -373,11 +431,9 @@ async function sendAddressConfirmationEmail({ buyerEmail, buyerName, paypalOrder
         </td></tr>
         <tr><td style="background:#1a1a1a;border-radius:12px;padding:36px 40px">
           <h1 style="margin:0 0 8px;font-size:22px;color:#e8e0d5;font-weight:600">We need your shipping address</h1>
-          <p style="margin:0 0 20px;color:#bbb;font-size:15px;line-height:1.55">
-            Hey ${esc(firstName)} — your payment went through, but a few details we need to ship your order didn't come through with it. Your money is safe and we've held off sending anything to the printer until we have a valid address.
-          </p>
-          <p style="margin:0 0 8px;color:#888;font-size:13px;text-transform:uppercase;letter-spacing:1px">What's missing</p>
-          <ul style="margin:0 0 24px;padding-left:20px;color:#e8e0d5;font-size:14px;line-height:1.7">${missingList}</ul>
+          <p style="margin:0 0 20px;color:#bbb;font-size:15px;line-height:1.55">${intro}</p>
+          ${missingBlock}
+          ${hebrewBlock}
           <a href="${esc(confirmUrl)}" style="display:inline-block;background:#c8a96e;color:#0d0d0d;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;font-size:15px;letter-spacing:0.5px">Confirm my address</a>
           <p style="margin:24px 0 0;color:#666;font-size:12px;line-height:1.6">
             Or copy this link into your browser:<br>
@@ -424,13 +480,132 @@ async function sendAddressConfirmationEmail({ buyerEmail, buyerName, paypalOrder
 }
 
 // ─────────────────────────────────────────────────────────────────
+// Admin alert — DUBIS team gets a separate email so oren sees the
+// issue in real time instead of waiting for the morning report.
+// Recipients pulled from ADMIN_EMAILS env (comma-separated), default
+// dubis.brand@gmail.com — same convention as the other API files.
+// ─────────────────────────────────────────────────────────────────
+async function sendDubisAdminAlert({ paypalOrderId, buyerEmail, buyerName, missingFields, hebrewFields, shippingAddress, cartItems, totalAmount }) {
+  if (!process.env.RESEND_API_KEY) return { ok: false, reason: 'no_resend_key' };
+  const recipients = (process.env.ADMIN_EMAILS || 'dubis.brand@gmail.com')
+    .split(',').map(e => e.trim()).filter(Boolean);
+  if (!recipients.length) return { ok: false, reason: 'no_admin_emails' };
+
+  const esc = _addrEscHtml;
+  const missing = Array.isArray(missingFields) ? missingFields : [];
+  const hebrew  = Array.isArray(hebrewFields)  ? hebrewFields  : [];
+  const a = shippingAddress || {};
+  const items = Array.isArray(cartItems) ? cartItems : [];
+  const itemsTotal = items.reduce((s, i) => s + (Number(i.price) || 0), 0);
+  const total = Number(totalAmount) || itemsTotal;
+
+  const issueSummary = [
+    missing.length ? `${missing.length} missing field${missing.length > 1 ? 's' : ''}` : null,
+    hebrew.length  ? `${hebrew.length} Hebrew field${hebrew.length > 1 ? 's' : ''}`    : null,
+  ].filter(Boolean).join(' + ');
+
+  const itemsRows = items.map(i => `
+        <tr>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee">${esc(i.phrase || i.type || '')}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee">${esc(i.selectedSize)} / ${esc(i.selectedColor)}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">$${Number(i.price || 0).toFixed(2)}</td>
+        </tr>`).join('');
+
+  const addrRow = (label, val, flagHebrew) => `
+        <tr>
+          <td style="padding:4px 8px;color:#666;width:140px">${esc(label)}</td>
+          <td style="padding:4px 8px;color:${flagHebrew ? '#b91c1c' : '#111'};font-weight:${flagHebrew ? '600' : '400'}">${esc(val || '—')}${flagHebrew ? ' <span style="color:#b91c1c;font-size:11px">⚠ Hebrew</span>' : ''}</td>
+        </tr>`;
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="font-family:Helvetica,Arial,sans-serif;background:#f6f6f6;margin:0;padding:24px;color:#111">
+  <div style="max-width:640px;margin:0 auto;background:#fff;border-radius:8px;padding:24px;border:1px solid #e2e2e2">
+    <h2 style="margin:0 0 8px;color:#b91c1c;font-size:18px">⚠ Order held — address issue (${esc(issueSummary)})</h2>
+    <p style="margin:0 0 16px;color:#444;font-size:14px">
+      Payment captured but the shipping address can't be sent to Gelato as-is. Customer has been emailed a confirmation link. This task is also queued in <code>agent_tasks</code> with <code>category='address_missing'</code>.
+    </p>
+
+    <h3 style="margin:20px 0 6px;font-size:14px">Order</h3>
+    <table style="width:100%;font-size:13px;border-collapse:collapse">
+      <tr><td style="padding:4px 8px;color:#666;width:140px">PayPal order ID</td><td style="padding:4px 8px"><code>${esc(paypalOrderId)}</code></td></tr>
+      <tr><td style="padding:4px 8px;color:#666">Customer</td><td style="padding:4px 8px">${esc(buyerName || '—')} &lt;${esc(buyerEmail || '—')}&gt;</td></tr>
+      <tr><td style="padding:4px 8px;color:#666">Items total</td><td style="padding:4px 8px">$${itemsTotal.toFixed(2)}${total && Math.abs(total - itemsTotal) > 0.01 ? ` (paid: $${total.toFixed(2)})` : ''}</td></tr>
+    </table>
+
+    ${missing.length ? `
+    <h3 style="margin:20px 0 6px;font-size:14px;color:#b91c1c">Missing fields (${missing.length})</h3>
+    <ul style="margin:0 0 8px;padding-left:20px;font-size:13px">
+      ${missing.map(f => `<li>${esc(ADDR_FIELD_LABELS[f] || f)}</li>`).join('')}
+    </ul>` : ''}
+
+    ${hebrew.length ? `
+    <h3 style="margin:20px 0 6px;font-size:14px;color:#b91c1c">Hebrew detected — can't print on label (${hebrew.length})</h3>
+    <ul style="margin:0 0 8px;padding-left:20px;font-size:13px">
+      ${hebrew.map(f => `<li>${esc(ADDR_FIELD_LABELS[f] || f)}: <code style="color:#b91c1c">${esc(a[f === 'city' ? 'admin_area_2' : f === 'state' ? 'admin_area_1' : f] || '')}</code></li>`).join('')}
+    </ul>` : ''}
+
+    <h3 style="margin:20px 0 6px;font-size:14px">Original address (as submitted)</h3>
+    <table style="width:100%;font-size:13px;border-collapse:collapse;background:#fafafa;border:1px solid #eee;border-radius:6px">
+      ${addrRow('Name',          a.name,           containsHebrew(a.name)          && hebrew.includes('name'))}
+      ${addrRow('Phone',         a.phone,          false)}
+      ${addrRow('Address line 1',a.address_line_1, hebrew.includes('address_line_1'))}
+      ${addrRow('Address line 2',a.address_line_2, hebrew.includes('address_line_2'))}
+      ${addrRow('City',          a.admin_area_2,   hebrew.includes('city'))}
+      ${addrRow('State',         a.admin_area_1,   hebrew.includes('state'))}
+      ${addrRow('Postal code',   a.postal_code,    false)}
+      ${addrRow('Country',       a.country_code,   false)}
+    </table>
+
+    ${items.length ? `
+    <h3 style="margin:20px 0 6px;font-size:14px">Cart (${items.length} item${items.length > 1 ? 's' : ''})</h3>
+    <table style="width:100%;font-size:13px;border-collapse:collapse;background:#fafafa;border:1px solid #eee;border-radius:6px">
+      ${itemsRows}
+    </table>` : ''}
+
+    <p style="margin:24px 0 0;color:#666;font-size:12px;line-height:1.6">
+      No action required if the customer responds within 24h — the held task auto-resolves when they submit a corrected address.<br>
+      Otherwise: reach out to the customer or issue a refund from the PayPal dashboard.
+    </p>
+  </div>
+</body></html>`;
+
+  try {
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        from:     'DUBIS Alerts <orders@dubis.net>',
+        to:       recipients,
+        subject:  `⚠ DUBIS order held — address issue (${String(paypalOrderId).slice(0, 12)})`,
+        html,
+        reply_to: 'hello@dubis.net',
+      }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      derr('admin-alert-resend-failed', { paypalOrderId, status: r.status, body: JSON.stringify(data).slice(0, 300) });
+      return { ok: false, reason: 'resend_error', status: r.status };
+    }
+    dlog('admin-alert-sent', { paypalOrderId, emailId: data.id, recipientCount: recipients.length });
+    return { ok: true, emailId: data.id };
+  } catch (err) {
+    derr('admin-alert-exception', { paypalOrderId, err: err.message });
+    return { ok: false, reason: 'exception', message: err.message };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
 // Surface the gap in oren's morning report by writing an agent_task.
 // agent_id='supply' is the fulfillment-related agent slot; category
 // 'address_missing' is the discriminator the morning-report Boss
 // agent will look for. Status 'pending_approval' satisfies the table
 // CHECK constraint and signals "admin needs to act on this".
 // ─────────────────────────────────────────────────────────────────
-async function createAddressMissingTask({ paypalOrderId, buyerEmail, buyerName, missingFields, shippingAddress, cartItems }) {
+async function createAddressMissingTask({ paypalOrderId, buyerEmail, buyerName, missingFields, hebrewFields, shippingAddress, cartItems }) {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     dlog('address-task-skipped', { reason: 'no_supabase', paypalOrderId });
     return { ok: false, reason: 'no_supabase' };
@@ -442,10 +617,14 @@ async function createAddressMissingTask({ paypalOrderId, buyerEmail, buyerName, 
       process.env.SUPABASE_SERVICE_ROLE_KEY,
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
+    const issueParts = [
+      (missingFields && missingFields.length) ? `Missing: ${missingFields.join(', ')}` : null,
+      (hebrewFields  && hebrewFields.length)  ? `Hebrew: ${hebrewFields.join(', ')}`   : null,
+    ].filter(Boolean).join(' | ');
     const { error } = await sb.from('agent_tasks').insert({
       agent_id:    'supply',
-      title:       `Address missing — order ${String(paypalOrderId).slice(0, 12)}`,
-      description: `Customer paid via PayPal but shipping address is incomplete. Order held until customer confirms via email.\nMissing: ${(missingFields || []).join(', ')}\nBuyer: ${buyerName || ''} <${buyerEmail || ''}>`,
+      title:       `Address held — order ${String(paypalOrderId).slice(0, 12)}`,
+      description: `Customer paid via PayPal but shipping address is incomplete or in Hebrew. Order held until customer confirms via email.\n${issueParts}\nBuyer: ${buyerName || ''} <${buyerEmail || ''}>`,
       category:    'address_missing',
       status:      'pending_approval',
       priority:    'critical',
@@ -454,6 +633,7 @@ async function createAddressMissingTask({ paypalOrderId, buyerEmail, buyerName, 
         buyer_email:       buyerEmail || null,
         buyer_name:        buyerName  || null,
         missing_fields:    missingFields || [],
+        hebrew_fields:     hebrewFields  || [],
         original_address:  shippingAddress || null,
         cart_items:        cartItems || [],
         held_at:           new Date().toISOString(),
@@ -1010,15 +1190,20 @@ async function handleLookupPending(req, res) {
     }
     const cd = task.content_data || {};
     const orig = cd.original_address || {};
+    // Pre-fill the form with whatever non-Hebrew values we have. Strip
+    // Hebrew values so the customer is forced to retype them in English
+    // instead of just resubmitting the same garbage with one char tweaked.
+    const sanitize = (v) => (v && !containsHebrew(v)) ? v : '';
     return res.status(200).json({
       paypalOrderId: o,
       missingFields: cd.missing_fields || [],
+      hebrewFields:  cd.hebrew_fields  || [],
       partialAddress: {
         name:           orig.name || '',
-        address_line_1: orig.address_line_1 || '',
-        address_line_2: orig.address_line_2 || '',
-        admin_area_2:   orig.admin_area_2 || '',
-        admin_area_1:   orig.admin_area_1 || '',
+        address_line_1: sanitize(orig.address_line_1),
+        address_line_2: sanitize(orig.address_line_2),
+        admin_area_2:   sanitize(orig.admin_area_2),
+        admin_area_1:   sanitize(orig.admin_area_1),
         postal_code:    orig.postal_code || '',
         country_code:   orig.country_code || 'US',
         phone:          orig.phone || '',
@@ -1048,12 +1233,15 @@ async function handleSubmitCorrectedAddress(req, res) {
     return res.status(500).json({ error: 'no_supabase' });
   }
 
-  // Re-validate the corrected address with the same rules used at checkout.
+  // Re-validate the corrected address with the same rules used at checkout
+  // (missing fields + Hebrew script). If the customer typed Hebrew again,
+  // tell them specifically rather than just saying "invalid".
   const addrCheck = validateShippingAddress(shippingAddress, buyerEmail);
   if (!addrCheck.valid) {
     return res.status(400).json({
       error:         'address_still_invalid',
       missingFields: addrCheck.missing,
+      hebrewFields:  addrCheck.hebrewFields,
     });
   }
 
@@ -1262,50 +1450,70 @@ module.exports = async function handler(req, res) {
 
   // ── Case 1b: Validate shipping address BEFORE anything else ──
   // PayPal flows have produced orders with blank / "?" / "undefined"
-  // address fields (DHL-undeliverable incident, May 2026). If any
-  // required field is missing we never call Gelato — we hold the
-  // order, email the customer for a corrected address, and surface
-  // the gap in oren's morning report.
+  // address fields (DHL-undeliverable incident, May 2026). Israeli
+  // customers also occasionally type the address in Hebrew, which the
+  // courier label can't render. If any required field is missing OR
+  // any address field is Hebrew we never call Gelato — we hold the
+  // order, email the customer for a corrected address, email the
+  // DUBIS team an alert, and surface the gap in oren's morning report.
   const addrCheck = validateShippingAddress(shippingAddress, buyerEmail);
   if (!addrCheck.valid) {
     derr('address-invalid', {
       paypalOrderId,
-      missing: addrCheck.missing,
+      missing:      addrCheck.missing,
+      hebrewFields: addrCheck.hebrewFields,
       receivedKeys: Object.keys(shippingAddress || {}),
     });
     const confirmToken = signOrderToken(paypalOrderId);
     const confirmUrl   = `https://www.dubis.net/confirm-address.html?o=${encodeURIComponent(paypalOrderId)}&t=${confirmToken}`;
-    const [emailRes, taskRes] = await Promise.all([
+    const buyerName    = (shippingAddress && shippingAddress.name) || '';
+    const itemsTotal   = (cartItems || []).reduce((s, i) => s + (Number(i.price) || 0), 0);
+    const [emailRes, adminRes, taskRes] = await Promise.all([
       sendAddressConfirmationEmail({
         buyerEmail,
-        buyerName:     (shippingAddress && shippingAddress.name) || '',
+        buyerName,
         paypalOrderId,
         missingFields: addrCheck.missing,
+        hebrewFields:  addrCheck.hebrewFields,
         confirmUrl,
+      }),
+      sendDubisAdminAlert({
+        paypalOrderId,
+        buyerEmail,
+        buyerName,
+        missingFields: addrCheck.missing,
+        hebrewFields:  addrCheck.hebrewFields,
+        shippingAddress,
+        cartItems,
+        totalAmount:   itemsTotal,
       }),
       createAddressMissingTask({
         paypalOrderId,
         buyerEmail,
-        buyerName:     (shippingAddress && shippingAddress.name) || '',
+        buyerName,
         missingFields: addrCheck.missing,
+        hebrewFields:  addrCheck.hebrewFields,
         shippingAddress,
         cartItems,
       }),
     ]);
     dlog('address-hold-complete', {
       paypalOrderId,
-      emailSent: !!emailRes.ok,
-      taskCreated: !!taskRes.ok,
-      missing: addrCheck.missing,
+      customerEmailSent: !!emailRes.ok,
+      adminEmailSent:    !!adminRes.ok,
+      taskCreated:       !!taskRes.ok,
+      missing:           addrCheck.missing,
+      hebrewFields:      addrCheck.hebrewFields,
     });
     return res.status(200).json({
-      success:       true,
-      manual:        true,
-      addressMissing: true,
-      reason:        'address_missing',
-      missingFields: addrCheck.missing,
+      success:           true,
+      manual:            true,
+      addressMissing:    true,
+      reason:            'address_missing',
+      missingFields:     addrCheck.missing,
+      hebrewFields:      addrCheck.hebrewFields,
       confirmationToken: confirmToken,
-      message:       'Order held pending address confirmation. Customer email sent.',
+      message:           'Order held pending address confirmation. Customer + DUBIS alerted.',
     });
   }
 

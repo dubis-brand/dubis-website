@@ -39,6 +39,10 @@
       border: 1px solid #105a30; border-radius: 6px; color: #7fdba0; font-size: 14px; }
     .muted { color: #666; font-size: 12px; margin-top: 18px; line-height: 1.55; }
     .loading { text-align: center; color: #888; padding: 40px 0; }
+    .field-hebrew-warn { display: none; margin-top: 6px; padding: 8px 10px;
+      background: #2a1f0a; border: 1px solid #5a4310; border-radius: 6px;
+      color: #ffd97a; font-size: 12px; line-height: 1.45; }
+    input.hebrew-flag, select.hebrew-flag { border-color: #b91c1c !important; }
     a { color: #c8a96e; }
   </style>
 </head>
@@ -109,24 +113,33 @@
     };
     const missingText = (info.missingFields || []).map(function (f) { return missingLabels[f] || f; }).join(', ');
 
+    const hebrewBanner = (info.hebrewFields && info.hebrewFields.length)
+      ? '<div class="missing" style="background:#2a0e0e;border-color:#5a1010;color:#ffb4b4"><strong>Heads up:</strong> our courier (DHL/USPS) can\'t print Hebrew characters on the shipping label, so we need the address in English / Latin script. E.g. <em>Tel Aviv</em> instead of תל אביב, <em>Herzl 5</em> instead of הרצל 5.</div>'
+      : '';
+
     card.innerHTML =
       '<h1>Confirm your shipping address</h1>' +
-      '<p class="lead">Your payment went through, but we couldn\'t ship without a complete address. Fill in the missing fields below and we\'ll send your order to the printer right away.</p>' +
+      '<p class="lead">Your payment went through, but we couldn\'t ship without a complete address. Fill in the fields below and we\'ll send your order to the printer right away.</p>' +
       (missingText ? '<div class="missing"><strong>What we\'re missing:</strong> ' + esc(missingText) + '</div>' : '') +
+      hebrewBanner +
       '<form id="form">' +
         '<label for="f-name">Full name</label>' +
         '<input id="f-name" name="name" type="text" autocomplete="name" required value="' + esc(a.name) + '">' +
         '<label for="f-phone">Phone number</label>' +
         '<input id="f-phone" name="phone" type="tel" autocomplete="tel" required value="' + esc(a.phone) + '" placeholder="e.g. +1 555 123 4567">' +
-        '<label for="f-addr1">Street address</label>' +
-        '<input id="f-addr1" name="address_line_1" type="text" autocomplete="address-line1" required value="' + esc(a.address_line_1) + '">' +
+        '<label for="f-addr1">Street address <span style="color:#666;text-transform:none;letter-spacing:0">(English only)</span></label>' +
+        '<input id="f-addr1" name="address_line_1" type="text" autocomplete="address-line1" data-no-hebrew="1" required value="' + esc(a.address_line_1) + '">' +
+        '<div class="field-hebrew-warn" id="warn-addr1">Please enter this in English (Latin script) — couriers can\'t print Hebrew on the label.</div>' +
         '<label for="f-addr2">Apartment / suite (optional)</label>' +
-        '<input id="f-addr2" name="address_line_2" type="text" autocomplete="address-line2" value="' + esc(a.address_line_2) + '">' +
+        '<input id="f-addr2" name="address_line_2" type="text" autocomplete="address-line2" data-no-hebrew="1" value="' + esc(a.address_line_2) + '">' +
+        '<div class="field-hebrew-warn" id="warn-addr2">Please enter this in English.</div>' +
         '<div class="row">' +
-          '<div><label for="f-city">City</label>' +
-            '<input id="f-city" name="admin_area_2" type="text" autocomplete="address-level2" required value="' + esc(a.admin_area_2) + '"></div>' +
+          '<div><label for="f-city">City <span style="color:#666;text-transform:none;letter-spacing:0">(English only)</span></label>' +
+            '<input id="f-city" name="admin_area_2" type="text" autocomplete="address-level2" data-no-hebrew="1" required value="' + esc(a.admin_area_2) + '">' +
+            '<div class="field-hebrew-warn" id="warn-city">Please enter the city in English.</div></div>' +
           '<div><label for="f-state">State / Province</label>' +
-            '<input id="f-state" name="admin_area_1" type="text" autocomplete="address-level1" value="' + esc(a.admin_area_1) + '"></div>' +
+            '<input id="f-state" name="admin_area_1" type="text" autocomplete="address-level1" data-no-hebrew="1" value="' + esc(a.admin_area_1) + '">' +
+            '<div class="field-hebrew-warn" id="warn-state">Please enter this in English.</div></div>' +
         '</div>' +
         '<div class="row">' +
           '<div><label for="f-zip">ZIP / Postal code</label>' +
@@ -144,6 +157,25 @@
       '<p class="muted">Need help instead? Reply to your confirmation email or write to <a href="mailto:hello@dubis.net">hello@dubis.net</a>.</p>';
 
     document.getElementById('form').addEventListener('submit', onSubmit);
+    // Live Hebrew detector — flag the input + show a warning under it
+    // as the customer types, so they correct it before clicking submit.
+    const hebrewRe = /[֐-׿]/;
+    const fieldPairs = [
+      ['f-addr1','warn-addr1'], ['f-addr2','warn-addr2'],
+      ['f-city','warn-city'],   ['f-state','warn-state'],
+    ];
+    fieldPairs.forEach(function (p) {
+      const input = document.getElementById(p[0]);
+      const warn  = document.getElementById(p[1]);
+      if (!input || !warn) return;
+      const update = function () {
+        const has = hebrewRe.test(input.value || '');
+        input.classList.toggle('hebrew-flag', has);
+        warn.style.display = has ? 'block' : 'none';
+      };
+      input.addEventListener('input', update);
+      update();
+    });
   }
 
   function countryOptions(sel) {
@@ -167,6 +199,22 @@
     const btn = document.getElementById('submit-btn');
     const msg = document.getElementById('msg');
     msg.innerHTML = '';
+
+    // Client-side Hebrew check — block before hitting the server so the
+    // customer doesn't pay a network round-trip just to see the same warning.
+    const hebrewRe = /[֐-׿]/;
+    const hebrewLocal = [];
+    ['address_line_1','address_line_2','admin_area_2','admin_area_1'].forEach(function (name) {
+      const el = document.querySelector('[name="' + name + '"]');
+      if (el && hebrewRe.test(el.value || '')) hebrewLocal.push(name);
+    });
+    if (hebrewLocal.length) {
+      const labels = { address_line_1: 'street address', address_line_2: 'apartment', admin_area_2: 'city', admin_area_1: 'state / province' };
+      const names = hebrewLocal.map(function (f) { return labels[f] || f; }).join(', ');
+      msg.innerHTML = '<div class="err">Please enter these fields in English (Latin script): ' + esc(names) + '. Couriers can\'t print Hebrew on the shipping label.</div>';
+      return;
+    }
+
     btn.disabled = true;
     btn.textContent = 'Submitting…';
 
@@ -212,12 +260,17 @@
         }
         if (res.data && res.data.error === 'address_still_invalid') {
           const missingLabels = {
-            name: 'full name', address_line_1: 'street address', city: 'city',
+            name: 'full name', address_line_1: 'street address',
+            address_line_2: 'apartment', city: 'city', state: 'state / province',
             postal_code: 'ZIP / postal code', country: 'country',
             phone: 'phone number', email: 'email',
           };
-          const list = (res.data.missingFields || []).map(function (f) { return missingLabels[f] || f; }).join(', ');
-          msg.innerHTML = '<div class="err">Some fields are still missing or invalid: ' + esc(list) + '. Please fix and try again.</div>';
+          const missingList = (res.data.missingFields || []).map(function (f) { return missingLabels[f] || f; }).join(', ');
+          const hebrewList  = (res.data.hebrewFields  || []).map(function (f) { return missingLabels[f] || f; }).join(', ');
+          const parts = [];
+          if (missingList) parts.push('Still missing: ' + esc(missingList) + '.');
+          if (hebrewList)  parts.push('Still in Hebrew: ' + esc(hebrewList) + ' — please use English / Latin script.');
+          msg.innerHTML = '<div class="err">' + (parts.join(' ') || 'Some fields are still invalid.') + '</div>';
           return;
         }
         if (res.data && res.data.alreadyResolved) {
