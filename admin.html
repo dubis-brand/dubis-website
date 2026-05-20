@@ -3605,13 +3605,22 @@
   let _allProducts = [];
   let _productsGender = 'all';
 
-  function _gelatoUrl(type, gender) {
+  // 2026-05-20 I1: returns the BEST available Gelato URL for a product.
+  // Priority: (1) deep link to the specific draft order if one exists, else
+  // (2) generic catalog category page for the (type, gender) combo.
+  // The draft URL opens the exact mockup + print files for THIS product —
+  // far more useful than the generic catalog page.
+  function _gelatoUrl(type, gender, draftId) {
+    if (draftId) return `https://dashboard.gelato.com/orders/${draftId}`;
     const w = gender === 'women';
-    if (type === 'tshirt')     return w ? 'https://www.gelato.com/custom/womens-clothing/t-shirts/classic-womens-crewneck-t-shirt' : 'https://www.gelato.com/custom/brands/gildan/classic-unisex-crewneck-t-shirt-gildan-64000';
+    if (type === 'tshirt')     return w ? 'https://www.gelato.com/custom/brands/bella-canvas/women-relaxed-jersey-t-shirt-bella-canvas-6004' : 'https://www.gelato.com/custom/brands/gildan/classic-unisex-crewneck-t-shirt-gildan-64000';
+    if (type === 'vneck')      return w ? 'https://www.gelato.com/custom/womens-clothing/t-shirts/v-neck' : 'https://www.gelato.com/custom/mens-clothing/t-shirts/v-neck-t-shirts';
+    if (type === 'tanktop')    return w ? 'https://www.gelato.com/custom/womens-clothing/tank-tops' : 'https://www.gelato.com/custom/mens-clothing/tank-tops';
     if (type === 'hoodie')     return w ? 'https://www.gelato.com/custom/womens-clothing/hoodies' : 'https://www.gelato.com/custom/brands/gildan/classic-unisex-pullover-hoodie-gildan-18500';
     if (type === 'ziphoodie')  return 'https://www.gelato.com/custom/mens-clothing/hoodies/classic-unisex-zip-hoodie';
-    if (type === 'longsleeve') return w ? 'https://www.gelato.com/custom/womens-clothing/long-sleeve-shirts' : 'https://www.gelato.com/custom/mens-clothing/long-sleeve-shirts';
-    if (type === 'cap')        return 'https://www.gelato.com/custom/hats/dad-hats';
+    if (type === 'longsleeve') return w ? 'https://www.gelato.com/custom/brands/sols/womens-jersey-long-sleeve-t-shirt-sols-02075' : 'https://www.gelato.com/custom/brands/gildan/classic-unisex-long-sleeve-shirt-gildan-2400';
+    if (type === 'cap')        return 'https://www.gelato.com/custom/brands/as-colour/unisex-dad-hat-as-colour-1114';
+    if (type === 'capemb')     return 'https://www.gelato.com/custom/brands/flexfit/unisex-embroidered-dad-hat-flexfit-6245cm';
     return 'https://www.gelato.com/custom';
   }
 
@@ -3687,22 +3696,31 @@
         if (r.key === 'gelato_ship_il_usd') _shipRates.il = Number(r.value);
       }
     } catch (e) { console.warn('admin ship-rates load failed', e); }
-    // ── Storage image URLs (final fallback when local /images/* are missing). ──
-    // Used by renderProductCards onerror chain for products whose per-color mockups
-    // haven't been generated yet (e.g. newly-added products with only a Supabase
-    // storage front render — previously rendered as broken-image icons in admin).
+    // ── Storage image URLs + Gelato draft IDs (final fallback when local /images/*
+    // are missing + per-product Gelato dashboard deep-link). One query, two payloads.
     try {
       window._productStorageUrl = window._productStorageUrl || {};
+      window._productGelatoDraftId = window._productGelatoDraftId || {};
       const { data: rows } = await _sb
         .from('dubis_products')
-        .select('product_id_numeric,image_url')
-        .not('image_url', 'is', null);
+        .select('product_id_numeric,image_url,proof_of_completion,gelato_dashboard_url');
       for (const r of (rows || [])) {
         if (r.product_id_numeric != null && r.image_url) {
           window._productStorageUrl[r.product_id_numeric] = r.image_url;
         }
+        // Prefer proof_of_completion.gelato_draft_id (auto-set by the GHA pipeline),
+        // fall back to gelato_dashboard_url (manually set, currently always null).
+        if (r.product_id_numeric != null) {
+          const proofDraftId = r.proof_of_completion && r.proof_of_completion.gelato_draft_id;
+          if (proofDraftId) {
+            window._productGelatoDraftId[r.product_id_numeric] = proofDraftId;
+          } else if (r.gelato_dashboard_url) {
+            // dashboard_url is a full URL — keep as-is, _gelatoUrl will detect.
+            window._productGelatoDraftId[r.product_id_numeric] = r.gelato_dashboard_url;
+          }
+        }
       }
-    } catch (e) { console.warn('admin storage-url load failed', e); }
+    } catch (e) { console.warn('admin storage-url + draft-id load failed', e); }
   }
   function _stockSummary(pid) {
     const s = _productStockStatus[pid];
@@ -3891,7 +3909,29 @@
             <button class="btn-sm" onclick="regenFrontMockup(${p.id}, this)" title="צור תמונת FRONT חדשה עם DUBIS™">🔄 חדש</button>
             <button class="btn-sm" onclick="copyUid('${uid}', this)" title="Copy full UID">Copy UID</button>
             <a class="btn-sm" href="https://www.dubis.net/#product-${p.id}" target="_blank" rel="noopener" style="text-decoration:none">צפה באתר →</a>
-            <a class="btn-gelato" href="${p.gelatoUrl || 'https://dashboard.gelato.com'}" target="_blank" rel="noopener">Gelato →</a>
+            ${(() => {
+              // 2026-05-20 I1: Prefer the deep-link to the specific Gelato draft
+              // (shows THIS product's exact mockups + print files) over the
+              // generic catalog page. window._productGelatoDraftId is populated
+              // by _loadStockDataForAdmin from proof_of_completion.gelato_draft_id.
+              const draftIdOrUrl = (window._productGelatoDraftId || {})[p.id];
+              let gelatoUrl;
+              let badge;
+              if (draftIdOrUrl && /^https?:\/\//.test(draftIdOrUrl)) {
+                // Already a full URL (legacy gelato_dashboard_url column)
+                gelatoUrl = draftIdOrUrl;
+                badge = '🎨 Draft';
+              } else if (draftIdOrUrl) {
+                // Bare draft UUID → deep link to dashboard
+                gelatoUrl = _gelatoUrl(p.type, p.gender, draftIdOrUrl);
+                badge = '🎨 Gelato Draft';
+              } else {
+                // No draft → generic catalog page for the (type, gender) combo
+                gelatoUrl = _gelatoUrl(p.type, p.gender, null);
+                badge = '🎨 Gelato';
+              }
+              return `<a class="btn-gelato" href="${gelatoUrl}" target="_blank" rel="noopener" title="${draftIdOrUrl ? 'דאשבורד Gelato — דרפט הספציפי של המוצר' : 'דף קטלוג כללי ל-' + p.typeLabel}">${badge} →</a>`;
+            })()}
           </div>
         </div>
       </div>`;
