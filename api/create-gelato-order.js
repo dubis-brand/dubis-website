@@ -8,6 +8,7 @@
 //   3. Add to Vercel env vars: GELATO_API_KEY
 // =================================================================
 
+const crypto = require('crypto');
 const { refundOrder } = require('./_paypal');
 
 const GELATO_API_BASE = 'https://order.gelatoapis.com';
@@ -258,6 +259,216 @@ function parseName(fullName = '') {
   const firstName = parts[0] || '';
   const lastName  = parts.slice(1).join(' ') || firstName;
   return { firstName, lastName };
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SHIPPING ADDRESS VALIDATION
+// Added after the May 2026 DHL-undeliverable incident: PayPal flows
+// were occasionally yielding orders with blank / "?" / "undefined"
+// address fields. Gelato accepted them, label printed with garbage,
+// DHL bounced the package. Validate BEFORE the Gelato call.
+//
+// Applies to both manually-entered (window.checkoutAddress) and
+// PayPal-profile shipping_address values — they reach this function
+// in the same shape because paypal.js normalizes them in onApprove.
+// ─────────────────────────────────────────────────────────────────
+const INVALID_PLACEHOLDERS = new Set([
+  '', '-', '--', '?', '??', '???', '????', '.', '..', '...',
+  'undefined', 'null', 'none', 'n/a', 'na', 'tbd', 'xxx', 'xx',
+]);
+
+function isFieldPresent(value, opts = {}) {
+  if (value === null || value === undefined) return false;
+  const s = String(value).trim();
+  if (!s) return false;
+  if (INVALID_PLACEHOLDERS.has(s.toLowerCase())) return false;
+  // Reject strings made up entirely of punctuation/whitespace
+  if (!/[a-zA-Z0-9֐-׿؀-ۿ一-鿿]/.test(s)) return false;
+  const minLen = opts.minLen || 2;
+  if (s.length < minLen) return false;
+  return true;
+}
+
+function isPhonePresent(value) {
+  if (value === null || value === undefined) return false;
+  const s = String(value).trim();
+  if (!s) return false;
+  if (INVALID_PLACEHOLDERS.has(s.toLowerCase())) return false;
+  // At least 5 digits anywhere in the string (DHL wants a contact number)
+  const digits = s.replace(/\D+/g, '');
+  return digits.length >= 5;
+}
+
+function isCountryCodePresent(value) {
+  if (value === null || value === undefined) return false;
+  const s = String(value).trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(s);
+}
+
+function validateShippingAddress(shippingAddress = {}, buyerEmail = '') {
+  const missing = [];
+  if (!isFieldPresent(shippingAddress.name, { minLen: 2 })) missing.push('name');
+  if (!isFieldPresent(shippingAddress.address_line_1, { minLen: 3 })) missing.push('address_line_1');
+  if (!isFieldPresent(shippingAddress.admin_area_2, { minLen: 2 })) missing.push('city');
+  if (!isFieldPresent(shippingAddress.postal_code, { minLen: 3 })) missing.push('postal_code');
+  if (!isCountryCodePresent(shippingAddress.country_code)) missing.push('country');
+  if (!isPhonePresent(shippingAddress.phone)) missing.push('phone');
+  // Email is required to actually reach the customer about the gap.
+  if (!isFieldPresent(buyerEmail, { minLen: 5 }) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(buyerEmail).trim())) {
+    missing.push('email');
+  }
+  return { valid: missing.length === 0, missing };
+}
+
+// Confirmation token = HMAC(paypal_order_id) using a secret already
+// in the env (CRON_SECRET). Unguessable, deterministic — we don't
+// have to store it; the resubmit route just re-derives and compares.
+function signOrderToken(paypalOrderId) {
+  const secret = process.env.CRON_SECRET || process.env.AGENT_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'dubis-fallback';
+  return crypto.createHmac('sha256', secret).update(String(paypalOrderId)).digest('hex').slice(0, 24);
+}
+
+function verifyOrderToken(paypalOrderId, token) {
+  if (!paypalOrderId || !token) return false;
+  const expected = signOrderToken(paypalOrderId);
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(String(token)));
+  } catch (_) {
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Customer email — "your order is paid, we need your address"
+// Sent via Resend (same provider as confirm-order.js).
+// ─────────────────────────────────────────────────────────────────
+async function sendAddressConfirmationEmail({ buyerEmail, buyerName, paypalOrderId, missingFields, confirmUrl }) {
+  if (!process.env.RESEND_API_KEY) {
+    dlog('address-email-skipped', { reason: 'no_resend_key', paypalOrderId });
+    return { ok: false, reason: 'no_resend_key' };
+  }
+  const esc = s => String(s || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const firstName = (buyerName || buyerEmail || '').split(/[\s@]/)[0] || 'there';
+  const fieldLabels = {
+    name:           'Full name',
+    address_line_1: 'Street address',
+    city:           'City',
+    postal_code:    'ZIP / postal code',
+    country:        'Country',
+    phone:          'Phone number',
+    email:          'Email',
+  };
+  const missingList = (missingFields || []).map(f => `<li>${esc(fieldLabels[f] || f)}</li>`).join('');
+  const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Confirm your DUBIS shipping address</title></head>
+<body style="margin:0;padding:0;background:#0d0d0d;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0d0d0d;padding:40px 20px">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%">
+        <tr><td style="text-align:center;padding-bottom:32px">
+          <span style="font-size:28px;font-weight:700;letter-spacing:4px;color:#c8a96e;font-family:Georgia,serif">DUBIS</span>
+          <p style="margin:4px 0 0;color:#888;font-size:12px;letter-spacing:2px">FOR THE REST OF US</p>
+        </td></tr>
+        <tr><td style="background:#1a1a1a;border-radius:12px;padding:36px 40px">
+          <h1 style="margin:0 0 8px;font-size:22px;color:#e8e0d5;font-weight:600">We need your shipping address</h1>
+          <p style="margin:0 0 20px;color:#bbb;font-size:15px;line-height:1.55">
+            Hey ${esc(firstName)} — your payment went through, but a few details we need to ship your order didn't come through with it. Your money is safe and we've held off sending anything to the printer until we have a valid address.
+          </p>
+          <p style="margin:0 0 8px;color:#888;font-size:13px;text-transform:uppercase;letter-spacing:1px">What's missing</p>
+          <ul style="margin:0 0 24px;padding-left:20px;color:#e8e0d5;font-size:14px;line-height:1.7">${missingList}</ul>
+          <a href="${esc(confirmUrl)}" style="display:inline-block;background:#c8a96e;color:#0d0d0d;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;font-size:15px;letter-spacing:0.5px">Confirm my address</a>
+          <p style="margin:24px 0 0;color:#666;font-size:12px;line-height:1.6">
+            Or copy this link into your browser:<br>
+            <span style="color:#888;word-break:break-all">${esc(confirmUrl)}</span>
+          </p>
+          <p style="margin:24px 0 0;color:#888;font-size:13px;line-height:1.6">
+            Order reference: <code style="color:#c8a96e">${esc(paypalOrderId)}</code><br>
+            If this wasn't you or you'd rather cancel and get a refund, just reply to this email.
+          </p>
+        </td></tr>
+        <tr><td style="text-align:center;padding-top:28px">
+          <p style="margin:0;color:#444;font-size:12px">DUBIS · <a href="https://www.dubis.net" style="color:#c8a96e;text-decoration:none">dubis.net</a></p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  try {
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        from:     'DUBIS Orders <orders@dubis.net>',
+        to:       [buyerEmail],
+        subject:  `Action needed: confirm your DUBIS shipping address`,
+        html,
+        reply_to: 'hello@dubis.net',
+      }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      derr('address-email-resend-failed', { paypalOrderId, status: r.status, body: JSON.stringify(data).slice(0, 300) });
+      return { ok: false, reason: 'resend_error', status: r.status };
+    }
+    dlog('address-email-sent', { paypalOrderId, emailId: data.id, to: buyerEmail });
+    return { ok: true, emailId: data.id };
+  } catch (err) {
+    derr('address-email-exception', { paypalOrderId, err: err.message });
+    return { ok: false, reason: 'exception', message: err.message };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Surface the gap in oren's morning report by writing an agent_task.
+// agent_id='supply' is the fulfillment-related agent slot; category
+// 'address_missing' is the discriminator the morning-report Boss
+// agent will look for. Status 'pending_approval' satisfies the table
+// CHECK constraint and signals "admin needs to act on this".
+// ─────────────────────────────────────────────────────────────────
+async function createAddressMissingTask({ paypalOrderId, buyerEmail, buyerName, missingFields, shippingAddress, cartItems }) {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    dlog('address-task-skipped', { reason: 'no_supabase', paypalOrderId });
+    return { ok: false, reason: 'no_supabase' };
+  }
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    const sb = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { error } = await sb.from('agent_tasks').insert({
+      agent_id:    'supply',
+      title:       `Address missing — order ${String(paypalOrderId).slice(0, 12)}`,
+      description: `Customer paid via PayPal but shipping address is incomplete. Order held until customer confirms via email.\nMissing: ${(missingFields || []).join(', ')}\nBuyer: ${buyerName || ''} <${buyerEmail || ''}>`,
+      category:    'address_missing',
+      status:      'pending_approval',
+      priority:    'critical',
+      content_data: {
+        paypal_order_id:   paypalOrderId,
+        buyer_email:       buyerEmail || null,
+        buyer_name:        buyerName  || null,
+        missing_fields:    missingFields || [],
+        original_address:  shippingAddress || null,
+        cart_items:        cartItems || [],
+        held_at:           new Date().toISOString(),
+      },
+    });
+    if (error) {
+      derr('address-task-insert-failed', { paypalOrderId, code: error.code, message: error.message });
+      return { ok: false, reason: error.message };
+    }
+    dlog('address-task-created', { paypalOrderId });
+    return { ok: true };
+  } catch (err) {
+    derr('address-task-exception', { paypalOrderId, err: err.message });
+    return { ok: false, reason: 'exception', message: err.message };
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -758,6 +969,208 @@ async function handleCreateDraft(req, res) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// LOOKUP — confirm-address.html calls this on page load to verify
+// the token is valid and pre-fill any fields we already have.
+// We DO NOT return cart contents or full PII to the page — just the
+// minimum: which fields are missing, and what the (partial) name and
+// country code were. Anything else stays server-side.
+// ─────────────────────────────────────────────────────────────────
+async function handleLookupPending(req, res) {
+  const o = req.query?.o;
+  const t = req.query?.t;
+  if (!o || !t) return res.status(400).json({ error: 'missing_params' });
+  if (!verifyOrderToken(o, t)) {
+    derr('lookup-bad-token', { paypalOrderId: o });
+    return res.status(403).json({ error: 'invalid_token' });
+  }
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return res.status(500).json({ error: 'no_supabase' });
+  }
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    const sb = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const { data: task } = await sb
+      .from('agent_tasks')
+      .select('content_data, status, created_at')
+      .eq('category', 'address_missing')
+      .contains('content_data', { paypal_order_id: o })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!task) {
+      return res.status(404).json({ error: 'order_not_found_or_already_resolved' });
+    }
+    if (task.status === 'done') {
+      return res.status(200).json({ alreadyResolved: true });
+    }
+    const cd = task.content_data || {};
+    const orig = cd.original_address || {};
+    return res.status(200).json({
+      paypalOrderId: o,
+      missingFields: cd.missing_fields || [],
+      partialAddress: {
+        name:           orig.name || '',
+        address_line_1: orig.address_line_1 || '',
+        address_line_2: orig.address_line_2 || '',
+        admin_area_2:   orig.admin_area_2 || '',
+        admin_area_1:   orig.admin_area_1 || '',
+        postal_code:    orig.postal_code || '',
+        country_code:   orig.country_code || 'US',
+        phone:          orig.phone || '',
+      },
+    });
+  } catch (err) {
+    derr('lookup-exception', { err: err.message });
+    return res.status(500).json({ error: 'lookup_failed', message: err.message });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SUBMIT CORRECTED ADDRESS — customer fills out confirm-address.html
+// form and POSTs here. We re-validate, mark the held task done, then
+// run the SAME validation + Gelato submission path that the normal
+// checkout takes. Keeps the validation surface in exactly one place.
+// ─────────────────────────────────────────────────────────────────
+async function handleSubmitCorrectedAddress(req, res) {
+  const { paypalOrderId, token, shippingAddress, buyerEmail } = req.body || {};
+  if (!paypalOrderId || !token) return res.status(400).json({ error: 'missing_params' });
+  if (!verifyOrderToken(paypalOrderId, token)) {
+    derr('resubmit-bad-token', { paypalOrderId });
+    return res.status(403).json({ error: 'invalid_token' });
+  }
+
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return res.status(500).json({ error: 'no_supabase' });
+  }
+
+  // Re-validate the corrected address with the same rules used at checkout.
+  const addrCheck = validateShippingAddress(shippingAddress, buyerEmail);
+  if (!addrCheck.valid) {
+    return res.status(400).json({
+      error:         'address_still_invalid',
+      missingFields: addrCheck.missing,
+    });
+  }
+
+  const { createClient } = require('@supabase/supabase-js');
+  const sb = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+
+  // Find the held task to pull the cart items we stashed.
+  const { data: task, error: taskErr } = await sb
+    .from('agent_tasks')
+    .select('id, content_data, status')
+    .eq('category', 'address_missing')
+    .contains('content_data', { paypal_order_id: paypalOrderId })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (taskErr || !task) {
+    return res.status(404).json({ error: 'order_not_found' });
+  }
+  if (task.status === 'done') {
+    return res.status(200).json({ alreadyResolved: true });
+  }
+  const cartItems = (task.content_data && task.content_data.cart_items) || [];
+  if (!cartItems.length) {
+    return res.status(500).json({ error: 'no_cart_items_in_task' });
+  }
+
+  // Reuse the Gelato API call exactly as the main path does.
+  const GELATO_API_KEY = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
+  if (!GELATO_API_KEY) {
+    return res.status(500).json({ error: 'no_api_key' });
+  }
+
+  const unmapped = cartItems.filter(item => !buildProductUid(item.type, item.selectedColor, item.selectedSize, item.gender));
+  if (unmapped.length > 0) {
+    return res.status(400).json({ error: 'items_not_mapped', unmapped });
+  }
+
+  const { firstName, lastName } = parseName(shippingAddress.name);
+  const gelatoOrder = {
+    orderReferenceId:    `DUBIS-${paypalOrderId}`,
+    customerReferenceId: paypalOrderId,
+    currency:            'USD',
+    items: cartItems.map((item, i) => ({
+      itemReferenceId: `item-${i + 1}`,
+      productUid:      buildProductUid(item.type, item.selectedColor, item.selectedSize, item.gender),
+      files:           getDesignFiles(item.id, item.selectedColor, item.designRef, item.type),
+      quantity:        1,
+    })),
+    shipmentMethodUid: 'express',
+    shippingAddress: {
+      firstName,
+      lastName,
+      email:        buyerEmail || '',
+      phone:        shippingAddress.phone || '',
+      addressLine1: shippingAddress.address_line_1,
+      addressLine2: shippingAddress.address_line_2 || '',
+      city:         shippingAddress.admin_area_2,
+      state:        shippingAddress.admin_area_1 || '',
+      country:      shippingAddress.country_code,
+      postCode:     normalizePostCode(shippingAddress.postal_code, shippingAddress.country_code),
+    },
+  };
+
+  dlog('resubmit-gelato-start', {
+    paypalOrderId,
+    itemsCount: gelatoOrder.items.length,
+    shippingCountry: gelatoOrder.shippingAddress.country,
+  });
+
+  try {
+    const gRes = await fetch(`${GELATO_API_BASE}/v4/orders`, {
+      method:  'POST',
+      headers: {
+        'X-API-KEY':    GELATO_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(gelatoOrder),
+    });
+    const data = await gRes.json();
+    if (!gRes.ok) {
+      derr('resubmit-gelato-failed', { paypalOrderId, status: gRes.status, data });
+      return res.status(502).json({ error: 'gelato_rejected', status: gRes.status, details: data });
+    }
+    const gelatoOrderId = data.id || data.orderId || data.orderReferenceId;
+
+    // Mark the held task done so it stops surfacing in oren's report.
+    await sb.from('agent_tasks').update({
+      status: 'done',
+      notes:  `Customer submitted corrected address; Gelato order ${gelatoOrderId} created at ${new Date().toISOString()}.`,
+      content_data: {
+        ...(task.content_data || {}),
+        resolved_at:       new Date().toISOString(),
+        gelato_order_id:   gelatoOrderId,
+        corrected_address: shippingAddress,
+      },
+    }).eq('id', task.id);
+
+    // Update the orders row (if any) with the new shipping address +
+    // gelato id + status. If save.js never ran (rare), this is a no-op.
+    await sb.from('orders').update({
+      shipping_address:  shippingAddress,
+      printful_order_id: gelatoOrderId,
+      status:            'pending',
+    }).eq('paypal_order_id', paypalOrderId);
+
+    dlog('resubmit-gelato-success', { paypalOrderId, gelatoOrderId });
+    return res.status(200).json({ success: true, gelatoOrderId });
+  } catch (err) {
+    derr('resubmit-gelato-exception', { paypalOrderId, err: err.message });
+    return res.status(500).json({ error: 'network_error', message: err.message });
+  }
+}
+
 module.exports = async function handler(req, res) {
   const t0 = Date.now();
   dlog('request-received', {
@@ -781,6 +1194,20 @@ module.exports = async function handler(req, res) {
   // Route: create draft order (admin only)
   if (req.method === 'POST' && req.query && req.query.action === 'create-draft') {
     return handleCreateDraft(req, res);
+  }
+
+  // Route: lookup an order held for address confirmation
+  //   GET  /api/create-gelato-order?action=lookup-pending&o={paypalId}&t={token}
+  // Returns minimal info needed to render confirm-address.html.
+  if (req.method === 'GET' && req.query && req.query.action === 'lookup-pending') {
+    return handleLookupPending(req, res);
+  }
+
+  // Route: customer submits a corrected address — resubmit to Gelato
+  //   POST /api/create-gelato-order?action=submit-corrected-address
+  //   Body: { paypalOrderId, token, shippingAddress, buyerEmail }
+  if (req.method === 'POST' && req.query && req.query.action === 'submit-corrected-address') {
+    return handleSubmitCorrectedAddress(req, res);
   }
 
   if (req.method !== 'POST') {
@@ -831,6 +1258,55 @@ module.exports = async function handler(req, res) {
     derr('no-api-key', { paypalOrderId });
     logManualOrder('NO API KEY', { paypalOrderId, buyerEmail, cartItems, shippingAddress });
     return res.status(200).json({ success: true, manual: true, reason: 'gelato_not_configured' });
+  }
+
+  // ── Case 1b: Validate shipping address BEFORE anything else ──
+  // PayPal flows have produced orders with blank / "?" / "undefined"
+  // address fields (DHL-undeliverable incident, May 2026). If any
+  // required field is missing we never call Gelato — we hold the
+  // order, email the customer for a corrected address, and surface
+  // the gap in oren's morning report.
+  const addrCheck = validateShippingAddress(shippingAddress, buyerEmail);
+  if (!addrCheck.valid) {
+    derr('address-invalid', {
+      paypalOrderId,
+      missing: addrCheck.missing,
+      receivedKeys: Object.keys(shippingAddress || {}),
+    });
+    const confirmToken = signOrderToken(paypalOrderId);
+    const confirmUrl   = `https://www.dubis.net/confirm-address.html?o=${encodeURIComponent(paypalOrderId)}&t=${confirmToken}`;
+    const [emailRes, taskRes] = await Promise.all([
+      sendAddressConfirmationEmail({
+        buyerEmail,
+        buyerName:     (shippingAddress && shippingAddress.name) || '',
+        paypalOrderId,
+        missingFields: addrCheck.missing,
+        confirmUrl,
+      }),
+      createAddressMissingTask({
+        paypalOrderId,
+        buyerEmail,
+        buyerName:     (shippingAddress && shippingAddress.name) || '',
+        missingFields: addrCheck.missing,
+        shippingAddress,
+        cartItems,
+      }),
+    ]);
+    dlog('address-hold-complete', {
+      paypalOrderId,
+      emailSent: !!emailRes.ok,
+      taskCreated: !!taskRes.ok,
+      missing: addrCheck.missing,
+    });
+    return res.status(200).json({
+      success:       true,
+      manual:        true,
+      addressMissing: true,
+      reason:        'address_missing',
+      missingFields: addrCheck.missing,
+      confirmationToken: confirmToken,
+      message:       'Order held pending address confirmation. Customer email sent.',
+    });
   }
 
   // ── Case 2: Validate all items can be mapped ──
@@ -898,6 +1374,10 @@ module.exports = async function handler(req, res) {
       firstName:    firstName,
       lastName:     lastName,
       email:        buyerEmail || '',
+      // Phone — DHL/USPS need it for delivery exception calls. Was
+      // missing pre-2026-05-20; orders without contact numbers got
+      // bounced when couriers couldn't reach the recipient.
+      phone:        shippingAddress.phone || '',
       addressLine1: shippingAddress.address_line_1,
       addressLine2: shippingAddress.address_line_2 || '',
       city:         shippingAddress.admin_area_2,

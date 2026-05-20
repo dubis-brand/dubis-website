@@ -569,13 +569,18 @@ function renderPayPalButtons() {
                 // show a refund message instead of success.
                 let printfulOrderId = null;
                 let gelatoRefundInfo = null; // { refunded, refundId, gelatoError }
+                // 2026-05-20: when create-gelato-order detects an incomplete
+                // shipping address it holds the order and emails the customer
+                // for confirmation. We pass that through to save.js so the DB
+                // row reflects the held state instead of being misreported.
+                let addressHoldInfo = null;  // { missingFields, confirmationToken }
                 try {
                     const pfRes  = await fetch('/api/create-gelato-order', {
                         method:  'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body:    JSON.stringify({
                             paypalOrderId:   details.id,
-                            buyerEmail:      details.payer?.email_address || '',
+                            buyerEmail:      details.payer?.email_address || window.checkoutContact?.email || '',
                             shippingAddress,
                             cartItems:       cartSnapshot,
                         }),
@@ -588,6 +593,12 @@ function renderPayPalButtons() {
                             refunded:    true,
                             refundId:    pfData.refundId || null,
                             gelatoError: pfData.gelatoError || '',
+                        };
+                    }
+                    if (pfData.addressMissing || pfData.reason === 'address_missing') {
+                        addressHoldInfo = {
+                            missingFields:     pfData.missingFields || [],
+                            confirmationToken: pfData.confirmationToken || null,
                         };
                     }
                 } catch (err) {
@@ -620,6 +631,8 @@ function renderPayPalButtons() {
                             // Without this, ROAS is unmeasurable (the lesson from the IL/US
                             // campaign post-mortem on 2026-05-06).
                             attribution: (typeof window.dubisGetAttribution === 'function') ? window.dubisGetAttribution() : null,
+                            // 2026-05-20: held for address confirmation — status='pending_address_confirmation'
+                            pendingAddressConfirmation: !!addressHoldInfo,
                         }),
                     });
                     const saveData = await saveRes.json();
@@ -677,7 +690,9 @@ function renderPayPalButtons() {
                 cart = [];
                 saveCart();
                 updateCartCount();
-                if (gelatoRefundInfo && gelatoRefundInfo.refunded) {
+                if (addressHoldInfo) {
+                    showAddressHoldModal(addressHoldInfo);
+                } else if (gelatoRefundInfo && gelatoRefundInfo.refunded) {
                     showRefundModal(gelatoRefundInfo);
                 } else {
                     showSuccessModal();
@@ -854,6 +869,35 @@ function showRefundModal(info) {
 
 function closeSuccessModal() {
     document.getElementById('success-modal').classList.remove('open');
+}
+
+// Address-hold modal — payment succeeded but shipping address fields
+// were missing/garbage. The customer also gets an email with a link
+// to confirm-address.html, but we show them the same news on screen
+// so they don't bounce thinking nothing happened.
+function showAddressHoldModal(info) {
+    const modal = document.getElementById('success-modal');
+    if (!modal) return;
+    const content = modal.querySelector('.modal-content') || modal.firstElementChild || modal;
+    const missing = Array.isArray(info?.missingFields) ? info.missingFields : [];
+    const fieldLabels = {
+        name: 'name', address_line_1: 'street address', city: 'city',
+        postal_code: 'ZIP/postal code', country: 'country',
+        phone: 'phone', email: 'email',
+    };
+    const missingText = missing.length
+        ? missing.map(f => fieldLabels[f] || f).join(', ')
+        : 'a few address fields';
+    if (content) {
+        content.innerHTML = `
+            <h2 style="color:#b45309;margin:0 0 16px;font-size:22px">Payment received — one more thing</h2>
+            <p style="margin:0 0 12px;color:#374151">Your payment went through, but we need to confirm your shipping address before we can send the order to print. We're missing: <strong>${missingText}</strong>.</p>
+            <p style="margin:0 0 12px;color:#374151">We've emailed you a link to confirm the address. If you don't see it within a few minutes, check spam or reply to <a href="mailto:hello@dubis.net" style="color:#c8a96e">hello@dubis.net</a>.</p>
+            <p style="margin:0 0 20px;color:#6b7280;font-size:13px">Your money is safe — nothing ships until you confirm.</p>
+            <button onclick="closeSuccessModal()" style="display:block;width:100%;padding:12px;background:#111;color:#fff;border:none;cursor:pointer;font-size:14px;border-radius:4px">Got it</button>
+        `;
+    }
+    modal.classList.add('open');
 }
 
 // ===== PAYMENT STATE HELPERS =====

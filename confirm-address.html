@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Confirm your DUBIS shipping address</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #0d0d0d; color: #e8e0d5;
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; min-height: 100vh; }
+    .wrap { max-width: 560px; margin: 0 auto; padding: 40px 20px; }
+    .brand { text-align: center; margin-bottom: 28px; }
+    .brand .logo { font-size: 28px; font-weight: 700; letter-spacing: 4px;
+      color: #c8a96e; font-family: Georgia, serif; }
+    .brand .tag { margin-top: 4px; color: #888; font-size: 12px; letter-spacing: 2px; }
+    .card { background: #1a1a1a; border-radius: 12px; padding: 36px 32px; }
+    h1 { margin: 0 0 8px; font-size: 22px; font-weight: 600; }
+    p.lead { margin: 0 0 24px; color: #bbb; font-size: 15px; line-height: 1.55; }
+    .missing { margin: 0 0 24px; padding: 12px 16px; background: #2a1f0a;
+      border: 1px solid #5a4310; border-radius: 8px; color: #f0d590; font-size: 14px; }
+    .missing strong { color: #ffd97a; }
+    label { display: block; margin-top: 16px; color: #888;
+      font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+    input, select { width: 100%; margin-top: 6px; padding: 12px 14px;
+      background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 8px;
+      color: #e8e0d5; font-size: 15px; font-family: inherit; }
+    input:focus, select:focus { outline: none; border-color: #c8a96e; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .row > div { min-width: 0; }
+    button.primary { width: 100%; margin-top: 28px; padding: 14px 20px;
+      background: #c8a96e; color: #0d0d0d; border: none; border-radius: 8px;
+      font-size: 15px; font-weight: 600; letter-spacing: 0.5px; cursor: pointer; }
+    button.primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    button.primary:hover:not(:disabled) { background: #d6b87b; }
+    .err { margin-top: 12px; padding: 10px 14px; background: #2a0a0a;
+      border: 1px solid #5a1010; border-radius: 6px; color: #ff9090; font-size: 14px; }
+    .ok { margin-top: 12px; padding: 10px 14px; background: #0a2a14;
+      border: 1px solid #105a30; border-radius: 6px; color: #7fdba0; font-size: 14px; }
+    .muted { color: #666; font-size: 12px; margin-top: 18px; line-height: 1.55; }
+    .loading { text-align: center; color: #888; padding: 40px 0; }
+    a { color: #c8a96e; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <div class="logo">DUBIS</div>
+      <div class="tag">FOR THE REST OF US</div>
+    </div>
+    <div class="card" id="card">
+      <div class="loading" id="loading">Checking your order…</div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  const o = params.get('o');
+  const t = params.get('t');
+  const card = document.getElementById('card');
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  function renderError(msg) {
+    card.innerHTML = '<h1>We couldn\'t find your order</h1>' +
+      '<p class="lead">' + esc(msg) + '</p>' +
+      '<p class="muted">If this link came from us, try copying it directly from the email. ' +
+      'Still stuck? Email <a href="mailto:hello@dubis.net">hello@dubis.net</a> with your order reference.</p>';
+  }
+
+  function renderResolved() {
+    card.innerHTML = '<h1>Already taken care of</h1>' +
+      '<p class="lead">This order has already been confirmed and sent to print. ' +
+      'If you think something is wrong, reply to your confirmation email or contact ' +
+      '<a href="mailto:hello@dubis.net">hello@dubis.net</a>.</p>';
+  }
+
+  if (!o || !t) {
+    renderError('This link is missing the required parameters.');
+    return;
+  }
+
+  fetch('/api/create-gelato-order?action=lookup-pending&o=' + encodeURIComponent(o) + '&t=' + encodeURIComponent(t))
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, data: j }; }); })
+    .then(function (res) {
+      if (!res.ok) {
+        if (res.status === 403) return renderError('This confirmation link is no longer valid.');
+        if (res.status === 404) return renderError('We don\'t have this order on hold any more — it may have already been resolved.');
+        return renderError(res.data.error || 'Something went wrong while looking up your order.');
+      }
+      if (res.data.alreadyResolved) return renderResolved();
+      renderForm(res.data);
+    })
+    .catch(function (err) {
+      renderError('Network error — please try again in a minute. (' + err.message + ')');
+    });
+
+  function renderForm(info) {
+    const a = info.partialAddress || {};
+    const missingLabels = {
+      name: 'full name', address_line_1: 'street address', city: 'city',
+      postal_code: 'ZIP / postal code', country: 'country',
+      phone: 'phone number', email: 'email',
+    };
+    const missingText = (info.missingFields || []).map(function (f) { return missingLabels[f] || f; }).join(', ');
+
+    card.innerHTML =
+      '<h1>Confirm your shipping address</h1>' +
+      '<p class="lead">Your payment went through, but we couldn\'t ship without a complete address. Fill in the missing fields below and we\'ll send your order to the printer right away.</p>' +
+      (missingText ? '<div class="missing"><strong>What we\'re missing:</strong> ' + esc(missingText) + '</div>' : '') +
+      '<form id="form">' +
+        '<label for="f-name">Full name</label>' +
+        '<input id="f-name" name="name" type="text" autocomplete="name" required value="' + esc(a.name) + '">' +
+        '<label for="f-phone">Phone number</label>' +
+        '<input id="f-phone" name="phone" type="tel" autocomplete="tel" required value="' + esc(a.phone) + '" placeholder="e.g. +1 555 123 4567">' +
+        '<label for="f-addr1">Street address</label>' +
+        '<input id="f-addr1" name="address_line_1" type="text" autocomplete="address-line1" required value="' + esc(a.address_line_1) + '">' +
+        '<label for="f-addr2">Apartment / suite (optional)</label>' +
+        '<input id="f-addr2" name="address_line_2" type="text" autocomplete="address-line2" value="' + esc(a.address_line_2) + '">' +
+        '<div class="row">' +
+          '<div><label for="f-city">City</label>' +
+            '<input id="f-city" name="admin_area_2" type="text" autocomplete="address-level2" required value="' + esc(a.admin_area_2) + '"></div>' +
+          '<div><label for="f-state">State / Province</label>' +
+            '<input id="f-state" name="admin_area_1" type="text" autocomplete="address-level1" value="' + esc(a.admin_area_1) + '"></div>' +
+        '</div>' +
+        '<div class="row">' +
+          '<div><label for="f-zip">ZIP / Postal code</label>' +
+            '<input id="f-zip" name="postal_code" type="text" autocomplete="postal-code" required value="' + esc(a.postal_code) + '"></div>' +
+          '<div><label for="f-country">Country</label>' +
+            '<select id="f-country" name="country_code" required>' +
+              countryOptions(a.country_code || 'US') +
+            '</select></div>' +
+        '</div>' +
+        '<label for="f-email">Email (for delivery updates)</label>' +
+        '<input id="f-email" name="email" type="email" autocomplete="email" required>' +
+        '<button class="primary" type="submit" id="submit-btn">Confirm and ship my order</button>' +
+        '<div id="msg"></div>' +
+      '</form>' +
+      '<p class="muted">Need help instead? Reply to your confirmation email or write to <a href="mailto:hello@dubis.net">hello@dubis.net</a>.</p>';
+
+    document.getElementById('form').addEventListener('submit', onSubmit);
+  }
+
+  function countryOptions(sel) {
+    const list = [
+      ['US','United States'],['IL','Israel'],['CA','Canada'],['GB','United Kingdom'],
+      ['DE','Germany'],['FR','France'],['IT','Italy'],['ES','Spain'],['NL','Netherlands'],
+      ['IE','Ireland'],['AU','Australia'],['NZ','New Zealand'],['SE','Sweden'],['NO','Norway'],
+      ['DK','Denmark'],['FI','Finland'],['BE','Belgium'],['AT','Austria'],['CH','Switzerland'],
+      ['PT','Portugal'],['PL','Poland'],['MX','Mexico'],['BR','Brazil'],['AR','Argentina'],
+      ['JP','Japan'],['SG','Singapore'],['HK','Hong Kong'],['KR','South Korea'],
+      ['AE','United Arab Emirates'],['SA','Saudi Arabia'],['IN','India'],['ZA','South Africa'],
+    ];
+    return list.map(function (row) {
+      const s = row[0] === (sel || '').toUpperCase() ? ' selected' : '';
+      return '<option value="' + row[0] + '"' + s + '>' + esc(row[1]) + '</option>';
+    }).join('');
+  }
+
+  function onSubmit(ev) {
+    ev.preventDefault();
+    const btn = document.getElementById('submit-btn');
+    const msg = document.getElementById('msg');
+    msg.innerHTML = '';
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+
+    const form = ev.target;
+    const data = {};
+    Array.prototype.forEach.call(form.elements, function (el) {
+      if (el.name) data[el.name] = (el.value || '').trim();
+    });
+    if (data.country_code) data.country_code = data.country_code.toUpperCase();
+
+    const body = {
+      paypalOrderId: o,
+      token:         t,
+      buyerEmail:    data.email,
+      shippingAddress: {
+        name:           data.name,
+        address_line_1: data.address_line_1,
+        address_line_2: data.address_line_2 || '',
+        admin_area_2:   data.admin_area_2,
+        admin_area_1:   data.admin_area_1 || '',
+        postal_code:    data.postal_code,
+        country_code:   data.country_code,
+        phone:          data.phone,
+      },
+    };
+
+    fetch('/api/create-gelato-order?action=submit-corrected-address', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, data: j }; }); })
+      .then(function (res) {
+        btn.disabled = false;
+        btn.textContent = 'Confirm and ship my order';
+        if (res.ok && res.data.success) {
+          card.innerHTML =
+            '<h1>You\'re all set 🐾</h1>' +
+            '<p class="lead">Thanks — your order is on its way to our printer. You\'ll get a tracking email as soon as it ships.</p>' +
+            '<p class="muted">Order reference: <code style="color:#c8a96e">' + esc(o) + '</code></p>' +
+            '<p class="muted"><a href="/">Back to dubis.net</a></p>';
+          return;
+        }
+        if (res.data && res.data.error === 'address_still_invalid') {
+          const missingLabels = {
+            name: 'full name', address_line_1: 'street address', city: 'city',
+            postal_code: 'ZIP / postal code', country: 'country',
+            phone: 'phone number', email: 'email',
+          };
+          const list = (res.data.missingFields || []).map(function (f) { return missingLabels[f] || f; }).join(', ');
+          msg.innerHTML = '<div class="err">Some fields are still missing or invalid: ' + esc(list) + '. Please fix and try again.</div>';
+          return;
+        }
+        if (res.data && res.data.alreadyResolved) {
+          renderResolved();
+          return;
+        }
+        msg.innerHTML = '<div class="err">We couldn\'t submit the order: ' +
+          esc((res.data && (res.data.error || res.data.message)) || ('HTTP ' + res.status)) +
+          '. Please try again or email <a href="mailto:hello@dubis.net">hello@dubis.net</a>.</div>';
+      })
+      .catch(function (err) {
+        btn.disabled = false;
+        btn.textContent = 'Confirm and ship my order';
+        msg.innerHTML = '<div class="err">Network error: ' + esc(err.message) + '. Please try again.</div>';
+      });
+  }
+})();
+</script>
+</body>
+</html>

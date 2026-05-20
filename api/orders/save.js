@@ -41,6 +41,7 @@ module.exports = async function handler(req, res) {
         shippingAmount,   // NEW — from client, so DB total reflects reality
         totalAmount:      clientTotalAmount,  // NEW — client-computed grand total
         attribution,      // 2026-05-06 — { utm_source, utm_medium, utm_campaign, utm_content, utm_term, attribution_session_id, landing_path, landing_referrer, first_touch_at }
+        pendingAddressConfirmation, // 2026-05-20 — create-gelato-order detected missing address fields; hold the order
     } = req.body || {};
 
     if (!paypalOrderId || !cartItems || !shippingAddress) {
@@ -145,7 +146,9 @@ module.exports = async function handler(req, res) {
         user_id:           userId,
         paypal_order_id:   paypalOrderId,
         printful_order_id: printfulOrderId || null,
-        status:            'pending',
+        // 2026-05-20: held orders with incomplete address get a distinct status
+        // so admin tooling + Gelato sync skips them until customer corrects.
+        status:            pendingAddressConfirmation === true ? 'pending_address_confirmation' : 'pending',
         buyer_email:       buyerEmail || '',
         shipping_address:  shippingAddress,
         items:             cartItems,
