@@ -574,6 +574,12 @@ function renderPayPalButtons() {
                 // for confirmation. We pass that through to save.js so the DB
                 // row reflects the held state instead of being misreported.
                 let addressHoldInfo = null;  // { missingFields, confirmationToken }
+                // 2026-05-20 (Hila $94.35 incident): server returned 500 →
+                // pfRes.json() threw → fell through to showSuccessModal even
+                // though no order was created and no refund issued. This flag
+                // forces a clear error modal instead of a fake success.
+                let gelatoDispatchFailed = false;
+                let gelatoDispatchError  = '';
                 try {
                     const pfRes  = await fetch('/api/create-gelato-order', {
                         method:  'POST',
@@ -585,24 +591,46 @@ function renderPayPalButtons() {
                             cartItems:       cartSnapshot,
                         }),
                     });
-                    const pfData = await pfRes.json();
-                    if (pfData.gelatoOrderId)  printfulOrderId = String(pfData.gelatoOrderId);
-                    if (pfData.printfulOrderId && !printfulOrderId) printfulOrderId = String(pfData.printfulOrderId);
-                    if (pfData.refunded || pfData.reason === 'gelato_rejected_refunded') {
-                        gelatoRefundInfo = {
-                            refunded:    true,
-                            refundId:    pfData.refundId || null,
-                            gelatoError: pfData.gelatoError || '',
-                        };
+                    // Try JSON first; if it fails, fall back to text so we can surface it.
+                    let pfData = null;
+                    let pfRawText = '';
+                    try {
+                        pfData = await pfRes.clone().json();
+                    } catch (_jsonErr) {
+                        try { pfRawText = await pfRes.text(); } catch (_) {}
+                        pfData = null;
                     }
-                    if (pfData.addressMissing || pfData.reason === 'address_missing') {
-                        addressHoldInfo = {
-                            missingFields:     pfData.missingFields  || [],
-                            hebrewFields:      pfData.hebrewFields   || [],
-                            confirmationToken: pfData.confirmationToken || null,
-                        };
+                    if (!pfRes.ok || !pfData) {
+                        gelatoDispatchFailed = true;
+                        gelatoDispatchError  = `server returned ${pfRes.status}${pfRawText ? ': ' + pfRawText.slice(0, 200) : ''}`;
+                        console.error('Gelato dispatch — bad response:', pfRes.status, pfRawText.slice(0, 300));
+                    }
+                    if (pfData) {
+                        if (pfData.gelatoOrderId)  printfulOrderId = String(pfData.gelatoOrderId);
+                        if (pfData.printfulOrderId && !printfulOrderId) printfulOrderId = String(pfData.printfulOrderId);
+                        if (pfData.refunded || pfData.reason === 'gelato_rejected_refunded' || pfData.reason === 'handler_exception_refunded') {
+                            gelatoRefundInfo = {
+                                refunded:    true,
+                                refundId:    pfData.refundId || null,
+                                gelatoError: pfData.gelatoError || '',
+                            };
+                        }
+                        if (pfData.addressMissing || pfData.reason === 'address_missing') {
+                            addressHoldInfo = {
+                                missingFields:     pfData.missingFields  || [],
+                                hebrewFields:      pfData.hebrewFields   || [],
+                                confirmationToken: pfData.confirmationToken || null,
+                            };
+                        }
+                        // If the response has none of the success/refund/hold signals, treat as dispatch failure.
+                        if (!printfulOrderId && !gelatoRefundInfo && !addressHoldInfo && !pfData.manual) {
+                            gelatoDispatchFailed = true;
+                            gelatoDispatchError  = pfData.gelatoError || pfData.error || pfData.message || 'incomplete response';
+                        }
                     }
                 } catch (err) {
+                    gelatoDispatchFailed = true;
+                    gelatoDispatchError  = err && err.message ? err.message : 'network error';
                     console.error('Gelato dispatch failed:', err);
                 }
 
@@ -695,6 +723,14 @@ function renderPayPalButtons() {
                     showAddressHoldModal(addressHoldInfo);
                 } else if (gelatoRefundInfo && gelatoRefundInfo.refunded) {
                     showRefundModal(gelatoRefundInfo);
+                } else if (gelatoDispatchFailed && !printfulOrderId) {
+                    // 2026-05-20 Hila incident — never silently lie about success.
+                    showPaymentError(
+                        'Payment captured but our system could not place the print order ('
+                        + (gelatoDispatchError || 'unknown error')
+                        + '). The DUBIS team has been notified and you should see a refund within 1 hour. '
+                        + 'If not, email dubis.brand@gmail.com.'
+                    );
                 } else {
                     showSuccessModal();
                 }

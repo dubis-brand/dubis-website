@@ -1403,6 +1403,16 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // 2026-05-20: top-level safety net around the entire PayPal-capture flow.
+  // Background: Hila test order ($94.35) captured cleanly on PayPal's side,
+  // /api/create-gelato-order then 500'd at an unknown point AFTER request-received
+  // but before order-input. The original try/catch only wrapped the Gelato HTTP
+  // call (lines ~1612-1687), so any earlier exception left the customer charged
+  // with no refund, no DB row, no Gelato order, and the frontend stuck on PayPal's
+  // checkout page. This outer try/catch guarantees: ANY unhandled exception →
+  // attempt refund → 200 with structured refund payload → frontend shows refund
+  // modal. NO MORE silent 500 after capture, ever.
+  try {
   const { cartItems, shippingAddress, paypalOrderId, buyerEmail } = req.body || {};
 
   if (!cartItems || !shippingAddress || !paypalOrderId) {
@@ -1684,5 +1694,126 @@ module.exports = async function handler(req, res) {
     });
     logManualOrder('NETWORK ERROR', { paypalOrderId, error: err.message, gelatoOrder });
     return res.status(200).json({ success: true, manual: true, reason: 'network_error' });
+  }
+
+  } catch (handlerErr) {
+    // 2026-05-20 safety net. We landed here because something between
+    // request-received and the Gelato try/catch threw uncaught. PayPal has
+    // already captured the money (this handler is invoked from onApprove,
+    // which awaits actions.order.capture() before the fetch). The contract
+    // is: refund first, persist a recovery row, alert oren, return 200 with
+    // a structured payload the frontend can render.
+    const paypalOrderId = (req.body && req.body.paypalOrderId) || null;
+    const buyerEmail    = (req.body && req.body.buyerEmail)    || null;
+    const cartItems     = (req.body && req.body.cartItems)     || [];
+    const shippingAddress = (req.body && req.body.shippingAddress) || null;
+    derr('handler-exception', {
+      paypalOrderId,
+      errorMessage: handlerErr && handlerErr.message,
+      errorName:    handlerErr && handlerErr.name,
+      errorStack:   ((handlerErr && handlerErr.stack) || '').split('\n').slice(0, 8).join(' | '),
+      durationMs:   Date.now() - t0,
+    });
+    logManualOrder('HANDLER EXCEPTION', {
+      paypalOrderId,
+      buyerEmail,
+      error: handlerErr && handlerErr.message,
+      stack: handlerErr && handlerErr.stack,
+      cartItems,
+      shippingAddress,
+    });
+
+    // ── 1. Refund the PayPal capture ──
+    let refundResult = { refunded: false, reason: 'no_paypal_order_id' };
+    if (paypalOrderId) {
+      try {
+        refundResult = await refundOrder({ paypalOrderId, reason: 'handler_exception' });
+        dlog('handler-exception-refund-done', {
+          paypalOrderId,
+          refunded: refundResult.refunded,
+          refundId: refundResult.refundId || null,
+          refundReason: refundResult.reason || null,
+        });
+      } catch (refundErr) {
+        derr('handler-exception-refund-failed', {
+          paypalOrderId,
+          message: refundErr && refundErr.message,
+        });
+        refundResult = { refunded: false, reason: 'refund_exception', details: refundErr && refundErr.message };
+      }
+    }
+
+    // ── 2. Best-effort recovery row in orders table ──
+    if (paypalOrderId && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      try {
+        const { createClient } = require('@supabase/supabase-js');
+        const sb = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_SERVICE_ROLE_KEY,
+          { auth: { autoRefreshToken: false, persistSession: false } }
+        );
+        const itemsTotal = (cartItems || []).reduce((s, i) => s + (Number(i.price) || 0), 0);
+        await sb.from('orders').insert({
+          paypal_order_id: paypalOrderId,
+          buyer_email:     buyerEmail,
+          items:           cartItems,
+          total_amount:    itemsTotal,
+          status:          refundResult.refunded ? 'refunded' : 'pending',
+          refund_id:       refundResult.refundId || null,
+          refunded_at:     refundResult.refunded ? new Date().toISOString() : null,
+          refund_reason:   refundResult.refunded ? 'handler_exception' : null,
+        });
+        dlog('handler-exception-recovery-row-saved', { paypalOrderId });
+      } catch (dbErr) {
+        derr('handler-exception-recovery-row-failed', {
+          paypalOrderId,
+          message: dbErr && dbErr.message,
+        });
+      }
+    }
+
+    // ── 3. Best-effort admin alert via Resend ──
+    if (process.env.RESEND_API_KEY) {
+      try {
+        const subj = `🚨 DUBIS handler exception — ${refundResult.refunded ? 'refunded' : 'REFUND FAILED'} (${String(paypalOrderId || 'no-id').slice(0, 16)})`;
+        await fetch('https://api.resend.com/emails', {
+          method:  'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+            'Content-Type':  'application/json',
+          },
+          body: JSON.stringify({
+            from:    'DUBIS Alerts <orders@dubis.net>',
+            to:      ['dubis.brand@gmail.com'],
+            subject: subj,
+            html: `
+              <h2>create-gelato-order threw uncaught</h2>
+              <p><strong>PayPal order:</strong> ${paypalOrderId || '(missing)'}</p>
+              <p><strong>Buyer:</strong> ${buyerEmail || '(missing)'}</p>
+              <p><strong>Refund:</strong> ${refundResult.refunded ? `✅ ${refundResult.refundId || ''}` : `❌ ${refundResult.reason || 'unknown'}`}</p>
+              <p><strong>Error:</strong> <code>${(handlerErr && handlerErr.message) || 'unknown'}</code></p>
+              <pre style="background:#f4f4f4;padding:12px;font-size:11px;line-height:1.5;overflow:auto">${((handlerErr && handlerErr.stack) || '').slice(0, 4000)}</pre>
+              <p>Items: <code>${JSON.stringify(cartItems).slice(0, 600)}</code></p>
+            `,
+          }),
+        });
+        dlog('handler-exception-admin-alert-sent', { paypalOrderId });
+      } catch (mailErr) {
+        derr('handler-exception-admin-alert-failed', {
+          paypalOrderId,
+          message: mailErr && mailErr.message,
+        });
+      }
+    }
+
+    // ── 4. Always 200 with structured refund payload — frontend renders refund modal ──
+    return res.status(200).json({
+      success:      true,
+      manual:       !refundResult.refunded,
+      refunded:     !!refundResult.refunded,
+      refundId:     refundResult.refundId || null,
+      reason:       refundResult.refunded ? 'handler_exception_refunded' : 'handler_exception_no_refund',
+      gelatoError:  `Order handler crashed: ${(handlerErr && handlerErr.message) || 'unknown'}`.slice(0, 200),
+    });
   }
 };
