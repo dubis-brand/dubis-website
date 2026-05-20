@@ -102,6 +102,7 @@ RETURNING id, product_id_numeric;
 
 - DB column is `slogan`, NOT `phrase` (legacy ambiguity confirmed 2026-04-24).
 - `colors` must each exist in `dubis-website/scripts/download-gelato-mockups.js` COLOR_MAP for the (type, gender) combo — `Honey Brown` famously does not exist in Gelato's catalog despite being marketable (2026-04-22 Hila bug).
+- **NEW 2026-05-20 — verify EVERY (color, size) UID via Gelato `POST /v3/stock/region-availability` BEFORE activating.** A SKU that exists in catalog (`GET /v3/products/{uid}` returns 200) is NOT necessarily fulfillable — Gelato can silently discontinue stock for a SKU while leaving it in catalog. This bit us hard on 2026-05-20: product 7 (AS Colour 1114 cap) had been discontinued; 5 PayPal captures stuck. For ANY combo where every relevant region (EU/AS/UK/ROW/US-CA) returns `unavailable` → that combo is dead; don't include in the `colors` array. For combos that are `in-stock` in some but not all regions → keep in DB but flag manually if questionable. See `memory/troubleshooting.md` § "The Hila Checkout Catastrophe" for full incident + Gelato API truth table.
 - Set `active=false, publishing_status='pending_pipeline'` so `trg_enforce_product_activation_proof` allows the row through.
 - `next_id` = `SELECT MAX(product_id_numeric)+1 FROM dubis_products`.
 

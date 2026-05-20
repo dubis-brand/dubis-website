@@ -9,6 +9,23 @@ paths:
 
 # Gelato Operations — DUBIS
 
+## 🚨 Stock & fulfillment APIs — what to use when (2026-05-20 hard-learned)
+
+Gelato has 5 endpoints that look like stock checks. **Only `/v4/orders:quote` is authoritative for "will this specific order ship?".** Mixing them up caused 5 stuck PayPal captures totalling $361 on 2026-05-20. Full incident in `memory/troubleshooting.md` § "The Hila Checkout Catastrophe".
+
+| Endpoint | Truth it tells | Use it for |
+|---|---|---|
+| `GET /v3/products/{uid}` | UID exists in catalog (200) or retired (404) | Discovering discontinued SKUs only. **NEVER use as a stock check.** Pre-2026-05-20 `gelato-stock-check` cron used this — completely missed the cap (product 7) being discontinued and the women's 3XL not existing. |
+| `GET /v3/products/{uid}/availabilities` | (does not exist — 404) | Don't try. |
+| `POST /v3/stock/region-availability` | Per-region status: `in-stock` / `out-of-stock` / `unavailable` / `not-supported` | Daily catalog sweep — find globally-unfulfillable variants efficiently. **NOT authoritative for per-order routing decisions** — IL routing doesn't always match the regions this returns. |
+| `POST /v4/orders:quote` | Whether THIS specific (cart, address) will fulfill RIGHT NOW | **Authoritative pre-flight.** Use in `/api/create-gelato-order?action=stock-probe` before PayPal capture. |
+| `POST /v4/orders` + `GET /v4/orders/{id}` poll | Real order creation + async stock validator outcome | The actual order. Poll for up to 4 sec after POST to catch async cancellations (race window). |
+
+**Anti-patterns refuse on sight:**
+- Calling `/v3/products/{uid}` and treating 200 as "in stock". It only means the SKU exists in catalog.
+- Trusting `region-availability`'s `in-stock` for routing-sensitive decisions on IL orders.
+- Treating Gelato POST 200 immediate body as final — financialStatus='open' can flip to canceled in 1-3 sec.
+
 ## Design File Specifications
 | Area | Min Size | DPI | Format | Background |
 |------|----------|-----|--------|------------|
