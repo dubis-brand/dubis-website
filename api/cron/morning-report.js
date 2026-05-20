@@ -236,7 +236,11 @@ module.exports = async function handler(req, res) {
             const data = await gRes.json();
             const orders = (data && data.orders) || [];
             summary.scanned = orders.length;
-            const cutoff = Date.now() - 30 * 60 * 1000; // last 30 min
+            // Default window: last 30 min. Override via ?max_age_min=240 for
+            // catch-up runs (e.g. tonight's Hila incident — 5 captures spread
+            // across 2.5 hours need a wider sweep).
+            const maxAgeMinParam = parseInt(new URL(req.url, `https://${req.headers.host}`).searchParams.get('max_age_min') || '30', 10);
+            const cutoff = Date.now() - maxAgeMinParam * 60 * 1000;
             for (const o of orders) {
                 if (!/^(canceled|cancelled)$/i.test(o.financialStatus || '')) continue;
                 const createdMs = new Date(o.createdAt).getTime();
