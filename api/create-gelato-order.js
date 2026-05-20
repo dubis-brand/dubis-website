@@ -1963,9 +1963,97 @@ module.exports = async function handler(req, res) {
 
     const gelatoOrderId = data.id || data.orderId || data.orderReferenceId;
     console.log(`Gelato order created: ${gelatoOrderId} for PayPal ${paypalOrderId}`);
+    dlog('gelato-success-immediate', {
+      paypalOrderId,
+      gelatoOrderId,
+      financialStatus: data.financialStatus,
+      fulfillmentStatus: data.fulfillmentStatus,
+    });
+
+    // 2026-05-20 ROUND 5/6 race-condition fix: Gelato sometimes returns 200
+    // with financialStatus='open' immediately, then async-validates stock
+    // within 1-3 seconds and flips to 'canceled' BEFORE producing anything.
+    // We saw this on Hila's 5th capture (DUBIS-81B553059Y6480844): probe
+    // ok → POST 200 with open → 2 sec later Gelato refused for stock.
+    // Without webhook (which is still 401, see follow-up) the customer
+    // gets no refund. Solution: poll the order state for up to 4 sec
+    // BEFORE returning success. If it flips canceled in that window,
+    // refund inline.
+    let finalFinancialStatus = data.financialStatus || 'open';
+    let finalRefusalCode = null;
+    let finalRefusalReason = null;
+    if (gelatoOrderId && /^(open|pending|created|passed_to_production)$/i.test(finalFinancialStatus)) {
+      const verifyT0 = Date.now();
+      const RACE_WINDOW_MS = 4000;
+      const POLL_INTERVAL_MS = 1500;
+      let polls = 0;
+      while (Date.now() - verifyT0 < RACE_WINDOW_MS) {
+        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+        polls++;
+        try {
+          const vRes = await fetch(`${GELATO_API_BASE}/v4/orders/${gelatoOrderId}`, {
+            headers: { 'X-API-KEY': GELATO_API_KEY, 'Accept': 'application/json' },
+          });
+          if (vRes.ok) {
+            const vData = await vRes.json().catch(() => null);
+            if (vData) {
+              finalFinancialStatus = vData.financialStatus || finalFinancialStatus;
+              finalRefusalCode    = vData.refusalReasonCode || null;
+              finalRefusalReason  = vData.refusalReason   || null;
+              dlog('gelato-verify-poll', {
+                paypalOrderId, gelatoOrderId, poll: polls,
+                financialStatus: finalFinancialStatus,
+                fulfillmentStatus: vData.fulfillmentStatus,
+                refusalCode: finalRefusalCode,
+              });
+              if (/^(canceled|cancelled)$/i.test(finalFinancialStatus)) break;
+              if (/^(passed_to_production|printed|shipped|delivered)$/i.test(finalFinancialStatus)) break;
+            }
+          }
+        } catch (vErr) {
+          dlog('gelato-verify-error', { paypalOrderId, gelatoOrderId, msg: vErr.message });
+        }
+      }
+      dlog('gelato-verify-done', {
+        paypalOrderId, gelatoOrderId,
+        polls,
+        durationMs: Date.now() - verifyT0,
+        finalFinancialStatus,
+        finalRefusalCode,
+      });
+
+      // If verification revealed an async cancellation → auto-refund.
+      if (/^(canceled|cancelled)$/i.test(finalFinancialStatus)) {
+        derr('gelato-async-canceled', {
+          paypalOrderId, gelatoOrderId,
+          refusalCode: finalRefusalCode,
+          refusalReason: (finalRefusalReason || '').slice(0, 200),
+        });
+        const refundResult = await refundOrder({
+          paypalOrderId,
+          reason: `gelato_async_canceled_${finalRefusalCode || 'unknown'}`,
+        });
+        dlog('gelato-async-refund-done', {
+          paypalOrderId,
+          refunded: refundResult.refunded,
+          refundId: refundResult.refundId || null,
+        });
+        return res.status(200).json({
+          success:  true,
+          manual:   !refundResult.refunded,
+          refunded: !!refundResult.refunded,
+          refundId: refundResult.refundId || null,
+          reason:   refundResult.refunded ? 'gelato_rejected_refunded' : 'gelato_async_cancel_no_refund',
+          gelatoError: `Gelato canceled order after async stock check: ${(finalRefusalReason || finalRefusalCode || 'unknown').slice(0, 200)}`,
+          gelatoOrderId,
+        });
+      }
+    }
+
     dlog('gelato-success', {
       paypalOrderId,
       gelatoOrderId,
+      finalFinancialStatus,
       totalDurationMs: Date.now() - t0,
     });
     return res.status(200).json({
