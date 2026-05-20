@@ -7922,21 +7922,29 @@
   // have brand=null in the API response — Gelato uses internal defaults but
   // doesn't expose a brand-specific catalog page. Those fall back to the
   // category page (which oren confirmed works).
+  // 2026-05-20 I5: BRAND-SPECIFIC product URLs (Gelato SEO pages). oren's
+  // screenshot of /custom/mens-clothing/hoodies showed "Classic Unisex
+  // Pullover Hoodie | Gildan® 18500" with link preview `gildan-18500?region=AS`
+  // — confirming the brand-deep URLs exist. Earlier curl 403 was just bot
+  // detection. For brand-less aliases (women hoodie, ziphoodie, vneck, tanktop
+  // — where Gelato API returns ApparelManufacturer:"none") we fall back to the
+  // category page since there's no brand-specific catalog slug.
+  // ?region=AS = Asia shipping (covers IL — our primary market).
   // Each row: [brand, sku, catalogUrl]
   const _GELATO_PRODUCT_MAP = {
-    't-shirt:unisex':    ['Gildan',           '64000', 'https://www.gelato.com/custom/mens-clothing/t-shirts'],
-    't-shirt:women':     ['Bella+Canvas',     '6004',  'https://www.gelato.com/custom/womens-clothing/t-shirts'],
-    'hoodie:unisex':     ['Gildan',           '18500', 'https://www.gelato.com/custom/mens-clothing/hoodies'],
-    'hoodie:women':      ['Gelato premium',   '—',     'https://www.gelato.com/custom/womens-clothing/hoodies'],
-    'zip-hoodie:unisex': ['Gelato classic',   '—',     'https://www.gelato.com/custom/mens-clothing/hoodies'],
-    'long-sleeve:unisex':['Gildan',           '2400',  'https://www.gelato.com/custom/mens-clothing/long-sleeve-shirts'],
-    'long-sleeve:women': ['SOL\'S',           '02075', 'https://www.gelato.com/custom/womens-clothing/long-sleeve-shirts'],
-    'cap:unisex':        ['AS Colour',        '1114',  'https://www.gelato.com/custom/hats/dad-hats'],
-    'cap-emb:unisex':    ['Flexfit',          '6245CM','https://www.gelato.com/custom/hats/dad-hats'],
-    'v-neck:unisex':     ['Gelato premium',   '—',     'https://www.gelato.com/custom/mens-clothing/t-shirts'],
-    'v-neck:women':      ['Gelato premium',   '—',     'https://www.gelato.com/custom/womens-clothing/t-shirts/v-neck'],
-    'tank-top:unisex':   ['Gelato premium',   '—',     'https://www.gelato.com/custom/mens-clothing/tank-tops'],
-    'tank-top:women':    ['Gelato premium',   '—',     'https://www.gelato.com/custom/womens-clothing/tank-tops'],
+    't-shirt:unisex':    ['Gildan',           '64000', 'https://www.gelato.com/custom/brands/gildan/classic-unisex-crewneck-t-shirt-gildan-64000?region=AS'],
+    't-shirt:women':     ['Bella+Canvas',     '6004',  'https://www.gelato.com/custom/brands/bella-canvas/women-relaxed-jersey-t-shirt-bella-canvas-6004?region=AS'],
+    'hoodie:unisex':     ['Gildan',           '18500', 'https://www.gelato.com/custom/brands/gildan/classic-unisex-pullover-hoodie-gildan-18500?region=AS'],
+    'hoodie:women':      ['Gelato premium',   '—',     'https://www.gelato.com/custom/womens-clothing/hoodies?region=AS'],
+    'zip-hoodie:unisex': ['Gelato classic',   '—',     'https://www.gelato.com/custom/mens-clothing/hoodies?region=AS&style=zip'],
+    'long-sleeve:unisex':['Gildan',           '2400',  'https://www.gelato.com/custom/brands/gildan/classic-unisex-long-sleeve-shirt-gildan-2400?region=AS'],
+    'long-sleeve:women': ['SOL\'S',           '02075', 'https://www.gelato.com/custom/brands/sols/womens-jersey-long-sleeve-t-shirt-sols-02075?region=AS'],
+    'cap:unisex':        ['AS Colour',        '1114',  'https://www.gelato.com/custom/brands/as-colour/unisex-dad-hat-as-colour-1114?region=AS'],
+    'cap-emb:unisex':    ['Flexfit',          '6245CM','https://www.gelato.com/custom/brands/flexfit/unisex-embroidered-dad-hat-flexfit-6245cm?region=AS'],
+    'v-neck:unisex':     ['Gelato premium',   '—',     'https://www.gelato.com/custom/mens-clothing/t-shirts?region=AS&style=v-neck'],
+    'v-neck:women':      ['Gelato premium',   '—',     'https://www.gelato.com/custom/womens-clothing/t-shirts/v-neck?region=AS'],
+    'tank-top:unisex':   ['Gelato premium',   '—',     'https://www.gelato.com/custom/mens-clothing/tank-tops?region=AS'],
+    'tank-top:women':    ['Gelato premium',   '—',     'https://www.gelato.com/custom/womens-clothing/tank-tops?region=AS'],
   };
   // JS-type → DB-clothing_type, so the lookup key matches our naming.
   const _JS_TO_DB_TYPE = { tshirt: 't-shirt', hoodie: 'hoodie', ziphoodie: 'zip-hoodie', longsleeve: 'long-sleeve', cap: 'cap', capemb: 'cap-emb', vneck: 'v-neck', tanktop: 'tank-top' };
