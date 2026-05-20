@@ -608,7 +608,7 @@ function renderPayPalButtons() {
                     if (pfData) {
                         if (pfData.gelatoOrderId)  printfulOrderId = String(pfData.gelatoOrderId);
                         if (pfData.printfulOrderId && !printfulOrderId) printfulOrderId = String(pfData.printfulOrderId);
-                        if (pfData.refunded || pfData.reason === 'gelato_rejected_refunded' || pfData.reason === 'handler_exception_refunded') {
+                        if (pfData.refunded || pfData.reason === 'gelato_rejected_refunded' || pfData.reason === 'handler_exception_refunded' || pfData.reason === 'design_invalid_refunded') {
                             gelatoRefundInfo = {
                                 refunded:    true,
                                 refundId:    pfData.refundId || null,

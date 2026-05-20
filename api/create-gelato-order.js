@@ -678,6 +678,21 @@ function parsePngDimensions(buf) {
   return { w, h };
 }
 
+// 2026-05-20: cap designs are 1800×900 per gelato-operations.md spec
+// (dad-hat front panel is wider than it is tall). Using the same 1800×1800
+// minimum as shirts/hoodies wrongly rejected every cap order. The Hila
+// $94.35 round-2 capture failed here — design-validation-failed → 500 →
+// no refund (the explicit 500 return path wasn't covered by the handler-
+// level catch since it's not an exception). Per-file minimum dimensions
+// fix the underlying false-positive; the post-capture refund guard around
+// the design-validation-failed branch fixes the safety hole.
+function minDimensionsFor(url) {
+  if (/\/cap_design_/i.test(url)) {
+    return { minW: 1800, minH: 900 };
+  }
+  return { minW: MIN_DESIGN_W, minH: MIN_DESIGN_H };
+}
+
 async function validateDesignFile(url) {
   try {
     // Single GET with Range: bytes=0-31 — fetch only the IHDR bytes and also
@@ -706,10 +721,11 @@ async function validateDesignFile(url) {
     if (!dims) {
       return { ok: false, reason: `Not a valid PNG (missing IHDR): ${url}` };
     }
-    if (dims.w < MIN_DESIGN_W || dims.h < MIN_DESIGN_H) {
+    const { minW, minH } = minDimensionsFor(url);
+    if (dims.w < minW || dims.h < minH) {
       return {
         ok: false,
-        reason: `Design dimensions too small: ${url} is ${dims.w}×${dims.h} (min ${MIN_DESIGN_W}×${MIN_DESIGN_H}). Gelato will reject → JB default.`,
+        reason: `Design dimensions too small: ${url} is ${dims.w}×${dims.h} (min ${minW}×${minH}). Gelato will reject → JB default.`,
       };
     }
     return { ok: true, width: dims.w, height: dims.h, bytes: totalLen };
@@ -1568,12 +1584,31 @@ module.exports = async function handler(req, res) {
     console.error(errorMsg);
     derr('design-validation-failed', { paypalOrderId, fileErrors });
     logManualOrder('DESIGN FILE VALIDATION FAILED', { paypalOrderId, buyerEmail, fileErrors, cartItems });
-    // Return error so admin is notified — do NOT silently continue
-    return res.status(500).json({
-      success: false,
-      error: 'design_file_invalid',
-      details: fileErrors,
-      message: 'Design files failed pre-flight validation. Order was not sent to Gelato. Please fix the design files and retry.',
+
+    // 2026-05-20 (Hila round-2 incident): PayPal already captured. This path
+    // used to return 500 with no refund — explicit 500 is NOT an exception,
+    // so the handler-level catch never fired. Refund inline, then return
+    // 200 with a structured payload the frontend already knows how to render.
+    dlog('design-validation-refund-start', { paypalOrderId, errorCount: fileErrors.length });
+    const refundResult = await refundOrder({
+      paypalOrderId,
+      reason: `design_file_invalid_${(fileErrors[0] || 'unknown').slice(0, 60).replace(/\s+/g, '_')}`,
+    });
+    dlog('design-validation-refund-done', {
+      paypalOrderId,
+      refunded: refundResult.refunded,
+      refundId: refundResult.refundId || null,
+      refundReason: refundResult.reason || null,
+    });
+
+    return res.status(200).json({
+      success:     true,
+      manual:      !refundResult.refunded,
+      refunded:    !!refundResult.refunded,
+      refundId:    refundResult.refundId || null,
+      reason:      refundResult.refunded ? 'design_invalid_refunded' : 'design_invalid_no_refund',
+      gelatoError: `Design file validation failed: ${fileErrors[0] || 'unknown'}`.slice(0, 220),
+      details:     fileErrors,
     });
   }
 
