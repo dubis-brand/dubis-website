@@ -547,6 +547,12 @@
       margin-top: 1rem;
     }
 
+    /* 2026-05-20: toast notification used by window._dubisToast() */
+    @keyframes dubisToastIn {
+      from { transform: translateY(-12px); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+
     .product-admin-card {
       background: #1a1a1a;
       border-radius: 10px;
@@ -4132,29 +4138,74 @@
     });
   }
 
+  // 2026-05-20: persistent toast helper — survives renderProductCards() because
+  // it's appended to document.body, not inside the card that gets re-rendered.
+  // Stack at top-end so multiple toasts don't overlap.
+  window._dubisToast = function _dubisToast(msg, color = '#27ae60', durationMs = 2500) {
+    const t = document.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = `position:fixed;top:80px;inset-inline-end:20px;background:${color};color:#fff;padding:.75rem 1.2rem;border-radius:8px;font-weight:600;font-size:.95rem;box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:9999;animation:dubisToastIn .25s ease-out;max-width:380px;direction:rtl;text-align:right;line-height:1.4`;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.transition = 'opacity .35s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, durationMs);
+  };
+
   async function saveProductPrice(productId, newPrice, inputEl) {
     if (!newPrice || newPrice < 1) return;
+    // 2026-05-20: rule #7 enforcement — selling_price must cover cheapest IL cost.
+    // If new base is below that floor, refuse with explicit message.
+    const pricing = _productPricing[productId] || {};
+    const minCostIl = (pricing.has_pricing && pricing.cost_il_min != null && isFinite(pricing.cost_il_min)) ? Math.ceil(pricing.cost_il_min) : null;
+    if (minCostIl != null && newPrice < minCostIl) {
+      window._dubisToast(`❌ מחיר $${newPrice} נמוך מהעלות המינימלית IL $${minCostIl}. כל הזמנה IL = הפסד.\nהצעה: $${minCostIl}+ (כלל #7).`, '#c0392b', 5500);
+      if (inputEl) inputEl.value = minCostIl; // bump back up
+      return;
+    }
     try {
-      const { error } = await _sb.from('product_prices').upsert({
+      // 1. Update base selling_price.
+      const { error: priceErr } = await _sb.from('product_prices').upsert({
         product_id: productId,
         selling_price: newPrice,
         updated_at: new Date().toISOString()
       });
-      if (!error) {
-        const statusEl = document.getElementById(`ps-${productId}`);
-        if (statusEl) {
-          statusEl.classList.add('visible');
-          setTimeout(() => statusEl.classList.remove('visible'), 2000);
+      if (priceErr) throw priceErr;
+
+      // 2. Mass-update per-variant sell_price_usd = MAX(newPrice, CEIL(cost_il)).
+      // This is what makes the Margin US/IL grid actually change — those columns
+      // read from product_variant_stock.sell_price_usd, not from product_prices.
+      // Premium variants (Cream 2XL etc.) stay priced at their cost+1 floor.
+      // Variants without cost data fall to the base.
+      const product = _allProducts.find(p => p.id === productId);
+      const numericId = product?.id; // already the numeric id in _allProducts
+      if (numericId != null) {
+        // Pull current variants, compute new per-variant prices, batch-upsert
+        const { data: variants } = await _sb.from('product_variant_stock')
+          .select('color,size,gelato_cost_usd')
+          .eq('product_id_numeric', numericId);
+        if (Array.isArray(variants) && variants.length > 0) {
+          const rows = variants.map(v => ({
+            product_id_numeric: numericId,
+            color: v.color,
+            size: v.size,
+            sell_price_usd: Math.max(newPrice, Math.ceil(Number(v.gelato_cost_usd || 0))),
+            price_set_by: 'admin-base-update-' + new Date().toISOString().slice(0, 10),
+            price_set_at: new Date().toISOString(),
+          }));
+          const { error: varErr } = await _sb.from('product_variant_stock')
+            .upsert(rows, { onConflict: 'product_id_numeric,color,size' });
+          if (varErr) console.warn('variant mass-update failed:', varErr.message);
         }
-        // 2026-05-19: re-render the Margin US/IL grid so the new price flows
-        // through to the displayed margins. The previous code wrote to a
-        // legacy `gp-${id}` element that doesn't exist anymore and used
-        // `currentProducts` (also gone — `_allProducts` is the truth now).
-        const p = _allProducts.find(p => p.id === productId);
-        if (p) p.price = newPrice;
-        renderProductCards();
       }
-    } catch (e) { console.warn('saveProductPrice failed', e); }
+
+      // 3. Reload pricing + re-render card with fresh data.
+      await _loadStockDataForAdmin();
+      const p = _allProducts.find(p => p.id === productId);
+      if (p) p.price = newPrice;
+      renderProductCards();
+      window._dubisToast(`✅ Base $${newPrice} נשמר — variants עודכנו (קצף ≥ עלות IL)`, '#27ae60', 3000);
+    } catch (e) {
+      console.warn('saveProductPrice failed', e);
+      window._dubisToast('❌ שגיאת שמירה: ' + (e.message || e), '#c0392b', 5000);
+    }
   }
 
   // ── Analytics (Enhanced) ──────────────────────────────
