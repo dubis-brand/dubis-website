@@ -695,24 +695,36 @@
       word-break: break-all;
       line-height: 1.4;
     }
-    .product-actions { display: flex; gap: .4rem; }
-    .product-actions .btn-sm { flex: 1; text-align: center; font-size: .7rem; }
+    /* 2026-05-20 I2: flex-wrap so 5+ buttons don't get clipped. Used to be
+       no-wrap with 4 buttons fitting; the new Gelato button needs its own
+       row when space is tight. */
+    .product-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .product-actions .btn-sm { flex: 1 1 auto; min-width: 70px; text-align: center; font-size: .7rem; }
+    /* Gelato button — distinctive amber theme + min-width so it never gets
+       squeezed below readability. inline-flex with icons centered. */
     .btn-gelato {
-      flex: 1;
+      flex: 1 1 110px;
+      min-width: 110px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       text-align: center;
       text-decoration: none;
-      padding: .4rem .6rem;
+      padding: .45rem .7rem;
       border-radius: 5px;
-      font-size: .7rem;
-      font-weight: 600;
+      font-size: .72rem;
+      font-weight: 700;
       cursor: pointer;
-      border: 1px solid rgba(200,169,110,.4);
-      color: #c8a96e;
-      background: rgba(200,169,110,.08);
-      transition: background .2s;
-      display: block;
+      border: 1.5px solid #c8a96e;
+      color: #2c2c2c;
+      background: linear-gradient(135deg, #f5d68a, #c8a96e);
+      transition: transform .15s, box-shadow .15s;
+      box-shadow: 0 1px 3px rgba(0,0,0,.2);
     }
-    .btn-gelato:hover { background: rgba(200,169,110,.18); }
+    .btn-gelato:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 3px 8px rgba(200,169,110,.5);
+    }
 
     .products-header {
       display: flex;
