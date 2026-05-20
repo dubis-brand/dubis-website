@@ -2844,10 +2844,15 @@
       if (!session?.user) return false;
       const ok = await _isDubisAdmin(session.user.email);
       if (ok) return true;
-      try { await _sb.auth.signOut(); } catch (e) {}
+      // 2026-05-21 (Hila incident): DO NOT call signOut() here. admin.html
+      // shares storageKey='dubis-auth' with index.html, so Supabase's
+      // cross-tab sync would propagate the signOut to the user's main-site
+      // tab, killing their session. RLS on every admin table already blocks
+      // non-admin access — hiding the admin DOM is sufficient protection.
+      // Previously: try { await _sb.auth.signOut(); } catch (e) {} — REMOVED.
       const errEl = document.getElementById('login-error');
       if (errEl) {
-        errEl.textContent = 'Access denied. This account is not authorized to access DUBIS admin.';
+        errEl.textContent = 'Access denied. This account is not authorized to access DUBIS admin. (You remain signed in for the main site.)';
         errEl.style.display = 'block';
       }
       const ls = document.getElementById('login-screen');
