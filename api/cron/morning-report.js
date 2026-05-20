@@ -208,6 +208,99 @@ module.exports = async function handler(req, res) {
         }
     }
 
+    // ── Route: ?type=reconcile-orders — background safety net (added 2026-05-21) ──
+    // The Hila checkout catastrophe revealed: Gelato can async-cancel an order
+    // 60+ seconds AFTER our /api/create-gelato-order POST returns success to
+    // paypal.js. The 4-sec post-Gelato poll only catches fast cancellations.
+    // The webhook would catch async ones — but webhook is currently 401'ing.
+    //
+    // This route is the safety net: pg_cron calls it every 2 minutes. It
+    // queries Gelato's `/v4/orders?limit=20` for recent activity, filters to
+    // orders with financialStatus=canceled + refusalReasonCode=stock within
+    // last 30 minutes, and refunds any whose paypal_order_id has not been
+    // refunded already (idempotent via PayPal-Request-Id).
+    if (urlType === 'reconcile-orders') {
+        const GELATO_API_KEY = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
+        if (!GELATO_API_KEY) return res.status(500).json({ error: 'no_gelato_key' });
+        const { refundOrder } = require('../_paypal');
+        const startedAt = Date.now();
+        const summary = { scanned: 0, canceled_recent: 0, refunded: 0, already_refunded: 0, refund_failed: 0, recovery_rows: 0, details: [] };
+        try {
+            // Pull last 20 orders from Gelato
+            const gRes = await fetch('https://order.gelatoapis.com/v4/orders?limit=20', {
+                headers: { 'X-API-KEY': GELATO_API_KEY, 'Accept': 'application/json' },
+            });
+            if (!gRes.ok) {
+                return res.status(200).json({ ok: false, error: `gelato_http_${gRes.status}`, summary });
+            }
+            const data = await gRes.json();
+            const orders = (data && data.orders) || [];
+            summary.scanned = orders.length;
+            const cutoff = Date.now() - 30 * 60 * 1000; // last 30 min
+            for (const o of orders) {
+                if (!/^(canceled|cancelled)$/i.test(o.financialStatus || '')) continue;
+                const createdMs = new Date(o.createdAt).getTime();
+                if (createdMs < cutoff) continue;
+                if (!o.orderReferenceId || !o.orderReferenceId.startsWith('DUBIS-')) continue;
+                summary.canceled_recent++;
+                const paypalOrderId = o.orderReferenceId.slice('DUBIS-'.length);
+                // Idempotent check — is it already refunded in our DB?
+                const { data: existing } = await supabase
+                    .from('orders')
+                    .select('id,refund_id,status')
+                    .eq('paypal_order_id', paypalOrderId)
+                    .maybeSingle();
+                if (existing && existing.refund_id) {
+                    summary.already_refunded++;
+                    summary.details.push({ paypalOrderId, action: 'already_refunded', refund_id: existing.refund_id });
+                    continue;
+                }
+                // Issue refund (PayPal idempotent via PayPal-Request-Id header)
+                const refund = await refundOrder({
+                    paypalOrderId,
+                    reason: `gelato_canceled_async_${o.refusalReasonCode || 'unknown'}`,
+                });
+                if (refund.refunded) {
+                    summary.refunded++;
+                    summary.details.push({ paypalOrderId, action: 'refunded', refundId: refund.refundId });
+                    // Upsert orders row to record the refund
+                    try {
+                        if (existing && existing.id) {
+                            await supabase.from('orders').update({
+                                status: 'refunded',
+                                refund_id: refund.refundId,
+                                refunded_at: new Date().toISOString(),
+                                refund_reason: `async_gelato_cancel_${o.refusalReasonCode || 'stock'}`,
+                            }).eq('id', existing.id);
+                        } else {
+                            await supabase.from('orders').insert({
+                                paypal_order_id: paypalOrderId,
+                                printful_order_id: o.id,
+                                buyer_email: (o.shippingAddress && o.shippingAddress.email) || null,
+                                total_amount: Number(o.totalInclVat || 0),
+                                status: 'refunded',
+                                refund_id: refund.refundId,
+                                refunded_at: new Date().toISOString(),
+                                refund_reason: `async_gelato_cancel_${o.refusalReasonCode || 'stock'}`,
+                                items: [],
+                            });
+                            summary.recovery_rows++;
+                        }
+                    } catch (dbErr) {
+                        summary.details.push({ paypalOrderId, action: 'db_update_failed', error: dbErr.message });
+                    }
+                } else {
+                    summary.refund_failed++;
+                    summary.details.push({ paypalOrderId, action: 'refund_failed', reason: refund.reason });
+                }
+            }
+            summary.durationMs = Date.now() - startedAt;
+            return res.status(200).json({ ok: true, summary });
+        } catch (err) {
+            return res.status(500).json({ ok: false, error: err.message, summary });
+        }
+    }
+
     // ── Route: ?type=blind-test — send 7 Hebrew RTL feedback request emails (one-shot, 2026-04-28) ──
     // Triggered manually by Claude after deploy. Each email is personalized with first name + URL params.
     if (urlType === 'blind-test') {
