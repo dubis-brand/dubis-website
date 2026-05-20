@@ -1931,14 +1931,31 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       }
       const videoUrl = cd.video_url as string;
       const isReel = !!(videoUrl && cd.reel_status === 'ready');
+      // 2026-05-20: Bumped Graph API v19 → v22 for REELS support.
+      // Meta deprecated v19 REELS endpoint behavior; v22 accepts video_url + media_type=REELS cleanly.
+      const igBaseV22 = `https://graph.facebook.com/v22.0/${igAccount}`;
+      const fbApiV22 = 'https://graph.facebook.com/v22.0';
+      // Carousel: cd.format === 'carousel' AND cd.carousel_images is array of URLs (≥2, ≤10)
+      const carouselImages = Array.isArray(cd.carousel_images) ? cd.carousel_images as string[] : [];
+      const isCarousel = (cd.format === 'carousel') && carouselImages.length >= 2;
       try {
         let container: Record<string, unknown>;
         if (isReel) {
           // Instagram Reels: POST /{ig-account}/media with media_type=REELS
-          const cRes = await fetch(`${igBase}/media`, {
+          // v22 expects: video_url, media_type='REELS', caption, optional cover_url, share_to_feed=true
+          const coverUrl = (cd.cover_url as string) || image_url || undefined;
+          const reelPayload: Record<string, unknown> = {
+            video_url: videoUrl,
+            caption,
+            media_type: 'REELS',
+            share_to_feed: true,
+            access_token: igToken,
+          };
+          if (coverUrl) reelPayload.cover_url = coverUrl;
+          const cRes = await fetch(`${igBaseV22}/media`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ video_url: videoUrl, caption, media_type: 'REELS', access_token: igToken }),
+            body: JSON.stringify(reelPayload),
           });
           container = await cRes.json();
           if (!cRes.ok || container.error) {
@@ -1952,7 +1969,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
           let ready = false;
           for (let attempt = 0; attempt < 24; attempt++) {
             await new Promise((r) => setTimeout(r, 5000));
-            const statusRes = await fetch(`https://graph.facebook.com/v19.0/${containerId}?fields=status_code&access_token=${igToken}`);
+            const statusRes = await fetch(`${fbApiV22}/${containerId}?fields=status_code&access_token=${igToken}`);
             const statusData = await statusRes.json() as Record<string, unknown>;
             if (statusData.status_code === 'FINISHED') { ready = true; break; }
             if (statusData.status_code === 'ERROR') { break; }
@@ -1963,9 +1980,43 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
             results.push({ id: task.id, title: task.title, status: 'error', error: errMsg });
             continue;
           }
+        } else if (isCarousel) {
+          // Instagram Carousel: 2-step. (a) Create child containers for each image (is_carousel_item=true).
+          // (b) Create parent container with media_type=CAROUSEL and children=[child_ids].
+          const childIds: string[] = [];
+          for (const childUrl of carouselImages.slice(0, 10)) {
+            const cRes = await fetch(`${igBaseV22}/media`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image_url: childUrl, is_carousel_item: true, access_token: igToken }),
+            });
+            const cJson = await cRes.json();
+            if (!cRes.ok || cJson.error) {
+              const errMsg = `carousel child failed: ${cJson.error?.message || 'unknown'}`;
+              await sb.from('agent_tasks').update({ status: priorStatus, content_data: { ...cd, publish_lock_at: null, publish_attempts: attemptCount, last_publish_error: errMsg, last_publish_attempt_at: claimNow }, updated_at: new Date().toISOString() }).eq('id', task.id);
+              results.push({ id: task.id, title: task.title, status: 'error', error: errMsg });
+              throw new Error(errMsg);
+            }
+            childIds.push(cJson.id as string);
+            await new Promise((r) => setTimeout(r, 1500));
+          }
+          // Parent carousel container
+          const cRes = await fetch(`${igBaseV22}/media`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ media_type: 'CAROUSEL', children: childIds.join(','), caption, access_token: igToken }),
+          });
+          container = await cRes.json();
+          if (!cRes.ok || container.error) {
+            const errMsg = (container.error as Record<string,unknown>)?.message as string || 'carousel parent failed';
+            await sb.from('agent_tasks').update({ status: priorStatus, content_data: { ...cd, publish_lock_at: null, publish_attempts: attemptCount, last_publish_error: errMsg, last_publish_attempt_at: claimNow }, updated_at: new Date().toISOString() }).eq('id', task.id);
+            results.push({ id: task.id, title: task.title, status: 'error', error: errMsg });
+            continue;
+          }
+          await new Promise((r) => setTimeout(r, 7000));
         } else {
           // Image post
-          const cRes = await fetch(`${igBase}/media`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url, caption, access_token: igToken }) });
+          const cRes = await fetch(`${igBaseV22}/media`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url, caption, access_token: igToken }) });
           container = await cRes.json();
           if (!cRes.ok || container.error) {
             const errMsg = (container.error as Record<string,unknown>)?.message as string || 'container failed';
@@ -1975,7 +2026,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
           }
           await new Promise((r) => setTimeout(r, 7000));
         }
-        const pRes = await fetch(`${igBase}/media_publish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ creation_id: container.id, access_token: igToken }) });
+        const pRes = await fetch(`${igBaseV22}/media_publish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ creation_id: container.id, access_token: igToken }) });
         const pub = await pRes.json();
         if (!pRes.ok || pub.error) {
           const errMsg = pub.error?.message || 'publish failed';
@@ -1990,11 +2041,31 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
           const fbPageId = Deno.env.get('FACEBOOK_PAGE_ID') ?? '';
           const fbToken  = Deno.env.get('FACEBOOK_PAGE_TOKEN') ?? igToken; // fall back to IG token
           if (fbPageId) {
-            const fbRes = await fetch(`https://graph.facebook.com/v19.0/${fbPageId}/photos`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ url: image_url, caption: captionFB, access_token: fbToken }),
-            });
+            // 2026-05-20: branch by media type. Photo posts → /photos; video → /videos.
+            // FB doesn't have a generic "carousel" feed object — we cross-post the carousel
+            // as a single first-image photo to keep the link clickable. IG owns the carousel UX.
+            let fbRes: Response;
+            if (isReel && videoUrl) {
+              // FB video post (Page video upload by URL — works v19+, v22 preferred)
+              fbRes = await fetch(`${fbApiV22}/${fbPageId}/videos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_url: videoUrl, description: captionFB, access_token: fbToken }),
+              });
+            } else {
+              // FB photo (default for feed_post + carousel-first-image fallback)
+              const fbImageUrl = image_url || (isCarousel && carouselImages.length > 0 ? carouselImages[0] : null);
+              if (!fbImageUrl) {
+                fbError = 'no image URL for FB photo upload';
+                fbRes = new Response('{}', { status: 200 });
+              } else {
+                fbRes = await fetch(`${fbApiV22}/${fbPageId}/photos`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ url: fbImageUrl, caption: captionFB, access_token: fbToken }),
+                });
+              }
+            }
             const fbData = await fbRes.json();
             if (fbRes.ok && fbData.id && !fbData.error) {
               fbPostId = fbData.id as string;
@@ -2014,7 +2085,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
         // just without a public link in the daily report.
         let igPermalink: string | null = null;
         try {
-          const igPRes = await fetch(`https://graph.facebook.com/v19.0/${pub.id}?fields=permalink&access_token=${igToken}`);
+          const igPRes = await fetch(`${fbApiV22}/${pub.id}?fields=permalink&access_token=${igToken}`);
           const igPData = await igPRes.json();
           if (igPRes.ok && igPData.permalink) igPermalink = igPData.permalink as string;
         } catch (_) { /* leave null */ }
@@ -2024,7 +2095,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
             const fbToken = Deno.env.get('FACEBOOK_PAGE_TOKEN') ?? igToken;
             // FB photo posts expose `link` not `permalink_url`. Try `link` first;
             // fall back to permalink_url for regular posts.
-            const fbPRes = await fetch(`https://graph.facebook.com/v19.0/${fbPostId}?fields=link,permalink_url&access_token=${fbToken}`);
+            const fbPRes = await fetch(`${fbApiV22}/${fbPostId}?fields=link,permalink_url&access_token=${fbToken}`);
             const fbPData = await fbPRes.json();
             if (fbPRes.ok) {
               fbPermalink = (fbPData.link as string | undefined) || (fbPData.permalink_url as string | undefined) || null;
@@ -2640,7 +2711,10 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       // Slogans on garments are always EN (DUBIS rule). DB has one column: slogan.
       const productSlogan = (product.slogan as string) || '';
 
-      const title = `[${planDayLabels[slot.day_offset]} ${String(slot.hour_utc).padStart(2,'0')}:00 UTC] ${slot.format.toUpperCase()} ${slot.lang.toUpperCase()} — ${productSlogan ? productSlogan.slice(0,40) : 'product-' + productId}`;
+      // Title format (2026-05-20 oren request): include full date so he can track execution
+      // [יום-בשבוע YYYY-MM-DD HH:00 UTC] FORMAT LANG — slogan
+      const slotDateIso = slotIso.slice(0, 10); // YYYY-MM-DD
+      const title = `[${planDayLabels[slot.day_offset]} ${slotDateIso} ${String(slot.hour_utc).padStart(2,'0')}:00 UTC] ${slot.format.toUpperCase()} ${slot.lang.toUpperCase()} — ${productSlogan ? productSlogan.slice(0,40) : 'product-' + productId}`;
 
       const contentData = {
         // Schedule
