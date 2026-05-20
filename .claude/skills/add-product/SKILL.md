@@ -149,6 +149,31 @@ These are verified-in-Gelato palettes used by `?type=generate-slogan` when no `p
 
 Per oren 2026-05-19: new products should get the **full palette up to 8 colors** (was capped at 4). The `MAX_COLORS=8` constant in `generate-slogan` controls this. Reducing the cap is a deliberate UX decision — every color slot adds 1 Gelato draft + 8 mockup files (front+back × N colors) + bigger admin scroll. 8 is the practical ceiling.
 
+## Product-type variety — slot allocation (TYPE_POOL)
+
+`?type=generate-slogan` picks **3 distinct (type, gender) slots per batch** before calling Gemini, then forces those into the prompt as a HARD REQUIREMENT and also overrides the saved row's `clothing_type` + `gender` to match. This was added 2026-05-19 after Gemini repeatedly returned 3× t-shirt/hoodie/longsleeve and ignored the "bonus for v-neck/tank-top" hint in the prompt.
+
+Weights in the pool (higher = picked more often):
+
+| product_type | gender | base weight | reason |
+|---|---|---|---|
+| `vneck` | unisex | 4 | NEW (Phase F), needs catalog presence |
+| `vneck` | women  | 3 | NEW (Phase F) |
+| `tanktop` | unisex | 4 | NEW (Phase F) |
+| `tanktop` | women | 2 | NEW (Phase F), Black-only is limiting |
+| `tshirt` | unisex | 3 | bread-and-butter, but already 8+ products |
+| `tshirt` | women | 2 | |
+| `hoodie` | unisex / women | 2 | |
+| `ziphoodie` | unisex | 2 | |
+| `longsleeve` | unisex / women | 2 | |
+| `cap` / `capemb` | unisex | 1 | only ONE word fits on the dad-hat front panel |
+
+**Saturation discount:** `finalWeight = baseWeight / (1 + existingCount × 0.5)` — so a type that already has 10 products gets 1/6 of its base weight on the next pick. Pool drains naturally toward variety.
+
+**Hard requirement:** the picked slots are injected verbatim into the Gemini prompt under `🎯 HARD REQUIREMENT — USE THESE 3 EXACT (product_type, gender) ASSIGNMENTS`. If Gemini ignores them anyway (it sometimes does), the SAVE-step does `s.product_type = picked[sIdx].type` to force the assignment.
+
+Until v-neck + tank-top catch up to ~3 products each, expect EVERY "+ סלוגן חדש" batch to include at least one of them.
+
 ### Step 2 — Trigger the GHA pipeline
 
 ```bash
