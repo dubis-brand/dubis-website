@@ -1375,6 +1375,149 @@ async function handleSubmitCorrectedAddress(req, res) {
   }
 }
 
+// 2026-05-20: PRE-CAPTURE STOCK PROBE
+// Customer clicks "Continue to Payment" → paypal.js calls this BEFORE
+// actions.order.create() → if any cart item is unavailable at Gelato
+// in the customer's region, we abort BEFORE PayPal takes any money.
+//
+// This is the gate that prevents capture-then-stock-refusal forever.
+// Combined with the daily catalog cron, this is also our defense
+// against race conditions where Gelato stock changes between sync
+// passes.
+async function handleStockProbe(req, res) {
+  const GELATO_API_KEY = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
+  if (!GELATO_API_KEY) {
+    return res.status(200).json({ ok: true, skipped: 'no_api_key' });
+  }
+
+  const { cartItems = [], country = 'US' } = req.body || {};
+  if (!Array.isArray(cartItems) || cartItems.length === 0) {
+    return res.status(400).json({ error: 'cart_empty', message: 'No items to probe' });
+  }
+
+  // Map ISO country → set of Gelato stock regions where stock counts as
+  // "fulfillable for this customer". Gelato routes orders to the cheapest
+  // warehouse with stock, so ANY of these regions being in-stock means
+  // the order can ship. Conservative — we include multiple regions per
+  // country so we don't false-positive an OOS on something that would
+  // actually ship.
+  const REGION_SETS = {
+    IL: ['EU', 'AS', 'ROW', 'UK'],   // Israel is typically fulfilled from EU; AS/UK as backups
+    US: ['US-CA', 'ROW'],
+    CA: ['US-CA', 'ROW'],
+    GB: ['UK', 'EU', 'ROW'],
+    AU: ['OC', 'AS', 'ROW'],
+    NZ: ['OC', 'AS', 'ROW'],
+  };
+  const regions = REGION_SETS[country] || ['ROW', 'EU', 'AS', 'US-CA', 'UK'];
+
+  // Build (cartIdx → productUid) for items that can be mapped. Items that
+  // can't map at all (e.g. unsupported color) get flagged as OOS too —
+  // safer than letting them through to PayPal.
+  const probeList = cartItems.map((item, i) => {
+    const uid = buildProductUid(item.type, item.selectedColor, item.selectedSize, item.gender);
+    return { i, item, uid };
+  });
+
+  // Items that don't map → immediate OOS flag.
+  const unmapped = probeList.filter(p => !p.uid);
+  const mappable = probeList.filter(p => p.uid);
+
+  // Bulk-probe the mappable UIDs.
+  const uniqueUids = [...new Set(mappable.map(p => p.uid))];
+  let availabilityMap = new Map(); // uid → bool in-stock for our regions
+
+  if (uniqueUids.length > 0) {
+    try {
+      const gRes = await fetch('https://product.gelatoapis.com/v3/stock/region-availability', {
+        method:  'POST',
+        headers: { 'X-API-KEY': GELATO_API_KEY, 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ products: uniqueUids }),
+      });
+      if (!gRes.ok) {
+        // Gelato API hiccup — fail OPEN (let order through). The
+        // post-capture safety nets (bodyCanceled detection + webhook
+        // refund) still cover us. We log so this is visible in the
+        // daily report.
+        const body = await gRes.text().catch(() => '');
+        derr('stock-probe-gelato-error', { httpStatus: gRes.status, body: body.slice(0, 200) });
+        return res.status(200).json({
+          ok: true,
+          skipped: 'gelato_http_' + gRes.status,
+          fallback: 'allowing_order',
+        });
+      }
+      const data = await gRes.json();
+      const arr = data && data.productsAvailability;
+      if (Array.isArray(arr)) {
+        for (const entry of arr) {
+          const uid = entry.productUid;
+          const av  = Array.isArray(entry.availability) ? entry.availability : [];
+          // In-stock for our customer = any of our region set is "in-stock"
+          const ok = av.some(r => regions.includes(r.stockRegionUid) && r.status === 'in-stock');
+          availabilityMap.set(uid, ok);
+        }
+      }
+    } catch (e) {
+      // Network/parse error — fail OPEN, same reasoning as above.
+      derr('stock-probe-exception', { message: e.message });
+      return res.status(200).json({
+        ok: true,
+        skipped: 'fetch_exception',
+        fallback: 'allowing_order',
+      });
+    }
+  }
+
+  // Assemble per-item results.
+  const oosItems = [];
+  for (const p of probeList) {
+    if (!p.uid) {
+      oosItems.push({
+        cartIndex: p.i,
+        type:  p.item.type,
+        color: p.item.selectedColor,
+        size:  p.item.selectedSize,
+        reason: 'unsupported_variant',
+        label: `${p.item.typeLabel || p.item.type} ${p.item.selectedColor} ${p.item.selectedSize}`,
+      });
+      continue;
+    }
+    // If availabilityMap doesn't contain this uid (Gelato didn't return it),
+    // err on the side of allowing the order — the post-capture path will
+    // catch it if it really fails.
+    if (availabilityMap.has(p.uid) && availabilityMap.get(p.uid) !== true) {
+      oosItems.push({
+        cartIndex: p.i,
+        type:  p.item.type,
+        color: p.item.selectedColor,
+        size:  p.item.selectedSize,
+        reason: 'out_of_stock_in_region',
+        label: `${p.item.typeLabel || p.item.type} ${p.item.selectedColor} ${p.item.selectedSize}`,
+        productUid: p.uid,
+      });
+    }
+  }
+
+  const allOk = oosItems.length === 0;
+  dlog('stock-probe-result', {
+    country,
+    regions,
+    cartCount: cartItems.length,
+    probedUids: uniqueUids.length,
+    oosCount: oosItems.length,
+    allOk,
+  });
+
+  return res.status(200).json({
+    ok: allOk,
+    country,
+    regions,
+    oosItems,
+    cartCount: cartItems.length,
+  });
+}
+
 module.exports = async function handler(req, res) {
   const t0 = Date.now();
   dlog('request-received', {
@@ -1384,6 +1527,11 @@ module.exports = async function handler(req, res) {
     designVersion: DESIGN_VERSION,
     query: req.query,
   });
+
+  // Route: pre-capture stock probe (called from paypal.js BEFORE PayPal opens)
+  if (req.method === 'POST' && req.query && req.query.action === 'stock-probe') {
+    return handleStockProbe(req, res);
+  }
 
   // Route: mockup preview (probing Gelato MockupStudio)
   if (req.method === 'POST' && req.query && req.query.action === 'mockup-preview') {

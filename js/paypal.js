@@ -423,10 +423,49 @@ function renderPayPalButtons() {
         return;
     }
 
-    const createOrder = (data, actions) => {
+    const createOrder = async (data, actions) => {
         if (window.dubisTrack) window.dubisTrack('checkout_start', { items: cart.length, total: cart.reduce((s,i)=>s+i.price,0) });
         const itemTotal = cart.reduce((sum, i) => sum + i.price, 0);
         const ctry      = (window.checkoutAddress && window.checkoutAddress.country_code) || 'US';
+
+        // 2026-05-20: PRE-CAPTURE STOCK PROBE — gate that prevents capture-
+        // then-stock-refusal forever. Runs BEFORE actions.order.create(),
+        // so if any cart item is unavailable at Gelato in the shipping
+        // country, NO PayPal capture happens. The user sees a clear modal
+        // explaining which item(s) are out of stock.
+        try {
+            const probeRes = await fetch('/api/create-gelato-order?action=stock-probe', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    country: ctry,
+                    cartItems: cart.map(item => ({
+                        id: item.id, type: item.type, gender: item.gender || 'unisex',
+                        selectedColor: item.selectedColor, selectedSize: item.selectedSize,
+                        typeLabel: item.typeLabel,
+                    })),
+                }),
+            });
+            const probe = await probeRes.json().catch(() => ({ ok: true, skipped: 'parse_error' }));
+            if (probe.ok === false && Array.isArray(probe.oosItems) && probe.oosItems.length > 0) {
+                // Build a friendly message naming the OOS items.
+                const lines = probe.oosItems.map(o => `• ${o.label || (o.type + ' ' + o.color + ' ' + o.size)}`).join('\n');
+                const msg = `Sorry — the following item(s) are currently out of stock and cannot be ordered to your country (${ctry}):\n\n${lines}\n\nPlease remove them from your cart or pick a different color/size, then try again.`;
+                showPaymentError(msg);
+                // Reject by THROWING so PayPal does NOT create the order.
+                // PayPal will fire onError; our onError shows a banner but
+                // the showPaymentError above is the authoritative UI.
+                throw new Error('stock_probe_failed');
+            }
+        } catch (probeErr) {
+            // Probe network error → fail OPEN (let PayPal proceed). The
+            // server-side body-canceled detection + handler-exception
+            // safety net still cover us. Only the explicit OOS path
+            // throws above — actual network errors here fall through.
+            if (probeErr && probeErr.message === 'stock_probe_failed') throw probeErr;
+            console.warn('Stock probe network error — proceeding to PayPal:', probeErr && probeErr.message);
+        }
+
         const shipFee   = getShippingFee(ctry);
         const shipping  = itemTotal >= FREE_SHIPPING_THRESHOLD ? 0 : shipFee;
         const discountedTotal = appliedCoupon ? appliedCoupon.final_total : itemTotal;
