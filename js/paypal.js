@@ -502,6 +502,19 @@ function renderPayPalButtons() {
                 // SET_PROVIDED_ADDRESS = PayPal must use OUR address (read-only on PayPal review screen)
                 // so the buyer cannot silently swap to a different profile address mid-flow.
                 shipping_preference: addr && addr.address_line_1 ? 'SET_PROVIDED_ADDRESS' : 'GET_FROM_FILE',
+                // 2026-05-20 (Hila popup-stuck incident): without user_action='PAY_NOW',
+                // PayPal renders "Continue" instead of "Pay Now" and DOESN'T auto-close
+                // the checkoutnow window after capture — the buyer sits on
+                // paypal.com/checkoutnow?... with a "תודה שהשתמשת ב-PayPal" screen
+                // forever, while our onApprove already ran and showSuccessModal fired
+                // on the parent tab they can't see. PAY_NOW forces the close+redirect
+                // handshake — the popup/redirect closes itself and the parent tab gets focus.
+                user_action: 'PAY_NOW',
+                // Tell PayPal we want immediate completion, not a layered review step.
+                // Combined with user_action above, this makes the Guest Card flow
+                // (paypal.com/checkoutnow hosted page) close cleanly after capture.
+                return_url: 'https://www.dubis.net/?paypal_return=1',
+                cancel_url: 'https://www.dubis.net/?paypal_cancel=1',
             },
         });
     };
