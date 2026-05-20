@@ -15,7 +15,7 @@
       "product_default": 3,
       "narration_he": "כולם רצים בשש בבוקר לאסיק. אני? אני מאסטר ב-Power Nap. זה הקרדיו האמיתי. קפוצון לכל השאר.",
       "narration_en": "Everyone's at the 6 AM CrossFit. I'm a master of the power nap. That's the real cardio. A hoodie for the rest of us.",
-      "soul_id": null,
+      "soul_id": "6f6ca81e-741f-44f6-a937-750cf01700d2",
       "soul_cinema_id": null
     },
     {
@@ -27,7 +27,7 @@
       "product_default": 6,
       "narration_he": "תקופה שלמה הילדים אמרו לי שאני לא דוגמן. תכלס, גם לא רציתי. חולצה לאלה שהפסיקו להעמיד פנים.",
       "narration_en": "My kids spent a decade telling me I'm not a model. Truth is, I never wanted to be. A shirt for everyone who stopped pretending.",
-      "soul_id": null,
+      "soul_id": "2d3fd123-120d-4358-929a-7f435bc1d8bb",
       "soul_cinema_id": null
     },
     {
@@ -39,7 +39,7 @@
       "product_default": 15,
       "narration_he": "אופנה? עזבו אותי. אני רוצה נוחות. הקפוצון הזה לא דורש ממני כלום. בדיוק כמוני.",
       "narration_en": "Fashion? Let it go. I want comfort. This hoodie doesn't ask anything of me. Same.",
-      "soul_id": null,
+      "soul_id": "33f7ddcc-d028-45db-ab08-889eaf9cb15b",
       "soul_cinema_id": null
     },
     {
@@ -51,7 +51,7 @@
       "product_default": 9,
       "narration_he": "מומחה עולמי לחשיבת יתר. הוצאתי ספריות. הקפוצון הזה אומר את האמת בקול שאני לא צריך.",
       "narration_en": "World-class overthinker. I've taken libraries home. This zip-hoodie says it out loud so I don't have to.",
-      "soul_id": null,
+      "soul_id": "bfd4ce77-4f9e-41f6-93b4-ded2f1d8e631",
       "soul_cinema_id": null
     },
     {
@@ -59,8 +59,8 @@
       "gender": "men",
       "age": 39,
       "body_anchor": "average build, sun-tanned face, short dark hair, weathered hands",
-      "scene_anchor": "אחרי משמרת ביום ראשון, חולצה ארוכה מעל הג'ינס",
-      "product_default": 10,
+      "scene_anchor": "אחרי משמרת ביום ראשון, חולצת טי אדומה מעל הג'ינס",
+      "product_default": 8,
       "narration_he": "נולדתי לישון. אילצו אותי לעבוד. את שני המסרים האלה לובש על הגב. בכבוד.",
       "narration_en": "Born to nap, forced to work. Both messages, on my back. With respect.",
       "soul_id": null,
@@ -118,8 +118,8 @@
       "id": "women-5",
       "gender": "women",
       "age": 44,
-      "body_anchor": "post-kids body, sun spots, natural dark hair tied back, no makeup",
-      "scene_anchor": "חוף בשישי, חולצה מעל הבגד-ים, אחרי הצהריים",
+      "body_anchor": "average build, sun spots on cheeks, natural dark hair tied back, no makeup, smile lines",
+      "scene_anchor": "מרפסת בת״א אחרי הצהריים, צמחים בעציצים, בגדים נוחים על הג'ינס",
       "product_default": 31,
       "narration_he": "את יפה יותר כשנוח לך. הם אמרו לי לפני עשרים שנה. רק עכשיו אני מתחילה להאמין.",
       "narration_en": "You're prettier when you're comfortable. Someone told me twenty years ago. I'm only starting to believe it now.",

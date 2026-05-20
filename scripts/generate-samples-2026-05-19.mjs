@@ -234,29 +234,47 @@ async function main() {
     };
     delete sample.error;
 
-    try {
-      if (!hasFront) {
+    // Per-asset try/catch (2026-05-20 lesson): back failure (e.g. NSFW filter on
+    // men-3 steering-wheel scene) MUST NOT block reel. Each asset is independent.
+    // For the reel, we only need the front hero — the back-reveal segment uses
+    // the catalog Gelato mockup, not the AI-generated persona back.
+    const errors = [];
+    if (!hasFront) {
+      try {
         const front = await generateHero(persona, 'front');
         sample.front_url = front?.url;
         sample.front_local = front?.local;
+      } catch (e) {
+        errors.push(`front: ${e.message.slice(0, 150)}`);
+        console.error(`  ${persona.id} front ERR: ${e.message.slice(0, 300)}`);
       }
-      if (!hasBack) {
+    }
+    if (!hasBack) {
+      try {
         const back = await generateHero(persona, 'back');
         sample.back_url = back?.url;
         sample.back_local = back?.local;
+      } catch (e) {
+        errors.push(`back: ${e.message.slice(0, 150)}`);
+        console.error(`  ${persona.id} back ERR: ${e.message.slice(0, 300)}`);
       }
-      if (!hasReel && !skipReel) {
-        const frontForReel = hasFront ? heroPath : sample.front_local;
+    }
+    if (!hasReel && !skipReel) {
+      try {
+        const frontForReel = fs.existsSync(heroPath) ? heroPath : sample.front_local;
         if (frontForReel) {
           const reel = await generateReel(persona, frontForReel);
           sample.reel_url = reel?.url;
           sample.reel_local = reel?.local;
+        } else {
+          errors.push('reel: no front hero available');
         }
+      } catch (e) {
+        errors.push(`reel: ${e.message.slice(0, 150)}`);
+        console.error(`  ${persona.id} reel ERR: ${e.message.slice(0, 300)}`);
       }
-    } catch (e) {
-      console.error(`  ${persona.id} ERR: ${e.message.slice(0, 300)}`);
-      sample.error = e.message;
     }
+    if (errors.length) sample.error = errors.join(' | ');
 
     manifest.samples = manifest.samples.filter((s) => s.persona_id !== persona.id).concat(sample);
     fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2));
