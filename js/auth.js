@@ -18,12 +18,28 @@ function initAuth() {
     _sb.auth.getSession().then(({ data: { session } }) => {
         _currentSession = session;
         _currentUser    = session?.user || null;
+        console.log('[DUBIS-AUTH] init getSession', {
+            hasSession: !!session,
+            user: session?.user?.email || null,
+            expires_at: session?.expires_at || null,
+            now_unix: Math.floor(Date.now() / 1000),
+        });
         _updateAuthUI();
     });
 
     _sb.auth.onAuthStateChange((event, session) => {
         _currentSession = session;
         _currentUser    = session?.user || null;
+        // 2026-05-21 diagnostic: log every auth state change so we can
+        // catch the "signed in then signed out" symptom.
+        console.log('[DUBIS-AUTH] state-change', {
+            event,
+            hasSession: !!session,
+            user: session?.user?.email || null,
+            expires_at: session?.expires_at || null,
+            email_confirmed_at: session?.user?.email_confirmed_at || null,
+            now_unix: Math.floor(Date.now() / 1000),
+        });
         _updateAuthUI();
 
         if (event === 'SIGNED_IN' && _pendingCheckout) {
