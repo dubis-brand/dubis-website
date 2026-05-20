@@ -2729,13 +2729,17 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     }
 
     // ── 8. Log to agent_runs ──────────────────────────────────────────
+    // Schema: id, agent_id, run_date, status, summary, tasks_created, duration_ms,
+    // error_message, created_at, tasks_completed_ids, proof_verified, verification_notes,
+    // side_effects. No 'data' column.
     await sb.from('agent_runs').insert({
       agent_id: 'marketing',
       status: 'completed',
       summary: `weekly-marketing-plan generated for ${weekStartDate}: ${taskIds.length} slots created (${heCount} HE / ${enCount} EN)`,
+      tasks_created: taskIds.length,
       duration_ms: Date.now() - today.getTime(),
-      data: { plan_id: (plan as Record<string, unknown>)?.id, week_start_date: weekStartDate, failures },
-    }).catch(() => {});
+      side_effects: { plan_id: (plan as Record<string, unknown>)?.id, week_start_date: weekStartDate, failures },
+    }).then(() => {}).catch(() => {});
 
     return json({
       ok: true,

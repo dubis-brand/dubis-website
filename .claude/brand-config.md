@@ -41,8 +41,8 @@
 ### Reels (TikTok + IG + FB)
 - אורך: **19s** (10s Seedance/Soul Cinema + 3s Ken Burns back + 3s power-word zoom + 3s DUBIS outro)
 - aspect: 9:16 1080×1920 30fps
-- voiceover: Brian (gender=men, ElevenLabs v3) או Charlotte (gender=women, v3)
-- ניקוד עברית: Dicta Nakdan לפני TTS תמיד
+- **voiceover: EN only** (oren directive 2026-05-19) — Brian (gender=men, ElevenLabs v3) או Charlotte (gender=women, v3). אין Dicta Nakdan / HE TTS לוידאו.
+- caption: לפי slot.lang (HE או EN, 3-beat formula). הקפשן יכול להיות בעברית אפילו כשהvoiceover באנגלית — נורמלי לטיקטוק IL.
 - מבנה קופי: 3-beat (hook → agitation → DUBIS drop). 12-25 מילים.
 
 ### פוסטים פיד IG/FB
