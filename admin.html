@@ -3654,6 +3654,13 @@
     const { data: { session } } = await _sb.auth.getSession();
     const token = session?.access_token;
 
+    // 2026-05-20 J1: refresh BOTH badges in the Products tab header.
+    // _refreshVisualApprovalBadge was already called from showVisualApprovalQueue
+    // but loadProductSuggestionsCount only fired from loadTasksSection — so oren
+    // saw the visual-approval badge update but the suggestions one stayed empty.
+    try { _refreshVisualApprovalBadge(); } catch(_) {}
+    try { if (typeof loadProductSuggestionsCount === 'function') loadProductSuggestionsCount(); } catch(_) {}
+
     try {
       if (typeof products === 'undefined' || !products.length) throw new Error('products.js לא נטען');
       _allProducts = products.map(p => ({ ...p, gelatoUrl: _gelatoUrl(p.type, p.gender), gelatoCost: _gelatoCost(p.type, p.id) }));

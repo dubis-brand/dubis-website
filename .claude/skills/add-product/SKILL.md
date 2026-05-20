@@ -174,6 +174,34 @@ Weights in the pool (higher = picked more often):
 
 Until v-neck + tank-top catch up to ~3 products each, expect EVERY "+ סלוגן חדש" batch to include at least one of them.
 
+## Default selling price = cost (rule #7)
+
+Every new product gets `selling_price = CEIL(MIN(gelato_cost_usd))` automatically — the cheapest IL variant cost rounded up to the next dollar. This is the **rule-#7 floor** from `memory/checkout-guardrails.md`. Per oren 2026-05-20: it's the default. Oren can manually edit Base $ later if he wants higher margin.
+
+The admin `Base $` input enforces this floor as a soft warning, not a hard block:
+- Type a value `< CEIL(min cost_il)` → `confirm()` dialog shows: "מחיר נמוך מעלות IL — כל הזמנה IL = הפסד של $X. להמשיך?"
+- OK → saves with `price_set_by='admin-override-below-cost-YYYY-MM-DD'` (audit trail) + orange toast
+- Cancel → input bumps back to the floor + gray toast
+
+When Base $ is changed, ALL per-variant `sell_price_usd` are mass-updated to the new base (premium per-variant overrides go through the `💵 מחירים פר variant` modal). Margin US/IL grid recalculates live.
+
+## Gelato button — see what we're charged for
+
+Each catalog card has an amber **🎨 {brand} {sku} →** button (e.g. "🎨 Gildan 18500 →") that opens the EXACT Gelato product page. URL pattern:
+- `gelato.com/custom/brands/{brand}/{slug}-{brand}-{sku}?region=AS`
+
+Brand-less aliases (hoodie women, ziphoodie, vneck, tanktop) — Gelato API returns `ApparelManufacturer:'none'`, no brand-specific page exists. Those show "🎨 Gelato premium →" + link to the category page.
+
+Double-click → copies the full `productUid` to clipboard (useful for Gelato support tickets).
+
+## Admin pending counters
+
+Two header buttons in "🎨 Product Catalog" tab show live counts:
+- **💡 הצעות ממתינות N** — `agent_tasks WHERE agent_id='product' AND status='pending_approval'` (slogan candidates waiting for oren's approve/edit/reject)
+- **👀 ממתינים לאישור ויזואלי N** — `dubis_products WHERE pending_visual_approval=true` (products that finished the GHA pipeline, mockups ready for visual approval before going live)
+
+Both counters refresh automatically when the Products tab is opened (J1 fix 2026-05-20 — previously the suggestions counter only fired when the Tasks tab loaded, so the badge in Products tab stayed empty).
+
 ### Step 2 — Trigger the GHA pipeline
 
 ```bash
