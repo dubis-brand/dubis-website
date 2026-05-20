@@ -3283,21 +3283,42 @@ Rules:
 9. Food without apologies
 10. Relationships (with the couch)
 
-REAL in-stock Gelato colors per garment (use ONLY colors that exist for the chosen product_type — do NOT invent):
-${inStockSummary || '  (no stock data — fallback to Black/White)'}
+FULL Gelato palette per (clothing_type:gender) — use ONLY these colors, never invent:
+${Object.entries(CATALOG_COLORS).map(([k, v]) => `  ${k} → ${v.join(', ')} (${v.length} colors)`).join('\n')}
 
-Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors" field MUST be a subset of the in-stock list above for the matching product_type:
+REAL in-stock colors right now (subset of the above — prefer these but expand to the full palette above):
+${inStockSummary || '  (no stock data for any type — use the FULL palette above)'}
+
+⚠️ COLOR REQUIREMENT: for each suggestion, return ALL available colors from the FULL palette for that (type, gender) — don't artificially limit to 3-4. Examples:
+  - t-shirt unisex → return ALL 8 colors (Black/White/Cream/Navy/Charcoal/Red/Gray/Forest Green)
+  - hoodie unisex → return ALL 7
+  - v-neck womens → return ALL 3 (Black/White/Navy)
+The system will filter unverified ones — your job is to be MAXIMALLY inclusive.
+
+⚠️ PRODUCT TYPE VARIETY: mix across the 8 supported types. Don't stack 3 t-shirts.
+  Supported product_type values: tshirt, hoodie, ziphoodie, longsleeve, cap, capemb, vneck, tanktop
+  - tshirt = classic crewneck t-shirt (unisex OR women)
+  - vneck = V-neck t-shirt (unisex OR women) — premium tier
+  - tanktop = sleeveless tank top (unisex OR women-Black-only) — summer / casual
+  - longsleeve = long-sleeve crew (unisex OR women) — colder weather
+  - hoodie = pullover hoodie with hood (unisex OR women)
+  - ziphoodie = zip-up hoodie (unisex only)
+  - cap = printed dad-hat (unisex only)
+  - capemb = embroidered dad-hat (unisex only) — premium tier
+Aim for 3 distinct types across the 3 suggestions — bonus points for including a v-neck or tank-top if seasonally relevant.
+
+Generate 3 slogan proposals. Return ONLY valid JSON array. The "colors" field MUST be a non-empty subset of the FULL palette above for the matching (product_type, gender):
 [{
   "slogan": "full slogan text",
   "power_word": "THE_BIG_WORD",
   "text_before": "words before power word",
   "text_after": "words after power word",
   "layout": "top-bottom",
-  "product_type": "tshirt|hoodie|ziphoodie|longsleeve",
-  "gender": "unisex|women",
+  "product_type": "vneck",
+  "gender": "unisex",
   "description_en": "2 sentences, conversational, for product page",
   "description_he": "2 משפטים, עברית ישראלית טבעית, לדף מוצר",
-  "colors": ["Black", "Navy", "Charcoal"]
+  "colors": ["Black", "White", "Navy", "Red"]
 }]`;
 
     try {
@@ -3336,25 +3357,30 @@ Generate 3 slogan proposals. For each, return ONLY valid JSON array. The "colors
       for (const s of suggestions) {
         const clothingType = DB_TYPE_MAP[s.product_type || 'tshirt'] || 't-shirt';
         const genderKey = s.gender === 'women' ? 'women' : 'unisex';
-        // 2026-05-19: 3-tier color selection.
-        // 1. Filter Gemini's picks by what's REAL-in-stock (best — proven catalog AND inventory).
-        // 2. If none in stock OR fresh type, use CATALOG_COLORS (verified Gelato palette,
-        //    may include OOS colors but won't include phantom ones).
-        // 3. Last-resort guard ['Black','White'] only if both above empty.
+        // 2026-05-19: 4-tier color selection.
+        // 1. Start with Gemini's picks, validated against CATALOG_COLORS (verified Gelato).
+        // 2. ALWAYS expand with the full CATALOG_COLORS for the type — Gemini tends to
+        //    return 3-4 even when 7-8 are valid (the "boring palette" complaint, 2026-05-19).
+        // 3. If both empty, fall back to in-stock data.
+        // 4. Last-resort guard ['Black','White'].
         const allowedForType = inStockMap[TYPE_TO_DB[s.product_type || ''] || clothingType] || new Set<string>();
         const catalogKey = `${clothingType}:${genderKey}`;
         const catalogColors = CATALOG_COLORS[catalogKey] || [];
-        let chosenColors = Array.isArray(s.colors)
+        const geminiPicks = Array.isArray(s.colors)
           ? (s.colors as string[]).filter((c: string) => allowedForType.has(c) || catalogColors.includes(c))
           : [];
+        // Build chosenColors: Gemini's picks FIRST (preserves any taste signal), then
+        // add the rest of CATALOG_COLORS not already in the list — up to MAX_COLORS total.
+        const chosenSet = new Set<string>(geminiPicks);
+        for (const c of catalogColors) {
+          if (chosenSet.size >= MAX_COLORS) break;
+          chosenSet.add(c);
+        }
+        let chosenColors = Array.from(chosenSet);
         if (chosenColors.length === 0 && allowedForType.size > 0) {
           chosenColors = Array.from(allowedForType).slice(0, MAX_COLORS);
         }
-        if (chosenColors.length === 0 && catalogColors.length > 0) {
-          chosenColors = catalogColors.slice(0, MAX_COLORS);
-        }
         if (chosenColors.length === 0) chosenColors = ['Black', 'White']; // last-resort guard
-        // Cap whatever was chosen at MAX_COLORS for UX cleanliness.
         chosenColors = chosenColors.slice(0, MAX_COLORS);
         const { data: product, error: pErr } = await sb.from('dubis_products').insert({
           slogan: s.slogan,
