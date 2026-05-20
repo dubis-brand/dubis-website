@@ -1403,9 +1403,68 @@ async function handleStockProbe(req, res) {
     return { i, item, uid };
   });
 
+  // 2026-05-20: cross-check against our DB stock map FIRST. If we have
+  // manually marked a variant OOS (because Gelato refused it in a past
+  // order even though their quote API said in-stock — IL routing race),
+  // honor that mark — Gelato's quote may transiently say ok again but
+  // the actual placement may still refuse. Stale localStorage carts can
+  // contain variants no longer in js/products.js; this layer catches them.
+  const dbOosKeys = new Set();
+  try {
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const { createClient } = require('@supabase/supabase-js');
+      const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const ids = [...new Set(cartItems.map(i => i.id).filter(Boolean))];
+      if (ids.length > 0) {
+        const { data: rows } = await sb.from('product_variant_stock')
+          .select('product_id_numeric,color,size,in_stock,manual_override')
+          .in('product_id_numeric', ids);
+        for (const r of (rows || [])) {
+          if (r.in_stock === false) {
+            dbOosKeys.add(`${r.product_id_numeric}|${r.color}|${r.size}`);
+          }
+        }
+      }
+    }
+  } catch (dbErr) {
+    derr('stock-probe-db-check-failed', { message: dbErr.message });
+    // Fall through — quote API check is still in play.
+  }
+
   // Items that don't map → immediate OOS flag, no Gelato call needed.
   const unmapped = probeList.filter(p => !p.uid);
-  const mappable = probeList.filter(p => p.uid);
+  // Items flagged OOS in our DB → also immediate OOS flag.
+  const dbOos = probeList.filter(p => p.uid && dbOosKeys.has(`${p.item.id}|${p.item.selectedColor}|${p.item.selectedSize}`));
+  const mappable = probeList.filter(p => p.uid && !dbOosKeys.has(`${p.item.id}|${p.item.selectedColor}|${p.item.selectedSize}`));
+
+  if (dbOos.length > 0 || unmapped.length > 0) {
+    if (mappable.length === 0) {
+      // Every cart item is OOS or unmapped — short-circuit, no Gelato call.
+      const oosItems = [
+        ...unmapped.map(p => ({
+          cartIndex: p.i, type: p.item.type, color: p.item.selectedColor, size: p.item.selectedSize,
+          reason: 'unsupported_variant',
+          label: `${p.item.typeLabel || p.item.type} ${p.item.selectedColor} ${p.item.selectedSize}`,
+        })),
+        ...dbOos.map(p => ({
+          cartIndex: p.i, type: p.item.type, color: p.item.selectedColor, size: p.item.selectedSize,
+          reason: 'db_marked_oos', productUid: p.uid,
+          label: `${p.item.typeLabel || p.item.type} ${p.item.selectedColor} ${p.item.selectedSize}`,
+        })),
+      ];
+      return res.status(200).json({
+        ok: false,
+        country: (shippingAddress && shippingAddress.country_code) || country,
+        mode: 'all_blocked_pre_gelato',
+        oosItems,
+        cartCount: cartItems.length,
+      });
+    }
+    // Some OOS, some mappable — we'll still call Gelato to validate the
+    // rest, but the OOS ones are guaranteed to surface in the final list.
+  }
 
   if (mappable.length === 0) {
     // Every cart item failed mapping. Don't call Gelato — return the unmapped list.
@@ -1569,6 +1628,15 @@ async function handleStockProbe(req, res) {
       oosItems.push({
         cartIndex: p.i, type: p.item.type, color: p.item.selectedColor, size: p.item.selectedSize,
         reason: 'unsupported_variant',
+        label: `${p.item.typeLabel || p.item.type} ${p.item.selectedColor} ${p.item.selectedSize}`,
+      });
+      continue;
+    }
+    // DB-level manual OOS override beats anything Gelato's quote says.
+    if (dbOosKeys.has(`${p.item.id}|${p.item.selectedColor}|${p.item.selectedSize}`)) {
+      oosItems.push({
+        cartIndex: p.i, type: p.item.type, color: p.item.selectedColor, size: p.item.selectedSize,
+        reason: 'db_marked_oos', productUid: p.uid,
         label: `${p.item.typeLabel || p.item.type} ${p.item.selectedColor} ${p.item.selectedSize}`,
       });
       continue;
