@@ -2782,6 +2782,30 @@
   let _currentFilter = 'all';
   let _ILS_USD   = 3.7; // default, overridden by site_settings
 
+  // 2026-05-19: shared color → CSS map used by EVERY swatch renderer in admin.
+  // Was duplicated as a 3-color ternary inline (Black/White/Navy only — everything
+  // else fell to #444 gray, the "all dots look gray" complaint). Keep this in sync
+  // with the dubis_products.colors values + the CATALOG_COLORS server constant.
+  window._DUBIS_COLOR_CSS = {
+    'Black':        '#1a1a1a',
+    'White':        '#f5f5f5',
+    'Cream':        '#f5e6c8',
+    'Navy':         '#1b2a4a',
+    'Gray':         '#9e9e9e',
+    'Red':          '#c0392b',
+    'Forest Green': '#2d5a27',
+    'Charcoal':     '#4a4a4a',
+    'Honey Brown':  '#c8853a',
+    'Sand':         '#d4b896',
+    'Sports Grey':  '#b0b0b0'
+  };
+  // Helper: get the CSS color + a border (white needs a contrast outline).
+  window._dubisColorStyle = function(c) {
+    const bg = (window._DUBIS_COLOR_CSS && window._DUBIS_COLOR_CSS[c]) || '#666';
+    const border = c === 'White' || c === 'Cream' || c === 'Sand' ? '1px solid #888' : '1px solid #2a2a2a';
+    return `background:${bg};border:${border}`;
+  };
+
   // ── Init ──────────────────────────────────────────────────
   window.addEventListener('DOMContentLoaded', async () => {
     _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
@@ -3762,11 +3786,9 @@
       const uid = p.baseUid || '';
 
       // ── Color swatches + front/back toggle ──
-      const _colorCss = {
-        'Black':'#1a1a1a','White':'#f5f5f5','Cream':'#f5e6c8','Navy':'#1b2a4a',
-        'Gray':'#9e9e9e','Red':'#c0392b','Forest Green':'#2d5a27','Charcoal':'#4a4a4a',
-        'Honey Brown':'#c8853a','Sand':'#d4b896','Sports Grey':'#b0b0b0'
-      };
+      // _DUBIS_COLOR_CSS is the global map (defined once near the top of this script).
+      // Keep _colorCss alias for backwards-compat with the rest of this function.
+      const _colorCss = window._DUBIS_COLOR_CSS;
       const _defaultColor = (p.colors && p.colors.length > 0) ? p.colors[0] : 'Black';
       const _c2f = c => c.replace(/\s+/g, '-');
       const _defaultImg = `images/product-${p.id}-${_c2f(_defaultColor)}-front.jpg`;
@@ -7512,8 +7534,8 @@
               <div style="color:#bbb;font-size:.85rem"><span style="color:#999">${p.typography_small || ''}</span> <span style="color:#9c27b0;font-weight:700;font-size:1.1rem">${p.typography_big || ''}</span> <span style="color:#999">${p.typography_after || ''}</span></div>
             </div>
             <div>
-              <div style="color:#666;font-size:.7rem;margin-bottom:.2rem">צבעים</div>
-              <div style="display:flex;gap:.3rem">${(p.colors || []).map(c => '<span style="background:' + (c === 'Black' ? '#222' : c === 'White' ? '#ddd' : c === 'Navy' ? '#1a3a5c' : '#444') + ';border-radius:50%;width:18px;height:18px;display:inline-block;border:1px solid #555" title="' + c + '"></span>').join('')}</div>
+              <div style="color:#666;font-size:.7rem;margin-bottom:.2rem">צבעים (${(p.colors || []).length})</div>
+              <div style="display:flex;gap:.3rem;flex-wrap:wrap">${(p.colors || []).map(c => '<span style="' + window._dubisColorStyle(c) + ';border-radius:50%;width:18px;height:18px;display:inline-block" title="' + c + '"></span>').join('')}</div>
             </div>
           </div>
           <div style="color:#999;font-size:.85rem;margin-bottom:.5rem;line-height:1.5">${p.description_he || ''}</div>

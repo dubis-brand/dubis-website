@@ -2596,7 +2596,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     // ── 5. Product selection — rotate across active catalog ───────────
     const { data: products, error: prodErr } = await sb
       .from('dubis_products')
-      .select('id, product_id_numeric, slogan, slogan_en, colors, clothing_type')
+      .select('id, product_id_numeric, slogan, colors, clothing_type')
       .eq('active', true)
       .order('product_id_numeric', { ascending: true });
     if (prodErr || !products || products.length === 0) {
@@ -2637,9 +2637,8 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       slotTime.setUTCHours(slot.hour_utc, 0, 0, 0);
       const slotIso = slotTime.toISOString();
 
-      const productSlogan = slot.lang === 'he'
-        ? (product.slogan as string)
-        : (product.slogan_en as string) || (product.slogan as string);
+      // Slogans on garments are always EN (DUBIS rule). DB has one column: slogan.
+      const productSlogan = (product.slogan as string) || '';
 
       const title = `[${planDayLabels[slot.day_offset]} ${String(slot.hour_utc).padStart(2,'0')}:00 UTC] ${slot.format.toUpperCase()} ${slot.lang.toUpperCase()} — ${productSlogan ? productSlogan.slice(0,40) : 'product-' + productId}`;
 
@@ -3206,8 +3205,59 @@ ${personaId ? `Persona: ${personaId}\n` : ''}${sloganMismatch ? '⚠️ NOTE: pr
     if (!geminiKey) return json({ error: 'GEMINI_API_KEY not configured' }, 503);
 
     // Get existing slogans to avoid duplicates
-    const { data: existingProducts } = await sb.from('dubis_products').select('slogan');
+    const { data: existingProducts } = await sb.from('dubis_products').select('slogan, clothing_type');
     const existingSlogans = (existingProducts || []).map((p: Record<string, unknown>) => p.slogan).filter(Boolean);
+
+    // 2026-05-19: pick 3 DIFFERENT clothing types for the next batch, prioritizing
+    // under-represented + newly-launched types. Gemini was ignoring the "variety"
+    // hint in the prompt and kept returning tshirt/hoodie/longsleeve only. Now we
+    // INJECT 3 specific (type, gender) targets into the prompt — Gemini must use
+    // these as-is.
+    const TYPE_POOL: Array<{ type: string; gender: string; weight: number }> = [
+      // weight = how strongly to favor (higher = picked more often)
+      { type: 'tshirt',     gender: 'unisex', weight: 3 },
+      { type: 'tshirt',     gender: 'women',  weight: 2 },
+      { type: 'vneck',      gender: 'unisex', weight: 4 },   // NEW — under-represented
+      { type: 'vneck',      gender: 'women',  weight: 3 },   // NEW — under-represented
+      { type: 'tanktop',    gender: 'unisex', weight: 4 },   // NEW — under-represented
+      { type: 'tanktop',    gender: 'women',  weight: 2 },   // NEW — Black only
+      { type: 'hoodie',     gender: 'unisex', weight: 2 },
+      { type: 'hoodie',     gender: 'women',  weight: 2 },
+      { type: 'ziphoodie',  gender: 'unisex', weight: 2 },
+      { type: 'longsleeve', gender: 'unisex', weight: 2 },
+      { type: 'longsleeve', gender: 'women',  weight: 2 },
+      { type: 'cap',        gender: 'unisex', weight: 1 },   // small print area
+      { type: 'capemb',     gender: 'unisex', weight: 1 },
+    ];
+    // Count existing products per (type, gender) so we down-weight saturated combos.
+    const existingCounts: Record<string, number> = {};
+    for (const p of (existingProducts || []) as Array<Record<string, unknown>>) {
+      const dbType = String(p.clothing_type || '');
+      // Map DB type back to JS type for matching TYPE_POOL keys
+      const jsType = ({ 't-shirt': 'tshirt', 'zip-hoodie': 'ziphoodie', 'long-sleeve': 'longsleeve', 'v-neck': 'vneck', 'tank-top': 'tanktop', 'cap-emb': 'capemb' } as Record<string, string>)[dbType] || dbType;
+      existingCounts[jsType] = (existingCounts[jsType] || 0) + 1;
+    }
+    // Weighted random pick of 3 DISTINCT (type, gender) combos
+    const weightedPool = TYPE_POOL.map(p => ({
+      ...p,
+      finalWeight: p.weight / (1 + (existingCounts[p.type] || 0) * 0.5),  // saturated types get less weight
+    }));
+    const picked: Array<{ type: string; gender: string }> = [];
+    const remainingPool = [...weightedPool];
+    while (picked.length < 3 && remainingPool.length > 0) {
+      const totalW = remainingPool.reduce((s, p) => s + p.finalWeight, 0);
+      let r = Math.random() * totalW;
+      let idx = 0;
+      for (let i = 0; i < remainingPool.length; i++) {
+        r -= remainingPool[i].finalWeight;
+        if (r <= 0) { idx = i; break; }
+      }
+      const choice = remainingPool.splice(idx, 1)[0];
+      // Ensure no duplicate type in the same batch (cross-gender is OK if different garment shape)
+      const sameTypeAlready = picked.some(p => p.type === choice.type);
+      if (!sameTypeAlready) picked.push({ type: choice.type, gender: choice.gender });
+    }
+    const targetSlotsStr = picked.map((p, i) => `  ${i + 1}. product_type='${p.type}', gender='${p.gender}'`).join('\n');
 
     // Also get from hardcoded products.js slogans
     const allSlogans = [...existingSlogans, ...Object.keys(SLOGAN_TYPOGRAPHY)];
@@ -3295,17 +3345,19 @@ ${inStockSummary || '  (no stock data for any type — use the FULL palette abov
   - v-neck womens → return ALL 3 (Black/White/Navy)
 The system will filter unverified ones — your job is to be MAXIMALLY inclusive.
 
-⚠️ PRODUCT TYPE VARIETY: mix across the 8 supported types. Don't stack 3 t-shirts.
-  Supported product_type values: tshirt, hoodie, ziphoodie, longsleeve, cap, capemb, vneck, tanktop
-  - tshirt = classic crewneck t-shirt (unisex OR women)
-  - vneck = V-neck t-shirt (unisex OR women) — premium tier
-  - tanktop = sleeveless tank top (unisex OR women-Black-only) — summer / casual
-  - longsleeve = long-sleeve crew (unisex OR women) — colder weather
-  - hoodie = pullover hoodie with hood (unisex OR women)
+🎯 HARD REQUIREMENT — USE THESE 3 EXACT (product_type, gender) ASSIGNMENTS:
+${targetSlotsStr}
+
+Match the order. Don't substitute. These were chosen by the system to keep the
+catalog balanced across all 8 supported types:
+  - tshirt = classic crewneck t-shirt
+  - vneck = V-neck t-shirt — premium tier
+  - tanktop = sleeveless tank top — summer / casual
+  - longsleeve = long-sleeve crew — colder weather
+  - hoodie = pullover hoodie with hood
   - ziphoodie = zip-up hoodie (unisex only)
-  - cap = printed dad-hat (unisex only)
-  - capemb = embroidered dad-hat (unisex only) — premium tier
-Aim for 3 distinct types across the 3 suggestions — bonus points for including a v-neck or tank-top if seasonally relevant.
+  - cap = printed dad-hat (unisex only) — only 1 slogan word fits
+  - capemb = embroidered dad-hat (unisex only) — premium tier, only 1 slogan word fits
 
 Generate 3 slogan proposals. Return ONLY valid JSON array. The "colors" field MUST be a non-empty subset of the FULL palette above for the matching (product_type, gender):
 [{
@@ -3354,7 +3406,15 @@ Generate 3 slogan proposals. Return ONLY valid JSON array. The "colors" field MU
       // — too narrow. Bump to 8 so we surface the FULL Gelato palette when available
       // (t-shirt unisex has 8 colors, others have 3-7).
       const MAX_COLORS = 8;
-      for (const s of suggestions) {
+      for (let sIdx = 0; sIdx < suggestions.length; sIdx++) {
+        const s = suggestions[sIdx];
+        // 2026-05-19: FORCE the (type, gender) to the target slot we picked above
+        // — Gemini occasionally ignores the hard requirement and returns its own
+        // pick. We assigned slot N to picked[N], so override here.
+        if (picked[sIdx]) {
+          s.product_type = picked[sIdx].type;
+          s.gender = picked[sIdx].gender;
+        }
         const clothingType = DB_TYPE_MAP[s.product_type || 'tshirt'] || 't-shirt';
         const genderKey = s.gender === 'women' ? 'women' : 'unisex';
         // 2026-05-19: 4-tier color selection.
