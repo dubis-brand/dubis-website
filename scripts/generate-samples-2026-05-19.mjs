@@ -1,10 +1,20 @@
 #!/usr/bin/env node
-// generate-samples-2026-05-19.mjs — Phase 0 step 3
-// For each persona with a trained soul_id: generate 1 hero still + 1 reel.
-// Outputs to: dubis-website/videos/il-campaign/samples-2026-05-19/
+// generate-samples-2026-05-19.mjs (v2 — virtual_model_tryout pipeline)
+// Per persona: 1 front hero + 1 back hero + 1 reel
+// Uses hf product-photoshoot virtual_model_tryout for hero (exact garment from mockup)
+// Uses hf generate create seedance_2_0 for reel (front hero as start frame)
 //
-// Run: node scripts/generate-samples-2026-05-19.mjs [--persona men-3] [--mode image|reel|both]
-// Default mode: both
+// Why this pipeline:
+//   - oren requirement (2026-05-19): personas must wear the EXACT DUBIS product
+//     with the actual slogan printed, not a generic garment.
+//   - virtual_model_tryout takes face photo + catalog mockup as 2 references and
+//     composites them faithfully — the mockup IS the Gelato draft-order preview
+//     of the real printed garment.
+//   - Soul ID NOT used here (those work via text2image_soul_v2 which doesn't
+//     preserve product fidelity well). Soul trainings continue for future content
+//     cycles where infinite scene variations are needed.
+//
+// Run: node scripts/generate-samples-2026-05-19.mjs [--persona men-3] [--skip-reel]
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,142 +24,113 @@ import { setTimeout as sleep } from 'node:timers/promises';
 const HF = 'C:\\Users\\tehar\\bin\\hf.exe';
 const ARGS = process.argv.slice(2);
 const onlyPersona = ARGS.includes('--persona') ? ARGS[ARGS.indexOf('--persona') + 1] : null;
-const mode = ARGS.includes('--mode') ? ARGS[ARGS.indexOf('--mode') + 1] : 'both';
+const skipReel = ARGS.includes('--skip-reel');
 
 const PERSONAS_PATH = path.resolve('videos/il-campaign/personas-v3.json');
 const PERSONAS_FILE = JSON.parse(fs.readFileSync(PERSONAS_PATH, 'utf8'));
 const OUT_BASE = path.resolve('videos/il-campaign/samples-2026-05-19');
 fs.mkdirSync(OUT_BASE, { recursive: true });
 
-// Slogans from DB (frozen snapshot 2026-05-19)
+// product_default → garment color. ONLY combos validated against dubis_products.colors DB.
+// (Honey-Brown removed 2026-04-23 — leftover mockup files don't reflect real SKUs.)
+// 7 colors across 10 personas.
 const PRODUCT_SLOGANS = {
-  1: { slogan: "I'm not fat, I'm a limited edition", type: "t-shirt", colors: ["Charcoal","White","Cream"] },
-  2: { slogan: "More of me to love", type: "t-shirt", colors: ["Black","Charcoal","Cream"] },
-  3: { slogan: "Napping is my cardio", type: "hoodie", colors: ["Charcoal","Black","Cream","Navy","Forest Green"] },
-  4: { slogan: "I survived. That's enough.", type: "t-shirt", colors: ["Black","White","Charcoal"] },
-  5: { slogan: "Low maintenance, high value", type: "t-shirt", colors: ["Charcoal","White","Cream","Honey Brown"] },
-  6: { slogan: "Not a model. Never wanted to be.", type: "hoodie", colors: ["Charcoal","Black","Cream","Navy"] },
-  7: { slogan: "DUBIS — For the rest of us", type: "cap", colors: ["Black","Charcoal","Navy"] },
-  8: { slogan: "Born to nap, forced to work", type: "t-shirt", colors: ["Charcoal","Black","Navy"] },
-  9: { slogan: "Certified overthinker", type: "zip-hoodie", colors: ["Charcoal","Black","Forest Green"] },
-  10: { slogan: "Serial napper", type: "long-sleeve", colors: ["Charcoal","Navy","Black"] },
-  11: { slogan: "She believed she could, so she took a nap", type: "t-shirt", colors: ["Cream","White","Charcoal"] },
-  13: { slogan: "Zero Motivation Club", type: "hoodie", colors: ["Charcoal","Black","Cream"] },
-  15: { slogan: "Fashion? I prefer comfort.", type: "hoodie", colors: ["Charcoal","Black","Cream"] },
-  16: { slogan: "My goal: minimal EXISTENCE.", type: "hoodie", colors: ["Charcoal","Black","Cream"] },
-  17: { slogan: "Experienced in EXHAUSTION.", type: "zip-hoodie", colors: ["Charcoal","Black"] },
-  18: { slogan: "Unfashionably COMFORTABLE.", type: "t-shirt", colors: ["Charcoal","White","Cream"] },
-  31: { slogan: "You're prettier when you're comfortable.", type: "t-shirt", colors: ["Cream","White","Charcoal"] }
+  3:  { slogan: "Napping is my cardio", type: "hoodie", color: "Forest-Green" },         // men-1
+  6:  { slogan: "Not a model. Never wanted to be.", type: "hoodie", color: "Charcoal" }, // men-2 (DONE)
+  15: { slogan: "Fashion? I prefer comfort.", type: "hoodie", color: "Navy" },           // men-3
+  9:  { slogan: "Certified overthinker", type: "zip-hoodie", color: "Navy" },            // men-4
+  8:  { slogan: "Born to nap, forced to work", type: "t-shirt", color: "Red" },          // men-5 (was 10)
+  11: { slogan: "She believed she could, so she took a nap", type: "t-shirt", color: "Cream" }, // women-1
+  13: { slogan: "Zero Motivation Club", type: "hoodie", color: "Cream" },                // women-2 (was Honey-Brown, not in DB)
+  16: { slogan: "My goal: minimal EXISTENCE.", type: "hoodie", color: "White" },         // women-3
+  17: { slogan: "Experienced in EXHAUSTION.", type: "zip-hoodie", color: "Black" },      // women-4
+  31: { slogan: "You're prettier when you're comfortable.", type: "t-shirt", color: "White" }, // women-5
 };
 
 function hf(args, opts = {}) {
-  const r = spawnSync(HF, args, { encoding: 'utf8', shell: false, maxBuffer: 100 * 1024 * 1024, ...opts });
-  if (r.status !== 0) {
-    throw new Error(`hf ${args.slice(0,3).join(' ')} failed (${r.status}): ${(r.stderr || r.stdout || '').slice(0, 500)}`);
-  }
+  const r = spawnSync(HF, args, { encoding: 'utf8', shell: false, maxBuffer: 32 * 1024 * 1024, ...opts });
+  if (r.status !== 0) throw new Error(`hf ${args.slice(0, 4).join(' ')} (${r.status}): ${(r.stderr || r.stdout || '').slice(0, 400)}`);
   return r.stdout;
 }
 
-function uploadFile(filepath) {
-  if (!fs.existsSync(filepath)) throw new Error(`Missing: ${filepath}`);
-  const out = hf(['upload', 'create', filepath, '--json']);
-  return JSON.parse(out).id;
+function balance() {
+  return JSON.parse(hf(['account', 'status', '--json'])).credits;
 }
 
-function pickMockupUrl(productId, color) {
-  // Catalog mockups (Gelato draft-order previews, refreshed 2026-05-16)
-  return `https://www.dubis.net/images/product-${productId}-${color}-front.jpg`;
+function pickMockupPath(productId, color, face) {
+  return path.resolve(`images/product-${productId}-${color}-${face}.jpg`);
 }
 
-function buildHeroPrompt(persona, slogan) {
-  const garmentType = PRODUCT_SLOGANS[persona.product_default].type;
-  return `Ultra-realistic photograph of the same Israeli ${persona.gender === 'men' ? 'man' : 'woman'} from the reference, age ${persona.age}, ${persona.body_anchor}. ${persona.scene_anchor}. Wearing a DUBIS ${garmentType} with "${slogan}" printed on the back in Impact-style typography. Shot on Sony A7IV 85mm f/1.8, soft Rembrandt window light from camera-left, late afternoon golden tone, visible skin pores and natural imperfections, slight asymmetry, real-skin micro-texture, Kodak Portra 400 film grain, 2K resolution, shallow depth of field, natural eye catchlights.
-
-Negative: no plastic skin, no airbrushed, no over-smoothed, no perfect symmetry, no AI glow, no studio gloss, no model glamour, no stunning aesthetic, no anorexic body, no gym-built physique, no overcompensating happy expression, no flowers, no peace signs, no editorial cliche.`;
+function buildFrontPrompt(persona, slogan, garmentType, color) {
+  return `${persona.age}-year-old Israeli ${persona.gender === 'men' ? 'man' : 'woman'} with ${persona.body_anchor}. ${persona.scene_anchor}. Wearing the EXACT ${color} DUBIS ${garmentType} shown in the reference, front-facing camera, three-quarter body framing. Soft window light, late afternoon golden tone, visible skin pores and natural imperfections, slight asymmetry, anti-stunning real-body aesthetic, candid authentic feel. Shot on Sony A7IV 85mm f/1.8, Kodak Portra 400 film grain, natural eye catchlights. The DUBIS™ chest logo from the reference garment must be clearly visible on the wearer's left chest.`;
 }
 
-function buildReelMotionPrompt(persona) {
-  // Animation prompt for image-to-video — keeps character forward-facing
-  return `Subtle natural motion: slow camera dolly-in over 10 seconds, the subject's hair moves gently in a soft breeze, slight head turn left then back to camera, blinking once, subtle hand adjustment at side. ${persona.scene_anchor}. Keep the subject FRONT-FACING throughout — do not turn around, do not show back of garment. Ambient sound: distant urban Tel Aviv hum. Cinematic, lo-fi, authentic.`;
+function buildBackPrompt(persona, slogan, garmentType, color) {
+  // NSFW-safe phrasing (no "shoulder blades", no "viewed from behind" — those triggered
+  // Higgsfield's content filter in the 2026-05-19 batch). Focus on the GARMENT, not the body.
+  return `Three-quarter rear angle of a ${persona.age}-year-old Israeli ${persona.gender === 'men' ? 'man' : 'woman'} with ${persona.body_anchor}, looking back over the shoulder toward the camera with a calm expression. ${persona.scene_anchor}. The DUBIS ${color} ${garmentType} from the reference is the focal point — the back slogan "${slogan}" is sharply rendered, fully readable, centered on the garment, matching the typography of the reference exactly. Soft window light, late afternoon golden tone, Kodak Portra 400 film grain, candid authentic feel, photographic documentary style.`;
 }
 
-async function generateHero(persona) {
+function buildReelPrompt(persona, slogan, garmentType, color) {
+  return `10-second documentary lifestyle reel of a ${persona.age}-year-old Israeli ${persona.gender === 'men' ? 'man' : 'woman'} wearing the ${color} DUBIS ${garmentType} from the start frame. ${persona.scene_anchor}.
+
+Subtle natural motion throughout: slow camera dolly-in, gentle hair movement in breeze, small head turn left then back to camera, blinking, hand adjustment, slight smile then neutral. Character STAYS FRONT-FACING — never turns around, do not show back of garment in motion (the back slogan reveal is handled separately in post-compose).
+
+Cinematic anti-stunning style: Kodak Portra 400 film grain, soft golden hour tone, Sony A7IV 85mm aesthetic, shallow depth of field. Authentic IL lifestyle ad. No on-screen text overlays.
+
+Negative: no studio gloss, no model glamour, no overcompensating happy expression, no spinning, no full body turn, no back-of-garment view (will composite separately).`;
+}
+
+async function generateHero(persona, face) {
   const sloganInfo = PRODUCT_SLOGANS[persona.product_default];
   if (!sloganInfo) throw new Error(`No slogan for product ${persona.product_default}`);
 
-  const color = sloganInfo.colors[0]; // Default to first listed color
-  const mockupUrl = pickMockupUrl(persona.product_default, color);
-
-  // Download mockup locally (Higgsfield upload wants local file or UUID)
-  const localMockup = path.join(OUT_BASE, `_mockups`, `product-${persona.product_default}-${color}-front.jpg`);
-  fs.mkdirSync(path.dirname(localMockup), { recursive: true });
-  if (!fs.existsSync(localMockup)) {
-    console.log(`    downloading ${mockupUrl}…`);
-    const r = await fetch(mockupUrl);
-    if (!r.ok) throw new Error(`mockup fetch ${r.status}: ${mockupUrl}`);
-    fs.writeFileSync(localMockup, Buffer.from(await r.arrayBuffer()));
+  const mockup = pickMockupPath(persona.product_default, sloganInfo.color, face);
+  if (!fs.existsSync(mockup)) {
+    console.warn(`    no ${face} mockup: ${mockup}`);
+    return null;
   }
+  const personaPhoto = path.resolve(`images/personas/${persona.id}/photo-01.jpg`);
 
-  console.log(`    uploading mockup…`);
-  const mockupId = uploadFile(localMockup);
+  const prompt = face === 'front'
+    ? buildFrontPrompt(persona, sloganInfo.slogan, sloganInfo.type, sloganInfo.color)
+    : buildBackPrompt(persona, sloganInfo.slogan, sloganInfo.type, sloganInfo.color);
 
-  // Pick one of the persona's training photos as additional face reference
-  // (text2image_soul_v2 takes both custom_reference_id AND medias — combo gives best identity lock)
-  const faceRef = path.resolve(`images/personas/${persona.id}/photo-01.jpg`);
-  const faceRefId = uploadFile(faceRef);
-
-  const prompt = buildHeroPrompt(persona, sloganInfo.slogan);
-  const mediasJson = JSON.stringify([
-    { role: 'image', data: { id: mockupId, type: 'media_input' } },
-    { role: 'image', data: { id: faceRefId, type: 'media_input' } },
-  ]);
-
-  console.log(`    submitting text2image_soul_v2 (soul=${persona.soul_id?.slice(0, 8)}…)…`);
+  console.log(`    submitting product-photoshoot virtual_model_tryout (${face})…`);
   const args = [
-    'generate', 'create', 'text2image_soul_v2',
+    'product-photoshoot', 'create',
+    '--mode', 'virtual_model_tryout',
     '--prompt', prompt,
-    '--aspect_ratio', '4:5',
-    '--quality', '2k',
-    '--medias', mediasJson,
+    '--image', personaPhoto,
+    '--image', mockup,
+    '--count', '1',
+    '--aspect_ratio', face === 'front' ? '3:4' : '3:4',
+    '--timeout', '8m',
   ];
-  // custom_reference_id needs the trained Soul; CLI passes as --custom_reference_id JSON
-  if (persona.soul_id) {
-    args.push('--custom_reference_id', JSON.stringify({ id: persona.soul_id, type: 'soul_2' }));
-  }
-  args.push('--wait', '--wait-timeout', '15m', '--json');
-
+  // product-photoshoot returns URLs on stdout, one per line
   const out = hf(args);
-  let result;
-  try { result = JSON.parse(out); } catch { result = { raw: out.slice(0, 500) }; }
-  // hf typically returns array of job IDs OR URLs after --wait
-  const url = (Array.isArray(result) ? result[0] : (result.url || result.result_url || result.payload?.url));
-  if (!url) {
-    console.warn(`    hero result has no URL — saving raw response. ${JSON.stringify(result).slice(0,300)}`);
-    return { url: null, raw: result };
+  const urls = out.trim().split('\n').filter((l) => l.startsWith('http'));
+  if (!urls.length) {
+    console.warn(`    no URL in output: ${out.slice(0, 200)}`);
+    return null;
   }
-
-  // Download hero image locally
-  const heroPath = path.join(OUT_BASE, `${persona.id}-hero.jpg`);
+  const url = urls[0];
+  const heroPath = path.join(OUT_BASE, `${persona.id}-${face === 'front' ? 'hero' : 'back'}.jpg`);
   const r = await fetch(url);
   fs.writeFileSync(heroPath, Buffer.from(await r.arrayBuffer()));
-  console.log(`    hero saved: ${heroPath}`);
+  console.log(`    saved: ${path.basename(heroPath)}`);
   return { url, local: heroPath };
 }
 
 async function generateReel(persona, heroPath) {
   if (!heroPath || !fs.existsSync(heroPath)) {
-    console.log(`    no hero image — skipping reel`);
+    console.log(`    no front hero — skipping reel`);
     return null;
   }
-  console.log(`    uploading hero as start frame…`);
-  const startId = uploadFile(heroPath);
+  const sloganInfo = PRODUCT_SLOGANS[persona.product_default];
+  const prompt = buildReelPrompt(persona, sloganInfo.slogan, sloganInfo.type, sloganInfo.color);
+  console.log(`    submitting seedance_2_0 (10s 9:16 from start frame)…`);
 
-  const prompt = buildReelMotionPrompt(persona);
-  const mediasJson = JSON.stringify([
-    { role: 'start_image', data: { id: startId, type: 'media_input' } },
-  ]);
-
-  console.log(`    submitting seedance_2_0 i2v (10s 9:16)…`);
   const args = [
     'generate', 'create', 'seedance_2_0',
     '--prompt', prompt,
@@ -157,75 +138,135 @@ async function generateReel(persona, heroPath) {
     '--duration', '10',
     '--resolution', '720p',
     '--mode', 'std',
-    '--medias', mediasJson,
+    '--image', heroPath,
     '--wait', '--wait-timeout', '20m', '--json',
   ];
   const out = hf(args);
   let result;
-  try { result = JSON.parse(out); } catch { result = { raw: out.slice(0, 500) }; }
-  const url = (Array.isArray(result) ? result[0] : (result.url || result.result_url || result.payload?.url));
+  try { result = JSON.parse(out); } catch { return null; }
+  let url = null;
+  if (Array.isArray(result) && result.length > 0) {
+    url = result[0].result_url || result[0].url;
+  } else if (result && typeof result === 'object') {
+    url = result.result_url || result.url;
+  }
   if (!url) {
-    console.warn(`    reel result has no URL — saving raw. ${JSON.stringify(result).slice(0,300)}`);
+    console.warn(`    reel: no URL. ${JSON.stringify(result).slice(0, 200)}`);
     return null;
   }
-
   const reelPath = path.join(OUT_BASE, `${persona.id}-reel.mp4`);
   const r = await fetch(url);
   fs.writeFileSync(reelPath, Buffer.from(await r.arrayBuffer()));
-  console.log(`    reel saved: ${reelPath}`);
+  console.log(`    saved: ${path.basename(reelPath)}`);
   return { url, local: reelPath };
 }
 
-async function main() {
-  const startBalance = JSON.parse(hf(['account', 'status', '--json'])).credits;
-  console.log(`Starting balance: ${startBalance} credits`);
+async function processPersona(persona) {
+  const sloganInfo = PRODUCT_SLOGANS[persona.product_default];
+  console.log(`\n=== ${persona.id} (product ${persona.product_default}: "${sloganInfo?.slogan}") ===`);
+  const sample = {
+    persona_id: persona.id,
+    product_id: persona.product_default,
+    slogan: sloganInfo?.slogan,
+    garment: `${sloganInfo?.color} ${sloganInfo?.type}`,
+  };
+  try {
+    const front = await generateHero(persona, 'front');
+    sample.front_url = front?.url;
+    sample.front_local = front?.local;
 
-  const targets = (onlyPersona
-    ? PERSONAS_FILE.personas.filter((p) => p.id === onlyPersona)
-    : PERSONAS_FILE.personas).filter((p) => p.soul_id); // Only personas with trained Souls
+    const back = await generateHero(persona, 'back');
+    sample.back_url = back?.url;
+    sample.back_local = back?.local;
 
-  if (!targets.length) {
-    console.error(`No personas with soul_id ready. Run train-souls first.`);
-    process.exit(1);
+    if (!skipReel && front?.local) {
+      const reel = await generateReel(persona, front.local);
+      sample.reel_url = reel?.url;
+      sample.reel_local = reel?.local;
+    }
+  } catch (e) {
+    console.error(`  ${persona.id} ERR: ${e.message.slice(0, 300)}`);
+    sample.error = e.message;
   }
-  console.log(`Generating samples for ${targets.length} personas (mode=${mode})\n`);
+  return sample;
+}
 
-  const manifest = { generated_at: new Date().toISOString(), samples: [] };
+async function main() {
+  const start = balance();
+  console.log(`Starting balance: ${start} credits`);
+
+  const targets = onlyPersona
+    ? PERSONAS_FILE.personas.filter((p) => p.id === onlyPersona)
+    : PERSONAS_FILE.personas;
+
+  if (!targets.length) { console.error(`No personas`); process.exit(1); }
+
+  const MANIFEST_PATH = path.join(OUT_BASE, '_manifest.json');
+  let manifest = { generated_at: new Date().toISOString(), pipeline: 'virtual_model_tryout', samples: [] };
+  if (fs.existsSync(MANIFEST_PATH)) {
+    try { manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8')); } catch {}
+  }
 
   for (const persona of targets) {
-    console.log(`\n=== ${persona.id} (product ${persona.product_default}: ${PRODUCT_SLOGANS[persona.product_default]?.slogan}) ===`);
-    const sample = { persona_id: persona.id, product_id: persona.product_default, slogan: PRODUCT_SLOGANS[persona.product_default]?.slogan };
+    // Smart skip: regenerate only what's actually missing on disk (manifest may be stale)
+    const heroPath = path.join(OUT_BASE, `${persona.id}-hero.jpg`);
+    const backPath = path.join(OUT_BASE, `${persona.id}-back.jpg`);
+    const reelPath = path.join(OUT_BASE, `${persona.id}-reel.mp4`);
+    const hasFront = fs.existsSync(heroPath);
+    const hasBack = fs.existsSync(backPath);
+    const hasReel = fs.existsSync(reelPath);
+
+    if (hasFront && hasBack && hasReel) {
+      console.log(`[${persona.id}] SKIP — front+back+reel all on disk`);
+      continue;
+    }
+
+    // Partial regeneration: do only what's missing
+    console.log(`\n=== ${persona.id} :: needs ${[!hasFront && 'front', !hasBack && 'back', !hasReel && 'reel'].filter(Boolean).join(', ')} ===`);
+    const sloganInfo = PRODUCT_SLOGANS[persona.product_default];
+    const existing = manifest.samples.find((s) => s.persona_id === persona.id) || { persona_id: persona.id };
+    const sample = {
+      ...existing,
+      persona_id: persona.id,
+      product_id: persona.product_default,
+      slogan: sloganInfo?.slogan,
+      garment: `${sloganInfo?.color} ${sloganInfo?.type}`,
+    };
+    delete sample.error;
+
     try {
-      if (mode === 'image' || mode === 'both') {
-        const hero = await generateHero(persona);
-        sample.hero_url = hero?.url;
-        sample.hero_local = hero?.local;
-        if (mode === 'both' && hero?.local) {
-          const reel = await generateReel(persona, hero.local);
+      if (!hasFront) {
+        const front = await generateHero(persona, 'front');
+        sample.front_url = front?.url;
+        sample.front_local = front?.local;
+      }
+      if (!hasBack) {
+        const back = await generateHero(persona, 'back');
+        sample.back_url = back?.url;
+        sample.back_local = back?.local;
+      }
+      if (!hasReel && !skipReel) {
+        const frontForReel = hasFront ? heroPath : sample.front_local;
+        if (frontForReel) {
+          const reel = await generateReel(persona, frontForReel);
           sample.reel_url = reel?.url;
           sample.reel_local = reel?.local;
         }
-      } else if (mode === 'reel') {
-        // Reel-only: need pre-existing hero
-        const existingHero = path.join(OUT_BASE, `${persona.id}-hero.jpg`);
-        const reel = await generateReel(persona, existingHero);
-        sample.reel_url = reel?.url;
-        sample.reel_local = reel?.local;
       }
     } catch (e) {
-      console.error(`  ${persona.id} FAIL: ${e.message}`);
+      console.error(`  ${persona.id} ERR: ${e.message.slice(0, 300)}`);
       sample.error = e.message;
     }
-    manifest.samples.push(sample);
-    fs.writeFileSync(path.join(OUT_BASE, '_manifest.json'), JSON.stringify(manifest, null, 2));
+
+    manifest.samples = manifest.samples.filter((s) => s.persona_id !== persona.id).concat(sample);
+    fs.writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2));
     await sleep(2000);
   }
 
-  const endBalance = JSON.parse(hf(['account', 'status', '--json'])).credits;
+  const end = balance();
   console.log(`\n=== DONE ===`);
-  console.log(`Samples: ${manifest.samples.filter((s) => !s.error).length} success / ${manifest.samples.filter((s) => s.error).length} failed`);
-  console.log(`Credit usage: ${startBalance} → ${endBalance} (delta: ${startBalance - endBalance})`);
-  console.log(`Manifest: ${path.join(OUT_BASE, '_manifest.json')}`);
+  console.log(`Samples: ${manifest.samples.filter((s) => !s.error).length} OK / ${manifest.samples.filter((s) => s.error).length} ERR`);
+  console.log(`Credit usage: ${start} → ${end} (delta: ${(start - end).toFixed(2)})`);
 }
 
 main().catch((e) => { console.error('FATAL:', e); process.exit(1); });
