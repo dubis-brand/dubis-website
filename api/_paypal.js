@@ -29,8 +29,27 @@ function perr(stage, data = {}) {
  * @returns {Promise<string|null>} access token, or null on failure
  */
 async function getAccessToken() {
-  const clientId = process.env.PAYPAL_CLIENT_ID;
-  const secret   = process.env.PAYPAL_SECRET || process.env.PAYPAL_CLIENT_SECRET;
+  // 2026-05-21 (Hila incident): accept alternate spellings/casings so a typo
+  // in the Vercel UI ("Pay_Pal_clainet_Id", "Pay_Pal_Secret") still resolves.
+  // Case-insensitive prefix match across env var names — defensive coding for
+  // the non-technical operator setting these via the UI.
+  const findEnv = (matchers) => {
+    for (const k of Object.keys(process.env)) {
+      const norm = k.toLowerCase().replace(/[-_]/g, '');
+      if (matchers.some(m => norm === m || norm.endsWith(m))) {
+        const v = process.env[k];
+        if (v) return v;
+      }
+    }
+    return null;
+  };
+  const clientId =
+    process.env.PAYPAL_CLIENT_ID ||
+    findEnv(['paypalclientid', 'paypalclainetid']);  // includes the actual typo
+  const secret =
+    process.env.PAYPAL_SECRET ||
+    process.env.PAYPAL_CLIENT_SECRET ||
+    findEnv(['paypalsecret', 'paypalclientsecret']);
   if (!clientId || !secret) {
     perr('oauth-no-credentials', { hasId: !!clientId, hasSecret: !!secret });
     return null;

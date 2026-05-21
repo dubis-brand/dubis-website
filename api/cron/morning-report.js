@@ -222,13 +222,26 @@ module.exports = async function handler(req, res) {
             .filter(k => /paypal|pp_|braintree/i.test(k))
             .map(k => ({ key: k, len: (process.env[k] || '').length }));
         // Try an OAuth token fetch and report the actual HTTP outcome (no token leaked)
-        let oauth = { tried: false };
-        if (process.env.PAYPAL_CLIENT_ID && (process.env.PAYPAL_SECRET || process.env.PAYPAL_CLIENT_SECRET)) {
+        // Use the same lenient findEnv logic as _paypal.js
+        const findEnv = (matchers) => {
+            for (const k of Object.keys(process.env)) {
+                const norm = k.toLowerCase().replace(/[-_]/g, '');
+                if (matchers.some(m => norm === m || norm.endsWith(m))) {
+                    const v = process.env[k];
+                    if (v) return v;
+                }
+            }
+            return null;
+        };
+        const _clientId = process.env.PAYPAL_CLIENT_ID || findEnv(['paypalclientid', 'paypalclainetid']);
+        const _secret   = process.env.PAYPAL_SECRET || process.env.PAYPAL_CLIENT_SECRET || findEnv(['paypalsecret', 'paypalclientsecret']);
+        let oauth = { tried: false, resolved_client_id_len: (_clientId || '').length, resolved_secret_len: (_secret || '').length };
+        if (_clientId && _secret) {
             try {
                 const base = (process.env.PAYPAL_ENV || 'live').toLowerCase() === 'sandbox'
                     ? 'https://api-m.sandbox.paypal.com'
                     : 'https://api-m.paypal.com';
-                const creds = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_SECRET || process.env.PAYPAL_CLIENT_SECRET}`).toString('base64');
+                const creds = Buffer.from(`${_clientId}:${_secret}`).toString('base64');
                 const r = await fetch(`${base}/v1/oauth2/token`, {
                     method: 'POST',
                     headers: { 'Authorization': `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
