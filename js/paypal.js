@@ -837,7 +837,15 @@ function renderPayPalButtons() {
 
     // Messaging above the buttons â makes Guest Checkout visible to the 60%+ of US users who don't have PayPal
     const container = document.getElementById('paypal-button-container');
-    if (container && !container.querySelector('.cc-messaging')) {
+    // 2026-05-21 fix: the .cc-messaging div is inserted as a SIBLING of the container
+    // (via parentNode.insertBefore at the end of this block). The old check
+    // `container.querySelector('.cc-messaging')` searched INSIDE the container so it
+    // never found existing copies — every checkout retry stacked another one. The
+    // screenshot from oren's 2nd attempt showed 4 stacked copies.
+    if (container && container.parentNode) {
+        container.parentNode.querySelectorAll('.cc-messaging').forEach(el => el.remove());
+    }
+    if (container && container.parentNode && !container.parentNode.querySelector('.cc-messaging')) {
         const msg = document.createElement('div');
         msg.className = 'cc-messaging';
         msg.style.cssText = 'text-align:center;margin:0 0 12px;padding:10px 12px;background:#f5f1e8;border:1px solid #e2d9c4;border-radius:8px;font-size:13px;color:#2b2b2b;';

@@ -1641,10 +1641,51 @@ async function handleStockProbe(req, res) {
     derr('stock-probe-quote-partial-oos', { paypalOrderId: null, country: recipientCountry, flags: partialOosFlags.slice(0, 10) });
     // Identify the offending items by matching their productUid back to cart positions.
     const oosUidSet = new Set(partialOosFlags.filter(f => f.productUid).map(f => f.productUid));
+
+    // 2026-05-21 — when only the shipment-level flag fires (no per-product price=0),
+    // identify the MINORITY-warehouse items by probing each cart item alone and
+    // comparing fulfillmentCountry. The combined-cart quote already chose ONE country
+    // (chosenCountry). Items whose own quote returns a DIFFERENT country are the ones
+    // that broke the cart — they're forcing Gelato to attempt cross-warehouse fulfillment.
+    const chosenCountry = (quotes[0] && quotes[0].fulfillmentCountry) || null;
+    if (oosUidSet.size === 0 && chosenCountry && mappable.length > 1) {
+      try {
+        const soloResults = await Promise.all(mappable.map(async (p) => {
+          try {
+            const files = getDesignFiles(p.item.id, p.item.selectedColor, p.item.designRef, p.item.type);
+            const fileUrl = (files.find(f => f.type === 'front') || files[0] || {}).url || `${DESIGN_BASE_URL}/front_logo_white.png`;
+            const r = await fetch('https://order.gelatoapis.com/v4/orders:quote', {
+              method:  'POST',
+              headers: { 'X-API-KEY': GELATO_API_KEY, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                orderReferenceId: `dubis-solo-probe-${Date.now()}-${p.i}`,
+                currency: 'USD',
+                recipient,
+                products: [{ itemReferenceId: 'i1', productUid: p.uid, quantity: 1, fileUrl }],
+              }),
+            });
+            const j = await r.json().catch(() => null);
+            const country = j && j.quotes && j.quotes[0] && j.quotes[0].fulfillmentCountry;
+            return { uid: p.uid, country };
+          } catch (e) {
+            return { uid: p.uid, country: null };
+          }
+        }));
+        // Mark items whose solo-fulfillment country differs from the chosen combined one
+        for (const r of soloResults) {
+          if (r.country && r.country !== chosenCountry) {
+            oosUidSet.add(r.uid);
+          }
+        }
+        dlog('stock-probe-minority-warehouse', { chosenCountry, soloResults });
+      } catch (e) {
+        // Fall back to "mark all" if solo probing fails
+      }
+    }
+
     const oosItemsByCart = [];
     for (const p of probeList) {
-      // Flag the items with zero price OR — if we only have a shipment-level flag,
-      // mark every item in the cart since we can't tell which one is the problem.
+      // Item is in oosUidSet (specific culprit) OR we couldn't narrow it down → mark all
       if (oosUidSet.size > 0 ? oosUidSet.has(p.uid) : true) {
         oosItemsByCart.push({
           cartIndex: p.i, type: p.item.type, color: p.item.selectedColor, size: p.item.selectedSize,
@@ -1653,11 +1694,15 @@ async function handleStockProbe(req, res) {
         });
       }
     }
+    const itemsCausing = oosItemsByCart.length;
+    const reasonMsg = itemsCausing < cartItems.length && itemsCausing > 0
+      ? `One or more items in your cart can't ship from the same warehouse together. Removing or swapping just ${itemsCausing === 1 ? 'this' : 'these'} item(s) should fix it.`
+      : 'Items in this cart can\'t all be fulfilled from a single warehouse for your country. Try removing items one at a time to find the conflict.';
     return res.status(200).json({
       ok: false,
       country: recipientCountry,
       mode: 'quote_partial_oos',
-      reason: 'Gelato cannot fulfill all items from a single warehouse for your country — some items are out of stock at the chosen production facility.',
+      reason: reasonMsg,
       flags: partialOosFlags.slice(0, 10),
       oosItems: oosItemsByCart,
       cartCount: cartItems.length,
