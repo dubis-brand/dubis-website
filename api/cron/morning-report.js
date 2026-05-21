@@ -226,8 +226,13 @@ module.exports = async function handler(req, res) {
         const startedAt = Date.now();
         const summary = { scanned: 0, canceled_recent: 0, refunded: 0, already_refunded: 0, refund_failed: 0, recovery_rows: 0, details: [] };
         try {
-            // Pull last 20 orders from Gelato
-            const gRes = await fetch('https://order.gelatoapis.com/v4/orders?limit=20', {
+            // Pull last 100 orders from Gelato — limit=20 was too narrow:
+            // for a busy day (like 2026-05-20 with 6 Hila test orders + various
+            // production runs) the 4 stuck captures aged out of the top-20
+            // before the catch-up sweep finished. 100 covers a multi-hour
+            // backlog comfortably.
+            const limitParam = new URL(req.url, `https://${req.headers.host}`).searchParams.get('limit') || '100';
+            const gRes = await fetch(`https://order.gelatoapis.com/v4/orders?limit=${parseInt(limitParam, 10)}`, {
                 headers: { 'X-API-KEY': GELATO_API_KEY, 'Accept': 'application/json' },
             });
             if (!gRes.ok) {
