@@ -236,15 +236,25 @@ module.exports = async function handler(req, res) {
         const _clientId = process.env.PAYPAL_CLIENT_ID || findEnv(['paypalclientid', 'paypalclainetid']);
         const _secret   = process.env.PAYPAL_SECRET || process.env.PAYPAL_CLIENT_SECRET || findEnv(['paypalsecret', 'paypalclientsecret']);
         const credLengths = { client_id_len: (_clientId || '').length, secret_len: (_secret || '').length };
+        // Show first 4 + last 4 chars of each (PayPal credentials are publicly-known-prefix
+        // anyway — Client IDs start with 'A', etc — so this is safe diagnostic data).
+        const credPeek = {
+            client_id_peek: _clientId ? `${_clientId.slice(0,4)}...${_clientId.slice(-4)}` : null,
+            secret_peek:    _secret   ? `${_secret.slice(0,4)}...${_secret.slice(-4)}`     : null,
+        };
         let oauthLive = { tried: false };
         let oauthSandbox = { tried: false };
+        // Also try the SWAP — pass secret as user, client_id as pass — in case oren
+        // stored them in reversed env vars (Pay_Pal_clainet_Id holds the secret etc).
+        let oauthLiveSwapped = { tried: false };
         if (_clientId && _secret) {
             const creds = Buffer.from(`${_clientId}:${_secret}`).toString('base64');
-            const probeBase = async (base) => {
+            const credsSwapped = Buffer.from(`${_secret}:${_clientId}`).toString('base64');
+            const probeBase = async (base, b64) => {
                 try {
                     const r = await fetch(`${base}/v1/oauth2/token`, {
                         method: 'POST',
-                        headers: { 'Authorization': `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+                        headers: { 'Authorization': `Basic ${b64}`, 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: 'grant_type=client_credentials',
                     });
                     const body = await r.json().catch(() => ({}));
@@ -258,12 +268,13 @@ module.exports = async function handler(req, res) {
                     return { tried: true, base, exception: e.message };
                 }
             };
-            [oauthLive, oauthSandbox] = await Promise.all([
-                probeBase('https://api-m.paypal.com'),
-                probeBase('https://api-m.sandbox.paypal.com'),
+            [oauthLive, oauthSandbox, oauthLiveSwapped] = await Promise.all([
+                probeBase('https://api-m.paypal.com', creds),
+                probeBase('https://api-m.sandbox.paypal.com', creds),
+                probeBase('https://api-m.paypal.com', credsSwapped),
             ]);
         }
-        return res.status(200).json({ ok: true, env: envPaypal, allPaypalKeys, credLengths, oauthLive, oauthSandbox });
+        return res.status(200).json({ ok: true, env: envPaypal, allPaypalKeys, credLengths, credPeek, oauthLive, oauthSandbox, oauthLiveSwapped });
     }
 
     // ── Route: ?type=refund-by-id — one-shot manual refund (added 2026-05-21) ──
