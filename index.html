@@ -542,13 +542,16 @@
                 <p class="cart-empty">Nothing here yet. The right things are one click away.</p>
             </div>
             <div class="cart-footer">
+                <!-- 2026-05-21: live cart-level Gelato warehouse-mixing check banner.
+                     Populated by renderCart() → runCartLevelProbe(). Hidden by default. -->
+                <div id="cart-warehouse-banner" class="cart-warehouse-banner" style="display:none"></div>
                 <div class="cart-total">Total: $<span id="cart-total">0</span></div>
                 <div class="cart-shipping-note">
                     🚚 US orders: 5–7 business days · Int'l: up to 14 days<br>
                     <span>Customs/import fees may apply outside the US</span><br>
                     <span style="font-size:11px;color:#888">Sales tax not included where applicable. We comply with US economic nexus thresholds.</span>
                 </div>
-                <button class="btn-primary" onclick="checkout()">Checkout</button>
+                <button class="btn-primary" id="cart-checkout-btn" onclick="checkout()">Checkout</button>
             </div>
         </div>
     </div>

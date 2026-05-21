@@ -1795,6 +1795,48 @@ body[dir="rtl"] .product-price .price-from { margin-left: 2px; margin-right: 0; 
     padding-right: 8px;
 }
 
+/* 2026-05-21: cart-level live warehouse-mixing banner + per-item conflict marker. */
+.cart-item.cart-conflict {
+    background: #fdf0ef;
+    box-shadow: inset 4px 0 0 #c8514f;
+}
+[dir="rtl"] .cart-item.cart-conflict {
+    box-shadow: inset -4px 0 0 #c8514f;
+}
+.cart-warehouse-banner {
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+.cart-warehouse-banner strong { display: block; margin-bottom: 4px; font-size: 0.92rem; }
+.cart-warehouse-banner p { margin: 4px 0 6px; }
+.cart-warehouse-banner ul { margin: 4px 0 0; padding-inline-start: 18px; }
+.cart-warehouse-banner li { margin: 2px 0; }
+.cart-banner-ok {
+    background: #f1f8f0;
+    color: #2e6d2c;
+    border: 1px solid #c7e4c5;
+}
+.cart-banner-warn {
+    background: #fdf0ef;
+    color: #8b2725;
+    border: 1px solid #f3c9c8;
+}
+.cart-banner-checking {
+    background: #fdfbf3;
+    color: #7a6028;
+    border: 1px solid #ecdfb8;
+    text-align: center;
+    font-style: italic;
+}
+#cart-checkout-btn.disabled {
+    opacity: 0.6;
+    background: #999;
+    cursor: not-allowed;
+}
+
 .cart-item-price {
     color: var(--honey);
     font-weight: 600;

@@ -1552,6 +1552,143 @@ function closeCart() {
   document.getElementById('cart-overlay').classList.remove('open');
 }
 
+// 2026-05-21: cart-level warehouse-mixing probe.
+// Per-item flags show SOLO availability — each product alone CAN ship to IL.
+// But Gelato has to produce the whole cart from ONE warehouse, so two
+// solo-IL-OK items may still conflict when shipped together. This probe
+// asks the same /v4/orders:quote endpoint the checkout uses and surfaces
+// the answer in the cart drawer BEFORE the customer hits checkout.
+//
+// Caches by hash(cart + country) so we don't hammer Gelato on every drawer
+// open. Debounced 400ms to coalesce rapid changes.
+const __cartProbeCache = new Map();   // hashKey → { ok, mode, oosUidSet, reason }
+let __cartProbeTimer = null;
+let __cartProbeAbort = null;
+
+function _cartProbeKey(items, country) {
+  const sig = items.map(i => `${i.id}|${i.selectedColor}|${i.selectedSize}`).sort().join(';');
+  return `${country}::${sig}`;
+}
+
+function _cartProbeApply(result, _country) {
+  const banner = document.getElementById('cart-warehouse-banner');
+  const btn    = document.getElementById('cart-checkout-btn');
+  if (!banner) return;
+  // Clear per-item warehouse-conflict marks first (they're additive on top of
+  // the static per-item supportedCountries warnings).
+  document.querySelectorAll('.cart-item.cart-conflict').forEach(el => el.classList.remove('cart-conflict'));
+  document.querySelectorAll('.cart-item-warn-warehouse').forEach(el => el.remove());
+
+  if (!result) {
+    banner.style.display = 'none';
+    if (btn) { btn.disabled = false; btn.classList.remove('disabled'); }
+    return;
+  }
+  if (result.ok === true) {
+    // All-clear → green confirmation banner
+    banner.className = 'cart-warehouse-banner cart-banner-ok';
+    banner.innerHTML = currentLang === 'he'
+      ? '✅ <strong>הסל שלך זמין למשלוח</strong> — כל הפריטים יישלחו ממחסן אחד'
+      : '✅ <strong>Your cart ships!</strong> — all items fulfill from a single warehouse';
+    banner.style.display = '';
+    if (btn) { btn.disabled = false; btn.classList.remove('disabled'); }
+    return;
+  }
+  // ok===false → mark the specific cart-item rows the API flagged
+  const oosByCartIndex = new Set();
+  for (const o of (result.oosItems || [])) {
+    if (typeof o.cartIndex === 'number') oosByCartIndex.add(o.cartIndex);
+  }
+  // Re-walk the rendered cart-item nodes IN ORDER and tag the flagged ones.
+  const itemNodes = document.querySelectorAll('#cart-items .cart-item');
+  let i = 0;
+  itemNodes.forEach((node) => {
+    if (oosByCartIndex.has(i)) {
+      node.classList.add('cart-conflict');
+      const info = node.querySelector('.cart-item-info');
+      if (info && !info.querySelector('.cart-item-warn-warehouse')) {
+        const warn = document.createElement('div');
+        warn.className = 'cart-item-warn cart-item-warn-warehouse';
+        warn.textContent = currentLang === 'he'
+          ? '⚠️ מתנגש עם פריטים אחרים בסל'
+          : '⚠️ Conflicts with other items in cart';
+        info.appendChild(warn);
+      }
+    }
+    i++;
+  });
+  // Banner at footer summarizes the problem.
+  const itemList = (result.oosItems || [])
+    .map(o => `<li>${o.label || (o.type + ' ' + o.color + ' ' + o.size)}</li>`)
+    .join('');
+  banner.className = 'cart-warehouse-banner cart-banner-warn';
+  banner.innerHTML = (currentLang === 'he'
+    ? `<strong>⚠️ לא ניתן לשלוח את הסל הנוכחי</strong>
+       <p>Gelato לא יכולים לייצר את כל הפריטים ממחסן אחד למדינה שלך. הפריטים המסומנים באדום הם הבעיה — הסירו או החליפו אותם וכל השאר ישלח חלק.</p>
+       <ul>${itemList}</ul>`
+    : `<strong>⚠️ This cart can't ship as-is</strong>
+       <p>Gelato can't produce all items from a single warehouse for your country. The items marked red below are the conflict — remove or swap them and the rest will ship fine.</p>
+       <ul>${itemList}</ul>`);
+  banner.style.display = '';
+  // Don't HARD-disable checkout (PayPal capture is gated anyway), but visually
+  // dim it so the customer sees the warning first.
+  if (btn) { btn.classList.add('disabled'); btn.disabled = false; }
+}
+
+function runCartLevelProbe() {
+  const banner = document.getElementById('cart-warehouse-banner');
+  if (banner) banner.style.display = 'none';
+  if (cart.length === 0) return;
+  if (__cartProbeTimer) clearTimeout(__cartProbeTimer);
+  if (__cartProbeAbort) try { __cartProbeAbort.abort(); } catch(_) {}
+  __cartProbeTimer = setTimeout(async () => {
+    const country = (
+      (window.checkoutAddress && window.checkoutAddress.country_code) ||
+      sessionStorage.getItem('dubis-country') ||
+      (localStorage.getItem('dubis-lang') === 'he' ? 'IL' : null) ||
+      'US'
+    ).toUpperCase();
+    const key = _cartProbeKey(cart, country);
+    if (__cartProbeCache.has(key)) {
+      _cartProbeApply(__cartProbeCache.get(key), country);
+      return;
+    }
+    // Light "checking" hint so the customer doesn't see stale state mid-fetch.
+    if (banner) {
+      banner.style.display = '';
+      banner.className = 'cart-warehouse-banner cart-banner-checking';
+      banner.textContent = currentLang === 'he'
+        ? '⏳ בודק זמינות עבור המדינה שלך…'
+        : '⏳ Checking availability for your country…';
+    }
+    try {
+      __cartProbeAbort = new AbortController();
+      const res = await fetch('/api/create-gelato-order?action=stock-probe', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal:  __cartProbeAbort.signal,
+        body: JSON.stringify({
+          country,
+          shippingAddress: window.checkoutAddress || { country_code: country },
+          cartItems: cart.map(item => ({
+            id: item.id, type: item.type, gender: item.gender || 'unisex',
+            selectedColor: item.selectedColor, selectedSize: item.selectedSize,
+            designRef: item.designRef || null, typeLabel: item.typeLabel,
+          })),
+        }),
+      });
+      const probe = await res.json().catch(() => null);
+      __cartProbeCache.set(key, probe);
+      _cartProbeApply(probe, country);
+    } catch (err) {
+      // Network/abort failure → hide banner (don't block checkout); the real
+      // checkout will probe again.
+      if (banner) banner.style.display = 'none';
+    }
+  }, 400);
+}
+window.runCartLevelProbe = runCartLevelProbe;
+
 function renderCart() {
   const t = translations[currentLang];
   const cartItems  = document.getElementById('cart-items');
@@ -1632,6 +1769,11 @@ function renderCart() {
     </div>
   `;
   }).join('');
+
+  // 2026-05-21: kick off the cart-level Gelato warehouse-mixing check.
+  // Debounced 400ms inside runCartLevelProbe so back-to-back renderCart()
+  // calls (cart edit + country change) coalesce into one API request.
+  try { runCartLevelProbe(); } catch (_) {}
 }
 
 function removeFromCart(index) {
