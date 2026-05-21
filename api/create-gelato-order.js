@@ -10,6 +10,7 @@
 
 const crypto = require('crypto');
 const { refundOrder } = require('./_paypal');
+const { splitCartByWarehouse } = require('./_orderSplit');
 
 const GELATO_API_BASE = 'https://order.gelatoapis.com';
 const DESIGN_BASE_URL = 'https://www.dubis.net/designs';
@@ -1375,6 +1376,317 @@ async function handleSubmitCorrectedAddress(req, res) {
   }
 }
 
+// =====================================================================
+// MULTI-WAREHOUSE ORDER SPLITTING (2026-05-21)
+// =====================================================================
+// Some carts need items from multiple Gelato warehouses. Their API
+// accepts ONE warehouse per /v4/orders POST, so a cart that mixes (say)
+// an IL-only t-shirt with a CZ-only hoodie would be refused outright.
+//
+// The splitter (api/_orderSplit.js) runs /v4/orders:quote with a peeling
+// algorithm to discover the per-warehouse breakdown. This dispatcher
+// then submits N separate /v4/orders POSTs behind ONE PayPal capture,
+// guaranteeing atomicity: any sub-order failure → cancel all submitted
+// siblings + refund the FULL capture.
+//
+// The customer sees ONE order — the split is invisible (oren directive
+// 2026-05-21). We absorb the slightly-higher Gelato cost (extra shipping
+// across packages); customer pays a single shipping fee.
+// =====================================================================
+
+// Cancel a single Gelato order. Best-effort — failures are swallowed
+// because we're already in an error path; an orphan Gelato order is
+// strictly better than failing to attempt cancellation.
+async function cancelGelatoOrder(gelatoOrderId, apiKey) {
+  try {
+    // Gelato accepts both PATCH (status=canceled) and POST /cancel.
+    // PATCH is the documented standard.
+    const res = await fetch(`${GELATO_API_BASE}/v4/orders/${gelatoOrderId}`, {
+      method:  'PATCH',
+      headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ status: 'canceled' }),
+    });
+    dlog('cancel-suborder', { gelatoOrderId, http: res.status });
+    return res.ok;
+  } catch (err) {
+    derr('cancel-suborder-exception', { gelatoOrderId, message: err.message });
+    return false;
+  }
+}
+
+async function cancelAllSubOrders(submittedOrders, apiKey) {
+  for (const so of submittedOrders) {
+    await cancelGelatoOrder(so.gelatoOrderId, apiKey);
+  }
+}
+
+// Build a single Gelato POST payload for a sub-cart of a split.
+function buildGelatoSubOrderPayload({ paypalOrderId, subCart, splitIndex, splitCount, shippingAddress, firstName, lastName, buyerEmail }) {
+  return {
+    orderReferenceId:    `DUBIS-${paypalOrderId}-${splitIndex}of${splitCount}`,
+    customerReferenceId: paypalOrderId,
+    currency:            'USD',
+    items: subCart.entries.map((e, j) => ({
+      itemReferenceId: `item-${splitIndex}-${j + 1}`,
+      productUid:      e.uid,
+      files:           getDesignFiles(e.item.id, e.item.selectedColor, e.item.designRef, e.item.type),
+      quantity:        1,
+    })),
+    shipmentMethodUid: 'express',
+    shippingAddress: {
+      firstName,
+      lastName,
+      email:        buyerEmail || '',
+      phone:        shippingAddress.phone || '',
+      addressLine1: shippingAddress.address_line_1,
+      addressLine2: shippingAddress.address_line_2 || '',
+      city:         shippingAddress.admin_area_2,
+      state:        shippingAddress.admin_area_1 || '',
+      country:      shippingAddress.country_code,
+      postCode:     normalizePostCode(shippingAddress.postal_code, shippingAddress.country_code),
+    },
+  };
+}
+
+// SERIAL multi-order dispatch. Submits sub-orders one at a time so we
+// can abort the chain on the first failure without wasted POSTs.
+async function dispatchMultiOrderSplit({
+  res, req,
+  paypalOrderId, buyerEmail, shippingAddress, cartItems,
+  splitResult, firstName, lastName, GELATO_API_KEY, t0,
+}) {
+  const splitGroupId = crypto.randomUUID();
+  const splitCount = splitResult.subCarts.length;
+  const submittedOrders = []; // { gelatoOrderId, splitIndex, subCart, gelatoData }
+
+  dlog('split-dispatch-start', {
+    paypalOrderId,
+    splitGroupId,
+    splitCount,
+    warehouses: splitResult.subCarts.map(sc => sc.country),
+    subCartSizes: splitResult.subCarts.map(sc => sc.items.length),
+  });
+
+  // ── Phase 1: Serial POST of all sub-orders ──────────────────────
+  for (let i = 0; i < splitCount; i++) {
+    const subCart = splitResult.subCarts[i];
+    const splitIndex = i + 1;
+    const payload = buildGelatoSubOrderPayload({
+      paypalOrderId, subCart, splitIndex, splitCount, shippingAddress,
+      firstName, lastName, buyerEmail,
+    });
+    dlog('split-suborder-post', {
+      paypalOrderId, splitIndex, splitCount,
+      orderRef: payload.orderReferenceId,
+      itemsCount: payload.items.length,
+      uids: payload.items.map(it => it.productUid),
+    });
+    let gRes, data, postErr;
+    try {
+      gRes = await fetch(`${GELATO_API_BASE}/v4/orders`, {
+        method:  'POST',
+        headers: { 'X-API-KEY': GELATO_API_KEY, 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      });
+      data = await gRes.json().catch(() => null);
+    } catch (err) {
+      postErr = err;
+    }
+    const bodyCanceled = data && (
+      data.financialStatus === 'canceled' ||
+      data.financialStatus === 'cancelled' ||
+      data.fulfillmentStatus === 'failed' ||
+      !!data.refusalReasonCode
+    );
+
+    if (postErr || !gRes || !gRes.ok || bodyCanceled) {
+      derr('split-suborder-failed', {
+        paypalOrderId, splitIndex, splitCount,
+        httpStatus: gRes ? gRes.status : 'no_response',
+        bodyCanceled,
+        refusal: data ? (data.refusalReasonCode || data.message || '').slice(0, 200) : null,
+        exception: postErr ? postErr.message : null,
+        priorSubmitted: submittedOrders.length,
+      });
+      // CRITICAL: cancel all previously-submitted sub-orders before refunding,
+      // so Gelato doesn't keep producing things the customer won't receive.
+      if (submittedOrders.length > 0) {
+        await cancelAllSubOrders(submittedOrders, GELATO_API_KEY);
+      }
+      // Refund the FULL PayPal capture.
+      const refundResult = await refundOrder({
+        paypalOrderId,
+        reason: bodyCanceled
+          ? `split_canceled_${splitIndex}_of_${splitCount}_${(data && data.refusalReasonCode) || 'unknown'}`
+          : `split_failed_${splitIndex}_of_${splitCount}_${gRes ? gRes.status : 'exception'}`,
+      });
+      dlog('split-failure-refund-done', {
+        paypalOrderId, splitIndex, splitCount,
+        refunded: refundResult.refunded,
+        refundId: refundResult.refundId || null,
+      });
+      return res.status(200).json({
+        success:  true,
+        manual:   !refundResult.refunded,
+        refunded: !!refundResult.refunded,
+        refundId: refundResult.refundId || null,
+        reason:   refundResult.refunded ? 'split_partial_refunded' : 'split_partial_no_refund',
+        gelatoError: postErr
+          ? `Network error on sub-order ${splitIndex}/${splitCount}: ${postErr.message}`
+          : `Sub-order ${splitIndex}/${splitCount} rejected: ${(data && (data.refusalReason || data.message)) || 'api_error'}`,
+        split: true,
+        splitCount,
+      });
+    }
+    const gelatoOrderId = data.id || data.orderId || data.orderReferenceId;
+    submittedOrders.push({ gelatoOrderId, splitIndex, subCart, gelatoData: data });
+    dlog('split-suborder-success', { paypalOrderId, splitIndex, splitCount, gelatoOrderId });
+  }
+
+  // ── Phase 2: Async-cancel race-window poll on ALL sub-orders in PARALLEL ──
+  // Gelato may flip status from 'open' to 'canceled' within 1-3 seconds after
+  // accepting the POST (we've seen this on single-order flow too). Poll each
+  // sub-order for 4 seconds; if any cancels, refund the whole chain.
+  const RACE_WINDOW_MS = 4000;
+  const POLL_INTERVAL_MS = 1500;
+  const cancelledAfterPost = [];
+  await Promise.all(submittedOrders.map(async (so) => {
+    const t0sub = Date.now();
+    let polls = 0;
+    while (Date.now() - t0sub < RACE_WINDOW_MS) {
+      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+      polls++;
+      try {
+        const vRes = await fetch(`${GELATO_API_BASE}/v4/orders/${so.gelatoOrderId}`, {
+          headers: { 'X-API-KEY': GELATO_API_KEY, 'Accept': 'application/json' },
+        });
+        if (!vRes.ok) continue;
+        const vData = await vRes.json().catch(() => null);
+        if (!vData) continue;
+        const fs = vData.financialStatus || '';
+        if (/^(canceled|cancelled)$/i.test(fs)) {
+          cancelledAfterPost.push({
+            splitIndex: so.splitIndex,
+            gelatoOrderId: so.gelatoOrderId,
+            refusalCode: vData.refusalReasonCode || null,
+            refusalReason: vData.refusalReason || null,
+          });
+          break;
+        }
+        if (/^(passed_to_production|printed|shipped|delivered)$/i.test(fs)) break;
+      } catch (e) { /* keep polling */ }
+    }
+    dlog('split-suborder-verify-done', {
+      paypalOrderId,
+      splitIndex: so.splitIndex,
+      gelatoOrderId: so.gelatoOrderId,
+      polls,
+      durationMs: Date.now() - t0sub,
+    });
+  }));
+
+  if (cancelledAfterPost.length > 0) {
+    derr('split-async-cancel', {
+      paypalOrderId, splitGroupId, splitCount,
+      cancelled: cancelledAfterPost,
+    });
+    // Cancel any sub-orders Gelato HASN'T yet canceled to stop production
+    const stillLive = submittedOrders.filter(so =>
+      !cancelledAfterPost.find(c => c.splitIndex === so.splitIndex)
+    );
+    await cancelAllSubOrders(stillLive, GELATO_API_KEY);
+    const refundResult = await refundOrder({
+      paypalOrderId,
+      reason: `split_async_canceled_${cancelledAfterPost.map(c => c.refusalCode || 'unknown').join('_').slice(0, 80)}`,
+    });
+    return res.status(200).json({
+      success:  true,
+      manual:   !refundResult.refunded,
+      refunded: !!refundResult.refunded,
+      refundId: refundResult.refundId || null,
+      reason:   refundResult.refunded ? 'split_async_refunded' : 'split_async_no_refund',
+      gelatoError: `Gelato canceled ${cancelledAfterPost.length}/${splitCount} sub-orders during async stock verification.`,
+      split: true,
+      splitCount,
+    });
+  }
+
+  // ── Phase 3: Persist N rows in `orders` table ──────────────────
+  // We bypass /api/orders/save (which only knows about single-order flows)
+  // and INSERT here directly using the service role. Row 1 carries the full
+  // totalAmount + full cartItems + shipping_address; rows 2..N have ONLY
+  // their sub-cart items, total_amount=0 (bookkeeping = single sale on row 1).
+  // All N rows share split_group_id + split_index + split_count.
+  let primaryOrderId = null;
+  try {
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const { createClient } = require('@supabase/supabase-js');
+      const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const itemsSubtotal = (cartItems || []).reduce((s, i) => s + (Number(i.price) || 0), 0);
+      // The full cart is stored on row 1; row 2..N just carry their sub-cart for
+      // Gelato-status cross-referencing later (admin needs to see what's in each).
+      for (const so of submittedOrders) {
+        const isPrimary = so.splitIndex === 1;
+        const row = {
+          paypal_order_id:   paypalOrderId,
+          printful_order_id: so.gelatoOrderId,
+          buyer_email:       buyerEmail || '',
+          shipping_address:  shippingAddress,
+          items:             isPrimary ? cartItems : so.subCart.items,
+          total_amount:      isPrimary ? itemsSubtotal : 0,
+          items_subtotal:    isPrimary ? itemsSubtotal : 0,
+          status:            'pending',
+          currency:          'USD',
+          split_group_id:    splitGroupId,
+          split_index:       so.splitIndex,
+          split_count:       splitCount,
+        };
+        const { data: ins, error: insErr } = await sb.from('orders').insert(row).select('id').single();
+        if (insErr) {
+          derr('split-db-insert-failed', {
+            paypalOrderId, splitIndex: so.splitIndex,
+            error: insErr.message,
+          });
+          // Don't abort — Gelato orders are already submitted, refunding now would
+          // strand the production. Log and continue; oren can reconcile manually.
+        } else if (isPrimary) {
+          primaryOrderId = ins.id;
+        }
+      }
+      dlog('split-db-rows-inserted', {
+        paypalOrderId, splitGroupId, splitCount, primaryOrderId,
+      });
+    }
+  } catch (dbErr) {
+    derr('split-db-exception', { paypalOrderId, message: dbErr.message });
+  }
+
+  // ── Phase 4: Success response. ─────────────────────────────────
+  // paypal.js: `skipSave: true` tells the client NOT to call /api/orders/save
+  // since we've already inserted the rows. printfulOrderId is the PRIMARY (row 1)
+  // sub-order's Gelato ID — preserves API shape for downstream consumers that
+  // expect a single-order response.
+  dlog('split-dispatch-success', {
+    paypalOrderId, splitGroupId, splitCount,
+    gelatoOrderIds: submittedOrders.map(so => so.gelatoOrderId),
+    totalDurationMs: Date.now() - t0,
+  });
+  const primarySubOrder = submittedOrders.find(so => so.splitIndex === 1);
+  return res.status(200).json({
+    success:         true,
+    manual:          false,
+    split:           true,
+    splitGroupId,
+    splitCount,
+    skipSave:        true,    // tell paypal.js not to also call /api/orders/save
+    gelatoOrderId:   primarySubOrder ? primarySubOrder.gelatoOrderId : null,
+    printfulOrderId: primarySubOrder ? primarySubOrder.gelatoOrderId : null,
+    gelatoOrderIds:  submittedOrders.map(so => so.gelatoOrderId),
+  });
+}
+
 // 2026-05-20 REV 2 — QUOTE-BASED probe.
 // First version used /v3/stock/region-availability which returns per-region
 // "in-stock / out-of-stock / unavailable" — but Gelato's actual fulfillment
@@ -1694,6 +2006,42 @@ async function handleStockProbe(req, res) {
         });
       }
     }
+    // 2026-05-21: BEFORE telling the customer "can't ship", check if the cart is
+    // SPLITTABLE across warehouses. If yes → return ok=true (transparent — the
+    // checkout dispatcher will submit N sub-orders). The customer never sees a
+    // "ships in N packages" message because oren wants the split invisible.
+    try {
+      const splitEntries = mappable.map(p => {
+        const files = getDesignFiles(p.item.id, p.item.selectedColor, p.item.designRef, p.item.type);
+        const fileUrl = (files.find(f => f.type === 'front') || files[0] || {}).url || `${DESIGN_BASE_URL}/front_logo_white.png`;
+        return { uid: p.uid, item: p.item, fileUrl };
+      });
+      const splitResult = await splitCartByWarehouse({
+        entries: splitEntries,
+        recipient,
+        gelatoApiKey: GELATO_API_KEY,
+      });
+      if (splitResult.splittable && splitResult.subCarts.length > 1 && splitResult.unfulfillable.length === 0) {
+        dlog('stock-probe-splittable', {
+          country: recipientCountry,
+          subCarts: splitResult.subCarts.length,
+          warehouses: splitResult.subCarts.map(sc => sc.country),
+        });
+        return res.status(200).json({
+          ok: true,
+          country: recipientCountry,
+          mode: 'splittable',
+          splittable: true,
+          splitCount: splitResult.subCarts.length,
+          // We DON'T expose per-warehouse breakdown to the client — oren's
+          // requirement is full transparency: customer sees one order.
+        });
+      }
+    } catch (splitErr) {
+      // Splitter failure → fall through to the existing partial-OOS error.
+      derr('stock-probe-split-exception', { message: splitErr.message });
+    }
+
     const itemsCausing = oosItemsByCart.length;
     const reasonMsg = itemsCausing < cartItems.length && itemsCausing > 0
       ? `One or more items in your cart can't ship from the same warehouse together. Removing or swapping just ${itemsCausing === 1 ? 'this' : 'these'} item(s) should fix it.`
@@ -2003,6 +2351,80 @@ module.exports = async function handler(req, res) {
       gelatoError: `Design file validation failed: ${fileErrors[0] || 'unknown'}`.slice(0, 220),
       details:     fileErrors,
     });
+  }
+
+  // 2026-05-21: MULTI-WAREHOUSE SPLITTING.
+  // Before submitting a single Gelato order, probe whether the cart needs
+  // splitting across warehouses. If subCarts.length === 1, this is a free
+  // dry-run (the existing single-warehouse path handles it). If > 1, we
+  // route to the multi-order dispatcher and return early.
+  try {
+    const splitEntries = cartItems.map(item => {
+      const uid = buildProductUid(item.type, item.selectedColor, item.selectedSize, item.gender);
+      const files = getDesignFiles(item.id, item.selectedColor, item.designRef, item.type);
+      const fileUrl = (files[0] && files[0].url) || `${DESIGN_BASE_URL}/front_logo_white.png`;
+      return uid ? { uid, item, fileUrl } : null;
+    }).filter(Boolean);
+
+    const splitRecipient = {
+      firstName, lastName,
+      email:        buyerEmail || '',
+      phone:        shippingAddress.phone || '',
+      addressLine1: shippingAddress.address_line_1,
+      city:         shippingAddress.admin_area_2,
+      state:        shippingAddress.admin_area_1 || '',
+      postalCode:   normalizePostCode(shippingAddress.postal_code, shippingAddress.country_code),
+      country:      shippingAddress.country_code,
+    };
+
+    const splitProbeT0 = Date.now();
+    const splitResult = await splitCartByWarehouse({
+      entries: splitEntries,
+      recipient: splitRecipient,
+      gelatoApiKey: GELATO_API_KEY,
+    });
+    dlog('split-probe-done', {
+      paypalOrderId,
+      durationMs: Date.now() - splitProbeT0,
+      splittable: splitResult.splittable,
+      subCartCount: splitResult.subCarts.length,
+      warehouses: splitResult.subCarts.map(sc => sc.country),
+      unfulfillable: splitResult.unfulfillable.length,
+      reason: splitResult.reason,
+    });
+
+    if (splitResult.splittable && splitResult.subCarts.length > 1) {
+      // Multi-warehouse cart — route to dispatcher and return early.
+      return await dispatchMultiOrderSplit({
+        res, req,
+        paypalOrderId, buyerEmail, shippingAddress, cartItems,
+        splitResult, firstName, lastName, GELATO_API_KEY, t0,
+      });
+    }
+    if (!splitResult.splittable && splitResult.unfulfillable.length > 0) {
+      // Truly unfulfillable — refund and return. (The pre-capture probe in
+      // paypal.js *should* have caught this, but defense in depth.)
+      derr('split-unfulfillable', {
+        paypalOrderId,
+        unfulfillable: splitResult.unfulfillable.map(e => e.uid),
+      });
+      const refundResult = await refundOrder({ paypalOrderId, reason: 'cart_unfulfillable_at_dispatch' });
+      return res.status(200).json({
+        success:  true,
+        manual:   !refundResult.refunded,
+        refunded: !!refundResult.refunded,
+        refundId: refundResult.refundId || null,
+        reason:   refundResult.refunded ? 'cart_unfulfillable_refunded' : 'cart_unfulfillable_no_refund',
+        gelatoError: 'No Gelato warehouse can produce all items in this cart for the shipping country.',
+      });
+    }
+    // splittable && subCarts.length === 1 → existing single-warehouse path
+    // (continue past this block — gelatoOrder construction below handles it).
+  } catch (splitErr) {
+    // Splitter failure → fall through to the existing single-warehouse path.
+    // It has its own quote/error handling, so worst case we get the previous
+    // (pre-2026-05-21) behavior.
+    derr('split-probe-exception', { paypalOrderId, message: splitErr.message });
   }
 
   const gelatoOrder = {

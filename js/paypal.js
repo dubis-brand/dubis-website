@@ -717,8 +717,16 @@ function renderPayPalButtons() {
                 }
 
                 // ── 2. Save order to Supabase DB ─────────────────────
+                // 2026-05-21: when create-gelato-order routed through the multi-warehouse
+                // split dispatcher (pfData.skipSave === true), it has already inserted
+                // N rows directly using the service role. Calling /api/orders/save again
+                // would create a duplicate row with no split metadata. Skip in that case.
                 let savedOrderId = null;
-                try {
+                const skipSave = !!(pfData && pfData.skipSave);
+                if (skipSave) {
+                    console.log('Skipping /api/orders/save — multi-warehouse split already persisted rows server-side');
+                }
+                if (!skipSave) try {
                     const token = await getAuthToken();
                     const saveRes = await fetch('/api/orders/save', {
                         method:  'POST',

@@ -235,12 +235,34 @@ module.exports = async function handler(req, res) {
   );
 
   // Find order by Gelato order ID (stored in printful_order_id column)
-  // orderRef from Gelato is the orderReferenceId we set ("DUBIS-{paypalOrderId}")
-  // or the Gelato internal ID stored in printful_order_id
-  const paypalOrderId = orderRef.startsWith('DUBIS-') ? orderRef.slice(6) : null;
+  // orderRef from Gelato is the orderReferenceId we set:
+  //   single warehouse: "DUBIS-{paypalOrderId}"
+  //   multi-warehouse:  "DUBIS-{paypalOrderId}-{splitIndex}of{splitCount}"  (2026-05-21)
+  // The Gelato internal ID (data.id) is stored in printful_order_id and is
+  // unique per sub-order — that's our primary lookup. The orderRef parsing
+  // is only used when Gelato sends webhooks keyed by reference.
+  let paypalOrderId = null;
+  let splitInfo = null;
+  if (orderRef.startsWith('DUBIS-')) {
+    const tail = orderRef.slice(6);
+    const splitMatch = tail.match(/^(.+)-(\d+)of(\d+)$/);
+    if (splitMatch) {
+      paypalOrderId = splitMatch[1];
+      splitInfo = { splitIndex: Number(splitMatch[2]), splitCount: Number(splitMatch[3]) };
+    } else {
+      paypalOrderId = tail;
+    }
+  }
 
-  let query = supabase.from('orders').select('id,buyer_email,shipping_address,status,paypal_order_id,refund_id');
-  if (paypalOrderId) {
+  // First try lookup by printful_order_id (unique-per-sub-order Gelato ID).
+  // Fallback to paypal_order_id + split_index when only orderRef is given.
+  let query = supabase.from('orders').select('id,buyer_email,shipping_address,status,paypal_order_id,printful_order_id,refund_id,split_group_id,split_index,split_count');
+  const gelatoInternalId = data?.id || data?.orderId || null;
+  if (gelatoInternalId) {
+    query = query.eq('printful_order_id', gelatoInternalId);
+  } else if (paypalOrderId && splitInfo) {
+    query = query.eq('paypal_order_id', paypalOrderId).eq('split_index', splitInfo.splitIndex);
+  } else if (paypalOrderId) {
     query = query.eq('paypal_order_id', paypalOrderId);
   } else {
     query = query.eq('printful_order_id', orderRef);
@@ -249,7 +271,7 @@ module.exports = async function handler(req, res) {
   const { data: orders, error: findErr } = await query;
 
   if (findErr || !orders?.length) {
-    werr('order-not-found', { orderRef, paypalOrderId, findErr: findErr?.message || null });
+    werr('order-not-found', { orderRef, paypalOrderId, splitInfo, gelatoInternalId, findErr: findErr?.message || null });
     console.warn('Gelato webhook: order not found for ref:', orderRef);
     return res.status(200).json({ received: true, note: 'order not found' });
   }
@@ -272,22 +294,84 @@ module.exports = async function handler(req, res) {
   // issue caught in production, fraud block, address rejection) — we must
   // refund the customer. Safe to call: refundOrder is idempotent via
   // PayPal-Request-Id header, and we short-circuit if refund_id already stored.
+  //
+  // 2026-05-21: split-aware. If this row is part of a split_group (multi-
+  // warehouse order), check whether ANY sibling has already been refunded.
+  // If yes → skip refund (idempotency). If no → refund the full PayPal
+  // capture ONCE, cancel any still-live siblings at Gelato, and mark ALL
+  // rows in the group as refunded so the dashboard reflects reality.
   if ((newStatus === 'cancelled' || newStatus === 'failed') && !order.refund_id) {
     const payOrderId = order.paypal_order_id;
     if (payOrderId) {
-      wlog('auto-refund-trigger', { orderId: order.id, paypalOrderId: payOrderId, gelatoStatus: newStatus });
-      const refundResult = await refundOrder({ paypalOrderId: payOrderId, reason: `gelato_${newStatus}` });
-      wlog('auto-refund-result', {
-        orderId: order.id,
-        refunded: refundResult.refunded,
-        refundId: refundResult.refundId || null,
-        refundReason: refundResult.reason || null,
-      });
-      if (refundResult.refunded) {
+      // Check siblings if this is part of a split group.
+      let alreadyRefunded = false;
+      let siblings = [];
+      if (order.split_group_id) {
+        const { data: sibs } = await supabase.from('orders')
+          .select('id,printful_order_id,refund_id,status,split_index')
+          .eq('split_group_id', order.split_group_id);
+        siblings = sibs || [];
+        alreadyRefunded = siblings.some(s => s.refund_id);
+        wlog('split-refund-check', {
+          orderId: order.id,
+          splitGroupId: order.split_group_id,
+          siblings: siblings.length,
+          alreadyRefunded,
+        });
+      }
+
+      if (alreadyRefunded) {
+        // A sibling already triggered the refund — just propagate the status
+        // to this row without re-refunding.
+        const refundedSib = siblings.find(s => s.refund_id);
         updatePayload.status        = 'refunded';
-        updatePayload.refund_id     = refundResult.refundId;
+        updatePayload.refund_id     = refundedSib.refund_id;
         updatePayload.refunded_at   = new Date().toISOString();
-        updatePayload.refund_reason = `gelato_${newStatus}`;
+        updatePayload.refund_reason = `gelato_${newStatus}_sibling_refunded`;
+      } else {
+        wlog('auto-refund-trigger', { orderId: order.id, paypalOrderId: payOrderId, gelatoStatus: newStatus, isSplit: !!order.split_group_id });
+        const refundResult = await refundOrder({ paypalOrderId: payOrderId, reason: `gelato_${newStatus}` });
+        wlog('auto-refund-result', {
+          orderId: order.id,
+          refunded: refundResult.refunded,
+          refundId: refundResult.refundId || null,
+          refundReason: refundResult.reason || null,
+        });
+        if (refundResult.refunded) {
+          updatePayload.status        = 'refunded';
+          updatePayload.refund_id     = refundResult.refundId;
+          updatePayload.refunded_at   = new Date().toISOString();
+          updatePayload.refund_reason = `gelato_${newStatus}`;
+
+          // Cancel any still-live siblings at Gelato + mark them refunded too.
+          if (order.split_group_id && siblings.length > 1) {
+            const apiKey = process.env.GELATO_API_KEY || process.env.GELATO || process.env.Gelato;
+            const liveSiblings = siblings.filter(s =>
+              s.id !== order.id && s.status !== 'refunded' && s.status !== 'cancelled' && s.printful_order_id
+            );
+            for (const sib of liveSiblings) {
+              if (apiKey) {
+                try {
+                  await fetch(`https://order.gelatoapis.com/v4/orders/${sib.printful_order_id}`, {
+                    method:  'PATCH',
+                    headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ status: 'canceled' }),
+                  });
+                } catch (e) { /* best effort */ }
+              }
+              await supabase.from('orders').update({
+                status:        'refunded',
+                refund_id:     refundResult.refundId,
+                refunded_at:   new Date().toISOString(),
+                refund_reason: `gelato_${newStatus}_sibling_canceled`,
+              }).eq('id', sib.id);
+            }
+            wlog('split-siblings-canceled', {
+              splitGroupId: order.split_group_id,
+              canceledCount: liveSiblings.length,
+            });
+          }
+        }
       }
     } else {
       werr('auto-refund-no-paypal-id', { orderId: order.id });

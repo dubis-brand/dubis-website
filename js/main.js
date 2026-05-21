@@ -1568,6 +1568,24 @@ function addToCartFromModal(productId) {
     }
     return;
   }
+  // 2026-05-21: Country-block guardrail. If the customer's detected country
+  // isn't in the product's supportedCountries list (from the Gelato probe),
+  // refuse to add to cart. Customer can't order what we can't ship.
+  // Per oren's directive — "שלא יזמין משהו שהוא לא יכול להזמין".
+  const supported = Array.isArray(product.supportedCountries) ? product.supportedCountries : DEFAULT_SUPPORTED;
+  const customerCountry = detectedCustomerCountry();
+  if (supported.length > 0 && !supported.includes(customerCountry)) {
+    const msg = document.getElementById(`modal-stock-msg-${productId}`);
+    if (msg) {
+      const ctryName = (COUNTRY_NAME[customerCountry] || {})[currentLang] || customerCountry;
+      msg.textContent = currentLang === 'he'
+        ? `המוצר הזה לא נשלח ל${ctryName} כרגע. נסה/י מוצר אחר.`
+        : `This product doesn't ship to ${ctryName} right now. Try another item.`;
+      msg.style.display = 'block';
+      msg.style.color = '#b94a48';
+    }
+    return;
+  }
   // Variant-aware price: overrides product.price when oren set a per-(color,size) override
   // in admin → product_variant_stock.sell_price_usd. Frozen at add-to-cart time so subsequent
   // admin price changes don't surprise someone mid-checkout.
@@ -1586,6 +1604,30 @@ function addToCartFromModal(productId) {
 
 function quickAddToCart(productId, btnEl) {
   const product = products.find(p => p.id === productId);
+  // 2026-05-21: Same country-block guardrail as the modal path.
+  const supported = Array.isArray(product.supportedCountries) ? product.supportedCountries : DEFAULT_SUPPORTED;
+  const customerCountry = detectedCustomerCountry();
+  if (supported.length > 0 && !supported.includes(customerCountry)) {
+    const ctryName = (COUNTRY_NAME[customerCountry] || {})[currentLang] || customerCountry;
+    const txt = currentLang === 'he'
+      ? `המוצר לא נשלח ל${ctryName}`
+      : `Doesn't ship to ${ctryName}`;
+    // Light flash on the button instead of a modal so quick-add stays quick
+    if (btnEl) {
+      const orig = btnEl.textContent;
+      btnEl.textContent = txt;
+      btnEl.disabled = true;
+      btnEl.style.background = '#c8514f';
+      btnEl.style.color = '#fff';
+      setTimeout(() => {
+        btnEl.textContent = orig;
+        btnEl.disabled = false;
+        btnEl.style.background = '';
+        btnEl.style.color = '';
+      }, 2400);
+    }
+    return;
+  }
   const card = document.querySelector(`.product-card[data-id="${productId}"]`);
   const selectedColor = card?.dataset.selectedColor || product.colors[0];
   const selectedSize  = product.sizes[2] || 'L';
@@ -1667,11 +1709,15 @@ function _cartProbeApply(result, _country) {
     return;
   }
   if (result.ok === true) {
-    // All-clear → green confirmation banner
+    // 2026-05-21: All-clear → green confirmation. Whether the cart ships from
+    // ONE warehouse (mode='in_stock') or N warehouses via splitting
+    // (mode='splittable'), the customer experience is identical — single
+    // PayPal capture, single confirmation email, single tracked order. Per
+    // oren's directive the split is invisible.
     banner.className = 'cart-warehouse-banner cart-banner-ok';
     banner.innerHTML = currentLang === 'he'
-      ? '✅ <strong>הסל שלך זמין למשלוח</strong> — כל הפריטים יישלחו ממחסן אחד'
-      : '✅ <strong>Your cart ships!</strong> — all items fulfill from a single warehouse';
+      ? '✅ <strong>הסל שלך זמין למשלוח</strong>'
+      : '✅ <strong>Your cart is ready to ship!</strong>';
     banner.style.display = '';
     if (btn) { btn.disabled = false; btn.classList.remove('disabled'); }
     return;
