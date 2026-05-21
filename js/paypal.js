@@ -11,10 +11,10 @@ const PAYPAL_CLIENT_ID = PAYPAL_ENV === 'live' ? PAYPAL_LIVE_CLIENT_ID : PAYPAL_
 
 const SHIPPING_FEE = 8.99;                  // legacy default (US standard)
 const FREE_SHIPPING_THRESHOLD = 60;
-// Country-aware shipping â Gelato standard ground varies wildly:
+// Country-aware shipping — Gelato standard ground varies wildly:
 //   US ~$5.99 / IL ~$12.87 / EU ~$8-12 / AU ~$10-14
 // We charge slightly above cost so we don't bleed money on intl test orders
-// (which until launch are mostly oren+amos+family in Israel â the audit
+// (which until launch are mostly oren+amos+family in Israel — the audit
 //  on 2026-05-01 showed 100% of orders had country_code=IL and we were
 //  losing ~$3.88 per order on shipping alone).
 // Per-country shipping (Gelato ships to 80+ countries). Expanded 2026-05-02
@@ -114,7 +114,7 @@ async function applyCoupon() {
     const code = (document.getElementById('coupon-input')?.value || '').trim().toUpperCase();
     const fb = document.getElementById('coupon-feedback');
     if (!code) { fb.textContent = 'Please enter a coupon code.'; fb.className = 'coupon-feedback error'; return; }
-    fb.textContent = 'Checkingâ¦'; fb.className = 'coupon-feedback';
+    fb.textContent = 'Checking…'; fb.className = 'coupon-feedback';
     const cartTotal = cart.reduce((sum, item) => sum + item.price, 0);
     try {
         const res = await fetch('/api/admin/coupons?action=validate', {
@@ -128,7 +128,7 @@ async function applyCoupon() {
             const discStr = data.discount_type === 'percentage'
                 ? `${data.discount_value}% off`
                 : `$${data.discount_value} off`;
-            fb.textContent = `Coupon applied: ${data.name} â ${discStr}. New total: $${data.final_total.toFixed(2)}`;
+            fb.textContent = `Coupon applied: ${data.name} — ${discStr}. New total: $${data.final_total.toFixed(2)}`;
             fb.className = 'coupon-feedback success';
             updateCartTotalDisplay(data.final_total);
         } else {
@@ -281,7 +281,7 @@ async function submitContactStep() {
 
     // Store contact info globally for use in onApprove
     window.checkoutContact = { name, email, phone };
-    // PayPal Orders v2 shipping.address shape â sent as SET_PROVIDED_ADDRESS
+    // PayPal Orders v2 shipping.address shape — sent as SET_PROVIDED_ADDRESS
     // so PayPal does NOT silently use the buyer's profile address. The customer
     // sees their own address pre-filled at the PayPal step.
     window.checkoutAddress = {
@@ -322,11 +322,11 @@ async function submitContactStep() {
 
 // ===== FALLBACK: SDK failed to load =====
 function renderDirectPayPalButton() {
-    // Do NOT use a silent direct PayPal link â orders won't be saved.
+    // Do NOT use a silent direct PayPal link — orders won't be saved.
     // Show a clear error and ask user to refresh.
     document.getElementById('paypal-button-container').innerHTML = `
         <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:16px;text-align:center;color:#856404">
-            <strong>â ï¸ Payment system could not load.</strong><br>
+            <strong>⚠️ Payment system could not load.</strong><br>
             Please close this window, refresh the page, and try again.<br>
             <small>If the problem persists, contact us at <a href="mailto:dubis.brand@gmail.com" style="color:#856404">dubis.brand@gmail.com</a></small>
         </div>
@@ -401,8 +401,8 @@ function loadPayPalSDK() {
         }
         const script    = document.createElement('script');
         script.id       = 'paypal-sdk';
-        // enable-funding=card â renders separate "Debit or Credit Card" Guest Checkout button
-        // components=buttons â explicit; disable-funding=credit removes "Pay Later" clutter
+        // enable-funding=card → renders separate "Debit or Credit Card" Guest Checkout button
+        // components=buttons → explicit; disable-funding=credit removes "Pay Later" clutter
         script.src      = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD&intent=capture&enable-funding=card&disable-funding=credit&components=buttons`;
         script.onload   = () => { paypalLoaded = true; resolve(); };
         script.onerror  = () => reject(new Error('PayPal SDK unavailable'));
@@ -448,10 +448,7 @@ function renderPayPalButtons() {
             });
             const probe = await probeRes.json().catch(() => ({ ok: true, skipped: 'parse_error' }));
             if (probe.ok === false) {
-                const oosLines = (probe.oosItems || []).map(o => `• ${o.label || (o.type + ' ' + o.color + ' ' + o.size)}`).join('\n');
-                const reason = probe.reason || 'one or more items are out of stock for your country';
-                const msg = `Sorry — ${reason}\n\n${oosLines || ''}\n\nPlease remove the affected item(s) or pick a different color/size, then try again.`;
-                showPaymentError(msg);
+                showPaymentError(formatStockProbeError(probe, /*postAuth=*/false));
                 throw new Error('stock_probe_failed');
             }
         } catch (probeErr) {
@@ -463,7 +460,7 @@ function renderPayPalButtons() {
         const shipping  = itemTotal >= FREE_SHIPPING_THRESHOLD ? 0 : shipFee;
         const discountedTotal = appliedCoupon ? appliedCoupon.final_total : itemTotal;
         const total = discountedTotal + shipping;
-        // Meta Pixel â InitiateCheckout event (fires when customer actually clicks PayPal/Card button)
+        // Meta Pixel — InitiateCheckout event (fires when customer actually clicks PayPal/Card button)
         if (typeof fbq === 'function') {
             try {
                 fbq('track', 'InitiateCheckout', {
@@ -481,11 +478,11 @@ function renderPayPalButtons() {
         window.__dubisCheckoutShipping = shipping;
         window.__dubisCheckoutItemSub  = itemTotal;
         window.__dubisCheckoutDiscount = appliedCoupon ? (itemTotal - appliedCoupon.final_total) : 0;
-        // PayPal Orders v2 breakdown rule (2026-04-23 fix â "snag" bug root cause):
-        //   amount.value = item_total + shipping + handling + tax_total â discount
-        //   item_total   = Î£(items[i].unit_amount Ã items[i].quantity)
+        // PayPal Orders v2 breakdown rule (2026-04-23 fix — "snag" bug root cause):
+        //   amount.value = item_total + shipping + handling + tax_total − discount
+        //   item_total   = Σ(items[i].unit_amount × items[i].quantity)
         // Previous code DISCOUNTED item_total directly while leaving unit_amount at original
-        // price â PayPal rejected with ITEM_TOTAL_MISMATCH â onError â "We hit a snag".
+        // price → PayPal rejected with ITEM_TOTAL_MISMATCH → onError → "We hit a snag".
         // Correct approach: keep items at original prices, keep item_total = sum of items,
         // and express the coupon as breakdown.discount.
         const discountAmt = appliedCoupon ? Math.max(0, itemTotal - appliedCoupon.final_total) : 0;
@@ -498,7 +495,7 @@ function renderPayPalButtons() {
         }
         // Pass the customer-entered shipping address to PayPal so the buyer
         // sees their address (no surprise) and so we don't depend on PayPal's
-        // profile address â works for both PayPal-account and Guest Card flows.
+        // profile address — works for both PayPal-account and Guest Card flows.
         const addr = window.checkoutAddress || null;
         const purchaseUnit = {
             description: 'DUBIS Clothing Order',
@@ -511,7 +508,7 @@ function renderPayPalButtons() {
                 name:        item.phrase.substring(0, 127),
                 unit_amount: { currency_code: 'USD', value: item.price.toFixed(2) },
                 quantity:    '1',
-                description: `${item.typeLabel} Â· ${item.selectedSize} Â· ${item.selectedColor}`
+                description: `${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}`
             }))
         };
         if (addr && addr.address_line_1) {
@@ -576,9 +573,7 @@ function renderPayPalButtons() {
                     });
                     const reProbeData = await reProbe.json().catch(() => ({ ok: true, skipped: 'parse_error' }));
                     if (reProbeData.ok === false) {
-                        const oosLines = (reProbeData.oosItems || []).map(o => `• ${o.label || (o.type + ' ' + o.color + ' ' + o.size)}`).join('\n');
-                        const reason = reProbeData.reason || 'one or more items just went out of stock';
-                        showPaymentError(`Sorry — ${reason}\n\n${oosLines || ''}\n\nYour card was NOT charged. Please refresh the cart and try again.`);
+                        showPaymentError(formatStockProbeError(reProbeData, /*postAuth=*/true));
                         // PayPal already authorized but NOT yet captured — by throwing
                         // here, actions.order.capture() is never called, the auth
                         // expires harmlessly, and no money moves.
@@ -593,7 +588,7 @@ function renderPayPalButtons() {
                 const shipping = details.purchase_units[0]?.shipping;
                 if (window.dubisTrack) window.dubisTrack('purchase', { paypal_id: details.id, items: cart.length, total: cart.reduce((s,i)=>s+i.price,0) });
 
-                // Meta Pixel â Purchase event (fixed: totalAmount was undefined)
+                // Meta Pixel — Purchase event (fixed: totalAmount was undefined)
                 if (typeof fbq === 'function') {
                     try {
                         const purchaseTotal = window.__dubisCheckoutTotal
@@ -608,7 +603,7 @@ function renderPayPalButtons() {
                     } catch (e) { /* pixel not critical */ }
                 }
 
-                // Prefer the address the customer just typed into our form â it's the
+                // Prefer the address the customer just typed into our form — it's the
                 // one they expect to see on the confirmation. PayPal's profile address
                 // is only a fallback (e.g. if SET_PROVIDED_ADDRESS was rejected).
                 const ourAddr = window.checkoutAddress || null;
@@ -644,7 +639,7 @@ function renderPayPalButtons() {
                     selectedColor: item.selectedColor,
                 }));
 
-                // ââ 1. Send to Gelato ââââââââââââââââââââââââââââââââ
+                // ── 1. Send to Gelato ────────────────────────────────
                 // If Gelato rejects (e.g. out of stock), create-gelato-order auto-refunds
                 // via PayPal and returns { refunded: true, refundId }. In that case we
                 // show a refund message instead of success.
@@ -715,7 +710,7 @@ function renderPayPalButtons() {
                     console.error('Gelato dispatch failed:', err);
                 }
 
-                // ââ 2. Save order to Supabase DB âââââââââââââââââââââ
+                // ── 2. Save order to Supabase DB ─────────────────────
                 let savedOrderId = null;
                 try {
                     const token = await getAuthToken();
@@ -751,7 +746,7 @@ function renderPayPalButtons() {
                     console.error('Order save failed:', err);
                 }
 
-                // ââ 3. Send confirmation email ââââââââââââââââââââââââ
+                // ── 3. Send confirmation email ────────────────────────
                 try {
                     const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
                     const itemsSubtotalEmail = cartSnapshot.reduce((s, i) => s + (Number(i.price) || 0), 0);
@@ -764,13 +759,13 @@ function renderPayPalButtons() {
                             orderId:         savedOrderId,
                             paypalOrderId:   details.id,
                             items:           cartSnapshot,
-                            // Real money breakdown â was missing before, now lines up with checkout.
+                            // Real money breakdown — was missing before, now lines up with checkout.
                             itemsSubtotal:   itemsSubtotalEmail,
                             shippingAmount:  Number(window.__dubisCheckoutShipping) || 0,
                             discountAmount:  Number(window.__dubisCheckoutDiscount) || 0,
                             couponCode:      appliedCoupon?.code || null,
                             totalAmount:     Number(window.__dubisCheckoutTotal) || itemsSubtotalEmail,
-                            // Shipping address â so the customer can see where it's going,
+                            // Shipping address — so the customer can see where it's going,
                             // and so they have written proof we captured it.
                             shippingAddress: shippingAddress,
                         }),
@@ -778,7 +773,7 @@ function renderPayPalButtons() {
                 } catch (err) {
                     console.error('Confirmation email failed:', err);
                 }
-                // ââ 4. GA4 purchase event âââââââââââââââââââââââââââââ
+                // ── 4. GA4 purchase event ─────────────────────────────
                 if (typeof gtag !== 'undefined') {
                     const orderValue = cartSnapshot.reduce((s, i) => s + (Number(i.price) || 0), 0);
                     gtag('event', 'purchase', {
@@ -794,7 +789,7 @@ function renderPayPalButtons() {
                         })),
                     });
                 }
-                // âââââââââââââââââââââââââââââââââââââââââââââââââââââ
+                // ─────────────────────────────────────────────────────
 
                 closePaypalModal();
                 cart = [];
@@ -827,7 +822,7 @@ function renderPayPalButtons() {
 
     const onError = (err) => {
         // NOTE: PayPal's onError can fire for transient issues (network blips, SDK init
-        // failures, window-resize races) â sometimes even AFTER a successful capture.
+        // failures, window-resize races) — sometimes even AFTER a successful capture.
         // It is NOT a reliable signal that payment failed.  Our authoritative failure
         // path is the onApprove/capture try-catch.  Here we only show a non-blocking
         // banner that does NOT destroy the button container, so the user can retry.
@@ -835,7 +830,7 @@ function renderPayPalButtons() {
         showPaymentErrorBanner('We hit a snag connecting to PayPal. If the payment did not go through, please try again.');
     };
 
-    // Messaging above the buttons â makes Guest Checkout visible to the 60%+ of US users who don't have PayPal
+    // Messaging above the buttons — makes Guest Checkout visible to the 60%+ of US users who don't have PayPal
     const container = document.getElementById('paypal-button-container');
     // 2026-05-21 fix: the .cc-messaging div is inserted as a SIBLING of the container
     // (via parentNode.insertBefore at the end of this block). The old check
@@ -850,13 +845,13 @@ function renderPayPalButtons() {
         msg.className = 'cc-messaging';
         msg.style.cssText = 'text-align:center;margin:0 0 12px;padding:10px 12px;background:#f5f1e8;border:1px solid #e2d9c4;border-radius:8px;font-size:13px;color:#2b2b2b;';
         msg.innerHTML = `
-            <div style="font-weight:600;margin-bottom:4px;">ð³ Pay with any credit or debit card</div>
+            <div style="font-weight:600;margin-bottom:4px;">💳 Pay with any credit or debit card</div>
             <div style="font-size:12px;color:#666;">No PayPal account required. We accept Visa, Mastercard, Amex, and Discover.</div>
             <div style="margin-top:8px;font-size:18px;letter-spacing:2px;color:#0f1a2e;">
-                <span title="Visa">ð³</span>
-                <span title="Mastercard">ð³</span>
-                <span title="Amex">ð³</span>
-                <span title="Discover">ð³</span>
+                <span title="Visa">💳</span>
+                <span title="Mastercard">💳</span>
+                <span title="Amex">💳</span>
+                <span title="Discover">💳</span>
                 <span style="font-size:12px;color:#999;margin-inline-start:8px;">& PayPal</span>
             </div>
         `;
@@ -870,7 +865,7 @@ function renderPayPalButtons() {
         createOrder, onApprove, onError, onCancel: () => {}
     }).render('#paypal-button-container');
 
-    // Credit/Debit card button (Guest Checkout â no PayPal account needed)
+    // Credit/Debit card button (Guest Checkout — no PayPal account needed)
     // This is critical for US customers who don't use PayPal.
     if (paypal.FUNDING && paypal.FUNDING.CARD) {
         try {
@@ -895,13 +890,13 @@ function renderOrderSummary() {
     const shipping  = itemTotal >= FREE_SHIPPING_THRESHOLD ? 0 : shipFee;
     const couponDiscount = appliedCoupon ? (itemTotal - appliedCoupon.final_total) : 0;
     const grandTotal = itemTotal - couponDiscount + shipping;
-    // Lang-aware currency display in checkout. PayPal always charges USD â
+    // Lang-aware currency display in checkout. PayPal always charges USD —
     // when customer browses in Hebrew with ILS shown, we explicitly disclose
     // the USD charge so they aren't surprised at the PayPal handoff.
     const isHe = (typeof currentLang !== 'undefined' && currentLang === 'he');
-    const ils = (usd) => 'âª' + Math.round(usd * (typeof USD_TO_ILS !== 'undefined' ? USD_TO_ILS : 3.63));
+    const ils = (usd) => '₪' + Math.round(usd * (typeof USD_TO_ILS !== 'undefined' ? USD_TO_ILS : 3.63));
     const fmt = (usd) => isHe ? ils(usd) : '$' + Number(usd).toFixed(2);
-    const fmtFree = isHe ? '<span style="color:var(--honey);font-weight:600">××× × ð</span>' : '<span style="color:var(--honey);font-weight:600">FREE ð</span>';
+    const fmtFree = isHe ? '<span style="color:var(--honey);font-weight:600">חינם 🎉</span>' : '<span style="color:var(--honey);font-weight:600">FREE 🎉</span>';
 
     const remaining = Math.max(0, FREE_SHIPPING_THRESHOLD - itemTotal);
     const pct = Math.min(100, (itemTotal / FREE_SHIPPING_THRESHOLD) * 100);
@@ -911,7 +906,7 @@ function renderOrderSummary() {
         <div class="free-ship-progress">
             <div class="free-ship-progress-label ${shipping === 0 ? 'reached' : ''}">
                 ${shipping === 0
-                    ? 'ð You\'ve got free shipping!'
+                    ? '🎉 You\'ve got free shipping!'
                     : `Add <strong>$${remaining.toFixed(2)}</strong> more for free shipping`}
             </div>
             <div class="free-ship-bar-track">
@@ -929,7 +924,7 @@ function renderOrderSummary() {
                     <img src="${variantImg}" alt="${item.phrase}" class="order-item-img" onerror="this.onerror=null;this.src='${item.image||''}'" />
                     <div class="order-item-info">
                         <div class="order-item-name">"${item.phrase}"</div>
-                        <div class="order-item-details">${item.typeLabel} Â· ${item.selectedSize} Â· ${item.selectedColor}</div>
+                        <div class="order-item-details">${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}</div>
                     </div>
                     <div class="order-item-price">${fmt(item.price)}</div>
                 </div>`;
@@ -939,27 +934,27 @@ function renderOrderSummary() {
         <!-- Totals -->
         <div class="order-totals">
             <div class="order-total-row">
-                <span>${isHe ? '×¡×"× ××× ×××' : 'Subtotal'}</span>
+                <span>${isHe ? 'סה"כ ביניים' : 'Subtotal'}</span>
                 <span>${fmt(itemTotal)}</span>
             </div>
             ${couponDiscount > 0 ? `
             <div class="order-total-row discount">
-                <span>${isHe ? '×§××¤××' : 'Coupon'} (${appliedCoupon?.code})</span>
-                <span>â${fmt(couponDiscount)}</span>
+                <span>${isHe ? 'קופון' : 'Coupon'} (${appliedCoupon?.code})</span>
+                <span>−${fmt(couponDiscount)}</span>
             </div>` : ''}
             <div class="order-total-row">
-                <span>${isHe ? '××©×××' : 'Shipping'}</span>
+                <span>${isHe ? 'משלוח' : 'Shipping'}</span>
                 <span>${shipping === 0 ? fmtFree : fmt(shipping)}</span>
             </div>
             <div class="order-total-row total">
-                <span>${isHe ? '×¡×"×' : 'Total'}</span>
+                <span>${isHe ? 'סה"כ' : 'Total'}</span>
                 <span>${fmt(grandTotal)}</span>
             </div>
         </div>
         ${isHe ? `
         <div style="margin-top:10px;padding:10px 12px;background:#fef9e7;border:1px solid #f1c40f33;border-radius:6px;font-size:12px;color:#5d4e1f;line-height:1.5">
-            ð³ <strong>PayPal ××××× ×××××¨××:</strong> $${grandTotal.toFixed(2)}<br>
-            <span style="font-size:11px;opacity:0.8">×××¨× ××©××¢×¨×ª â ××¡××× ××¡××¤× ×××¨×××¡ ×××× ××¤× ×©×¢×¨ ××¡××¨× ×©× PayPal ×××× ×××××.</span>
+            💳 <strong>PayPal יחייב בדולרים:</strong> $${grandTotal.toFixed(2)}<br>
+            <span style="font-size:11px;opacity:0.8">המרה משוערת — הסכום הסופי בכרטיס יהיה לפי שער מסחרי של PayPal ביום החיוב.</span>
         </div>` : ''}
     `;
 }
@@ -975,17 +970,17 @@ function showSuccessModal() {
     document.getElementById('success-modal').classList.add('open');
 }
 
-// Auto-refund modal â shown when Gelato rejects the order and we've refunded PayPal.
-// Uses the existing success-modal element so no DOM changes needed â just rewrites content.
+// Auto-refund modal — shown when Gelato rejects the order and we've refunded PayPal.
+// Uses the existing success-modal element so no DOM changes needed — just rewrites content.
 function showRefundModal(info) {
     const modal = document.getElementById('success-modal');
     if (!modal) return;
     const content = modal.querySelector('.modal-content') || modal.firstElementChild || modal;
     if (content) {
         content.innerHTML = `
-            <h2 style="color:#b45309;margin:0 0 16px;font-size:22px">Order refunded â item unavailable</h2>
-            <p style="margin:0 0 12px;color:#374151">We're sorry â the item you ordered just went out of stock at our fulfillment partner. Your payment has been refunded automatically.</p>
-            <p style="margin:0 0 12px;color:#374151">You should see the refund on your statement in 3â5 business days.</p>
+            <h2 style="color:#b45309;margin:0 0 16px;font-size:22px">Order refunded — item unavailable</h2>
+            <p style="margin:0 0 12px;color:#374151">We're sorry — the item you ordered just went out of stock at our fulfillment partner. Your payment has been refunded automatically.</p>
+            <p style="margin:0 0 12px;color:#374151">You should see the refund on your statement in 3–5 business days.</p>
             ${info.refundId ? `<p style="margin:0 0 20px;color:#6b7280;font-size:13px">Refund reference: <code>${info.refundId}</code></p>` : ''}
             <button onclick="closeSuccessModal()" style="display:block;width:100%;padding:12px;background:#111;color:#fff;border:none;cursor:pointer;font-size:14px;border-radius:4px">Close</button>
         `;
@@ -1049,20 +1044,59 @@ function showAddressHoldModal(info) {
 // ===== PAYMENT STATE HELPERS =====
 function showPaymentProcessing() {
     const container = document.getElementById('paypal-button-container');
-    if (container) container.innerHTML = '<div style="text-align:center;padding:32px;color:#666">Processing paymentâ¦</div>';
+    if (container) container.innerHTML = '<div style="text-align:center;padding:32px;color:#666">Processing payment…</div>';
 }
 
-// Hard failure â payment definitively did not go through (capture threw, etc.)
+// 2026-05-21: localized stock-probe error builder. Renders the message in
+// HE or EN based on window.currentLang. The API's `mode` field drives the
+// headline; `oosItems` list the specific items the customer needs to
+// remove/swap to proceed.
+function formatStockProbeError(probe, postAuth) {
+    const lang = (window.currentLang === 'he') ? 'he' : 'en';
+    const oosLines = (probe.oosItems || [])
+        .map(o => `• ${o.label || (o.type + ' ' + o.color + ' ' + o.size)}`)
+        .join('\n');
+
+    let headline;
+    if (probe.mode === 'quote_partial_oos') {
+        headline = lang === 'he'
+            ? 'אופס — לא ניתן לשלוח את כל הפריטים בעגלה ממחסן אחד למדינה שלך. הסרת או החלפת הפריטים המסומנים תאפשר להמשיך.'
+            : 'Sorry — items in this cart can\'t ship from the same warehouse to your country. Removing or swapping the marked items should fix it.';
+    } else if (probe.mode === 'all_blocked_pre_gelato' || probe.mode === 'all_unmapped') {
+        headline = lang === 'he'
+            ? 'הפריטים בעגלה לא זמינים כרגע לשליחה למדינה שלך. נסו לבחור צבע/מידה אחרים, או פריטים אחרים מהאתר.'
+            : 'These items can\'t ship to your country right now. Try a different color/size, or pick other items from the site.';
+    } else {
+        headline = lang === 'he'
+            ? `אופס — ${probe.reason || 'משהו השתבש'}. נסו שוב או בחרו פריטים אחרים.`
+            : `Sorry — ${probe.reason || 'something went wrong'}. Please try again or pick different items.`;
+    }
+    const footer = postAuth
+        ? (lang === 'he'
+            ? 'לא חויבת. רעננו את העגלה ונסו שוב.'
+            : 'Your card was NOT charged. Refresh the cart and try again.')
+        : (lang === 'he'
+            ? 'הסירו את הפריטים המסומנים או בחרו צבע/מידה אחרים, ונסו שוב.'
+            : 'Remove the affected item(s) or pick a different color/size, then try again.');
+    return `${headline}\n\n${oosLines || ''}\n\n${footer}`.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// Hard failure — payment definitively did not go through (capture threw, etc.)
 // Replaces the container so user can't click again on a broken state.
 function showPaymentError(msg) {
     const container = document.getElementById('paypal-button-container');
+    const lang = (window.currentLang === 'he') ? 'he' : 'en';
+    const closeLabel = lang === 'he' ? 'סגירה' : 'Close';
+    // pre-line preserves the \n line breaks in formatStockProbeError() output.
+    // No HTML interpolation — msg is text-only.
+    const safeMsg = String(msg).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     if (container) container.innerHTML = `
-        <p style="color:#c00;text-align:center;padding:16px;margin:0">${msg}</p>
-        <button onclick="closePaypalModal()" style="display:block;width:100%;margin-top:8px;padding:12px;background:#111;color:#fff;border:none;cursor:pointer;font-size:14px">Close</button>
+        <p style="color:#c00;text-align:center;padding:16px;margin:0;white-space:pre-line;line-height:1.5;font-size:14px">${safeMsg}</p>
+        <button onclick="closePaypalModal()" style="display:block;width:100%;margin-top:8px;padding:12px;background:#111;color:#fff;border:none;cursor:pointer;font-size:14px">${closeLabel}</button>
     `;
 }
 
-// Soft warning â transient PayPal SDK error.  Does NOT destroy the buttons,
+// Soft warning — transient PayPal SDK error.  Does NOT destroy the buttons,
 // so the user can retry without reopening the modal. Banner auto-dismisses
 // after 10s or on next successful interaction.
 function showPaymentErrorBanner(msg) {
@@ -1090,7 +1124,7 @@ window.addEventListener('DOMContentLoaded', () => {
         window.history.replaceState({}, '', '/');
     }
 
-    // Re-render the order summary when the customer picks a different country â
+    // Re-render the order summary when the customer picks a different country —
     // shipping is country-aware (US: $8.99, IL/intl: up to $14.99) so the total
     // must update on the fly. Without this, the customer sees a US price and
     // the real charge happens at PayPal capture, breaking trust.

@@ -849,7 +849,50 @@ body[dir="rtl"] .product-price .price-from { margin-left: 2px; margin-right: 0; 
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    row-gap: 6px;
 }
+
+/* 2026-05-21: ships-to — flag emoji badges showing where a product can be ordered to. */
+.ships-to {
+    font-family: var(--font-body);
+    font-size: 0.8rem;
+    color: var(--gray-600, #5d5d5d);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.ships-to-label {
+    font-size: 0.78rem;
+    color: var(--gray-500, #8a8a8a);
+    letter-spacing: 0.02em;
+}
+.ship-flag {
+    font-size: 1.05rem;
+    line-height: 1;
+}
+.ships-to-compact {
+    margin-left: auto;                 /* push to the right edge of .product-bottom */
+    background: rgba(193, 126, 58, 0.08);  /* faint honey wash */
+    border: 1px solid rgba(193, 126, 58, 0.18);
+    border-radius: 12px;
+    padding: 2px 8px;
+    cursor: help;
+}
+.ships-to-none {
+    color: #b94a48;
+    font-weight: 600;
+    font-size: 0.78rem;
+}
+.modal-info .ships-to {
+    margin: 6px 0 8px;
+    padding: 6px 10px;
+    background: #f9f4eb;
+    border: 1px solid #e2d5b8;
+    border-radius: 6px;
+}
+[dir="rtl"] .ships-to-compact { margin-left: 0; margin-right: auto; }
 
 .product-price {
     font-family: var(--font-body);

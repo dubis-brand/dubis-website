@@ -4,6 +4,7 @@
 
 let cart = [];
 let currentLang  = 'en';
+window.currentLang = currentLang;  // initial mirror — updated by setLanguage()
 let _activeFilter = 'all';
 let _activeGender = 'all';
 
@@ -26,6 +27,39 @@ function getStockNum(id) {
   if (isProductFullyOOS(id)) return 0;
   const seed = (id * 7 + 3) % 19;
   return seed < 4 ? seed + 3 : seed < 10 ? seed + 2 : seed;
+}
+
+// ── Country availability badges (2026-05-21) ──
+// `product.supportedCountries` is the result of a solo /v4/orders:quote
+// probe per (product, country) — see scripts/probe-product-country-availability.js.
+// Used to render flag emojis on cards + a "Ships to" line in the modal so an
+// IL visitor can see at a glance which products are orderable to Israel.
+// NOTE: A product flagged with IL here can still fail at cart-level if mixed
+// with another product Gelato can only produce from a different warehouse —
+// that case is caught at runtime by the stock-probe in
+// api/create-gelato-order.js. This badge is the SOLO availability.
+const COUNTRY_FLAG = { US: '🇺🇸', IL: '🇮🇱' };
+const COUNTRY_NAME = {
+  US: { en: 'United States', he: 'ארה״ב' },
+  IL: { en: 'Israel',        he: 'ישראל' },
+};
+function countryFlagsForProduct(product) {
+  const arr = Array.isArray(product?.supportedCountries) ? product.supportedCountries : ['US','IL'];
+  return arr;
+}
+function countryFlagsHTML(product, opts = {}) {
+  const arr = countryFlagsForProduct(product);
+  const compact = !!opts.compact;
+  if (arr.length === 0) {
+    const txt = currentLang === 'he' ? 'אזל זמנית' : 'Currently unavailable';
+    return `<div class="ships-to ships-to-none">⚠️ ${txt}</div>`;
+  }
+  const flags = arr.map(c => `<span class="ship-flag" title="${(COUNTRY_NAME[c] || {})[currentLang] || c}">${COUNTRY_FLAG[c] || c}</span>`).join('');
+  if (compact) {
+    return `<div class="ships-to ships-to-compact" title="${currentLang === 'he' ? 'זמין למשלוח ל-' : 'Ships to:'} ${arr.map(c => (COUNTRY_NAME[c]||{})[currentLang]||c).join(', ')}">${flags}</div>`;
+  }
+  const label = currentLang === 'he' ? 'זמין למשלוח ל-' : 'Ships to';
+  return `<div class="ships-to"><span class="ships-to-label">${label}</span> ${flags}</div>`;
 }
 
 // Deterministic 40% chance to display the BACK image as the default in the catalog grid,
@@ -532,6 +566,9 @@ async function detectLanguage() {
 
 function setLanguage(lang, persist = true) {
   currentLang = lang;
+  // 2026-05-21: mirror to window so other scripts (paypal.js, cart drawer)
+  // can localize their own UI. main.js `let currentLang` isn't on window.
+  window.currentLang = lang;
   if (persist) localStorage.setItem('dubis-lang', lang);
   translateUI(lang);
 }
@@ -952,6 +989,7 @@ function renderProducts(filter, gender) {
             }
             return `<div class="stock-badge${stockN > 10 ? ' ok' : ''}">${currentLang === 'he' ? `נשארו ${stockN} יחידות` : `Only ${stockN} left`}</div>`;
           })()}
+          ${countryFlagsHTML(product, { compact: true })}
         </div>
       </div>
     </div>
@@ -1050,6 +1088,7 @@ function openProductModal(productId) {
       <div class="modal-price" id="modal-price-${product.id}" data-base-price="${product.price}">${formatPrice(getVariantPrice(product.id, product.colors[0], product.sizes[0], product.price))}</div>
       <div class="modal-price-note" id="modal-price-note-${product.id}" style="font-size:0.78rem;color:#888;margin-top:-4px;margin-bottom:6px;display:none;">${currentLang === 'he' ? 'המחיר משתנה לפי צבע/מידה' : 'Price varies by color/size'}</div>
       <div class="modal-shipping-info">${t.modal_ships} · <span class="free-ship-badge">${t.modal_free_ship}</span></div>
+      ${countryFlagsHTML(product)}
       <div class="modal-dtg-badge">${t.modal_dtg}</div>
       <div class="modal-option">
         <label>${t.modal_color}</label>

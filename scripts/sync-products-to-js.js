@@ -143,7 +143,11 @@ const PRICES = {
 };
 
 async function fetchProducts() {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/dubis_products?active=eq.true&order=id.asc`, {
+  // 2026-05-21: supported_countries added to SELECT (added via migration
+  // add_supported_countries_to_dubis_products). Source-populated by
+  // scripts/probe-product-country-availability.js. Surfaced on product
+  // cards as flag emojis so an IL visitor knows what they can order.
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/dubis_products?active=eq.true&order=id.asc&select=*,supported_countries`, {
     headers: {
       'apikey': SUPABASE_KEY,
       'Authorization': `Bearer ${SUPABASE_KEY}`,
@@ -227,6 +231,14 @@ function generateProductEntry(p, stockMap) {
   }
   const featuredUntilStr = featuredUntil ? `"${featuredUntil}"` : 'null';
 
+  // 2026-05-21: supportedCountries — ISO-2 country codes this product can
+  // ship to when ordered ALONE via Gelato (warehouse-mixing in a cart can
+  // still cause failures; that's caught at runtime by the stock-probe).
+  // Source: scripts/probe-product-country-availability.js. Refreshed via
+  // dubis_products.supported_countries column.
+  const supportedArr = Array.isArray(p.supported_countries) ? p.supported_countries : ['US','IL'];
+  const supportedCountries = JSON.stringify(supportedArr);
+
   const lines = [
     `    {`,
     `        id: ${p.product_id_numeric || p.id},`,
@@ -237,6 +249,7 @@ function generateProductEntry(p, stockMap) {
     `        price: ${price},`,
     `        image: "images/product-${p.product_id_numeric || p.id}.jpg",`,
     `        colors: ${colors},`,
+    `        supportedCountries: ${supportedCountries},`,
     `        launchedAt: ${launchedAt},`,
     `        isNew: ${isNew},`,
     `        featuredUntil: ${featuredUntilStr},`,
