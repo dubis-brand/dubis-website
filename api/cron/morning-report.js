@@ -216,6 +216,11 @@ module.exports = async function handler(req, res) {
             PAYPAL_CLIENT_SECRET:  { present: !!process.env.PAYPAL_CLIENT_SECRET, len: (process.env.PAYPAL_CLIENT_SECRET || '').length },
             PAYPAL_ENV:            { present: !!process.env.PAYPAL_ENV,           value: process.env.PAYPAL_ENV || '(default=live)' },
         };
+        // List ALL env var KEYS that look paypal-related — to spot wrong-named vars.
+        // We expose only the KEY (no value) and the length.
+        const allPaypalKeys = Object.keys(process.env)
+            .filter(k => /paypal|pp_|braintree/i.test(k))
+            .map(k => ({ key: k, len: (process.env[k] || '').length }));
         // Try an OAuth token fetch and report the actual HTTP outcome (no token leaked)
         let oauth = { tried: false };
         if (process.env.PAYPAL_CLIENT_ID && (process.env.PAYPAL_SECRET || process.env.PAYPAL_CLIENT_SECRET)) {
@@ -243,7 +248,7 @@ module.exports = async function handler(req, res) {
                 oauth = { tried: true, exception: e.message };
             }
         }
-        return res.status(200).json({ ok: true, env: envPaypal, oauth });
+        return res.status(200).json({ ok: true, env: envPaypal, allPaypalKeys, oauth });
     }
 
     // ── Route: ?type=refund-by-id — one-shot manual refund (added 2026-05-21) ──
