@@ -100,21 +100,48 @@ function buildProbeUid(p) {
   return `apparel_product_gca_${t.cat}_gsc_${t.sub}_gcu_${t.cut}_gqa_${t.qa}_gsi_${variant.size}_gco_${variant.color}_gpr_${t.gpr}${brandSuffix}`;
 }
 
-// Representative recipient per probe country. The minimum fields Gelato
-// requires for /v4/orders:quote — name, street, city, postalCode, country.
+// Representative recipient per probe country. ONE valid postal_code + city
+// per ISO-2 — chosen to be a major metro that Gelato definitely routes through.
+// We're probing for SHIP-TO support, not stock at this exact ZIP, so any valid
+// address in the country suffices. 2026-05-21: expanded from US/IL to 30 countries
+// covering North America, EU+UK, Israel/UAE/Saudi, Australia/NZ, Japan/SG/HK, Brazil/Argentina.
 const RECIPIENTS = {
-  US: {
-    firstName:  'Test',  lastName: 'Probe',
-    addressLine1: '123 Main St',
-    city: 'San Francisco', state: 'CA', postalCode: '94105',
-    country: 'US', email: 'probe@dubis.net', phone: '+14155550100',
-  },
-  IL: {
-    firstName:  'Test',  lastName: 'Probe',
-    addressLine1: 'Rothschild 1',
-    city: 'Tel Aviv', state: '', postalCode: '6688101',
-    country: 'IL', email: 'probe@dubis.net', phone: '+972500000000',
-  },
+  // North America
+  US: { firstName: 'Test', lastName: 'Probe', addressLine1: '123 Main St',           city: 'San Francisco', state: 'CA', postalCode: '94105',   country: 'US', email: 'probe@dubis.net', phone: '+14155550100' },
+  CA: { firstName: 'Test', lastName: 'Probe', addressLine1: '100 King St',           city: 'Toronto',       state: 'ON', postalCode: 'M5H 1A1', country: 'CA', email: 'probe@dubis.net', phone: '+14165550100' },
+  MX: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Av Reforma 1',          city: 'Mexico City',   state: 'CMX', postalCode: '06600',  country: 'MX', email: 'probe@dubis.net', phone: '+525555550100' },
+  // EU + UK
+  GB: { firstName: 'Test', lastName: 'Probe', addressLine1: '10 Downing St',         city: 'London',        state: '',   postalCode: 'SW1A 2AA', country: 'GB', email: 'probe@dubis.net', phone: '+442075550100' },
+  DE: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Unter den Linden 1',    city: 'Berlin',        state: '',   postalCode: '10117',  country: 'DE', email: 'probe@dubis.net', phone: '+493055550100' },
+  FR: { firstName: 'Test', lastName: 'Probe', addressLine1: '1 Rue de Rivoli',       city: 'Paris',         state: '',   postalCode: '75001',  country: 'FR', email: 'probe@dubis.net', phone: '+33155550100' },
+  IT: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Via del Corso 1',       city: 'Rome',          state: '',   postalCode: '00186',  country: 'IT', email: 'probe@dubis.net', phone: '+390655550100' },
+  ES: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Gran Via 1',            city: 'Madrid',        state: '',   postalCode: '28013',  country: 'ES', email: 'probe@dubis.net', phone: '+34915550100' },
+  NL: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Damrak 1',              city: 'Amsterdam',     state: '',   postalCode: '1012 LG', country: 'NL', email: 'probe@dubis.net', phone: '+31205550100' },
+  PL: { firstName: 'Test', lastName: 'Probe', addressLine1: 'ul Marszalkowska 1',    city: 'Warsaw',        state: '',   postalCode: '00-001', country: 'PL', email: 'probe@dubis.net', phone: '+48225550100' },
+  SE: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Drottninggatan 1',      city: 'Stockholm',     state: '',   postalCode: '111 51', country: 'SE', email: 'probe@dubis.net', phone: '+4685550100' },
+  NO: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Karl Johans gate 1',    city: 'Oslo',          state: '',   postalCode: '0154',   country: 'NO', email: 'probe@dubis.net', phone: '+4722550100' },
+  DK: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Stroget 1',             city: 'Copenhagen',    state: '',   postalCode: '1200',   country: 'DK', email: 'probe@dubis.net', phone: '+4533550100' },
+  FI: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Mannerheimintie 1',     city: 'Helsinki',      state: '',   postalCode: '00100',  country: 'FI', email: 'probe@dubis.net', phone: '+358955550100' },
+  BE: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Grand Place 1',         city: 'Brussels',      state: '',   postalCode: '1000',   country: 'BE', email: 'probe@dubis.net', phone: '+3225550100' },
+  AT: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Stephansplatz 1',       city: 'Vienna',        state: '',   postalCode: '1010',   country: 'AT', email: 'probe@dubis.net', phone: '+43155550100' },
+  CH: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Bahnhofstrasse 1',      city: 'Zurich',        state: '',   postalCode: '8001',   country: 'CH', email: 'probe@dubis.net', phone: '+41445550100' },
+  PT: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Praca do Comercio 1',   city: 'Lisbon',        state: '',   postalCode: '1100-148', country: 'PT', email: 'probe@dubis.net', phone: '+351215550100' },
+  GR: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Syntagma Square 1',     city: 'Athens',        state: '',   postalCode: '105 63', country: 'GR', email: 'probe@dubis.net', phone: '+302105550100' },
+  CZ: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Wenceslas Sq 1',        city: 'Prague',        state: '',   postalCode: '110 00', country: 'CZ', email: 'probe@dubis.net', phone: '+420225550100' },
+  // Middle East
+  IL: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Rothschild 1',          city: 'Tel Aviv',      state: '',   postalCode: '6688101', country: 'IL', email: 'probe@dubis.net', phone: '+972500000000' },
+  AE: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Sheikh Zayed Rd 1',     city: 'Dubai',         state: '',   postalCode: '00000',   country: 'AE', email: 'probe@dubis.net', phone: '+97145550100' },
+  SA: { firstName: 'Test', lastName: 'Probe', addressLine1: 'King Fahd Rd 1',        city: 'Riyadh',        state: '',   postalCode: '11564',   country: 'SA', email: 'probe@dubis.net', phone: '+966115550100' },
+  // Oceania
+  AU: { firstName: 'Test', lastName: 'Probe', addressLine1: '1 Pitt St',             city: 'Sydney',        state: 'NSW', postalCode: '2000',   country: 'AU', email: 'probe@dubis.net', phone: '+61255550100' },
+  NZ: { firstName: 'Test', lastName: 'Probe', addressLine1: '1 Queen St',            city: 'Auckland',      state: '',   postalCode: '1010',   country: 'NZ', email: 'probe@dubis.net', phone: '+6495550100' },
+  // Asia-Pacific
+  JP: { firstName: 'Test', lastName: 'Probe', addressLine1: '1 Marunouchi',          city: 'Tokyo',         state: '',   postalCode: '100-0005', country: 'JP', email: 'probe@dubis.net', phone: '+81355550100' },
+  SG: { firstName: 'Test', lastName: 'Probe', addressLine1: '1 Orchard Rd',          city: 'Singapore',     state: '',   postalCode: '238824', country: 'SG', email: 'probe@dubis.net', phone: '+6555550100' },
+  HK: { firstName: 'Test', lastName: 'Probe', addressLine1: '1 Queens Rd Central',   city: 'Hong Kong',     state: '',   postalCode: '999077', country: 'HK', email: 'probe@dubis.net', phone: '+85255550100' },
+  // South America
+  BR: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Av Paulista 1',         city: 'Sao Paulo',     state: 'SP', postalCode: '01310-100', country: 'BR', email: 'probe@dubis.net', phone: '+551155550100' },
+  AR: { firstName: 'Test', lastName: 'Probe', addressLine1: 'Av 9 de Julio 1',       city: 'Buenos Aires',  state: '',   postalCode: 'C1043', country: 'AR', email: 'probe@dubis.net', phone: '+541155550100' },
 };
 
 // Reachable file URL — Gelato won't quote without one. We use the live
@@ -181,7 +208,11 @@ async function updateSupportedCountries(productUuid, countries) {
   const products = await fetchActiveProducts();
   console.log(`Loaded ${products.length} active product(s). Probing US + IL...\n`);
 
-  const COUNTRIES = ['US', 'IL'];
+  // 2026-05-21: 30 countries — covers >95% of plausible global demand.
+  // Probe parallelism: all countries per product in one Promise.all (per-product
+  // wall-clock = slowest single quote ≈ 1-2s). Then sequential across products
+  // to stay polite to Gelato's API (~30 products × 1.5s = ~45s total).
+  const COUNTRIES = Object.keys(RECIPIENTS);
   const summary = [];
 
   for (const p of products) {
@@ -213,13 +244,21 @@ async function updateSupportedCountries(productUuid, countries) {
 
   console.log(`\n========== SUMMARY ==========`);
   console.log(`Total products: ${products.length}`);
-  const both = summary.filter(s => s.supported.includes('US') && s.supported.includes('IL')).length;
-  const usOnly = summary.filter(s => s.supported.includes('US') && !s.supported.includes('IL')).length;
-  const ilOnly = summary.filter(s => !s.supported.includes('US') && s.supported.includes('IL')).length;
-  const none = summary.filter(s => s.supported.length === 0).length;
-  console.log(`  US + IL  : ${both}`);
-  console.log(`  US only  : ${usOnly}`);
-  console.log(`  IL only  : ${ilOnly}`);
-  console.log(`  Neither  : ${none}`);
+  console.log(`Countries probed: ${COUNTRIES.length}`);
+  // Country popularity — how many products ship to each country
+  const countryCount = {};
+  for (const c of COUNTRIES) countryCount[c] = 0;
+  for (const s of summary) for (const c of (s.supported || [])) countryCount[c]++;
+  const sorted = COUNTRIES.slice().sort((a, b) => countryCount[b] - countryCount[a]);
+  console.log(`\nCoverage per country (products that ship there):`);
+  for (const c of sorted) console.log(`  ${c}: ${countryCount[c]} / ${products.length}`);
+  // Products by coverage breadth
+  const fullCoverage = summary.filter(s => (s.supported || []).length === COUNTRIES.length).length;
+  const partial      = summary.filter(s => (s.supported || []).length > 0 && (s.supported || []).length < COUNTRIES.length).length;
+  const none         = summary.filter(s => (s.supported || []).length === 0).length;
+  console.log(`\nProduct coverage breakdown:`);
+  console.log(`  All ${COUNTRIES.length} countries : ${fullCoverage}`);
+  console.log(`  Partial               : ${partial}`);
+  console.log(`  Zero (unavailable)    : ${none}`);
   console.log(WRITE_MODE ? '\nDB updated.\n' : '\nDry run (no DB writes). Re-run with --write to persist.\n');
 })().catch(err => { console.error(err); process.exit(1); });

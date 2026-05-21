@@ -29,24 +29,74 @@ function getStockNum(id) {
   return seed < 4 ? seed + 3 : seed < 10 ? seed + 2 : seed;
 }
 
-// ── Country availability badges (2026-05-21) ──
-// `product.supportedCountries` is the result of a solo /v4/orders:quote
-// probe per (product, country) — see scripts/probe-product-country-availability.js.
-// Used to render flag emojis on cards + a "Ships to" line in the modal so an
-// IL visitor can see at a glance which products are orderable to Israel.
-// NOTE: A product flagged with IL here can still fail at cart-level if mixed
-// with another product Gelato can only produce from a different warehouse —
-// that case is caught at runtime by the stock-probe in
-// api/create-gelato-order.js. This badge is the SOLO availability.
-const COUNTRY_FLAG = { US: '🇺🇸', IL: '🇮🇱' };
-const COUNTRY_NAME = {
-  US: { en: 'United States', he: 'ארה״ב' },
-  IL: { en: 'Israel',        he: 'ישראל' },
+// ── Country availability badges (2026-05-21, expanded to 30 countries) ──
+// `product.supportedCountries` is the result of a /v4/orders:quote probe per
+// (product, country) — see scripts/probe-product-country-availability.js.
+// Used to render flag emojis on cards + a "Ships to" list in the modal so a
+// visitor from anywhere can see at a glance whether the product reaches them.
+// NOTE: SOLO availability. A product flagged for country X can still fail at
+// cart-level if mixed with another product Gelato can only produce from a
+// different warehouse — the runtime stock-probe / cart-level probe handles that.
+const COUNTRY_FLAG = {
+  US: '🇺🇸', CA: '🇨🇦', MX: '🇲🇽',
+  GB: '🇬🇧', DE: '🇩🇪', FR: '🇫🇷', IT: '🇮🇹', ES: '🇪🇸', NL: '🇳🇱',
+  PL: '🇵🇱', SE: '🇸🇪', NO: '🇳🇴', DK: '🇩🇰', FI: '🇫🇮', BE: '🇧🇪',
+  AT: '🇦🇹', CH: '🇨🇭', PT: '🇵🇹', GR: '🇬🇷', CZ: '🇨🇿',
+  IL: '🇮🇱', AE: '🇦🇪', SA: '🇸🇦',
+  AU: '🇦🇺', NZ: '🇳🇿',
+  JP: '🇯🇵', SG: '🇸🇬', HK: '🇭🇰',
+  BR: '🇧🇷', AR: '🇦🇷',
 };
+const COUNTRY_NAME = {
+  US: { en: 'United States',  he: 'ארה״ב'     },
+  CA: { en: 'Canada',         he: 'קנדה'      },
+  MX: { en: 'Mexico',         he: 'מקסיקו'   },
+  GB: { en: 'United Kingdom', he: 'בריטניה'  },
+  DE: { en: 'Germany',        he: 'גרמניה'   },
+  FR: { en: 'France',         he: 'צרפת'     },
+  IT: { en: 'Italy',          he: 'איטליה'   },
+  ES: { en: 'Spain',          he: 'ספרד'     },
+  NL: { en: 'Netherlands',    he: 'הולנד'    },
+  PL: { en: 'Poland',         he: 'פולין'    },
+  SE: { en: 'Sweden',         he: 'שוודיה'   },
+  NO: { en: 'Norway',         he: 'נורווגיה' },
+  DK: { en: 'Denmark',        he: 'דנמרק'    },
+  FI: { en: 'Finland',        he: 'פינלנד'   },
+  BE: { en: 'Belgium',        he: 'בלגיה'    },
+  AT: { en: 'Austria',        he: 'אוסטריה'  },
+  CH: { en: 'Switzerland',    he: 'שווייץ'   },
+  PT: { en: 'Portugal',       he: 'פורטוגל'  },
+  GR: { en: 'Greece',         he: 'יוון'     },
+  CZ: { en: 'Czech Republic', he: "צ'כיה"    },
+  IL: { en: 'Israel',         he: 'ישראל'    },
+  AE: { en: 'UAE',            he: 'איחוד האמירויות' },
+  SA: { en: 'Saudi Arabia',   he: 'ערב הסעודית' },
+  AU: { en: 'Australia',      he: 'אוסטרליה' },
+  NZ: { en: 'New Zealand',    he: 'ניו זילנד' },
+  JP: { en: 'Japan',          he: 'יפן'      },
+  SG: { en: 'Singapore',      he: 'סינגפור'  },
+  HK: { en: 'Hong Kong',      he: 'הונג קונג' },
+  BR: { en: 'Brazil',         he: 'ברזיל'    },
+  AR: { en: 'Argentina',      he: 'ארגנטינה' },
+};
+// Default if a product was created before the probe ran. NOT empty array —
+// optimistic "ships to common countries" until the next probe overwrites it.
+const DEFAULT_SUPPORTED = ['US','CA','GB','DE','FR','IL','AU'];
+
 function countryFlagsForProduct(product) {
-  const arr = Array.isArray(product?.supportedCountries) ? product.supportedCountries : ['US','IL'];
-  return arr;
+  return Array.isArray(product?.supportedCountries) ? product.supportedCountries : DEFAULT_SUPPORTED;
 }
+
+// Customer's detected shipping country — same precedence as the cart probe.
+function detectedCustomerCountry() {
+  return (
+    (window.checkoutAddress && window.checkoutAddress.country_code) ||
+    sessionStorage.getItem('dubis-country') ||
+    (localStorage.getItem('dubis-lang') === 'he' ? 'IL' : null) ||
+    'US'
+  ).toUpperCase();
+}
+
 function countryFlagsHTML(product, opts = {}) {
   const arr = countryFlagsForProduct(product);
   const compact = !!opts.compact;
@@ -54,12 +104,44 @@ function countryFlagsHTML(product, opts = {}) {
     const txt = currentLang === 'he' ? 'אזל זמנית' : 'Currently unavailable';
     return `<div class="ships-to ships-to-none">⚠️ ${txt}</div>`;
   }
-  const flags = arr.map(c => `<span class="ship-flag" title="${(COUNTRY_NAME[c] || {})[currentLang] || c}">${COUNTRY_FLAG[c] || c}</span>`).join('');
+  const customer = detectedCustomerCountry();
+  const shipsToCustomer = arr.includes(customer);
+  // Sort: customer's country first (highlighted), then alphabetical
+  const sorted = [...arr].sort((a, b) => {
+    if (a === customer) return -1;
+    if (b === customer) return 1;
+    return a.localeCompare(b);
+  });
+
   if (compact) {
-    return `<div class="ships-to ships-to-compact" title="${currentLang === 'he' ? 'זמין למשלוח ל-' : 'Ships to:'} ${arr.map(c => (COUNTRY_NAME[c]||{})[currentLang]||c).join(', ')}">${flags}</div>`;
+    // CARD VIEW: customer's flag prominent, then up to 6 more, then "+N"
+    const MAX_VISIBLE = 7;
+    const visible = sorted.slice(0, MAX_VISIBLE);
+    const rest    = sorted.length - visible.length;
+    const titleAll = currentLang === 'he'
+      ? `זמין ב-${arr.length} מדינות: ${arr.map(c => (COUNTRY_NAME[c]||{}).he||c).join(', ')}`
+      : `Ships to ${arr.length} countries: ${arr.map(c => (COUNTRY_NAME[c]||{}).en||c).join(', ')}`;
+    const customerBadge = shipsToCustomer
+      ? `<span class="ship-flag flag-customer" title="${(COUNTRY_NAME[customer]||{})[currentLang]||customer} ✓">${COUNTRY_FLAG[customer]||customer}</span>`
+      : `<span class="ship-flag flag-customer-no" title="${currentLang === 'he' ? 'לא נשלח ל' : 'Not shipping to '}${(COUNTRY_NAME[customer]||{})[currentLang]||customer}">${COUNTRY_FLAG[customer]||customer}<span class="flag-x">✕</span></span>`;
+    const otherFlags = visible
+      .filter(c => c !== customer)
+      .map(c => `<span class="ship-flag" title="${(COUNTRY_NAME[c]||{})[currentLang]||c}">${COUNTRY_FLAG[c]||c}</span>`)
+      .join('');
+    const moreBadge = rest > 0
+      ? `<span class="ship-flag ship-more">+${rest}</span>`
+      : '';
+    return `<div class="ships-to ships-to-compact${shipsToCustomer ? '' : ' ships-to-not-customer'}" title="${titleAll}">${customerBadge}${otherFlags}${moreBadge}</div>`;
   }
-  const label = currentLang === 'he' ? 'זמין למשלוח ל-' : 'Ships to';
-  return `<div class="ships-to"><span class="ships-to-label">${label}</span> ${flags}</div>`;
+  // MODAL VIEW: full list grouped, customer flag boxed at top
+  const label = currentLang === 'he' ? `זמין במשלוח ל-${arr.length} מדינות` : `Ships to ${arr.length} countries`;
+  const customerLine = shipsToCustomer
+    ? `<div class="ships-to-customer ok">✅ ${currentLang === 'he' ? `זמין למשלוח ל${(COUNTRY_NAME[customer]||{}).he||customer}` : `Ships to ${(COUNTRY_NAME[customer]||{}).en||customer}`}</div>`
+    : `<div class="ships-to-customer no">❌ ${currentLang === 'he' ? `לא ניתן לשלוח ל${(COUNTRY_NAME[customer]||{}).he||customer}` : `Not shipping to ${(COUNTRY_NAME[customer]||{}).en||customer}`}</div>`;
+  const flagsList = sorted
+    .map(c => `<span class="ship-flag${c === customer ? ' flag-customer' : ''}" title="${(COUNTRY_NAME[c]||{})[currentLang]||c}">${COUNTRY_FLAG[c]||c}</span>`)
+    .join('');
+  return `<div class="ships-to ships-to-full">${customerLine}<details class="ships-to-details"><summary class="ships-to-label">${label}</summary><div class="ships-to-flags">${flagsList}</div></details></div>`;
 }
 
 // Deterministic 40% chance to display the BACK image as the default in the catalog grid,

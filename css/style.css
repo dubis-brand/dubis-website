@@ -885,14 +885,89 @@ body[dir="rtl"] .product-price .price-from { margin-left: 2px; margin-right: 0; 
     font-weight: 600;
     font-size: 0.78rem;
 }
+
+/* 2026-05-21: 30-country expansion — compact card view */
+.ships-to-compact.ships-to-not-customer {
+    background: rgba(201, 81, 79, 0.07);
+    border-color: rgba(201, 81, 79, 0.25);
+}
+.ship-flag.flag-customer {
+    border: 2px solid #2e6d2c;
+    border-radius: 6px;
+    padding: 0 2px;
+    background: #f1f8f0;
+    box-shadow: 0 0 0 2px rgba(46, 109, 44, 0.18);
+}
+.ship-flag.flag-customer-no {
+    position: relative;
+    border: 2px solid #c8514f;
+    border-radius: 6px;
+    padding: 0 2px;
+    background: #fdf0ef;
+    opacity: 0.65;
+}
+.flag-x {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: #c8514f;
+    color: #fff;
+    font-size: 0.6rem;
+    border-radius: 50%;
+    padding: 0 4px;
+    line-height: 1.2;
+}
+.ship-flag.ship-more {
+    font-size: 0.72rem;
+    color: #5d5d5d;
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-weight: 600;
+    cursor: help;
+}
+
+/* Modal view: full country list collapsible */
+.ships-to-full { display: block; padding: 8px 12px; }
+.ships-to-customer {
+    font-size: 0.92rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+.ships-to-customer.ok { color: #2e6d2c; }
+.ships-to-customer.no { color: #b94a48; }
+.ships-to-details {
+    margin-top: 4px;
+    font-size: 0.85rem;
+}
+.ships-to-details summary {
+    cursor: pointer;
+    color: var(--gray-600, #5d5d5d);
+    list-style: none;
+    user-select: none;
+}
+.ships-to-details summary::before { content: '▸ '; transition: transform .15s; display:inline-block; }
+.ships-to-details[open] summary::before { content: '▾ '; }
+.ships-to-details summary::-webkit-details-marker { display: none; }
+.ships-to-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+.ships-to-flags .ship-flag {
+    font-size: 1.1rem;
+    cursor: help;
+}
+
 .modal-info .ships-to {
     margin: 6px 0 8px;
-    padding: 6px 10px;
     background: #f9f4eb;
     border: 1px solid #e2d5b8;
     border-radius: 6px;
 }
 [dir="rtl"] .ships-to-compact { margin-left: 0; margin-right: auto; }
+[dir="rtl"] .flag-x { left: -4px; right: auto; }
 
 .product-price {
     font-family: var(--font-body);
