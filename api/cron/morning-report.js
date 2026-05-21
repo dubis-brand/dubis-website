@@ -208,6 +208,19 @@ module.exports = async function handler(req, res) {
         }
     }
 
+    // ── Route: ?type=refund-by-id — one-shot manual refund (added 2026-05-21) ──
+    // Bypasses the reconcile-orders filter loop. Use for catch-up sweeps when
+    // we know a specific paypal_order_id needs refunding. Calls refundOrder()
+    // directly with the supplied ID. Idempotent via PayPal-Request-Id header.
+    if (urlType === 'refund-by-id') {
+        const { refundOrder } = require('../_paypal');
+        const paypalOrderId = new URL(req.url, `https://${req.headers.host}`).searchParams.get('paypal_id');
+        const reason = new URL(req.url, `https://${req.headers.host}`).searchParams.get('reason') || 'manual-catchup-2026-05-21';
+        if (!paypalOrderId) return res.status(400).json({ error: 'missing paypal_id query param' });
+        const result = await refundOrder({ paypalOrderId, reason });
+        return res.status(200).json({ ok: true, paypalOrderId, refundResult: result });
+    }
+
     // ── Route: ?type=reconcile-orders — background safety net (added 2026-05-21) ──
     // The Hila checkout catastrophe revealed: Gelato can async-cancel an order
     // 60+ seconds AFTER our /api/create-gelato-order POST returns success to
