@@ -208,6 +208,44 @@ module.exports = async function handler(req, res) {
         }
     }
 
+    // ── Route: ?type=paypal-env-check — diagnose missing/wrong PAYPAL env (no value leak) ──
+    if (urlType === 'paypal-env-check') {
+        const envPaypal = {
+            PAYPAL_CLIENT_ID:      { present: !!process.env.PAYPAL_CLIENT_ID,     len: (process.env.PAYPAL_CLIENT_ID || '').length },
+            PAYPAL_SECRET:         { present: !!process.env.PAYPAL_SECRET,        len: (process.env.PAYPAL_SECRET || '').length },
+            PAYPAL_CLIENT_SECRET:  { present: !!process.env.PAYPAL_CLIENT_SECRET, len: (process.env.PAYPAL_CLIENT_SECRET || '').length },
+            PAYPAL_ENV:            { present: !!process.env.PAYPAL_ENV,           value: process.env.PAYPAL_ENV || '(default=live)' },
+        };
+        // Try an OAuth token fetch and report the actual HTTP outcome (no token leaked)
+        let oauth = { tried: false };
+        if (process.env.PAYPAL_CLIENT_ID && (process.env.PAYPAL_SECRET || process.env.PAYPAL_CLIENT_SECRET)) {
+            try {
+                const base = (process.env.PAYPAL_ENV || 'live').toLowerCase() === 'sandbox'
+                    ? 'https://api-m.sandbox.paypal.com'
+                    : 'https://api-m.paypal.com';
+                const creds = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_SECRET || process.env.PAYPAL_CLIENT_SECRET}`).toString('base64');
+                const r = await fetch(`${base}/v1/oauth2/token`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'grant_type=client_credentials',
+                });
+                const body = await r.json().catch(() => ({}));
+                oauth = {
+                    tried: true,
+                    base,
+                    httpStatus: r.status,
+                    ok: r.ok,
+                    has_access_token: !!body.access_token,
+                    error: body.error || null,
+                    error_description: body.error_description || null,
+                };
+            } catch (e) {
+                oauth = { tried: true, exception: e.message };
+            }
+        }
+        return res.status(200).json({ ok: true, env: envPaypal, oauth });
+    }
+
     // ── Route: ?type=refund-by-id — one-shot manual refund (added 2026-05-21) ──
     // Bypasses the reconcile-orders filter loop. Use for catch-up sweeps when
     // we know a specific paypal_order_id needs refunding. Calls refundOrder()
