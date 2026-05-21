@@ -927,37 +927,81 @@ body[dir="rtl"] .product-price .price-from { margin-left: 2px; margin-right: 0; 
     cursor: help;
 }
 
-/* Modal view: full country list collapsible */
-.ships-to-full { display: block; padding: 8px 12px; }
+/* Modal view: prominent customer-country + always-visible flag grid (2026-05-21) */
+.ships-to-full {
+    display: block;
+    padding: 12px 14px;
+}
 .ships-to-customer {
-    font-size: 0.92rem;
-    font-weight: 600;
+    font-size: 1rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed rgba(193, 126, 58, 0.3);
+    margin-bottom: 8px;
+}
+.ships-to-customer.ok { color: #1f5e1d; }
+.ships-to-customer.no { color: #8b2725; }
+.ships-to-customer .big-flag {
+    font-size: 1.6rem;
+    line-height: 1;
+}
+.ships-to-customer .ok-check {
+    margin-left: auto;
+    background: #2e6d2c;
+    color: #fff;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: bold;
+}
+.ships-to-customer .no-x {
+    margin-left: auto;
+    background: #c8514f;
+    color: #fff;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: bold;
+}
+[dir="rtl"] .ships-to-customer .ok-check,
+[dir="rtl"] .ships-to-customer .no-x {
+    margin-left: 0;
+    margin-right: auto;
+}
+.ships-to-others .ships-to-label {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--gray-600, #5d5d5d);
     margin-bottom: 6px;
 }
-.ships-to-customer.ok { color: #2e6d2c; }
-.ships-to-customer.no { color: #b94a48; }
-.ships-to-details {
-    margin-top: 4px;
-    font-size: 0.85rem;
-}
-.ships-to-details summary {
-    cursor: pointer;
-    color: var(--gray-600, #5d5d5d);
-    list-style: none;
-    user-select: none;
-}
-.ships-to-details summary::before { content: '▸ '; transition: transform .15s; display:inline-block; }
-.ships-to-details[open] summary::before { content: '▾ '; }
-.ships-to-details summary::-webkit-details-marker { display: none; }
 .ships-to-flags {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: 8px;
 }
 .ships-to-flags .ship-flag {
-    font-size: 1.1rem;
+    font-size: 1.25rem;
+    line-height: 1;
     cursor: help;
+    padding: 2px 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.ships-to-flags .ship-flag:hover {
+    background: #fff;
+    border-color: var(--honey, #C17E3A);
 }
 
 .modal-info .ships-to {

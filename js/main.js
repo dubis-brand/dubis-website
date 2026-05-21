@@ -133,15 +133,20 @@ function countryFlagsHTML(product, opts = {}) {
       : '';
     return `<div class="ships-to ships-to-compact${shipsToCustomer ? '' : ' ships-to-not-customer'}" title="${titleAll}">${customerBadge}${otherFlags}${moreBadge}</div>`;
   }
-  // MODAL VIEW: full list grouped, customer flag boxed at top
-  const label = currentLang === 'he' ? `זמין במשלוח ל-${arr.length} מדינות` : `Ships to ${arr.length} countries`;
+  // MODAL VIEW: prominent customer-country headline + always-visible flag grid.
+  // Per oren's directive (2026-05-21): countries must be clearly visible on the
+  // product page so a visitor immediately knows where it can ship.
   const customerLine = shipsToCustomer
-    ? `<div class="ships-to-customer ok">✅ ${currentLang === 'he' ? `זמין למשלוח ל${(COUNTRY_NAME[customer]||{}).he||customer}` : `Ships to ${(COUNTRY_NAME[customer]||{}).en||customer}`}</div>`
-    : `<div class="ships-to-customer no">❌ ${currentLang === 'he' ? `לא ניתן לשלוח ל${(COUNTRY_NAME[customer]||{}).he||customer}` : `Not shipping to ${(COUNTRY_NAME[customer]||{}).en||customer}`}</div>`;
+    ? `<div class="ships-to-customer ok"><span class="big-flag">${COUNTRY_FLAG[customer] || customer}</span> ${currentLang === 'he' ? `נשלח ל${(COUNTRY_NAME[customer]||{}).he||customer}` : `Ships to ${(COUNTRY_NAME[customer]||{}).en||customer}`} <span class="ok-check">✓</span></div>`
+    : `<div class="ships-to-customer no"><span class="big-flag">${COUNTRY_FLAG[customer] || customer}</span> ${currentLang === 'he' ? `לא נשלח ל${(COUNTRY_NAME[customer]||{}).he||customer}` : `Doesn't ship to ${(COUNTRY_NAME[customer]||{}).en||customer}`} <span class="no-x">✕</span></div>`;
+  const label = currentLang === 'he'
+    ? `<span class="ships-to-label">זמין גם ב-${arr.length - (shipsToCustomer ? 1 : 0)} מדינות נוספות</span>`
+    : `<span class="ships-to-label">Also ships to ${arr.length - (shipsToCustomer ? 1 : 0)} other countries</span>`;
   const flagsList = sorted
-    .map(c => `<span class="ship-flag${c === customer ? ' flag-customer' : ''}" title="${(COUNTRY_NAME[c]||{})[currentLang]||c}">${COUNTRY_FLAG[c]||c}</span>`)
+    .filter(c => c !== customer)
+    .map(c => `<span class="ship-flag" title="${(COUNTRY_NAME[c]||{})[currentLang]||c}">${COUNTRY_FLAG[c]||c}</span>`)
     .join('');
-  return `<div class="ships-to ships-to-full">${customerLine}<details class="ships-to-details"><summary class="ships-to-label">${label}</summary><div class="ships-to-flags">${flagsList}</div></details></div>`;
+  return `<div class="ships-to ships-to-full">${customerLine}<div class="ships-to-others">${label}<div class="ships-to-flags">${flagsList}</div></div></div>`;
 }
 
 // Deterministic 40% chance to display the BACK image as the default in the catalog grid,
