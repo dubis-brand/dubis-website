@@ -1755,6 +1755,46 @@ body[dir="rtl"] .product-price .price-from { margin-left: 2px; margin-right: 0; 
     color: #aaa;
 }
 
+/* 2026-05-21: cart-item ships-to flags + per-country warning */
+.cart-item-ships-to {
+    margin-top: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.95rem;
+    line-height: 1;
+    padding: 2px 8px;
+    background: rgba(193, 126, 58, 0.08);
+    border: 1px solid rgba(193, 126, 58, 0.18);
+    border-radius: 10px;
+    width: fit-content;
+    cursor: help;
+}
+.cart-flag { line-height: 1; font-size: 0.95rem; }
+.cart-item-flags.none { color: #b94a48; font-size: 0.9rem; }
+.cart-item-warn {
+    margin-top: 4px;
+    font-size: 0.78rem;
+    color: #b94a48;
+    font-weight: 600;
+    background: #fdf0ef;
+    border: 1px solid #f3c9c8;
+    border-radius: 6px;
+    padding: 3px 8px;
+    width: fit-content;
+}
+.cart-item.cart-item-unshippable {
+    background: #fff8f7;
+    border-left: 3px solid #c8514f;
+    padding-left: 8px;
+}
+[dir="rtl"] .cart-item.cart-item-unshippable {
+    border-left: none;
+    border-right: 3px solid #c8514f;
+    padding-left: 0;
+    padding-right: 8px;
+}
+
 .cart-item-price {
     color: var(--honey);
     font-weight: 600;

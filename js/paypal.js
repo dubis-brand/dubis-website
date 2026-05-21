@@ -293,6 +293,12 @@ async function submitContactStep() {
         postal_code:    zip,
         country_code:   ctry,
     };
+    // 2026-05-21: re-render the cart so per-item country flags + "won't ship"
+    // warnings refresh against the just-entered shipping country. The cart
+    // drawer reads window.checkoutAddress at render time.
+    if (typeof window.renderCart === 'function') {
+        try { window.renderCart(); } catch (_) {}
+    }
 
     // Hide contact step + the continue button row, show payment step
     document.getElementById('contact-step').style.display  = 'none';
@@ -1133,6 +1139,15 @@ window.addEventListener('DOMContentLoaded', () => {
         ctryEl.addEventListener('change', () => {
             try { updateStateFieldForCountry(ctryEl.value); } catch (e) { /* DOM not ready */ }
             try { renderOrderSummary(); } catch (e) { /* modal not open yet */ }
+            // 2026-05-21: also re-render the cart drawer so per-item country
+            // flags + "won't ship" warnings track the dropdown without waiting
+            // for the customer to submit the contact step.
+            try {
+                window.checkoutAddress = window.checkoutAddress || {};
+                window.checkoutAddress.country_code = (ctryEl.value || 'US').toUpperCase();
+                sessionStorage.setItem('dubis-country', window.checkoutAddress.country_code);
+                if (typeof window.renderCart === 'function') window.renderCart();
+            } catch (e) { /* cart drawer not open yet */ }
         });
     }
 });

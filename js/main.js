@@ -1571,17 +1571,59 @@ function renderCart() {
     return;
   }
 
+  // 2026-05-21: detect customer's shipping country so we can show a "won't
+  // ship here" warning per item in the cart. Order of precedence:
+  //   1. live checkout address (filled in the checkout modal) — most authoritative
+  //   2. sessionStorage 'dubis-country' (set by ipapi.co geo on first visit)
+  //   3. localStorage 'dubis-lang' === 'he' → IL  (manual HE toggle implies IL)
+  //   4. 'US' as conservative fallback
+  const detectedCountry = (
+    (window.checkoutAddress && window.checkoutAddress.country_code) ||
+    sessionStorage.getItem('dubis-country') ||
+    (localStorage.getItem('dubis-lang') === 'he' ? 'IL' : null) ||
+    'US'
+  ).toUpperCase();
+
   cartItems.innerHTML = cart.map((item, index) => {
     // Color-specific cart thumbnail. Customer who bought Navy/White must SEE the
     // colored item, not the default black photo (oren bug 2026-05-02).
     const colorFile = (item.selectedColor || '').replace(/\s+/g, '-');
     const variantImg = colorFile ? `images/product-${item.id}-${colorFile}-front.jpg` : item.image;
+
+    // Per-item ships-to badge. Find the product in the catalog by id;
+    // `supportedCountries` was injected by sync-products-to-js.js from the
+    // DB. If the customer's detected country isn't in the list, render a
+    // red "won't ship to <country>" warning so they know which line to
+    // remove before checkout.
+    const catalogProduct = (typeof products !== 'undefined') ? products.find(p => p.id === item.id) : null;
+    const itemSupported = (catalogProduct && Array.isArray(catalogProduct.supportedCountries))
+      ? catalogProduct.supportedCountries
+      : ['US','IL'];
+    const flagsHTML = itemSupported.length === 0
+      ? `<span class="cart-item-flags none">⚠️</span>`
+      : itemSupported.map(c => `<span class="cart-flag" title="${(COUNTRY_NAME[c]||{})[currentLang]||c}">${COUNTRY_FLAG[c]||c}</span>`).join('');
+    const shipsToCustomerCountry = itemSupported.includes(detectedCountry);
+    const warnHTML = (!shipsToCustomerCountry && itemSupported.length > 0)
+      ? `<div class="cart-item-warn">${
+          currentLang === 'he'
+            ? `⚠️ לא ניתן לשלוח ל${(COUNTRY_NAME[detectedCountry]||{}).he || detectedCountry}`
+            : `⚠️ Won't ship to ${(COUNTRY_NAME[detectedCountry]||{}).en || detectedCountry}`
+        }</div>`
+      : '';
+    const unavailHTML = (itemSupported.length === 0)
+      ? `<div class="cart-item-warn">${
+          currentLang === 'he' ? '⚠️ אזל זמנית' : '⚠️ Currently unavailable'
+        }</div>`
+      : '';
+
     return `
-    <div class="cart-item">
+    <div class="cart-item${(!shipsToCustomerCountry || itemSupported.length === 0) ? ' cart-item-unshippable' : ''}">
       <img src="${variantImg}" alt="${item.phrase}" class="cart-item-img" onerror="this.onerror=null;this.src='${item.image}'" />
       <div class="cart-item-info">
         <div class="cart-item-name">"${item.phrase}"</div>
         <div class="cart-item-type">${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}</div>
+        <div class="cart-item-ships-to" title="${currentLang === 'he' ? 'זמין למשלוח ל-' : 'Ships to:'} ${itemSupported.map(c => (COUNTRY_NAME[c]||{})[currentLang]||c).join(', ') || (currentLang === 'he' ? 'אזל זמנית' : 'unavailable')}">${flagsHTML}</div>
+        ${warnHTML}${unavailHTML}
       </div>
       <div class="cart-item-right">
         <div class="cart-item-price">${formatPrice(item.price)}</div>
