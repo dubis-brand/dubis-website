@@ -235,33 +235,35 @@ module.exports = async function handler(req, res) {
         };
         const _clientId = process.env.PAYPAL_CLIENT_ID || findEnv(['paypalclientid', 'paypalclainetid']);
         const _secret   = process.env.PAYPAL_SECRET || process.env.PAYPAL_CLIENT_SECRET || findEnv(['paypalsecret', 'paypalclientsecret']);
-        let oauth = { tried: false, resolved_client_id_len: (_clientId || '').length, resolved_secret_len: (_secret || '').length };
+        const credLengths = { client_id_len: (_clientId || '').length, secret_len: (_secret || '').length };
+        let oauthLive = { tried: false };
+        let oauthSandbox = { tried: false };
         if (_clientId && _secret) {
-            try {
-                const base = (process.env.PAYPAL_ENV || 'live').toLowerCase() === 'sandbox'
-                    ? 'https://api-m.sandbox.paypal.com'
-                    : 'https://api-m.paypal.com';
-                const creds = Buffer.from(`${_clientId}:${_secret}`).toString('base64');
-                const r = await fetch(`${base}/v1/oauth2/token`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: 'grant_type=client_credentials',
-                });
-                const body = await r.json().catch(() => ({}));
-                oauth = {
-                    tried: true,
-                    base,
-                    httpStatus: r.status,
-                    ok: r.ok,
-                    has_access_token: !!body.access_token,
-                    error: body.error || null,
-                    error_description: body.error_description || null,
-                };
-            } catch (e) {
-                oauth = { tried: true, exception: e.message };
-            }
+            const creds = Buffer.from(`${_clientId}:${_secret}`).toString('base64');
+            const probeBase = async (base) => {
+                try {
+                    const r = await fetch(`${base}/v1/oauth2/token`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: 'grant_type=client_credentials',
+                    });
+                    const body = await r.json().catch(() => ({}));
+                    return {
+                        tried: true, base,
+                        httpStatus: r.status, ok: r.ok,
+                        has_access_token: !!body.access_token,
+                        error: body.error || null, error_description: body.error_description || null,
+                    };
+                } catch (e) {
+                    return { tried: true, base, exception: e.message };
+                }
+            };
+            [oauthLive, oauthSandbox] = await Promise.all([
+                probeBase('https://api-m.paypal.com'),
+                probeBase('https://api-m.sandbox.paypal.com'),
+            ]);
         }
-        return res.status(200).json({ ok: true, env: envPaypal, allPaypalKeys, oauth });
+        return res.status(200).json({ ok: true, env: envPaypal, allPaypalKeys, credLengths, oauthLive, oauthSandbox });
     }
 
     // ── Route: ?type=refund-by-id — one-shot manual refund (added 2026-05-21) ──
