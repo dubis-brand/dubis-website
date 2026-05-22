@@ -190,6 +190,13 @@
                 <li><a href="#contact" data-en="Contact" data-he="צור קשר">Contact</a></li>
             </ul>
             <div class="nav-right">
+                <!-- 2026-05-22: shipping-country selector. Detected via ipapi.co
+                     on first load; user can override. Drives the per-product
+                     ✓/✕ badges and the cart-level warehouse-mixing probe. -->
+                <button class="country-toggle" id="country-toggle" onclick="openCountryPicker()" title="Change shipping country" aria-label="Change shipping country">
+                    <span class="country-flag-display">🌐</span>
+                    <span class="country-code-display" id="country-code-display">--</span>
+                </button>
                 <button class="lang-toggle" onclick="toggleLang()">עב</button>
                 <!-- Account button + dropdown -->
                 <div class="account-wrapper">
@@ -907,5 +914,23 @@
         });
       })();
     </script>
+
+    <!-- 2026-05-22: shipping-country picker modal. Replaces auto-detect when
+         ipapi.co gets it wrong or the customer ships to a different country
+         than they're browsing from. Selection persists in localStorage. -->
+    <div class="country-picker-overlay" id="country-picker-overlay" onclick="closeCountryPicker()"></div>
+    <div class="country-picker" id="country-picker">
+      <div class="country-picker-header">
+        <h3 data-en="Shipping country" data-he="ארץ משלוח">Shipping country</h3>
+        <button class="country-picker-close" onclick="closeCountryPicker()" aria-label="Close">&times;</button>
+      </div>
+      <p class="country-picker-explanation"
+         data-en="Where should we ship your order? We auto-detected your country from your location, but you can change it if needed. Products marked ✓ ship to this country; products marked ✕ don't."
+         data-he="לאן לשלוח את ההזמנה? זיהינו אוטומטית את הארץ שלך מהמיקום, אבל אפשר לשנות. מוצרים עם ✓ נשלחים לארץ הזו; מוצרים עם ✕ אינם נשלחים.">
+        Where should we ship your order? We auto-detected your country from your location, but you can change it if needed. Products marked ✓ ship to this country; products marked ✕ don't.
+      </p>
+      <div class="country-picker-detected" id="country-picker-detected"></div>
+      <div class="country-picker-grid" id="country-picker-grid"></div>
+    </div>
 </body>
 </html>

@@ -91,14 +91,27 @@ function countryFlagsForProduct(product) {
 // Bug oren caught: previously inferred IL from dubis-lang='he' which is wrong
 // (a US user toggling Hebrew because they're a Hebrew speaker isn't in IL).
 // Country is now strictly determined by:
-//   1. live checkout address (filled in checkout modal — most authoritative)
-//   2. sessionStorage.dubis-country (ipapi.co IP-geolocation, runs on page load
-//      regardless of language preference — see ensureGeoCountry())
-//   3. null = unknown — UI shows no country badge instead of guessing
-// Returns ISO-2 uppercase, or null if geo detection hasn't completed/failed.
+//   1. localStorage.dubis-country-override (manual user selection — wins everything)
+//   2. live checkout address (filled in checkout modal)
+//   3. localStorage.dubis-country (cached ipapi.co result, 24h TTL)
+//   4. sessionStorage.dubis-country (legacy fallback, still read for backwards compat)
+//   5. null = unknown — UI shows no country badge instead of guessing
+// Returns ISO-2 uppercase, or null if detection hasn't completed/failed.
 function detectedCustomerCountry() {
+  const o = localStorage.getItem('dubis-country-override');
+  if (o) return String(o).toUpperCase();
   const a = window.checkoutAddress && window.checkoutAddress.country_code;
   if (a) return String(a).toUpperCase();
+  // localStorage cached geo (with TTL)
+  try {
+    const cached = localStorage.getItem('dubis-country');
+    if (cached) {
+      const obj = JSON.parse(cached);
+      if (obj && obj.cc && obj.ts && (Date.now() - obj.ts < 24 * 3600 * 1000)) {
+        return String(obj.cc).toUpperCase();
+      }
+    }
+  } catch (_) {}
   const g = sessionStorage.getItem('dubis-country');
   if (g) return String(g).toUpperCase();
   return null;
@@ -110,29 +123,149 @@ function detectedCustomerCountry() {
 // currently visible so badges update once the country is known.
 let __geoCountryPromise = null;
 function ensureGeoCountry() {
-  if (sessionStorage.getItem('dubis-country')) return Promise.resolve(sessionStorage.getItem('dubis-country'));
+  // Skip remote lookup if we already have ANY signal (override, cached, or session).
+  const existing = detectedCustomerCountry();
+  if (existing) {
+    updateCountryToggleDisplay(existing);
+    return Promise.resolve(existing);
+  }
   if (__geoCountryPromise) return __geoCountryPromise;
   __geoCountryPromise = (async () => {
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 3000);
-      const res = await fetch('https://ipapi.co/json/', { signal: ctrl.signal });
-      clearTimeout(t);
-      if (!res.ok) return null;
-      const data = await res.json();
-      const cc = data && data.country_code ? String(data.country_code).toUpperCase() : '';
-      if (cc) {
-        sessionStorage.setItem('dubis-country', cc);
-        // Refresh any visible surfaces that depend on it.
-        try { if (typeof renderProducts === 'function' && document.querySelector('.product-card')) renderProducts(); } catch (_) {}
-        try { if (typeof renderCart === 'function' && document.querySelector('.cart-modal.open')) renderCart(); } catch (_) {}
-        return cc;
-      }
-    } catch (_) { /* network/timeout — return null */ }
+    // Try ipapi.co first; if it fails (rate limit / network), fall back to ipwho.is.
+    const tryEndpoint = async (url, parser) => {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 4000);
+        const res = await fetch(url, { signal: ctrl.signal });
+        clearTimeout(t);
+        if (!res.ok) return null;
+        const data = await res.json();
+        return parser(data);
+      } catch (_) { return null; }
+    };
+    let cc = await tryEndpoint('https://ipapi.co/json/', d => d && d.country_code ? String(d.country_code).toUpperCase() : null);
+    if (!cc) cc = await tryEndpoint('https://ipwho.is/', d => d && d.country_code ? String(d.country_code).toUpperCase() : null);
+    if (cc) {
+      // Cache for 24h.
+      try { localStorage.setItem('dubis-country', JSON.stringify({ cc, ts: Date.now() })); } catch (_) {}
+      sessionStorage.setItem('dubis-country', cc);   // legacy compat
+      console.log('[DUBIS-GEO] detected country:', cc);
+      updateCountryToggleDisplay(cc);
+      // Refresh any visible surfaces that depend on it.
+      try { if (typeof renderProducts === 'function' && document.querySelector('.product-card')) renderProducts(); } catch (_) {}
+      try { if (typeof renderCart === 'function' && document.querySelector('.cart-modal.open')) renderCart(); } catch (_) {}
+      return cc;
+    }
+    console.warn('[DUBIS-GEO] geo lookup failed — country unknown, customer can pick manually');
+    updateCountryToggleDisplay(null);
     return null;
   })();
   return __geoCountryPromise;
 }
+
+// Update the header country-toggle button to show the current detected/selected country.
+function updateCountryToggleDisplay(cc) {
+  const codeEl = document.getElementById('country-code-display');
+  const btn    = document.getElementById('country-toggle');
+  if (!codeEl || !btn) return;
+  if (!cc) {
+    codeEl.textContent = currentLang === 'he' ? 'בחר' : 'Pick';
+    btn.querySelector('.country-flag-display').textContent = '🌐';
+    btn.title = currentLang === 'he' ? 'בחר/י ארץ למשלוח' : 'Pick shipping country';
+    return;
+  }
+  const flag = COUNTRY_FLAG[cc] || '🌐';
+  codeEl.textContent = cc;
+  btn.querySelector('.country-flag-display').textContent = flag;
+  const name = (COUNTRY_NAME[cc] || {})[currentLang] || cc;
+  btn.title = (currentLang === 'he' ? 'משלוח אל ' : 'Shipping to ') + name + (currentLang === 'he' ? ' · לחיצה לשינוי' : ' · click to change');
+}
+
+// Open the country-picker modal — full grid of 30 supported countries + auto-detect indicator.
+function openCountryPicker() {
+  const overlay = document.getElementById('country-picker-overlay');
+  const picker  = document.getElementById('country-picker');
+  const grid    = document.getElementById('country-picker-grid');
+  const detEl   = document.getElementById('country-picker-detected');
+  if (!overlay || !picker || !grid) return;
+
+  const current = detectedCustomerCountry();
+  const supportedSet = new Set(Object.keys(COUNTRY_FLAG));
+  const override = localStorage.getItem('dubis-country-override');
+  let cachedAuto = null;
+  try {
+    const c = localStorage.getItem('dubis-country');
+    if (c) { const o = JSON.parse(c); if (o && o.cc) cachedAuto = o.cc; }
+  } catch (_) {}
+
+  if (detEl) {
+    if (override) {
+      const ovName = (COUNTRY_NAME[override.toUpperCase()] || {})[currentLang] || override;
+      detEl.innerHTML = (currentLang === 'he'
+        ? `<strong>בחירה ידנית:</strong> ${COUNTRY_FLAG[override] || ''} ${ovName} · <a href="#" onclick="resetCountryOverride(event)">חזרה לזיהוי אוטומטי</a>`
+        : `<strong>Manual selection:</strong> ${COUNTRY_FLAG[override] || ''} ${ovName} · <a href="#" onclick="resetCountryOverride(event)">reset to auto-detect</a>`);
+    } else if (cachedAuto) {
+      const autoName = (COUNTRY_NAME[cachedAuto] || {})[currentLang] || cachedAuto;
+      detEl.innerHTML = (currentLang === 'he'
+        ? `<strong>זוהה אוטומטית מ-IP:</strong> ${COUNTRY_FLAG[cachedAuto] || ''} ${autoName}`
+        : `<strong>Auto-detected from your IP:</strong> ${COUNTRY_FLAG[cachedAuto] || ''} ${autoName}`);
+    } else {
+      detEl.innerHTML = currentLang === 'he'
+        ? `<strong>הזיהוי האוטומטי נכשל</strong> — בחר/י מהרשימה למטה.`
+        : `<strong>Auto-detect failed</strong> — please pick from the list below.`;
+    }
+  }
+
+  // Sort countries alphabetically by localized name
+  const sorted = Object.keys(COUNTRY_FLAG).sort((a, b) => {
+    const na = (COUNTRY_NAME[a] || {})[currentLang] || a;
+    const nb = (COUNTRY_NAME[b] || {})[currentLang] || b;
+    return na.localeCompare(nb);
+  });
+  grid.innerHTML = sorted.map(cc => {
+    const name = (COUNTRY_NAME[cc] || {})[currentLang] || cc;
+    const isCurrent = cc === current;
+    return `<button class="country-picker-option${isCurrent ? ' current' : ''}" onclick="pickCountry('${cc}')">
+      <span class="cpo-flag">${COUNTRY_FLAG[cc]}</span>
+      <span class="cpo-name">${name}</span>
+      <span class="cpo-code">${cc}</span>
+    </button>`;
+  }).join('');
+
+  overlay.classList.add('open');
+  picker.classList.add('open');
+}
+
+function closeCountryPicker() {
+  document.getElementById('country-picker-overlay')?.classList.remove('open');
+  document.getElementById('country-picker')?.classList.remove('open');
+}
+
+function pickCountry(cc) {
+  if (!cc) return;
+  localStorage.setItem('dubis-country-override', cc);
+  updateCountryToggleDisplay(cc);
+  closeCountryPicker();
+  // Refresh anything visible
+  try { if (typeof renderProducts === 'function' && document.querySelector('.product-card')) renderProducts(); } catch (_) {}
+  try { if (typeof renderCart === 'function' && document.querySelector('.cart-modal.open')) renderCart(); } catch (_) {}
+}
+
+function resetCountryOverride(ev) {
+  if (ev) ev.preventDefault();
+  localStorage.removeItem('dubis-country-override');
+  // Re-trigger geo detection
+  __geoCountryPromise = null;
+  ensureGeoCountry().then(() => {
+    closeCountryPicker();
+    try { if (typeof renderProducts === 'function' && document.querySelector('.product-card')) renderProducts(); } catch (_) {}
+    try { if (typeof renderCart === 'function' && document.querySelector('.cart-modal.open')) renderCart(); } catch (_) {}
+  });
+}
+window.openCountryPicker = openCountryPicker;
+window.closeCountryPicker = closeCountryPicker;
+window.pickCountry = pickCountry;
+window.resetCountryOverride = resetCountryOverride;
 
 function countryFlagsHTML(product, opts = {}) {
   const arr = countryFlagsForProduct(product);
@@ -198,7 +331,14 @@ function countryFlagsHTML(product, opts = {}) {
     .filter(c => c !== customer)
     .map(c => `<span class="ship-flag" title="${(COUNTRY_NAME[c]||{})[currentLang]||c}">${COUNTRY_FLAG[c]||c}</span>`)
     .join('');
-  return `<div class="ships-to ships-to-full">${customerLine}<div class="ships-to-others">${label}<div class="ships-to-flags">${flagsList}</div></div></div>`;
+  const legendHTML = customer
+    ? (currentLang === 'he'
+        ? `<div class="ships-to-legend-modal"><strong>איך לקרוא:</strong> <span style="color:#2e6d2c">✓ = נשלח אליך</span> · <span style="color:#b94a48">✕ = לא נשלח אליך</span> · שאר הדגלים = מדינות נוספות שאליהן ניתן לשלוח את המוצר. הגדרת הארץ נקבעת על-פי המיקום הגאוגרפי שלך — ניתן לשנות בכפתור הדגל בראש הדף.</div>`
+        : `<div class="ships-to-legend-modal"><strong>How to read this:</strong> <span style="color:#2e6d2c">✓ = ships to you</span> · <span style="color:#b94a48">✕ = doesn't ship to you</span> · The other flags = additional countries this product can be shipped to. Your country is auto-detected from your IP — you can change it via the flag button at the top of the page.</div>`)
+    : (currentLang === 'he'
+        ? `<div class="ships-to-legend-modal"><strong>איך לקרוא:</strong> דגלי הארצות מציגים לאן ניתן לשלוח את המוצר. לחיצה על כפתור הדגל בראש הדף תאפשר לבחור את ארץ המשלוח שלך.</div>`
+        : `<div class="ships-to-legend-modal"><strong>How to read this:</strong> the flags show which countries this product can be shipped to. Click the flag button at the top of the page to pick your shipping country.</div>`);
+  return `<div class="ships-to ships-to-full">${customerLine}<div class="ships-to-others">${label}<div class="ships-to-flags">${flagsList}</div></div>${legendHTML}</div>`;
 }
 
 // Deterministic 40% chance to display the BACK image as the default in the catalog grid,
@@ -2410,6 +2550,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Belt-and-suspenders: re-run translateUI on the next tick in case loadFromDB
   // resolved late and mutated products[] after detectLanguage finished.
   setTimeout(() => { try { translateUI(currentLang); } catch(e) {} }, 0);
+  // 2026-05-22: paint the header country-toggle with whatever we have so far
+  // (override / cached / null), then kick another lookup in case the cache
+  // expired. ensureGeoCountry is idempotent + cached.
+  try { updateCountryToggleDisplay(detectedCustomerCountry()); } catch(_) {}
+  try { ensureGeoCountry(); } catch(_) {}
   initScrollAnimations();
   loadProductReviews(); // Load reviews for badges (non-blocking)
 });
