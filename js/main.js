@@ -87,14 +87,51 @@ function countryFlagsForProduct(product) {
   return Array.isArray(product?.supportedCountries) ? product.supportedCountries : DEFAULT_SUPPORTED;
 }
 
-// Customer's detected shipping country — same precedence as the cart probe.
+// 2026-05-22: Customer's GEOGRAPHIC country — independent of UI language.
+// Bug oren caught: previously inferred IL from dubis-lang='he' which is wrong
+// (a US user toggling Hebrew because they're a Hebrew speaker isn't in IL).
+// Country is now strictly determined by:
+//   1. live checkout address (filled in checkout modal — most authoritative)
+//   2. sessionStorage.dubis-country (ipapi.co IP-geolocation, runs on page load
+//      regardless of language preference — see ensureGeoCountry())
+//   3. null = unknown — UI shows no country badge instead of guessing
+// Returns ISO-2 uppercase, or null if geo detection hasn't completed/failed.
 function detectedCustomerCountry() {
-  return (
-    (window.checkoutAddress && window.checkoutAddress.country_code) ||
-    sessionStorage.getItem('dubis-country') ||
-    (localStorage.getItem('dubis-lang') === 'he' ? 'IL' : null) ||
-    'US'
-  ).toUpperCase();
+  const a = window.checkoutAddress && window.checkoutAddress.country_code;
+  if (a) return String(a).toUpperCase();
+  const g = sessionStorage.getItem('dubis-country');
+  if (g) return String(g).toUpperCase();
+  return null;
+}
+
+// Trigger ipapi.co geo lookup. Independent of language preference — runs
+// even when the user has manually toggled HE/EN. Result cached in
+// sessionStorage.dubis-country. Re-renders cards + cart drawer if they're
+// currently visible so badges update once the country is known.
+let __geoCountryPromise = null;
+function ensureGeoCountry() {
+  if (sessionStorage.getItem('dubis-country')) return Promise.resolve(sessionStorage.getItem('dubis-country'));
+  if (__geoCountryPromise) return __geoCountryPromise;
+  __geoCountryPromise = (async () => {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 3000);
+      const res = await fetch('https://ipapi.co/json/', { signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const cc = data && data.country_code ? String(data.country_code).toUpperCase() : '';
+      if (cc) {
+        sessionStorage.setItem('dubis-country', cc);
+        // Refresh any visible surfaces that depend on it.
+        try { if (typeof renderProducts === 'function' && document.querySelector('.product-card')) renderProducts(); } catch (_) {}
+        try { if (typeof renderCart === 'function' && document.querySelector('.cart-modal.open')) renderCart(); } catch (_) {}
+        return cc;
+      }
+    } catch (_) { /* network/timeout — return null */ }
+    return null;
+  })();
+  return __geoCountryPromise;
 }
 
 function countryFlagsHTML(product, opts = {}) {
@@ -104,26 +141,33 @@ function countryFlagsHTML(product, opts = {}) {
     const txt = currentLang === 'he' ? 'אזל זמנית' : 'Currently unavailable';
     return `<div class="ships-to ships-to-none">⚠️ ${txt}</div>`;
   }
-  const customer = detectedCustomerCountry();
-  const shipsToCustomer = arr.includes(customer);
-  // Sort: customer's country first (highlighted), then alphabetical
+  const customer = detectedCustomerCountry();  // null if geo unknown
+  const shipsToCustomer = customer ? arr.includes(customer) : null;  // null = unknown
+  // Sort: customer's country first (when known), then alphabetical.
   const sorted = [...arr].sort((a, b) => {
-    if (a === customer) return -1;
-    if (b === customer) return 1;
+    if (customer) {
+      if (a === customer) return -1;
+      if (b === customer) return 1;
+    }
     return a.localeCompare(b);
   });
 
   if (compact) {
-    // CARD VIEW: customer's flag prominent, then up to 6 more, then "+N"
+    // CARD VIEW: when customer is known → prominent ✓ or ✕ pinned flag,
+    // then up to 6 more + "+N". When customer unknown (geo lookup hasn't
+    // completed) → just the alphabetical flag list, no pinned highlight.
     const MAX_VISIBLE = 7;
     const visible = sorted.slice(0, MAX_VISIBLE);
     const rest    = sorted.length - visible.length;
     const titleAll = currentLang === 'he'
       ? `זמין ב-${arr.length} מדינות: ${arr.map(c => (COUNTRY_NAME[c]||{}).he||c).join(', ')}`
       : `Ships to ${arr.length} countries: ${arr.map(c => (COUNTRY_NAME[c]||{}).en||c).join(', ')}`;
-    const customerBadge = shipsToCustomer
-      ? `<span class="ship-flag flag-customer" title="${(COUNTRY_NAME[customer]||{})[currentLang]||customer} ✓">${COUNTRY_FLAG[customer]||customer}</span>`
-      : `<span class="ship-flag flag-customer-no" title="${currentLang === 'he' ? 'לא נשלח ל' : 'Not shipping to '}${(COUNTRY_NAME[customer]||{})[currentLang]||customer}">${COUNTRY_FLAG[customer]||customer}<span class="flag-x">✕</span></span>`;
+    let customerBadge = '';
+    if (customer) {
+      customerBadge = shipsToCustomer
+        ? `<span class="ship-flag flag-customer" title="${(COUNTRY_NAME[customer]||{})[currentLang]||customer} ✓">${COUNTRY_FLAG[customer]||customer}</span>`
+        : `<span class="ship-flag flag-customer-no" title="${currentLang === 'he' ? 'לא נשלח ל' : 'Not shipping to '}${(COUNTRY_NAME[customer]||{})[currentLang]||customer}">${COUNTRY_FLAG[customer]||customer}<span class="flag-x">✕</span></span>`;
+    }
     const otherFlags = visible
       .filter(c => c !== customer)
       .map(c => `<span class="ship-flag" title="${(COUNTRY_NAME[c]||{})[currentLang]||c}">${COUNTRY_FLAG[c]||c}</span>`)
@@ -131,17 +175,25 @@ function countryFlagsHTML(product, opts = {}) {
     const moreBadge = rest > 0
       ? `<span class="ship-flag ship-more">+${rest}</span>`
       : '';
-    return `<div class="ships-to ships-to-compact${shipsToCustomer ? '' : ' ships-to-not-customer'}" title="${titleAll}">${customerBadge}${otherFlags}${moreBadge}</div>`;
+    const cls = (customer && !shipsToCustomer) ? ' ships-to-not-customer' : '';
+    return `<div class="ships-to ships-to-compact${cls}" title="${titleAll}">${customerBadge}${otherFlags}${moreBadge}</div>`;
   }
-  // MODAL VIEW: prominent customer-country headline + always-visible flag grid.
-  // Per oren's directive (2026-05-21): countries must be clearly visible on the
-  // product page so a visitor immediately knows where it can ship.
-  const customerLine = shipsToCustomer
-    ? `<div class="ships-to-customer ok"><span class="big-flag">${COUNTRY_FLAG[customer] || customer}</span> ${currentLang === 'he' ? `נשלח ל${(COUNTRY_NAME[customer]||{}).he||customer}` : `Ships to ${(COUNTRY_NAME[customer]||{}).en||customer}`} <span class="ok-check">✓</span></div>`
-    : `<div class="ships-to-customer no"><span class="big-flag">${COUNTRY_FLAG[customer] || customer}</span> ${currentLang === 'he' ? `לא נשלח ל${(COUNTRY_NAME[customer]||{}).he||customer}` : `Doesn't ship to ${(COUNTRY_NAME[customer]||{}).en||customer}`} <span class="no-x">✕</span></div>`;
-  const label = currentLang === 'he'
-    ? `<span class="ships-to-label">זמין גם ב-${arr.length - (shipsToCustomer ? 1 : 0)} מדינות נוספות</span>`
-    : `<span class="ships-to-label">Also ships to ${arr.length - (shipsToCustomer ? 1 : 0)} other countries</span>`;
+  // MODAL VIEW: prominent customer-country headline (when known) + always-visible
+  // flag grid. Per oren 2026-05-22: country is GEOGRAPHIC, not language-derived.
+  let customerLine = '';
+  if (customer) {
+    customerLine = shipsToCustomer
+      ? `<div class="ships-to-customer ok"><span class="big-flag">${COUNTRY_FLAG[customer] || customer}</span> ${currentLang === 'he' ? `נשלח ל${(COUNTRY_NAME[customer]||{}).he||customer}` : `Ships to ${(COUNTRY_NAME[customer]||{}).en||customer}`} <span class="ok-check">✓</span></div>`
+      : `<div class="ships-to-customer no"><span class="big-flag">${COUNTRY_FLAG[customer] || customer}</span> ${currentLang === 'he' ? `לא נשלח ל${(COUNTRY_NAME[customer]||{}).he||customer}` : `Doesn't ship to ${(COUNTRY_NAME[customer]||{}).en||customer}`} <span class="no-x">✕</span></div>`;
+  }
+  const otherCount = arr.length - (customer && shipsToCustomer ? 1 : 0);
+  const label = customer
+    ? (currentLang === 'he'
+        ? `<span class="ships-to-label">זמין גם ב-${otherCount} מדינות נוספות</span>`
+        : `<span class="ships-to-label">Also ships to ${otherCount} other countries</span>`)
+    : (currentLang === 'he'
+        ? `<span class="ships-to-label">זמין ב-${arr.length} מדינות</span>`
+        : `<span class="ships-to-label">Ships to ${arr.length} countries</span>`);
   const flagsList = sorted
     .filter(c => c !== customer)
     .map(c => `<span class="ship-flag" title="${(COUNTRY_NAME[c]||{})[currentLang]||c}">${COUNTRY_FLAG[c]||c}</span>`)
@@ -631,23 +683,20 @@ const translations = {
 // auto-detected default is NOT persisted, so a traveler isn't locked in.
 async function detectLanguage() {
   const saved = localStorage.getItem('dubis-lang');
-  if (saved) { setLanguage(saved, false); return; }
+  // 2026-05-22: ALWAYS kick off geo detection in parallel — language preference
+  // and shipping country are two independent concerns. A Hebrew speaker in NY
+  // shouldn't have their cart badged as "ships to IL" just because they prefer
+  // the Hebrew UI. ensureGeoCountry() writes sessionStorage.dubis-country.
+  const geoPromise = ensureGeoCountry();
 
-  let country = sessionStorage.getItem('dubis-country');
-  if (!country) {
-    try {
-      const ctrl = new AbortController();
-      const timeoutId = setTimeout(() => ctrl.abort(), 3000);
-      const res = await fetch('https://ipapi.co/json/', { signal: ctrl.signal });
-      clearTimeout(timeoutId);
-      if (res.ok) {
-        const data = await res.json();
-        country = data && data.country_code ? String(data.country_code) : '';
-        sessionStorage.setItem('dubis-country', country);
-      }
-    } catch { /* network error / timeout → fallback to EN */ }
+  if (saved) {
+    setLanguage(saved, false);
+    await geoPromise;  // make sure country flag has the right answer
+    return;
   }
 
+  // First-time visitor: use geo to pick initial language (IL→HE, everyone else→EN).
+  const country = await geoPromise;
   setLanguage(country === 'IL' ? 'he' : 'en', false);
 }
 
@@ -1573,13 +1622,13 @@ function addToCartFromModal(productId) {
     }
     return;
   }
-  // 2026-05-21: Country-block guardrail. If the customer's detected country
-  // isn't in the product's supportedCountries list (from the Gelato probe),
-  // refuse to add to cart. Customer can't order what we can't ship.
-  // Per oren's directive — "שלא יזמין משהו שהוא לא יכול להזמין".
+  // 2026-05-22: Country-block guardrail — only blocks when we KNOW the
+  // customer's country (geo lookup completed). If country is unknown we
+  // optimistically allow add — the cart-level probe + checkout will catch
+  // anything that truly can't ship before money changes hands.
   const supported = Array.isArray(product.supportedCountries) ? product.supportedCountries : DEFAULT_SUPPORTED;
   const customerCountry = detectedCustomerCountry();
-  if (supported.length > 0 && !supported.includes(customerCountry)) {
+  if (customerCountry && supported.length > 0 && !supported.includes(customerCountry)) {
     const msg = document.getElementById(`modal-stock-msg-${productId}`);
     if (msg) {
       const ctryName = (COUNTRY_NAME[customerCountry] || {})[currentLang] || customerCountry;
@@ -1609,10 +1658,10 @@ function addToCartFromModal(productId) {
 
 function quickAddToCart(productId, btnEl) {
   const product = products.find(p => p.id === productId);
-  // 2026-05-21: Same country-block guardrail as the modal path.
+  // 2026-05-22: Same country-block guardrail — only blocks when geo is known.
   const supported = Array.isArray(product.supportedCountries) ? product.supportedCountries : DEFAULT_SUPPORTED;
   const customerCountry = detectedCustomerCountry();
-  if (supported.length > 0 && !supported.includes(customerCountry)) {
+  if (customerCountry && supported.length > 0 && !supported.includes(customerCountry)) {
     const ctryName = (COUNTRY_NAME[customerCountry] || {})[currentLang] || customerCountry;
     const txt = currentLang === 'he'
       ? `המוצר לא נשלח ל${ctryName}`
@@ -1775,12 +1824,15 @@ function runCartLevelProbe() {
   if (__cartProbeTimer) clearTimeout(__cartProbeTimer);
   if (__cartProbeAbort) try { __cartProbeAbort.abort(); } catch(_) {}
   __cartProbeTimer = setTimeout(async () => {
-    const country = (
-      (window.checkoutAddress && window.checkoutAddress.country_code) ||
-      sessionStorage.getItem('dubis-country') ||
-      (localStorage.getItem('dubis-lang') === 'he' ? 'IL' : null) ||
-      'US'
-    ).toUpperCase();
+    // 2026-05-22: GEOGRAPHIC country only. If unknown, kick off the geo
+    // lookup and skip this probe — it'll auto-fire again when geo lands
+    // (ensureGeoCountry re-renders the cart on success).
+    const country = detectedCustomerCountry();
+    if (!country) {
+      ensureGeoCountry();
+      if (banner) banner.style.display = 'none';
+      return;
+    }
     const key = _cartProbeKey(cart, country);
     if (__cartProbeCache.has(key)) {
       _cartProbeApply(__cartProbeCache.get(key), country);
@@ -1841,18 +1893,10 @@ function renderCart() {
     return;
   }
 
-  // 2026-05-21: detect customer's shipping country so we can show a "won't
-  // ship here" warning per item in the cart. Order of precedence:
-  //   1. live checkout address (filled in the checkout modal) — most authoritative
-  //   2. sessionStorage 'dubis-country' (set by ipapi.co geo on first visit)
-  //   3. localStorage 'dubis-lang' === 'he' → IL  (manual HE toggle implies IL)
-  //   4. 'US' as conservative fallback
-  const detectedCountry = (
-    (window.checkoutAddress && window.checkoutAddress.country_code) ||
-    sessionStorage.getItem('dubis-country') ||
-    (localStorage.getItem('dubis-lang') === 'he' ? 'IL' : null) ||
-    'US'
-  ).toUpperCase();
+  // 2026-05-22: GEOGRAPHIC country only — independent of UI language.
+  // detectedCustomerCountry() may return null if geo lookup hasn't completed —
+  // in that case we DON'T mark anything as un-shippable (don't guess).
+  const detectedCountry = detectedCustomerCountry();
 
   cartItems.innerHTML = cart.map((item, index) => {
     // Color-specific cart thumbnail. Customer who bought Navy/White must SEE the
@@ -1872,20 +1916,24 @@ function renderCart() {
     const itemSupported = (catalogProduct && Array.isArray(catalogProduct.supportedCountries))
       ? catalogProduct.supportedCountries
       : DEFAULT_SUPPORTED;
-    const shipsToCustomerCountry = itemSupported.includes(detectedCountry);
-    const ctryFlag = COUNTRY_FLAG[detectedCountry] || detectedCountry;
-    const ctryName = (COUNTRY_NAME[detectedCountry] || {})[currentLang] || detectedCountry;
+    // shipsToCustomerCountry is TRUE / FALSE / null (unknown — geo not ready).
+    // null is treated optimistically: no badge, no warning, no red border.
+    const knowCountry = !!detectedCountry;
+    const shipsToCustomerCountry = knowCountry ? itemSupported.includes(detectedCountry) : null;
+    const ctryFlag = detectedCountry ? (COUNTRY_FLAG[detectedCountry] || detectedCountry) : '';
+    const ctryName = detectedCountry ? ((COUNTRY_NAME[detectedCountry] || {})[currentLang] || detectedCountry) : '';
 
-    let badgeHTML;
+    let badgeHTML = '';
     if (itemSupported.length === 0) {
       badgeHTML = `<span class="cart-item-flag warn" title="${currentLang === 'he' ? 'אזל זמנית' : 'Currently unavailable'}">⚠️</span>`;
-    } else if (shipsToCustomerCountry) {
+    } else if (knowCountry && shipsToCustomerCountry) {
       badgeHTML = `<span class="cart-item-flag ok" title="${currentLang === 'he' ? 'זמין לשליחה אליך' : 'Ships to your country'}">${ctryFlag}<span class="flag-check">✓</span></span>`;
-    } else {
+    } else if (knowCountry && !shipsToCustomerCountry) {
       badgeHTML = `<span class="cart-item-flag no" title="${currentLang === 'he' ? `לא נשלח ל${ctryName}` : `Doesn't ship to ${ctryName}`}">${ctryFlag}<span class="flag-x-cart">✕</span></span>`;
     }
+    // knowCountry=false && supported>0 → no badge (we don't know yet)
 
-    const warnHTML = (!shipsToCustomerCountry && itemSupported.length > 0)
+    const warnHTML = (knowCountry && !shipsToCustomerCountry && itemSupported.length > 0)
       ? `<div class="cart-item-warn">${
           currentLang === 'he'
             ? `⚠️ לא ניתן לשלוח ל${ctryName}`
@@ -1897,9 +1945,12 @@ function renderCart() {
           currentLang === 'he' ? '⚠️ אזל זמנית' : '⚠️ Currently unavailable'
         }</div>`
       : '';
+    const unshippableCls = (itemSupported.length === 0) || (knowCountry && !shipsToCustomerCountry)
+      ? ' cart-item-unshippable'
+      : '';
 
     return `
-    <div class="cart-item${(!shipsToCustomerCountry || itemSupported.length === 0) ? ' cart-item-unshippable' : ''}">
+    <div class="cart-item${unshippableCls}">
       <img src="${variantImg}" alt="${item.phrase}" class="cart-item-img" onerror="this.onerror=null;this.src='${item.image}'" />
       <div class="cart-item-info">
         <div class="cart-item-name">"${item.phrase}" ${badgeHTML}</div>
