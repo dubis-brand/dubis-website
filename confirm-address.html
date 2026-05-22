@@ -74,14 +74,14 @@
     card.innerHTML = '<h1>We couldn\'t find your order</h1>' +
       '<p class="lead">' + esc(msg) + '</p>' +
       '<p class="muted">If this link came from us, try copying it directly from the email. ' +
-      'Still stuck? Email <a href="mailto:hello@dubis.net">hello@dubis.net</a> with your order reference.</p>';
+      'Still stuck? Email <a href="mailto:orders@dubis.net">orders@dubis.net</a> with your order reference.</p>';
   }
 
   function renderResolved() {
     card.innerHTML = '<h1>Already taken care of</h1>' +
       '<p class="lead">This order has already been confirmed and sent to print. ' +
       'If you think something is wrong, reply to your confirmation email or contact ' +
-      '<a href="mailto:hello@dubis.net">hello@dubis.net</a>.</p>';
+      '<a href="mailto:orders@dubis.net">orders@dubis.net</a>.</p>';
   }
 
   if (!o || !t) {
@@ -154,7 +154,7 @@
         '<button class="primary" type="submit" id="submit-btn">Confirm and ship my order</button>' +
         '<div id="msg"></div>' +
       '</form>' +
-      '<p class="muted">Need help instead? Reply to your confirmation email or write to <a href="mailto:hello@dubis.net">hello@dubis.net</a>.</p>';
+      '<p class="muted">Need help instead? Reply to your confirmation email or write to <a href="mailto:orders@dubis.net">orders@dubis.net</a>.</p>';
 
     document.getElementById('form').addEventListener('submit', onSubmit);
     // Live Hebrew detector — flag the input + show a warning under it
@@ -279,7 +279,7 @@
         }
         msg.innerHTML = '<div class="err">We couldn\'t submit the order: ' +
           esc((res.data && (res.data.error || res.data.message)) || ('HTTP ' + res.status)) +
-          '. Please try again or email <a href="mailto:hello@dubis.net">hello@dubis.net</a>.</div>';
+          '. Please try again or email <a href="mailto:orders@dubis.net">orders@dubis.net</a>.</div>';
       })
       .catch(function (err) {
         btn.disabled = false;
