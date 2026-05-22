@@ -1927,17 +1927,20 @@ function _cartProbeApply(result, _country) {
     return;
   }
   if (result.ok === true) {
-    // 2026-05-21: All-clear → green confirmation. Whether the cart ships from
-    // ONE warehouse (mode='in_stock') or N warehouses via splitting
-    // (mode='splittable'), the customer experience is identical — single
-    // PayPal capture, single confirmation email, single tracked order. Per
-    // oren's directive the split is invisible.
+    // 2026-05-22: All-clear → green confirmation. Customer can proceed.
+    // RESTORE original Checkout label (might've been replaced by the
+    // hard-disabled "Remove blocking items" label on a prior render).
     banner.className = 'cart-warehouse-banner cart-banner-ok';
     banner.innerHTML = currentLang === 'he'
       ? '✅ <strong>הסל שלך זמין למשלוח</strong>'
       : '✅ <strong>Your cart is ready to ship!</strong>';
     banner.style.display = '';
-    if (btn) { btn.disabled = false; btn.classList.remove('disabled'); }
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('disabled');
+      btn.removeAttribute('aria-disabled');
+      if (btn.dataset.origLabel) btn.textContent = btn.dataset.origLabel;
+    }
     return;
   }
   // ok===false → mark the specific cart-item rows the API flagged
@@ -1956,29 +1959,62 @@ function _cartProbeApply(result, _country) {
         const warn = document.createElement('div');
         warn.className = 'cart-item-warn cart-item-warn-warehouse';
         warn.textContent = currentLang === 'he'
-          ? '⚠️ מתנגש עם פריטים אחרים בסל'
-          : '⚠️ Conflicts with other items in cart';
+          ? '⚠️ הסר/י פריט זה כדי להמשיך'
+          : '⚠️ Remove this item to continue';
         info.appendChild(warn);
       }
     }
     i++;
   });
-  // Banner at footer summarizes the problem.
-  const itemList = (result.oosItems || [])
-    .map(o => `<li>${o.label || (o.type + ' ' + o.color + ' ' + o.size)}</li>`)
+  // 2026-05-22: bilingual cart banner with specific item names. mode='split_required'
+  // is the most common case (multi-warehouse cart we now refuse). Other modes
+  // (all_blocked_pre_gelato / quote_partial_oos / all_unmapped) get a generic
+  // message but still hard-block checkout.
+  const itemBullets = (result.oosItems || [])
+    .map(o => {
+      const phrase = o.phrase ? `"${o.phrase}" — ` : '';
+      const sizeColor = `${o.size || ''}${o.color ? (o.size ? ' · ' : '') + o.color : ''}`.trim();
+      return `<li><strong>${phrase}${o.typeLabel || o.type}</strong>${sizeColor ? ' (' + sizeColor + ')' : ''}</li>`;
+    })
     .join('');
+  const isSplit = result.mode === 'split_required';
+  let bodyHTML;
+  if (currentLang === 'he') {
+    bodyHTML = isSplit
+      ? `<strong>⚠️ לא ניתן להמשיך לתשלום</strong>
+         <p>הפריטים הבאים בסל שלך מיוצרים במחסן אחר מהשאר. כדי שכל ההזמנה תישלח יחד בחבילה אחת — נא להסיר אותם:</p>
+         <ul>${itemBullets}</ul>
+         <p class="cart-banner-action">לחצ/י על ה-✕ ליד הפריט להסירו. לאחר ההסרה הסל יהיה זמין לתשלום.</p>`
+      : `<strong>⚠️ לא ניתן להמשיך לתשלום</strong>
+         <p>הפריטים הבאים בסל שלך לא ניתנים לשליחה למדינה שלך כרגע. נא להסיר אותם כדי להמשיך:</p>
+         <ul>${itemBullets}</ul>
+         <p class="cart-banner-action">לחצ/י על ה-✕ ליד הפריט להסירו.</p>`;
+  } else {
+    bodyHTML = isSplit
+      ? `<strong>⚠️ Can't continue to payment</strong>
+         <p>The items below are made in a different warehouse than the rest of your cart. Remove them so we can ship the entire order in a single package:</p>
+         <ul>${itemBullets}</ul>
+         <p class="cart-banner-action">Click the ✕ next to the item to remove it. Then your cart will be ready to checkout.</p>`
+      : `<strong>⚠️ Can't continue to payment</strong>
+         <p>These items can't ship to your country right now. Remove them to continue:</p>
+         <ul>${itemBullets}</ul>
+         <p class="cart-banner-action">Click the ✕ next to the item to remove it.</p>`;
+  }
   banner.className = 'cart-warehouse-banner cart-banner-warn';
-  banner.innerHTML = (currentLang === 'he'
-    ? `<strong>⚠️ לא ניתן לשלוח את הסל הנוכחי</strong>
-       <p>Gelato לא יכולים לייצר את כל הפריטים ממחסן אחד למדינה שלך. הפריטים המסומנים באדום הם הבעיה — הסירו או החליפו אותם וכל השאר ישלח חלק.</p>
-       <ul>${itemList}</ul>`
-    : `<strong>⚠️ This cart can't ship as-is</strong>
-       <p>Gelato can't produce all items from a single warehouse for your country. The items marked red below are the conflict — remove or swap them and the rest will ship fine.</p>
-       <ul>${itemList}</ul>`);
+  banner.innerHTML = bodyHTML;
   banner.style.display = '';
-  // Don't HARD-disable checkout (PayPal capture is gated anyway), but visually
-  // dim it so the customer sees the warning first.
-  if (btn) { btn.classList.add('disabled'); btn.disabled = false; }
+  // 2026-05-22 (oren directive): HARD-disable checkout. Customer MUST resolve
+  // the issue before they can click Checkout. PayPal popup never opens →
+  // money never moves → no refund mess. The pre-2026-05-22 soft-dim let too
+  // many customers click through and end up in a failed-capture/refund cycle.
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('disabled');
+    btn.setAttribute('aria-disabled', 'true');
+    const origLabel = btn.dataset.origLabel || btn.textContent.trim();
+    if (!btn.dataset.origLabel) btn.dataset.origLabel = origLabel;
+    btn.textContent = currentLang === 'he' ? '🚫 נא להסיר פריטים חוסמים' : '🚫 Remove blocking items first';
+  }
 }
 
 function runCartLevelProbe() {
