@@ -18,6 +18,10 @@ function initAuth() {
     _sb.auth.getSession().then(({ data: { session } }) => {
         _currentSession = session;
         _currentUser    = session?.user || null;
+        // 2026-05-22: mirror to window so translateUI in main.js can see login
+        // state and skip resetting the button text to "Sign In" when a user
+        // is logged in. Without this, main.js was always overwriting the name.
+        window._currentUser = _currentUser;
         console.log('[DUBIS-AUTH] init getSession', {
             hasSession: !!session,
             user: session?.user?.email || null,
@@ -30,6 +34,7 @@ function initAuth() {
     _sb.auth.onAuthStateChange((event, session) => {
         _currentSession = session;
         _currentUser    = session?.user || null;
+        window._currentUser = _currentUser;   // 2026-05-22 — mirror for translateUI
         // 2026-05-21 diagnostic: log every auth state change so we can
         // catch the "signed in then signed out" symptom.
         console.log('[DUBIS-AUTH] state-change', {
@@ -192,6 +197,7 @@ async function authLogout() {
     await _sb.auth.signOut();
     _currentUser    = null;
     _currentSession = null;
+    window._currentUser = null;   // 2026-05-22 — mirror for translateUI
     closeAccountMenu();
     _updateAuthUI();
 }

@@ -1974,6 +1974,27 @@ body[dir="rtl"] .product-price .price-from { margin-left: 2px; margin-right: 0; 
     border-color: #a06621;
     transform: translateY(-1px);
 }
+/* 2026-05-22: country DETECTED = honey glow so customer sees we found their location */
+.country-toggle.country-detected {
+    background: linear-gradient(135deg, #c17e3a 0%, #a06621 100%);
+    color: #fff;
+    border-color: #8a531c;
+    box-shadow: 0 0 0 2px rgba(193, 126, 58, 0.25), 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+.country-toggle.country-detected .country-toggle-label,
+.country-toggle.country-detected .country-code-display {
+    color: #fff;
+}
+.country-toggle.country-detected:hover {
+    background: linear-gradient(135deg, #a06621 0%, #7a4d18 100%);
+    box-shadow: 0 0 0 3px rgba(193, 126, 58, 0.35), 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+/* country UNKNOWN = muted (encourages click) */
+.country-toggle.country-unknown {
+    background: rgba(150, 150, 150, 0.08);
+    border-color: rgba(150, 150, 150, 0.32);
+    color: #6a6a6a;
+}
 .country-toggle-label {
     font-size: 0.72rem;
     color: #6a4a1a;

@@ -169,6 +169,9 @@ function ensureGeoCountry() {
 }
 
 // Update the header country-toggle button to show the current detected/selected country.
+// 2026-05-22 (oren feedback): when country is KNOWN, the button glows honey
+// (CSS class .country-detected) so the customer sees that we know where to
+// ship. When unknown, the button is dim/grey + says "Pick" to invite action.
 function updateCountryToggleDisplay(cc) {
   const codeEl = document.getElementById('country-code-display');
   const btn    = document.getElementById('country-toggle');
@@ -177,11 +180,15 @@ function updateCountryToggleDisplay(cc) {
     codeEl.textContent = currentLang === 'he' ? 'בחר' : 'Pick';
     btn.querySelector('.country-flag-display').textContent = '🌐';
     btn.title = currentLang === 'he' ? 'בחר/י ארץ למשלוח' : 'Pick shipping country';
+    btn.classList.remove('country-detected');
+    btn.classList.add('country-unknown');
     return;
   }
   const flag = COUNTRY_FLAG[cc] || '🌐';
   codeEl.textContent = cc;
   btn.querySelector('.country-flag-display').textContent = flag;
+  btn.classList.add('country-detected');
+  btn.classList.remove('country-unknown');
   const name = (COUNTRY_NAME[cc] || {})[currentLang] || cc;
   btn.title = (currentLang === 'he' ? 'משלוח אל ' : 'Shipping to ') + name + (currentLang === 'he' ? ' · לחיצה לשינוי' : ' · click to change');
 }
@@ -1009,8 +1016,15 @@ function translateUI(lang) {
   });
 
   // ── Account button + dropdown menu ──
+  // 2026-05-22 (oren screenshot): translateUI was always resetting the
+  // button to "Sign In" even when the user is logged in — overwriting the
+  // user's name that _updateAuthUI() had just set in auth.js. Only reset
+  // the text when the user is NOT logged in. After translation, re-run
+  // _updateAuthUI() to repaint the user's name in the correct language.
   const accountBtnSpan = q('#account-btn span');
-  if (accountBtnSpan) accountBtnSpan.textContent = t.account_signin;
+  const _hasUser = typeof window._currentUser !== 'undefined' && window._currentUser;
+  if (accountBtnSpan && !_hasUser) accountBtnSpan.textContent = t.account_signin;
+  try { if (typeof _updateAuthUI === 'function') _updateAuthUI(); } catch(_) {}
   const accAdmin = q('#admin-menu-link');
   if (accAdmin) accAdmin.textContent = t.account_admin;
   const accMenuLinks = qa('#account-menu a');
