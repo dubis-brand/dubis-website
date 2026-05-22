@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>DUBIS Carousel Pilot — men-1 / product 3 (Napping is my cardio)</title>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;700;900&family=Anton&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1a1a1a; color: #F5F0E8; font-family: 'Heebo', Arial, sans-serif; padding: 40px; direction: rtl; }
+  h1 { font-family: 'Anton'; font-size: 48px; letter-spacing: 0.04em; margin-bottom: 8px; direction: ltr; }
+  .subtitle { color: #C17E3A; font-size: 18px; margin-bottom: 32px; }
+  .note { background: rgba(193, 126, 58, 0.1); border-right: 4px solid #C17E3A; padding: 16px 24px; margin-bottom: 40px; max-width: 880px; }
+  .ig-feed {
+    background: #000;
+    width: 540px;
+    margin: 0 auto 60px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .ig-header {
+    display: flex; align-items: center; padding: 12px 16px;
+    border-bottom: 1px solid #222;
+  }
+  .ig-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, #C17E3A, #2C2C2C);
+    margin-left: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Anton'; font-size: 14px; color: #fff; direction: ltr;
+  }
+  .ig-handle { font-weight: 600; font-size: 14px; color: #fff; direction: ltr; }
+  .ig-handle .verified { color: #1da1f2; font-size: 12px; margin-right: 4px; }
+  .ig-carousel {
+    display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
+    width: 540px; height: 540px;
+  }
+  .ig-slide {
+    flex: 0 0 540px; height: 540px;
+    scroll-snap-align: start;
+    background: #2C2C2C;
+  }
+  .ig-slide img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ig-actions { padding: 12px 16px; display: flex; gap: 14px; font-size: 22px; }
+  .ig-actions span { color: #fff; cursor: pointer; }
+  .ig-dots {
+    display: flex; justify-content: center; gap: 6px; padding: 4px 0 10px;
+  }
+  .ig-dots .dot { width: 6px; height: 6px; border-radius: 50%; background: #555; }
+  .ig-dots .dot.active { background: #C17E3A; }
+  .ig-caption {
+    padding: 8px 16px 16px; font-size: 13px; color: #ddd;
+    line-height: 1.5; direction: rtl;
+  }
+  .ig-caption .handle { font-weight: 600; color: #fff; }
+  .ig-caption .more { color: #888; }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+    max-width: 1200px; margin: 0 auto;
+  }
+  .grid figure { background: #2C2C2C; border-radius: 8px; overflow: hidden; }
+  .grid img { width: 100%; height: auto; display: block; }
+  .grid figcaption {
+    padding: 12px 16px; font-size: 13px; color: rgba(245,240,232,0.7);
+  }
+  .grid figcaption strong { color: #C17E3A; font-weight: 700; margin-left: 6px; }
+
+  .meta-block {
+    background: #2C2C2C; border-radius: 8px;
+    padding: 24px 32px; margin: 40px auto; max-width: 880px;
+    border-right: 4px solid #C17E3A;
+  }
+  .meta-block h2 { font-family: 'Heebo'; font-weight: 700; font-size: 22px; color: #C17E3A; margin-bottom: 12px; }
+  .meta-block p { font-size: 15px; line-height: 1.7; color: rgba(245,240,232,0.85); }
+  .meta-block code { font-family: 'Inter', monospace; background: rgba(193,126,58,0.15); padding: 2px 8px; border-radius: 4px; color: #C17E3A; font-size: 13px; direction: ltr; display: inline-block; }
+  .caption-block { background: #1a1a1a; padding: 20px; border-radius: 6px; white-space: pre-wrap; font-size: 14px; line-height: 1.7; margin-top: 12px; }
+</style>
+</head>
+<body>
+  <h1>DUBIS<sup style="font-size:0.5em;opacity:0.6">™</sup> — Carousel Pilot</h1>
+  <div class="subtitle">men-1 / product #3 / "Napping is my cardio" — 6 slides | 1080×1080</div>
+
+  <div class="note">
+    <strong>מה זה carousel ב-DUBIS:</strong> 6 תמונות עוקבות שהמשתמש מחליק ביניהן ב-Instagram. כל slide מקדם את הסיפור צעד אחד. הראשון מושך, האחרון סוגר ב-CTA. הקופי בטקסט הפוסט (למטה) הוא נפרד מהטקסט שעל הסלידים — בדיוק כמו שביקשת לוידאו.
+  </div>
+
+  <h2 style="font-family:'Heebo';font-weight:700;font-size:22px;margin-bottom:20px;color:#C17E3A;">תצוגת Instagram (גלילה אופקית)</h2>
+  <div class="ig-feed">
+    <div class="ig-header">
+      <div class="ig-avatar">D</div>
+      <div>
+        <div class="ig-handle">dubis.brand <span class="verified">●</span></div>
+        <div style="font-size:11px;color:#888">ממומן</div>
+      </div>
+    </div>
+    <div class="ig-carousel">
+      <div class="ig-slide"><img src="https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/ig-images/carousel-pilots/men-1/slide-1.png" alt="1"></div>
+      <div class="ig-slide"><img src="https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/ig-images/carousel-pilots/men-1/slide-2.png" alt="2"></div>
+      <div class="ig-slide"><img src="https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/ig-images/carousel-pilots/men-1/slide-3.png" alt="3"></div>
+      <div class="ig-slide"><img src="https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/ig-images/carousel-pilots/men-1/slide-4.png" alt="4"></div>
+      <div class="ig-slide"><img src="https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/ig-images/carousel-pilots/men-1/slide-5.png" alt="5"></div>
+      <div class="ig-slide"><img src="https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/ig-images/carousel-pilots/men-1/slide-6.png" alt="6"></div>
+    </div>
+    <div class="ig-dots">
+      <span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+    <div class="ig-actions">
+      <span>♡</span><span>💬</span><span>↗</span>
+    </div>
+    <div class="ig-caption">
+      <span class="handle">dubis.brand</span>
+      כולם פתאום קמים ב-5 לפילאטיס. תכלס? יופי להם. אצלי? אצלי היום הכי טוב מתחיל ב-3 לפנות בוקר, אחרי שהילדים נרדמו, עם פינג'אן חזק על השיש. הקפוצון הזה לא צריך להוכיח שום דבר.
+      <span class="more">... עוד</span>
+    </div>
+  </div>
+
+  <h2 style="font-family:'Heebo';font-weight:700;font-size:22px;margin-bottom:20px;color:#C17E3A;">כל 6 הסליידים בנפרד</h2>
+  <div class="grid">
+    <figure><img src="https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/ig-images/carousel-pilots/men-1/slide-1.png"><figcaption><strong>01.</strong>HOOK — תצפית ציני</figcaption></figure>
+    <figure><img src="https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/ig-images/carousel-pilots/men-1/slide-2.png"><figcaption><strong>02.</strong>AGITATION — המציאות שלי</figcaption></figure>
+    <figure><img src="https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/ig-images/carousel-pilots/men-1/slide-3.png"><figcaption><strong>03.</strong>REFRAME — הקרדיו האמיתי</figcaption></figure>
+    <figure><img src="https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/ig-images/carousel-pilots/men-1/slide-4.png"><figcaption><strong>04.</strong>VISUAL — תמונת המוצר עם הסלוגן</figcaption></figure>
+    <figure><img src="https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/ig-images/carousel-pilots/men-1/slide-5.png"><figcaption><strong>05.</strong>MANIFESTO — DUBIS Drop</figcaption></figure>
+    <figure><img src="https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/ig-images/carousel-pilots/men-1/slide-6.png"><figcaption><strong>06.</strong>CTA — מחיר + URL</figcaption></figure>
+  </div>
+
+  <div class="meta-block">
+    <h2>הקופי ב-IG/FB caption (נפרד מהסליידים)</h2>
+    <p>הטקסט שמופיע <strong>מתחת לפוסט</strong> ב-Instagram/Facebook. לא חוזר על מה שכתוב על הסליידים — הוא משלים, מחבר רגשית, ודוחף ללינק:</p>
+    <div class="caption-block">כולם פתאום קמים ב-5 לפילאטיס. תכלס? יופי להם.
+
+אצלי? אצלי היום הכי טוב מתחיל ב-3 לפנות בוקר, אחרי שהילדים נרדמו, עם פינג'אן חזק על השיש. ה"קרדיו" שלי קורה בין שתי הקדמות שאני חולם עליהן.
+
+הקפוצון הזה לא צריך להוכיח שום דבר. בדיוק כמוני.
+
+👉 https://www.dubis.net/?p=3
+₪103
+
+#DUBIS #גוףאמיתי #קפוצון #פוראופנה</div>
+  </div>
+
+  <div class="meta-block">
+    <h2>שיטה — איך זה נבנה</h2>
+    <p>
+      <strong>Layout:</strong> 1080×1080 PNG, רקע Charcoal <code>#2C2C2C</code> + accent Honey <code>#C17E3A</code> + Cream טקסט <code>#F5F0E8</code>.<br>
+      <strong>Typography:</strong> Anton (לוגו DUBIS, מספרים), Heebo (טקסט עברי במשקלים 400/700/900).<br>
+      <strong>Tech:</strong> HTML+CSS template per slide → Chrome headless screenshot → PNG.<br>
+      <strong>Auto-pipeline:</strong> את כל הסליידים אפשר לייצר אוטומטית — צריך רק slogan + מוצר + Persona narration. הסקריפט יבנה את 6 ה-HTML files ויצלם אותם.<br>
+      <strong>פרסום:</strong> 6 PNGs → Supabase Storage → Graph API <code>media_type=CAROUSEL</code> + <code>children=[child1, child2, …, child6]</code>. הפייפליין כבר קיים ב-<code>agents/index.ts:1982</code>.
+    </p>
+  </div>
+
+  <div class="meta-block">
+    <h2>מה הלאה</h2>
+    <p>
+      אם הקונספט עובד — אני מתקן את ה-3 חפיפות הקטנות בfooter (DUBIS logo משיק לטקסט הראשי בכמה slides), משפר את slide-4 (התמונה דחוסה מדי, הסלוגן NAPPING IS MY CARDIO חלקית מוסתר), ומסדר את ₪103 ב-slide-6 (סדר ה-RTL מבלבל את הסימן ₪).
+      <br><br>
+      אחרי שמושלם — אני בונה סקריפט שמייצר carousel כזה לכל פרסונה×מוצר אוטומטית, ומכניס ל-agent_tasks עם scheduled_for לפי תוכנית שבועית (2 carousels בשבוע לפי <code>DUBIS_WEEKLY_SOCIAL_PLAN_2026-05-16.html</code>).
+    </p>
+  </div>
+
+</body>
+</html>
