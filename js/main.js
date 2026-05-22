@@ -1860,24 +1860,36 @@ function renderCart() {
     const colorFile = (item.selectedColor || '').replace(/\s+/g, '-');
     const variantImg = colorFile ? `images/product-${item.id}-${colorFile}-front.jpg` : item.image;
 
-    // Per-item ships-to badge. Find the product in the catalog by id;
-    // `supportedCountries` was injected by sync-products-to-js.js from the
-    // DB. If the customer's detected country isn't in the list, render a
-    // red "won't ship to <country>" warning so they know which line to
-    // remove before checkout.
+    // 2026-05-22: cart-item country indicator — minimalist. Per oren feedback,
+    // showing the full list of 30 country codes was visual garbage that broke
+    // the cart layout. Replaced with a single compact badge showing ONLY the
+    // customer's detected country:
+    //   - shipsToCustomer=true  → faint green ✓ 🇮🇱 (reassurance, low signal)
+    //   - shipsToCustomer=false → red 🇮🇱 ✕ (impossible to miss) + existing
+    //                              .cart-item-warn block underneath
+    //   - supported_countries=[] → orange ⚠️ (currently unavailable globally)
     const catalogProduct = (typeof products !== 'undefined') ? products.find(p => p.id === item.id) : null;
     const itemSupported = (catalogProduct && Array.isArray(catalogProduct.supportedCountries))
       ? catalogProduct.supportedCountries
-      : ['US','IL'];
-    const flagsHTML = itemSupported.length === 0
-      ? `<span class="cart-item-flags none">⚠️</span>`
-      : itemSupported.map(c => `<span class="cart-flag" title="${(COUNTRY_NAME[c]||{})[currentLang]||c}">${COUNTRY_FLAG[c]||c}</span>`).join('');
+      : DEFAULT_SUPPORTED;
     const shipsToCustomerCountry = itemSupported.includes(detectedCountry);
+    const ctryFlag = COUNTRY_FLAG[detectedCountry] || detectedCountry;
+    const ctryName = (COUNTRY_NAME[detectedCountry] || {})[currentLang] || detectedCountry;
+
+    let badgeHTML;
+    if (itemSupported.length === 0) {
+      badgeHTML = `<span class="cart-item-flag warn" title="${currentLang === 'he' ? 'אזל זמנית' : 'Currently unavailable'}">⚠️</span>`;
+    } else if (shipsToCustomerCountry) {
+      badgeHTML = `<span class="cart-item-flag ok" title="${currentLang === 'he' ? 'זמין לשליחה אליך' : 'Ships to your country'}">${ctryFlag}<span class="flag-check">✓</span></span>`;
+    } else {
+      badgeHTML = `<span class="cart-item-flag no" title="${currentLang === 'he' ? `לא נשלח ל${ctryName}` : `Doesn't ship to ${ctryName}`}">${ctryFlag}<span class="flag-x-cart">✕</span></span>`;
+    }
+
     const warnHTML = (!shipsToCustomerCountry && itemSupported.length > 0)
       ? `<div class="cart-item-warn">${
           currentLang === 'he'
-            ? `⚠️ לא ניתן לשלוח ל${(COUNTRY_NAME[detectedCountry]||{}).he || detectedCountry}`
-            : `⚠️ Won't ship to ${(COUNTRY_NAME[detectedCountry]||{}).en || detectedCountry}`
+            ? `⚠️ לא ניתן לשלוח ל${ctryName}`
+            : `⚠️ Won't ship to ${ctryName}`
         }</div>`
       : '';
     const unavailHTML = (itemSupported.length === 0)
@@ -1890,9 +1902,8 @@ function renderCart() {
     <div class="cart-item${(!shipsToCustomerCountry || itemSupported.length === 0) ? ' cart-item-unshippable' : ''}">
       <img src="${variantImg}" alt="${item.phrase}" class="cart-item-img" onerror="this.onerror=null;this.src='${item.image}'" />
       <div class="cart-item-info">
-        <div class="cart-item-name">"${item.phrase}"</div>
+        <div class="cart-item-name">"${item.phrase}" ${badgeHTML}</div>
         <div class="cart-item-type">${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}</div>
-        <div class="cart-item-ships-to" title="${currentLang === 'he' ? 'זמין למשלוח ל-' : 'Ships to:'} ${itemSupported.map(c => (COUNTRY_NAME[c]||{})[currentLang]||c).join(', ') || (currentLang === 'he' ? 'אזל זמנית' : 'unavailable')}">${flagsHTML}</div>
         ${warnHTML}${unavailHTML}
       </div>
       <div class="cart-item-right">

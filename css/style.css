@@ -1881,23 +1881,53 @@ body[dir="rtl"] .product-price .price-from { margin-left: 2px; margin-right: 0; 
     color: #aaa;
 }
 
-/* 2026-05-21: cart-item ships-to flags + per-country warning */
-.cart-item-ships-to {
-    margin-top: 4px;
+/* 2026-05-22: cart-item country badge — minimalist, customer-country-only.
+ * Earlier version printed the full 30-country code list inline which broke
+ * the cart layout (oren screenshot 2026-05-22). Now: one tiny pill next to
+ * the item phrase, signaling ✓ or ✕ for the customer's detected country. */
+.cart-item-flag {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    font-size: 0.95rem;
+    gap: 2px;
+    font-size: 0.78rem;
     line-height: 1;
-    padding: 2px 8px;
-    background: rgba(193, 126, 58, 0.08);
-    border: 1px solid rgba(193, 126, 58, 0.18);
+    padding: 2px 6px;
     border-radius: 10px;
-    width: fit-content;
     cursor: help;
+    vertical-align: middle;
+    margin-inline-start: 6px;
+    white-space: nowrap;
 }
-.cart-flag { line-height: 1; font-size: 0.95rem; }
-.cart-item-flags.none { color: #b94a48; font-size: 0.9rem; }
+.cart-item-flag.ok {
+    background: rgba(46, 109, 44, 0.08);
+    color: #2e6d2c;
+    border: 1px solid rgba(46, 109, 44, 0.22);
+}
+.cart-item-flag.no {
+    background: rgba(201, 81, 79, 0.10);
+    color: #b94a48;
+    border: 1px solid rgba(201, 81, 79, 0.35);
+    font-weight: 600;
+}
+.cart-item-flag.warn {
+    background: rgba(193, 126, 58, 0.10);
+    color: #8a5a20;
+    border: 1px solid rgba(193, 126, 58, 0.35);
+}
+.cart-item-flag .flag-check {
+    font-size: 0.7rem;
+    color: #2e6d2c;
+    font-weight: 700;
+}
+.cart-item-flag .flag-x-cart {
+    font-size: 0.72rem;
+    color: #c8514f;
+    font-weight: 700;
+}
+/* Legacy classes — kept as no-ops for any cached HTML in flight */
+.cart-item-ships-to { display: none; }
+.cart-flag { display: none; }
+.cart-item-flags.none { display: none; }
 .cart-item-warn {
     margin-top: 4px;
     font-size: 0.78rem;
