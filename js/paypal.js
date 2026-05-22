@@ -795,6 +795,21 @@ function renderPayPalButtons() {
                                 gelatoError: pfData.gelatoError || '',
                             };
                         }
+                        // 2026-05-22 (Hila 13:19 incident): server attempted refund but it
+                        // FAILED. Any `reason` ending in `_no_refund` means the customer's
+                        // money is still with PayPal and our server gave up. Fire the
+                        // emergency refund (separate fetch path, no shared state) and
+                        // mark as dispatch failure so the success-modal branch is skipped.
+                        const reasonStr = String(pfData.reason || '');
+                        if (pfData.refunded === false && reasonStr.endsWith('_no_refund')) {
+                            console.error('[DUBIS-NO-REFUND-PATH]', { reason: reasonStr, paypalOrderId: details.id, gelatoError: pfData.gelatoError });
+                            gelatoDispatchFailed = true;
+                            gelatoDispatchError  = pfData.gelatoError || `server refund failed (${reasonStr})`;
+                            // Fire the emergency refund-by-id route — independent of the
+                            // first attempt that just failed (different code path, different
+                            // PayPal-Request-Id since it's now a manual sweep).
+                            try { __dubisFireEmergencyRefund(reasonStr); } catch (_) {}
+                        }
                         if (pfData.addressMissing || pfData.reason === 'address_missing') {
                             addressHoldInfo = {
                                 missingFields:     pfData.missingFields  || [],
