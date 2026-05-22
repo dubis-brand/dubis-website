@@ -2007,14 +2007,11 @@ async function handleStockProbe(req, res) {
       }
     }
     // 2026-05-21: BEFORE telling the customer "can't ship", check if the cart is
-    // 2026-05-22 (oren directive): use the splitter to IDENTIFY which items
-    // are in the minority warehouse, but DO NOT mark cart as ok-because-
-    // splittable. Split orders cost 2x Gelato shipping ($82/sub-order) which
-    // breaks our unit economics — every split = $40-70 loss for DUBIS.
-    //
-    // So: when splittable, return ok=false with the MINORITY warehouse items
-    // listed so the customer knows exactly which item(s) to remove. The
-    // checkout dispatcher will also refuse split carts (defense in depth).
+    // 2026-05-22 (oren clarification): SPLIT is OK — if cart needs items from
+    // multiple warehouses, the dispatcher will handle it as N sub-orders.
+    // ONLY block when there's a true STOCK issue (item literally OOS anywhere).
+    // Cart-level: if splittable, return ok=true → customer proceeds → checkout
+    // dispatcher (dispatchMultiOrderSplit) submits the N sub-orders.
     try {
       const splitEntries = mappable.map(p => {
         const files = getDesignFiles(p.item.id, p.item.selectedColor, p.item.designRef, p.item.type);
@@ -2027,37 +2024,17 @@ async function handleStockProbe(req, res) {
         gelatoApiKey: GELATO_API_KEY,
       });
       if (splitResult.splittable && splitResult.subCarts.length > 1 && splitResult.unfulfillable.length === 0) {
-        dlog('stock-probe-split-blocked', {
+        dlog('stock-probe-splittable', {
           country: recipientCountry,
           subCarts: splitResult.subCarts.length,
           warehouses: splitResult.subCarts.map(sc => sc.country),
         });
-        // The "minority warehouse" = sub-cart with fewest items. Removing
-        // those items lets the rest ship as a single-warehouse cart.
-        const sortedByCount = [...splitResult.subCarts].sort((a, b) => a.items.length - b.items.length);
-        const minorityItems = sortedByCount[0].items;
-        const minorityCart = minorityItems.map(it => {
-          const cartIdx = cartItems.findIndex(ci =>
-            ci.id === it.id && ci.selectedColor === it.selectedColor && ci.selectedSize === it.selectedSize
-          );
-          return {
-            cartIndex: cartIdx,
-            type: it.type,
-            color: it.selectedColor,
-            size: it.selectedSize,
-            reason: 'different_warehouse',
-            label: `${it.typeLabel || it.type} ${it.selectedColor} ${it.selectedSize}`,
-            phrase: it.phrase || '',
-          };
-        });
         return res.status(200).json({
-          ok: false,
+          ok: true,
           country: recipientCountry,
-          mode: 'split_required',
-          splittable: false,   // even though TECHNICALLY split-able, we refuse it
-          reason: `Items in this cart would need to ship from ${splitResult.subCarts.length} different warehouses. Please remove the marked item(s) so we can ship from a single warehouse.`,
-          oosItems: minorityCart,
-          cartCount: cartItems.length,
+          mode: 'splittable',
+          splittable: true,
+          splitCount: splitResult.subCarts.length,
         });
       }
     } catch (splitErr) {
@@ -2417,30 +2394,13 @@ module.exports = async function handler(req, res) {
     });
 
     if (splitResult.splittable && splitResult.subCarts.length > 1) {
-      // 2026-05-22 (oren directive): we REFUSE multi-warehouse split orders.
-      // Each Gelato sub-order incurs its own ~$36 shipping fee that we'd
-      // either eat (breaking unit economics — $40-70 loss per order) or
-      // charge transparently (killing conversion). Better to block at the
-      // cart-level UX and force the customer to remove the conflicting items.
-      // If we somehow reached this point post-capture (cart-probe failure
-      // somewhere upstream), refund the full capture and return error so
-      // the customer sees a clear refund modal — never silently lose money.
-      derr('split-required-post-capture-refund', {
-        paypalOrderId,
-        subCartCount: splitResult.subCarts.length,
-        warehouses: splitResult.subCarts.map(sc => sc.country),
-      });
-      const refundResult = await refundOrder({
-        paypalOrderId,
-        reason: `split_required_${splitResult.subCarts.length}_warehouses_refused`,
-      });
-      return res.status(200).json({
-        success: true,
-        manual:  !refundResult.refunded,
-        refunded: !!refundResult.refunded,
-        refundId: refundResult.refundId || null,
-        reason:   refundResult.refunded ? 'split_required_refunded' : 'split_required_no_refund',
-        gelatoError: `Your cart needs items from ${splitResult.subCarts.length} warehouses. We refunded the full charge — please remove the conflicting item(s) and try again.`,
+      // 2026-05-22 (oren clarification): SPLIT is OK. Route to multi-order
+      // dispatcher and return early. Each sub-cart becomes a separate Gelato
+      // POST behind one PayPal capture.
+      return await dispatchMultiOrderSplit({
+        res, req,
+        paypalOrderId, buyerEmail, shippingAddress, cartItems,
+        splitResult, firstName, lastName, GELATO_API_KEY, t0,
       });
     }
     if (!splitResult.splittable && splitResult.unfulfillable.length > 0) {

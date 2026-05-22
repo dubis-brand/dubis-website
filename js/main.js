@@ -1943,12 +1943,19 @@ function _cartProbeApply(result, _country) {
     }
     return;
   }
-  // ok===false → mark the specific cart-item rows the API flagged
+  // 2026-05-22 (oren clarification): only HARD-BLOCK on true STOCK issues —
+  // not on split-required (multi-warehouse). Split is now allowed at checkout
+  // (the dispatcher handles it as N sub-orders behind one PayPal capture).
+  // Modes that BLOCK:
+  //   - 'all_blocked_pre_gelato' (every item OOS or unmapped)
+  //   - 'quote_partial_oos'      (Gelato refused via partial-OOS signals)
+  //   - 'all_unmapped'           (every variant unsupported)
+  //   - 'quote_unfulfillable'    (Gelato refused outright)
+  // ok===false → mark the specific cart-item rows the API flagged as OOS
   const oosByCartIndex = new Set();
   for (const o of (result.oosItems || [])) {
     if (typeof o.cartIndex === 'number') oosByCartIndex.add(o.cartIndex);
   }
-  // Re-walk the rendered cart-item nodes IN ORDER and tag the flagged ones.
   const itemNodes = document.querySelectorAll('#cart-items .cart-item');
   let i = 0;
   itemNodes.forEach((node) => {
@@ -1966,10 +1973,7 @@ function _cartProbeApply(result, _country) {
     }
     i++;
   });
-  // 2026-05-22: bilingual cart banner with specific item names. mode='split_required'
-  // is the most common case (multi-warehouse cart we now refuse). Other modes
-  // (all_blocked_pre_gelato / quote_partial_oos / all_unmapped) get a generic
-  // message but still hard-block checkout.
+  // Banner copy — name each blocking item by its phrase + type + size + color.
   const itemBullets = (result.oosItems || [])
     .map(o => {
       const phrase = o.phrase ? `"${o.phrase}" — ` : '';
@@ -1977,43 +1981,27 @@ function _cartProbeApply(result, _country) {
       return `<li><strong>${phrase}${o.typeLabel || o.type}</strong>${sizeColor ? ' (' + sizeColor + ')' : ''}</li>`;
     })
     .join('');
-  const isSplit = result.mode === 'split_required';
-  let bodyHTML;
-  if (currentLang === 'he') {
-    bodyHTML = isSplit
-      ? `<strong>⚠️ לא ניתן להמשיך לתשלום</strong>
-         <p>הפריטים הבאים בסל שלך מיוצרים במחסן אחר מהשאר. כדי שכל ההזמנה תישלח יחד בחבילה אחת — נא להסיר אותם:</p>
-         <ul>${itemBullets}</ul>
-         <p class="cart-banner-action">לחצ/י על ה-✕ ליד הפריט להסירו. לאחר ההסרה הסל יהיה זמין לתשלום.</p>`
-      : `<strong>⚠️ לא ניתן להמשיך לתשלום</strong>
-         <p>הפריטים הבאים בסל שלך לא ניתנים לשליחה למדינה שלך כרגע. נא להסיר אותם כדי להמשיך:</p>
-         <ul>${itemBullets}</ul>
-         <p class="cart-banner-action">לחצ/י על ה-✕ ליד הפריט להסירו.</p>`;
-  } else {
-    bodyHTML = isSplit
-      ? `<strong>⚠️ Can't continue to payment</strong>
-         <p>The items below are made in a different warehouse than the rest of your cart. Remove them so we can ship the entire order in a single package:</p>
-         <ul>${itemBullets}</ul>
-         <p class="cart-banner-action">Click the ✕ next to the item to remove it. Then your cart will be ready to checkout.</p>`
-      : `<strong>⚠️ Can't continue to payment</strong>
-         <p>These items can't ship to your country right now. Remove them to continue:</p>
-         <ul>${itemBullets}</ul>
-         <p class="cart-banner-action">Click the ✕ next to the item to remove it.</p>`;
-  }
+  const bodyHTML = currentLang === 'he'
+    ? `<strong>⚠️ לא ניתן להמשיך לתשלום — מלאי חסר</strong>
+       <p>הפריטים הבאים אזלו מהמלאי כרגע ולא ניתנים לשליחה למדינה שלך. נא להסירם כדי להמשיך:</p>
+       <ul>${itemBullets}</ul>
+       <p class="cart-banner-action">לחצ/י על ה-✕ ליד הפריט להסירו. לאחר ההסרה הסל יהיה זמין לתשלום.</p>`
+    : `<strong>⚠️ Can't continue to payment — out of stock</strong>
+       <p>The items below are out of stock and can't ship to your country right now. Remove them to continue:</p>
+       <ul>${itemBullets}</ul>
+       <p class="cart-banner-action">Click the ✕ next to the item to remove it. Then your cart will be ready to checkout.</p>`;
   banner.className = 'cart-warehouse-banner cart-banner-warn';
   banner.innerHTML = bodyHTML;
   banner.style.display = '';
-  // 2026-05-22 (oren directive): HARD-disable checkout. Customer MUST resolve
-  // the issue before they can click Checkout. PayPal popup never opens →
-  // money never moves → no refund mess. The pre-2026-05-22 soft-dim let too
-  // many customers click through and end up in a failed-capture/refund cycle.
+  // HARD-disable checkout — customer MUST resolve the stock issue before
+  // PayPal opens. Money never moves on a cart we know can't be fulfilled.
   if (btn) {
     btn.disabled = true;
     btn.classList.add('disabled');
     btn.setAttribute('aria-disabled', 'true');
     const origLabel = btn.dataset.origLabel || btn.textContent.trim();
     if (!btn.dataset.origLabel) btn.dataset.origLabel = origLabel;
-    btn.textContent = currentLang === 'he' ? '🚫 נא להסיר פריטים חוסמים' : '🚫 Remove blocking items first';
+    btn.textContent = currentLang === 'he' ? '🚫 נא להסיר פריטים שאזלו' : '🚫 Remove out-of-stock items first';
   }
 }
 
