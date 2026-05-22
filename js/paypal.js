@@ -591,6 +591,27 @@ function renderPayPalButtons() {
                 }
 
                 const details  = await actions.order.capture();
+                // 2026-05-22: POST-CAPTURE SAFETY NET. From this point on, ANY
+                // uncaught JS error in the frontend would leave the PayPal
+                // capture stuck without a refund (Hila $64.60 ReferenceError
+                // incident). Wrap the entire post-capture block: if anything
+                // throws, fire a server-side refund-by-id via fetch (no
+                // dependency on local JS state that might be the source of
+                // the bug). The refund endpoint is idempotent via
+                // PayPal-Request-Id header.
+                const __dubisFireEmergencyRefund = async (errMsg) => {
+                    try {
+                        const r = await fetch(`/api/cron/morning-report?type=refund-by-id&paypal_id=${encodeURIComponent(details.id)}&reason=${encodeURIComponent('frontend_uncaught_' + String(errMsg || 'unknown').slice(0, 80).replace(/[^a-z0-9_]/gi, '_'))}`, {
+                            method: 'POST',
+                            headers: { 'x-pg-trigger-token': 'dbsTRG_2026_05_oren_K9pX2vN7mR4qY8aJ3hL' },
+                        });
+                        const rd = await r.json().catch(() => null);
+                        console.error('[DUBIS-EMERGENCY-REFUND]', { triggered: true, paypalOrderId: details.id, errMsg, refundResult: rd });
+                    } catch (refundFetchErr) {
+                        console.error('[DUBIS-EMERGENCY-REFUND-FETCH-FAILED]', refundFetchErr);
+                    }
+                };
+                try {
                 const shipping = details.purchase_units[0]?.shipping;
                 if (window.dubisTrack) window.dubisTrack('purchase', { paypal_id: details.id, items: cart.length, total: cart.reduce((s,i)=>s+i.price,0) });
 
@@ -662,6 +683,11 @@ function renderPayPalButtons() {
                 // forces a clear error modal instead of a fake success.
                 let gelatoDispatchFailed = false;
                 let gelatoDispatchError  = '';
+                // 2026-05-22: pfData MUST be in outer scope — the skipSave check
+                // below references it. Previously declared inside the try → caused
+                // ReferenceError after capture → Hila's $64.60 stuck (refunded
+                // manually). Block scope kills production.
+                let pfData = null;
                 try {
                     const pfRes  = await fetch('/api/create-gelato-order', {
                         method:  'POST',
@@ -674,7 +700,6 @@ function renderPayPalButtons() {
                         }),
                     });
                     // Try JSON first; if it fails, fall back to text so we can surface it.
-                    let pfData = null;
                     let pfRawText = '';
                     try {
                         pfData = await pfRes.clone().json();
@@ -823,6 +848,21 @@ function renderPayPalButtons() {
                     );
                 } else {
                     showSuccessModal();
+                }
+                } catch (postCaptureErr) {
+                    // 2026-05-22: SAFETY NET. Any JS error AFTER capture →
+                    // immediately fire a server-side refund. Without this,
+                    // the customer gets a "could not be completed" modal
+                    // while PayPal keeps the money (Hila $64.60 pfData
+                    // ReferenceError, 2026-05-22).
+                    console.error('[DUBIS-POST-CAPTURE-ERROR]', postCaptureErr);
+                    try { await __dubisFireEmergencyRefund(postCaptureErr && postCaptureErr.message); } catch(_) {}
+                    showPaymentError(
+                        'Payment captured but a system error occurred ('
+                        + (postCaptureErr && postCaptureErr.message ? postCaptureErr.message : 'unknown')
+                        + '). An automatic refund has been initiated — you should see it on your PayPal account within an hour. '
+                        + 'If not, email dubis.brand@gmail.com.'
+                    );
                 }
             } catch (err) {
                 console.error('PayPal capture error:', err);

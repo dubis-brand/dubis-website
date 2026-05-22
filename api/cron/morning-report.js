@@ -303,10 +303,21 @@ module.exports = async function handler(req, res) {
     // we know a specific paypal_order_id needs refunding. Calls refundOrder()
     // directly with the supplied ID. Idempotent via PayPal-Request-Id header.
     if (urlType === 'refund-by-id') {
-        const { refundOrder } = require('../_paypal');
-        const paypalOrderId = new URL(req.url, `https://${req.headers.host}`).searchParams.get('paypal_id');
-        const reason = new URL(req.url, `https://${req.headers.host}`).searchParams.get('reason') || 'manual-catchup-2026-05-21';
-        if (!paypalOrderId) return res.status(400).json({ error: 'missing paypal_id query param' });
+        const { refundOrder, refundCaptureById } = require('../_paypal');
+        const u = new URL(req.url, `https://${req.headers.host}`);
+        const paypalOrderId = u.searchParams.get('paypal_id');
+        const captureId     = u.searchParams.get('capture_id');
+        const reason = u.searchParams.get('reason') || 'manual-catchup-2026-05-21';
+        if (!paypalOrderId && !captureId) {
+            return res.status(400).json({ error: 'missing paypal_id or capture_id query param' });
+        }
+        // 2026-05-22: capture_id wins — direct refund by transaction ID without
+        // the order-lookup round-trip. Used when we have the PayPal transaction
+        // ID from an email notification (but not the order ID).
+        if (captureId) {
+            const result = await refundCaptureById({ captureId, reason });
+            return res.status(200).json({ ok: true, captureId, refundResult: result });
+        }
         const result = await refundOrder({ paypalOrderId, reason });
         return res.status(200).json({ ok: true, paypalOrderId, refundResult: result });
     }

@@ -175,8 +175,54 @@ async function refundOrder({ paypalOrderId, reason = 'gelato_rejected' } = {}) {
   }
 }
 
+/**
+ * Refund a capture DIRECTLY by capture ID — bypasses the order-lookup step.
+ * Use when you have the capture/transaction ID (from PayPal email notification
+ * or a known capture) but not the order ID.
+ *
+ * @param {object} opts
+ * @param {string} opts.captureId
+ * @param {string} [opts.reason]
+ * @returns {Promise<{refunded:boolean, refundId?:string, reason?:string, amount?:string}>}
+ */
+async function refundCaptureById({ captureId, reason = 'manual_refund' } = {}) {
+  if (!captureId) return { refunded: false, reason: 'no_capture_id' };
+  plog('refund-capture-start', { captureId, reason });
+  const token = await getAccessToken();
+  if (!token) return { refunded: false, reason: 'oauth_failed' };
+  try {
+    const res = await fetch(`${PAYPAL_API_BASE()}/v2/payments/captures/${captureId}/refund`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type':  'application/json',
+        'PayPal-Request-Id': `refund-cap-${captureId}`,
+      },
+      body: JSON.stringify({
+        note_to_payer: `DUBIS: refund (${reason})`,
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      perr('refund-capture-failed', { captureId, httpStatus: res.status, errorType: data?.name || null });
+      return { refunded: false, reason: `refund_api_${res.status}`, details: data };
+    }
+    plog('refund-capture-success', { captureId, refundId: data.id, status: data.status });
+    return {
+      refunded: true,
+      refundId: data.id,
+      amount:   data.amount?.value,
+      currency: data.amount?.currency_code,
+    };
+  } catch (err) {
+    perr('refund-capture-exception', { captureId, message: err.message });
+    return { refunded: false, reason: 'exception', details: err.message };
+  }
+}
+
 module.exports = {
   refundOrder,
+  refundCaptureById,
   getAccessToken,
   getCaptureFromOrder,
 };
