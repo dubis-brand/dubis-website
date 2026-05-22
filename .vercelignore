@@ -1,3 +1,11 @@
+# 2026-05-22 (TWICE — commits 802c5fe + ab630e7): NEVER ship public/ to Vercel.
+# Adding files under public/ triggers Vercel's framework auto-detection to
+# switch to "Next.js static export" mode where ONLY public/ is served. That
+# 404s the entire site (index.html, designs/, js/, css/) and breaks checkout
+# (design-validation-failed → captures stuck with no Gelato order).
+# If you need a pilot/preview directory, put it under _pilot/ at repo root.
+public/
+
 # Exclude admin-only utility functions that are not needed in production
 # to stay within Vercel Hobby plan limit of 12 serverless functions.
 api/admin/gelato-catalog.js
