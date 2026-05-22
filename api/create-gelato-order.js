@@ -464,7 +464,7 @@ async function sendAddressConfirmationEmail({ buyerEmail, buyerName, paypalOrder
         to:       [buyerEmail],
         subject:  `Action needed: confirm your DUBIS shipping address`,
         html,
-        reply_to: 'orders@dubis.net',
+        reply_to: 'dubis.brand@gmail.com',
       }),
     });
     const data = await r.json().catch(() => ({}));
@@ -583,7 +583,7 @@ async function sendDubisAdminAlert({ paypalOrderId, buyerEmail, buyerName, missi
         to:       recipients,
         subject:  `⚠ DUBIS order held — address issue (${String(paypalOrderId).slice(0, 12)})`,
         html,
-        reply_to: 'orders@dubis.net',
+        reply_to: 'dubis.brand@gmail.com',
       }),
     });
     const data = await r.json().catch(() => ({}));

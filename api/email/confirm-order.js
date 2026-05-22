@@ -53,7 +53,7 @@ module.exports = async function handler(req, res) {
                     subject: subj,
                     html:    html || undefined,
                     text:    text || undefined,
-                    reply_to: 'orders@dubis.net',
+                    reply_to: 'dubis.brand@gmail.com',
                 }),
             });
             const data = await r.json();
@@ -255,7 +255,7 @@ module.exports = async function handler(req, res) {
                 to:      [buyerEmail],
                 subject: `Your DUBIS order is confirmed (#${shortOrderId})`,
                 html,
-                reply_to: 'orders@dubis.net',
+                reply_to: 'dubis.brand@gmail.com',
             }),
         });
 

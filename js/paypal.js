@@ -1160,7 +1160,7 @@ function showAddressHoldModal(info) {
         content.innerHTML = `
             <h2 style="color:#b45309;margin:0 0 16px;font-size:22px">Payment received — one more thing</h2>
             ${body}
-            <p style="margin:0 0 12px;color:#374151">We've emailed you a link to confirm the address. If you don't see it within a few minutes, check spam or reply to <a href="mailto:orders@dubis.net" style="color:#c8a96e">orders@dubis.net</a>.</p>
+            <p style="margin:0 0 12px;color:#374151">We've emailed you a link to confirm the address. If you don't see it within a few minutes, check spam or reply to <a href="mailto:dubis.brand@gmail.com" style="color:#c8a96e">dubis.brand@gmail.com</a>.</p>
             <p style="margin:0 0 20px;color:#6b7280;font-size:13px">Your money is safe — nothing ships until you confirm.</p>
             <button onclick="closeSuccessModal()" style="display:block;width:100%;padding:12px;background:#111;color:#fff;border:none;cursor:pointer;font-size:14px;border-radius:4px">Got it</button>
         `;
