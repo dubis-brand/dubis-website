@@ -5,7 +5,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-const SENDER_EMAIL = 'DUBIS <orders@dubis.net>';
+const SENDER_EMAIL = 'DUBIS <dubis.brand@dubis.net>';
 
 module.exports = async function handler(req, res) {
     if (req.method !== 'GET' && req.method !== 'POST') {

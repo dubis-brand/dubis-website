@@ -48,7 +48,7 @@ module.exports = async function handler(req, res) {
                     'Content-Type':  'application/json',
                 },
                 body: JSON.stringify({
-                    from:    'DUBIS Admin <orders@dubis.net>',
+                    from:    'DUBIS Admin <dubis.brand@dubis.net>',
                     to:      [ADMIN_MAIL_TO],
                     subject: subj,
                     html:    html || undefined,
@@ -251,7 +251,7 @@ module.exports = async function handler(req, res) {
                 'Content-Type':  'application/json',
             },
             body: JSON.stringify({
-                from:    'DUBIS Orders <orders@dubis.net>',
+                from:    'DUBIS Orders <dubis.brand@dubis.net>',
                 to:      [buyerEmail],
                 subject: `Your DUBIS order is confirmed (#${shortOrderId})`,
                 html,

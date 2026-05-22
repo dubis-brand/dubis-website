@@ -7,7 +7,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const OWNER_EMAIL  = process.env.OWNER_EMAIL || 'dubis.brand@gmail.com';
-const SENDER_EMAIL = 'DUBIS Reports <orders@dubis.net>';
+const SENDER_EMAIL = 'DUBIS Reports <dubis.brand@dubis.net>';
 
 // ── Gmail scan helpers ───────────────────────────────────────────────────────
 const GMAIL_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -463,7 +463,7 @@ module.exports = async function handler(req, res) {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        from: 'DUBIS <orders@dubis.net>',
+                        from: 'DUBIS <dubis.brand@dubis.net>',
                         to: [r.email],
                         subject: `${r.name}, שתי דקות מהזמן שלך — בלי לקנות, בלי הרשמה`,
                         html,
@@ -522,7 +522,7 @@ module.exports = async function handler(req, res) {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        from: 'DUBIS <orders@dubis.net>',
+                        from: 'DUBIS <dubis.brand@dubis.net>',
                         to: [r.email],
                         subject: `${r.name}, התנצלות + הטופס תוקן (2 דקות)`,
                         html,
@@ -577,7 +577,7 @@ module.exports = async function handler(req, res) {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        from: 'DUBIS <orders@dubis.net>',
+                        from: 'DUBIS <dubis.brand@dubis.net>',
                         to: [r.email],
                         subject: `${r.name}, תזכורת אחת — 2 דקות עוזרות לנו המון`,
                         html,
@@ -618,7 +618,7 @@ ${[
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    from: 'DUBIS Reports <orders@dubis.net>',
+                    from: 'DUBIS Reports <dubis.brand@dubis.net>',
                     to: ['dubis.brand@gmail.com', 'dubis.brand@gmail.com'],
                     subject: `📝 פיידבק חדש מ-${r.tester_name || r.tester_email || 'אנונימי'}`,
                     html,

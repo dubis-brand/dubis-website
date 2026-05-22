@@ -47,7 +47,7 @@ async function sendShippingEmail(buyerEmail, buyerName, trackingUrl, orderId) {
       'Content-Type':  'application/json',
     },
     body: JSON.stringify({
-      from:    'DUBIS <orders@dubis.net>',
+      from:    'DUBIS <dubis.brand@dubis.net>',
       to:      [buyerEmail],
       subject: '📦 Your DUBIS order is on its way!',
       html: `

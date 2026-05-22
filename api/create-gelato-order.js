@@ -460,7 +460,7 @@ async function sendAddressConfirmationEmail({ buyerEmail, buyerName, paypalOrder
         'Content-Type':  'application/json',
       },
       body: JSON.stringify({
-        from:     'DUBIS Orders <orders@dubis.net>',
+        from:     'DUBIS Orders <dubis.brand@dubis.net>',
         to:       [buyerEmail],
         subject:  `Action needed: confirm your DUBIS shipping address`,
         html,
@@ -579,7 +579,7 @@ async function sendDubisAdminAlert({ paypalOrderId, buyerEmail, buyerName, missi
         'Content-Type':  'application/json',
       },
       body: JSON.stringify({
-        from:     'DUBIS Alerts <orders@dubis.net>',
+        from:     'DUBIS Alerts <dubis.brand@dubis.net>',
         to:       recipients,
         subject:  `⚠ DUBIS order held — address issue (${String(paypalOrderId).slice(0, 12)})`,
         html,
@@ -2745,7 +2745,7 @@ module.exports = async function handler(req, res) {
             'Content-Type':  'application/json',
           },
           body: JSON.stringify({
-            from:    'DUBIS Alerts <orders@dubis.net>',
+            from:    'DUBIS Alerts <dubis.brand@dubis.net>',
             to:      ['dubis.brand@gmail.com'],
             subject: subj,
             html: `
