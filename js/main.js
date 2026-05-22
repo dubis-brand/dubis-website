@@ -185,11 +185,16 @@ function updateCountryToggleDisplay(cc) {
     return;
   }
   const flag = COUNTRY_FLAG[cc] || '🌐';
-  codeEl.textContent = cc;
+  const name = (COUNTRY_NAME[cc] || {})[currentLang] || cc;
+  // 2026-05-22 (oren screenshot): on Windows the flag emoji renders as the
+  // regional-indicator letters "IL" — combined with the ISO code "IL" the
+  // button read "SHIP TO IL IL". Replace the ISO code with the localized
+  // country NAME so we get either "SHIP TO 🇮🇱 Israel" (macOS/mobile) or
+  // "SHIP TO IL Israel" (Windows) — no duplication, name always present.
+  codeEl.textContent = name;
   btn.querySelector('.country-flag-display').textContent = flag;
   btn.classList.add('country-detected');
   btn.classList.remove('country-unknown');
-  const name = (COUNTRY_NAME[cc] || {})[currentLang] || cc;
   btn.title = (currentLang === 'he' ? 'משלוח אל ' : 'Shipping to ') + name + (currentLang === 'he' ? ' · לחיצה לשינוי' : ' · click to change');
 }
 
