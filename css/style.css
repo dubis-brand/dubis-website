@@ -1005,11 +1005,18 @@ body[dir="rtl"] .product-price .price-from { margin-left: 2px; margin-right: 0; 
 }
 
 .modal-info .ships-to {
-    margin: 6px 0 8px;
+    margin: 10px 0 14px;
     background: #f9f4eb;
-    border: 1px solid #e2d5b8;
-    border-radius: 6px;
+    border: 1px solid #c17e3a;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(193, 126, 58, 0.12);
 }
+.modal-info .ships-to-customer {
+    font-size: 1rem !important;
+    padding: 4px 0;
+}
+.modal-info .ships-to-customer.ok { color: #2e6d2c; }
+.modal-info .ships-to-customer.no { color: #b94a48; font-weight: 700; }
 [dir="rtl"] .ships-to-compact { margin-left: 0; margin-right: auto; }
 [dir="rtl"] .flag-x { left: -4px; right: auto; }
 
