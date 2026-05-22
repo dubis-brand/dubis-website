@@ -650,12 +650,12 @@
                 <input id="checkout-email" type="email" placeholder="Email" required autocomplete="email">
                 <input id="checkout-phone" type="tel"   placeholder="Phone" required autocomplete="tel">
 
-                <p class="contact-step-title" style="margin-top:14px">Shipping address</p>
-                <input id="checkout-addr1"   type="text" placeholder="Street address" required autocomplete="address-line1">
-                <input id="checkout-addr2"   type="text" placeholder="Apartment, suite, unit (optional)" autocomplete="address-line2">
-                <input id="checkout-city"    type="text" placeholder="City" required autocomplete="address-level2">
+                <p class="contact-step-title" style="margin-top:14px">Shipping address <small style="font-weight:400;color:#888;font-size:12px"><span data-en="(English / Latin characters only — for the shipping label)" data-he="(אנגלית בלבד — לצורך הדפסת מדבקת המשלוח)">(English / Latin characters only — for the shipping label)</span></small></p>
+                <input id="checkout-addr1"   type="text" placeholder="Street address (English)" required autocomplete="address-line1" oninput="dubisHebrewCheck(this)" lang="en">
+                <input id="checkout-addr2"   type="text" placeholder="Apartment, suite, unit (optional)" autocomplete="address-line2" oninput="dubisHebrewCheck(this)" lang="en">
+                <input id="checkout-city"    type="text" placeholder="City (English)" required autocomplete="address-level2" oninput="dubisHebrewCheck(this)" lang="en">
                 <div id="checkout-state-zip-row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-                    <input id="checkout-state" type="text" placeholder="State (e.g. CA)" autocomplete="address-level1">
+                    <input id="checkout-state" type="text" placeholder="State (e.g. CA)" autocomplete="address-level1" oninput="dubisHebrewCheck(this)" lang="en">
                     <input id="checkout-zip"   type="text" placeholder="ZIP" required autocomplete="postal-code" inputmode="numeric" maxlength="10">
                 </div>
                 <select id="checkout-country" required autocomplete="country" style="width:100%;padding:11px 14px;margin-top:8px;border:1px solid #d8c9a8;border-radius:8px;background:#fff;font-size:14px">

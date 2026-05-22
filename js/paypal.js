@@ -203,6 +203,38 @@ async function checkout() {
 }
 
 // ===== CONTACT STEP SUBMISSION =====
+// 2026-05-22: Live Hebrew-in-address detector. Called via `oninput` on the
+// shipping address fields. Highlights the input red + shows an inline tooltip
+// the moment a Hebrew character is typed/autofilled. Prevents the customer
+// from submitting → PayPal capturing → server rejecting cycle that bit Hila
+// (and Marcus before her).
+window.dubisHebrewCheck = function (el) {
+    if (!el) return;
+    const HEBREW_RE = /[֐-׿]/;
+    const v = el.value || '';
+    const lang = (window.currentLang === 'he') ? 'he' : 'en';
+    // Find or create the inline warning span next to the input
+    let warn = el.nextElementSibling;
+    if (!warn || !warn.classList || !warn.classList.contains('dubis-hebrew-warn')) {
+        warn = document.createElement('div');
+        warn.className = 'dubis-hebrew-warn';
+        warn.style.cssText = 'color:#c8514f;font-size:11.5px;margin:-4px 0 6px;padding:4px 8px;background:#fdf0ef;border-radius:4px;display:none;font-weight:600;';
+        el.parentNode.insertBefore(warn, el.nextSibling);
+    }
+    if (HEBREW_RE.test(v)) {
+        el.style.borderColor = '#c8514f';
+        el.style.background  = '#fdf6f5';
+        warn.textContent = lang === 'he'
+            ? '⚠️ זוהה עברית — נא להקליד באנגלית. (אם זה autofill — לחצו Esc, מחקו, הקלידו ידנית)'
+            : '⚠️ Hebrew detected — please type in English. (If this is autofill — press Esc, clear, type manually)';
+        warn.style.display = 'block';
+    } else {
+        el.style.borderColor = '';
+        el.style.background  = '';
+        warn.style.display = 'none';
+    }
+};
+
 async function submitContactStep() {
     const nameEl  = document.getElementById('checkout-name');
     const emailEl = document.getElementById('checkout-email');
@@ -276,6 +308,47 @@ async function submitContactStep() {
         errEl.textContent = 'Please enter a valid US ZIP code (5 digits).';
         errEl.style.display = 'block';
         zipEl?.focus();
+        return;
+    }
+
+    // 2026-05-22: BLOCK HEBREW AT THE FORM. Three rounds of Hila's checkout
+    // (and oren's 2026-05-22 attempt) leaked Hebrew through to PayPal capture
+    // because Chrome autofill / mobile keyboard substituted Hebrew into the
+    // address fields after the user clicked into them. The server caught it
+    // (address-hold workflow) but ONLY AFTER PayPal captured — the customer
+    // still saw a "Payment received but..." modal. Block it BEFORE capture.
+    //
+    // Hebrew char range U+0590-U+05FF. We allow it in NAME (recipient name
+    // in Hebrew is fine on a Latin address label) but reject in street, city,
+    // state, postal because the shipping carrier can't print non-Latin script.
+    const HEBREW_RE = /[֐-׿]/;
+    const hebrewIn = (val) => HEBREW_RE.test(val || '');
+    const offending = [];
+    if (hebrewIn(addr1)) offending.push({ field: 'address', el: addr1El });
+    if (hebrewIn(addr2)) offending.push({ field: 'address line 2', el: addr2El });
+    if (hebrewIn(city))  offending.push({ field: 'city',    el: cityEl });
+    if (hebrewIn(state)) offending.push({ field: 'state',   el: stateEl });
+    if (hebrewIn(zip))   offending.push({ field: 'postal code', el: zipEl });
+    if (offending.length > 0) {
+        const lang = (window.currentLang === 'he') ? 'he' : 'en';
+        const fieldList = offending.map(o => o.field).join(', ');
+        errEl.textContent = lang === 'he'
+            ? `הכתובת חייבת להיות באנגלית — חברת השליחויות לא יכולה להדפיס עברית על המדבקה. תקנו: ${fieldList}. (אם זה Chrome autofill — מחקו את השדה והקלידו ידנית בלי לקבל את ההצעה)`
+            : `Shipping address must be in English — our carrier can't print Hebrew on the label. Fix: ${fieldList}. (If this is Chrome autofill — clear the field and type manually without accepting suggestions)`;
+        errEl.style.display = 'block';
+        errEl.style.background = '#fdf0ef';
+        errEl.style.border = '1px solid #c8514f';
+        errEl.style.padding = '10px';
+        errEl.style.borderRadius = '6px';
+        // Highlight the offending field(s) red and focus the first one
+        offending.forEach(o => {
+            if (o.el) {
+                o.el.style.borderColor = '#c8514f';
+                o.el.style.background = '#fdf6f5';
+            }
+        });
+        offending[0].el?.focus();
+        offending[0].el?.select();
         return;
     }
 
