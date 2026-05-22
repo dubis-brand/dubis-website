@@ -1955,25 +1955,34 @@ body[dir="rtl"] .product-price .price-from { margin-left: 2px; margin-right: 0; 
 .country-toggle {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    background: rgba(193, 126, 58, 0.10);
+    gap: 6px;
+    background: linear-gradient(135deg, rgba(193, 126, 58, 0.15) 0%, rgba(193, 126, 58, 0.08) 100%);
     color: var(--charcoal, #2C2C2C);
-    border: 1px solid rgba(193, 126, 58, 0.32);
-    border-radius: 6px;
-    padding: 5px 9px;
-    font-size: 0.78rem;
+    border: 1.5px solid var(--honey, #c17e3a);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 0.82rem;
     font-weight: 600;
     cursor: pointer;
     line-height: 1;
-    transition: background 0.15s, border-color 0.15s;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
     margin-inline-end: 8px;
+    font-family: 'Inter', sans-serif;
 }
 .country-toggle:hover {
-    background: rgba(193, 126, 58, 0.20);
-    border-color: rgba(193, 126, 58, 0.55);
+    background: linear-gradient(135deg, rgba(193, 126, 58, 0.28) 0%, rgba(193, 126, 58, 0.16) 100%);
+    border-color: #a06621;
+    transform: translateY(-1px);
 }
-.country-flag-display { font-size: 1rem; line-height: 1; }
-.country-code-display { letter-spacing: 0.04em; font-family: 'Inter', sans-serif; }
+.country-toggle-label {
+    font-size: 0.72rem;
+    color: #6a4a1a;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+.country-flag-display { font-size: 1.1rem; line-height: 1; }
+.country-code-display { letter-spacing: 0.04em; font-family: 'Inter', sans-serif; color: var(--charcoal); }
 
 .country-picker-overlay {
     position: fixed; inset: 0;

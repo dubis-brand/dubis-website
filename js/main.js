@@ -131,7 +131,11 @@ function ensureGeoCountry() {
   }
   if (__geoCountryPromise) return __geoCountryPromise;
   __geoCountryPromise = (async () => {
-    // Try ipapi.co first; if it fails (rate limit / network), fall back to ipwho.is.
+    // 2026-05-22: PRIMARY source is our own /api/cron/morning-report?type=geo,
+    // which echoes the x-vercel-ip-country header. Same-origin, no CORS, no
+    // ad-blocker interception (Privacy Badger / uBlock target ipapi.co etc.
+    // but not the site's own API). Fallback to ipapi.co → ipwho.is only if
+    // Vercel's header is missing (preview deployment, etc.).
     const tryEndpoint = async (url, parser) => {
       try {
         const ctrl = new AbortController();
@@ -143,7 +147,8 @@ function ensureGeoCountry() {
         return parser(data);
       } catch (_) { return null; }
     };
-    let cc = await tryEndpoint('https://ipapi.co/json/', d => d && d.country_code ? String(d.country_code).toUpperCase() : null);
+    let cc = await tryEndpoint('/api/cron/morning-report?type=geo', d => d && d.country_code ? String(d.country_code).toUpperCase() : null);
+    if (!cc) cc = await tryEndpoint('https://ipapi.co/json/', d => d && d.country_code ? String(d.country_code).toUpperCase() : null);
     if (!cc) cc = await tryEndpoint('https://ipwho.is/', d => d && d.country_code ? String(d.country_code).toUpperCase() : null);
     if (cc) {
       // Cache for 24h.

@@ -161,6 +161,27 @@ module.exports = async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
+    // ── PUBLIC ROUTE: ?type=geo — server-side IP geolocation via Vercel headers ──
+    // 2026-05-22: client-side ipapi.co / ipwho.is can be blocked by ad-blockers
+    // and privacy extensions (oren caught this — "auto-detect failed" in IL).
+    // Vercel automatically sets x-vercel-ip-country on every request based on
+    // the connecting IP, so we just echo it back. No CORS, no rate-limit, no
+    // dependency on third-party services. Public — no auth needed.
+    const urlObj = new URL(req.url, `https://${req.headers.host}`);
+    if (urlObj.searchParams.get('type') === 'geo') {
+        const cc = (req.headers['x-vercel-ip-country'] ||
+                    req.headers['cf-ipcountry'] || '').toString().toUpperCase();
+        const region = (req.headers['x-vercel-ip-country-region'] || '').toString();
+        const city   = (req.headers['x-vercel-ip-city'] || '').toString();
+        res.setHeader('Cache-Control', 'public, max-age=300');  // 5min CDN cache per-IP
+        return res.status(200).json({
+            country_code: cc || null,
+            region: region || null,
+            city: city ? decodeURIComponent(city) : null,
+            source: cc ? 'vercel-edge-geo' : 'no-signal',
+        });
+    }
+
     // Require either Vercel cron header or CRON_SECRET
     const isVercelCron = req.headers['x-vercel-cron'] === '1';
     const hasCronSecret = process.env.CRON_SECRET &&
