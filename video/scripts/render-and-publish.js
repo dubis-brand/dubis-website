@@ -1,4 +1,10 @@
 // dubis-website/video/scripts/render-and-publish.js
+// ⚠️ DEPRECATED 2026-05-23 — replaced by dubis-website/scripts/tiktok-from-reel-bank.mjs
+// Reason (oren feedback): static 3-slide slideshow + Kevin MacLeod music = "boring + bad music".
+// New flow picks one of 20 persona reels (bilingual bank in video-assets/_pilot/) by daily rotation.
+// See memory/tiktok-strategy.md for the new pipeline. This file is kept for historical reference
+// but is no longer called by any cron — dubis-tiktok-daily.yml was rewired 2026-05-23.
+//
 // GitHub Actions: pick product → ffmpeg 9:16 slideshow → upload to Supabase Storage
 // → POST dubis-tiktok-content-v4 → Late.com → TikTok @dubis.brand
 
