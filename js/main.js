@@ -1368,6 +1368,11 @@ function selectCardColor(productId, color, dotEl) {
 // Helper: build per-color image URL — uses imageRef if product has one (placeholder)
 function productImg(productId, color, view) {
   const product = products.find(p => p.id === productId);
+  // 2026-05-23 — new products (23+) carry a colorImages map of Supabase
+  // Storage URLs sourced from permanent_preview_urls. Legacy products fall
+  // back to the flat images/product-{id}-{Color}-{view}.jpg path on disk.
+  const fromMap = product?.colorImages?.[color]?.[view];
+  if (fromMap) return fromMap;
   const refId = product?.imageRef || productId;
   const safeColor = color.replace(/\s+/g, '-');
   return `images/product-${refId}-${safeColor}-${view}.jpg`;

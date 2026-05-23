@@ -198,6 +198,47 @@ function escapeStr(s) {
   return (s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
 }
 
+// 2026-05-23 — Build per-color { front, back } URL map for the modal gallery.
+// Source of truth: dubis_products.proof_of_completion.permanent_preview_urls
+// (set by _migrate-product-23-images.mjs and the auto-migrate path in the
+// agents pipeline). Falls back to gelato_preview_urls (presigned, can expire)
+// only if permanent_* is missing. Returns {} for legacy products that still
+// rely on the flat images/product-{id}-{Color}-{view}.jpg path on disk; main.js
+// productImg() detects an empty map and uses the flat path.
+function buildColorImagesMap(p, inStockColors) {
+  const proof = p.proof_of_completion || {};
+  const src = proof.permanent_preview_urls || proof.gelato_preview_urls || null;
+  if (!src || typeof src !== 'object') return null;
+  const allowed = new Set(inStockColors);
+  const out = {};
+  for (const [color, sides] of Object.entries(src)) {
+    if (!allowed.has(color)) continue;  // skip OOS colors filtered above
+    if (!sides || typeof sides !== 'object') continue;
+    const entry = {};
+    if (typeof sides.front === 'string') entry.front = sides.front;
+    if (typeof sides.back  === 'string') entry.back  = sides.back;
+    if (entry.front || entry.back) out[color] = entry;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+function formatColorImages(map) {
+  if (!map) return null;
+  const lines = ['{'];
+  const colors = Object.keys(map);
+  for (let i = 0; i < colors.length; i++) {
+    const c = colors[i];
+    const v = map[c];
+    const parts = [];
+    if (v.front) parts.push(`front: "${escapeStr(v.front)}"`);
+    if (v.back)  parts.push(`back: "${escapeStr(v.back)}"`);
+    const trailing = i < colors.length - 1 ? ',' : '';
+    lines.push(`            "${escapeStr(c)}": { ${parts.join(', ')} }${trailing}`);
+  }
+  lines.push('        }');
+  return lines.join('\n');
+}
+
 const JS_TYPE_MAP = { 't-shirt': 'tshirt', 'hoodie': 'hoodie', 'zip-hoodie': 'ziphoodie', 'long-sleeve': 'longsleeve', 'cap': 'cap', 'cap-emb': 'capemb', 'v-neck': 'vneck', 'tank-top': 'tanktop' };
 
 function generateProductEntry(p, stockMap) {
@@ -210,6 +251,8 @@ function generateProductEntry(p, stockMap) {
   // admin still sees them all.
   const inStockColors = stockMap ? filterInStockColors(p, stockMap) : (p.colors || ['Black', 'White']);
   const colors = JSON.stringify(inStockColors);
+  const colorImagesMap = buildColorImagesMap(p, inStockColors);
+  const colorImagesStr = formatColorImages(colorImagesMap);
 
   let careStr = meta.care ? `care: ${meta.care},` : `care: [\n            "Spot clean only",\n            "Do not machine wash",\n            "Do not tumble dry",\n            "Reshape and air dry"\n        ],`;
   let sizeGuideStr = meta.sizeGuide ? `sizeGuide: ${meta.sizeGuide}` : `sizeGuide: [{ size: 'One Size', note: 'Adjustable strap, fits most head sizes' }]`;
@@ -249,6 +292,7 @@ function generateProductEntry(p, stockMap) {
     `        price: ${price},`,
     `        image: "${escapeStr(p.image_url || `images/product-${p.product_id_numeric || p.id}.jpg`)}",`,
     `        colors: ${colors},`,
+    ...(colorImagesStr ? [`        colorImages: ${colorImagesStr},`] : []),
     `        supportedCountries: ${supportedCountries},`,
     `        launchedAt: ${launchedAt},`,
     `        isNew: ${isNew},`,
