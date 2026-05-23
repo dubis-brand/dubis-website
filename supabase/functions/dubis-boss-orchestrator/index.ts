@@ -333,6 +333,73 @@ async function opinionStock(sb: SB, autoHealResult: { healed: boolean; attempted
   if (fullyOOS.length > 0) return { agent:'gelato_stock', agent_he:'בודק המלאי', observation:`${fullyOOS.length} מוצרים אזלו לחלוטין: ${fullyOOS.join(', ')}.`, recommendation:'להסתיר מ-catalog או לבקש restock', priority:'P1', theme:'inventory-fully-oos' };
   return null;
 }
+// 2026-05-23 — Canary for the save.js silent-rejection class of bugs.
+// Calls Gelato API to count real (non-draft, non-mockup) orders in the
+// last 24h, compares against the `orders` table count for the same window.
+// Any positive diff = ghost order(s) — Gelato fulfilled but our DB has no row.
+// This is the exact gap that hid the 2026-05-01→2026-05-22 save.js bug for
+// 3 weeks. If this had been in place, we'd have caught it day 1.
+async function opinionCheckoutCanary(sb: SB): Promise<Opinion | null> {
+  const GELATO_API_KEY = Deno.env.get('GELATO_API_KEY') || Deno.env.get('GELATO') || Deno.env.get('Gelato');
+  if (!GELATO_API_KEY) return null; // can't probe without key — skip silently
+
+  const startDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const endDate   = new Date().toISOString();
+
+  let gelatoOrders: Array<Record<string, unknown>> = [];
+  try {
+    const url = `https://order.gelatoapis.com/v4/orders?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&limit=100&offset=0`;
+    const res = await fetch(url, {
+      headers: { 'X-API-KEY': GELATO_API_KEY, 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+      return { agent: 'cto', agent_he: 'מבדק ה-checkout', observation: `Canary: Gelato API ${res.status} — לא יכול לוודא שהזמנות נשמרות.`, recommendation: 'לבדוק GELATO_API_KEY בסביבת Edge Function', priority: 'P2', theme: 'checkout-canary-noprobe' };
+    }
+    const json = await res.json() as { orders?: unknown[]; data?: unknown[] };
+    gelatoOrders = (json.orders || json.data || []) as Array<Record<string, unknown>>;
+  } catch (e) {
+    return { agent: 'cto', agent_he: 'מבדק ה-checkout', observation: `Canary: Gelato fetch threw — ${String((e as Error).message).slice(0, 120)}`, recommendation: 'לבדוק connectivity / API key', priority: 'P2', theme: 'checkout-canary-error' };
+  }
+
+  // Filter to REAL customer orders (drop drafts + admin mockups + smoke tests).
+  const real = gelatoOrders.filter(g => {
+    const fin = String(g.financialStatus || '');
+    const ful = String(g.fulfillmentStatus || '');
+    const ref = String(g.orderReferenceId || g.customerReferenceId || '');
+    if (fin === 'draft' || ful === 'draft') return false;
+    if (/^DUBIS-(MOCKUP|TIMING|SMOKE|TEST|REPRINT|REGEN)/i.test(ref)) return false;
+    return true;
+  });
+
+  // Count rows in `orders` table from the same window.
+  const { data: dbRows } = await sb.from('orders').select('paypal_order_id, printful_order_id').gte('created_at', startDate);
+  const dbPaypalIds = new Set((dbRows || []).map(r => (r as Record<string, unknown>).paypal_order_id as string).filter(Boolean));
+  const dbGelatoIds = new Set((dbRows || []).map(r => (r as Record<string, unknown>).printful_order_id as string).filter(Boolean));
+
+  // Identify Gelato orders missing from DB.
+  const ghosts = real.filter(g => {
+    const ref = String(g.orderReferenceId || g.customerReferenceId || '');
+    const m = ref.match(/^DUBIS-([A-Z0-9]+?)(?:-\d+of\d+)?$/i);
+    const paypalGuess = m ? m[1] : null;
+    const gelatoId = String(g.id || '');
+    if (paypalGuess && dbPaypalIds.has(paypalGuess)) return false;
+    if (gelatoId && dbGelatoIds.has(gelatoId)) return false;
+    return true;
+  });
+
+  if (ghosts.length === 0) return null; // healthy
+
+  const refsList = ghosts.slice(0, 5).map(g => g.orderReferenceId || g.customerReferenceId).join(', ');
+  return {
+    agent: 'cto',
+    agent_he: 'מבדק ה-checkout',
+    observation: `🚨 ${ghosts.length} Gelato orders ב-24h בלי שורת DB תואמת. דוגמאות: ${refsList}`,
+    recommendation: `הרץ: \`cd dubis-website && node scripts/audit-ghost-orders.js --since ${startDate.slice(0,10)} --recover\``,
+    priority: 'P0',
+    theme: 'checkout-ghost-orders',
+  };
+}
+
 async function opinionCto(sb: SB): Promise<Opinion | null> {
   const { data: openTasks } = await sb.from('agent_tasks').select('id, priority').eq('agent_id','cto').in('status', ['pending','approved','backlog']);
   const critical = (openTasks || []).filter(t => (t as Record<string, unknown>).priority === 'critical').length;
@@ -761,6 +828,7 @@ Deno.serve(async (req: Request) => {
     opinionSecurity(sb),
     opinionVideo(sb),
     opinionPlanner(sb),
+    opinionCheckoutCanary(sb), // 2026-05-23 — Gelato ↔ orders.row diff
   ]);
   const allOpinions: Opinion[] = rawOps.filter((o): o is Opinion => o !== null);
 
