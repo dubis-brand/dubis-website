@@ -38,7 +38,9 @@ module.exports = async function handler(req, res) {
     const ytdStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
 
     // ── Run all queries in parallel for speed ──
-    // Split page_views into 3 chunks of 10 days to stay under Supabase 1000-row REST limit
+    // Split page_views into 3 chunks of 10 days. Each chunk capped at 10000 rows
+    // (Supabase REST default is 1000 — silently drops everything beyond, which on 2026-05-23
+    // hid all traffic after 2026-05-16 from the admin chart for a full week.)
     const split1 = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
     const split2 = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
     const [
@@ -60,11 +62,11 @@ module.exports = async function handler(req, res) {
         // Page views — today
         supabase.from('page_views').select('*', { count: 'exact', head: true }).gte('created_at', today),
         // Page views — days 21-30
-        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', since30).lt('created_at', split1).order('created_at', { ascending: true }).limit(1000),
+        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', since30).lt('created_at', split1).order('created_at', { ascending: true }).limit(10000),
         // Page views — days 11-20
-        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', split1).lt('created_at', split2).order('created_at', { ascending: true }).limit(1000),
+        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', split1).lt('created_at', split2).order('created_at', { ascending: true }).limit(10000),
         // Page views — days 1-10 (most recent, includes today)
-        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', split2).order('created_at', { ascending: true }).limit(1000),
+        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', split2).order('created_at', { ascending: true }).limit(10000),
         // All orders (include buyer_email + shipping_address + is_test for sandbox filtering and tax nexus tracking)
         supabase.from('orders').select('id, status, total_amount, currency, coupon_code, discount_amount, items, buyer_email, shipping_address, is_test, created_at'),
         // Recent orders (30 days) — include shipping_address for tax nexus tracking + items for profit calc
