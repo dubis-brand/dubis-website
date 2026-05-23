@@ -2,6 +2,17 @@
 // product_id_numeric values, downloads Gelato presigned mockups, uploads to
 // Supabase Storage `product-images/products/{N}/`, writes to images/products/{N}/,
 // then patches dubis_products.image_url + proof_of_completion.permanent_*.
+//
+// Modes:
+//   1. Pipeline mode (per-product, called from GHA):
+//        PRODUCT_ID_NUMERIC=24 PREVIEWS_JSON='{"Black":{"front":"...","back":"..."}}' \
+//          node scripts/_migrate-products-images.mjs
+//      Outputs a ===PERMANENT_MANIFEST=== block on stdout so the workflow
+//      can capture permanent URLs and pass them to the gha-pipeline-callback.
+//      Exits non-zero on critical failure (no previews / all uploads failed).
+//
+//   2. Manual bulk mode (no env vars): iterates over PRODUCT_IDS array below.
+//      Reads gelato_preview_urls from DB row per product.
 import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -9,13 +20,40 @@ import { join } from 'node:path';
 
 config({ path: '.env.local' });
 
-const PRODUCT_IDS = [24, 25, 30];
+const ENV_PRODUCT_ID = process.env.PRODUCT_ID_NUMERIC
+  ? Number(process.env.PRODUCT_ID_NUMERIC)
+  : null;
+
+const PIPELINE_MODE = ENV_PRODUCT_ID !== null && !Number.isNaN(ENV_PRODUCT_ID);
+
+// Bulk-mode default. Edit when running manual backfills.
+const BULK_PRODUCT_IDS = [24, 25, 30];
+
+const PRODUCT_IDS = PIPELINE_MODE ? [ENV_PRODUCT_ID] : BULK_PRODUCT_IDS;
+
+const PREVIEWS_OVERRIDE = (() => {
+  if (!process.env.PREVIEWS_JSON) return null;
+  try {
+    const parsed = JSON.parse(process.env.PREVIEWS_JSON);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (e) {
+    console.error(`PREVIEWS_JSON env var present but unparseable: ${e.message}`);
+    process.exit(2);
+  }
+})();
+
 const BUCKET = 'product-images';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const SUPABASE_URL =
+  process.env.SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+if (!SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('Missing SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) / SUPABASE_SERVICE_ROLE_KEY.');
+  process.exit(2);
+}
+
+const supabase = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 async function download(url) {
   const r = await fetch(url);
@@ -49,11 +87,12 @@ async function migrateProduct(productId) {
     return { productId, downloaded: 0, uploaded: 0, dbUpdated: false, error: pErr.message };
   }
 
-  const presigned = product.proof_of_completion?.gelato_preview_urls || {};
+  // Pipeline-mode override > DB-stored presigned URLs.
+  const presigned = PREVIEWS_OVERRIDE || product.proof_of_completion?.gelato_preview_urls || {};
   const colors = Object.keys(presigned);
   if (!colors.length) {
-    console.error(`✗ No gelato_preview_urls in proof_of_completion for ${productId}`);
-    return { productId, downloaded: 0, uploaded: 0, dbUpdated: false, error: 'no gelato_preview_urls' };
+    console.error(`✗ No preview URLs for ${productId} (neither env override nor DB)`);
+    return { productId, downloaded: 0, uploaded: 0, dbUpdated: false, error: 'no preview urls' };
   }
 
   await mkdir(localDir, { recursive: true });
@@ -73,6 +112,7 @@ async function migrateProduct(productId) {
   const permanent = {};
   let downloaded = 0;
   let uploaded = 0;
+  const failures = [];
 
   for (const j of jobs) {
     process.stdout.write(`  → ${j.color}/${j.side} … `);
@@ -88,6 +128,7 @@ async function migrateProduct(productId) {
       uploaded++;
       console.log(`✓ ${buf.length}B`);
     } catch (e) {
+      failures.push(`${j.color}/${j.side}: ${e.message}`);
       console.log(`✗ ${e.message}`);
     }
   }
@@ -106,10 +147,19 @@ async function migrateProduct(productId) {
       uploaded++;
       console.log(`  ✓ hero (${heroColor}/front) → ${heroUrl}`);
     } catch (e) {
+      failures.push(`hero: ${e.message}`);
       console.log(`  ✗ hero failed: ${e.message}`);
     }
   } else {
     console.warn(`  ✗ no hero source url for color=${heroColor}`);
+  }
+
+  if (uploaded === 0) {
+    return {
+      productId, downloaded, uploaded, dbUpdated: false,
+      error: `no successful uploads (${failures.length} failures)`,
+      failures,
+    };
   }
 
   const newProof = {
@@ -130,11 +180,17 @@ async function migrateProduct(productId) {
 
   if (uErr) {
     console.error(`  ✗ DB update failed: ${uErr.message}`);
-    return { productId, downloaded, uploaded, dbUpdated: false, error: uErr.message, heroUrl };
+    return {
+      productId, downloaded, uploaded, dbUpdated: false,
+      error: uErr.message, heroUrl, permanent, failures,
+    };
   }
 
   console.log(`  ✓ DB updated (image_url + proof_of_completion)`);
-  return { productId, downloaded, uploaded, dbUpdated: true, heroUrl, colors: Object.keys(permanent) };
+  return {
+    productId, downloaded, uploaded, dbUpdated: true,
+    heroUrl, permanent, colors: Object.keys(permanent), failures,
+  };
 }
 
 const results = [];
@@ -145,4 +201,25 @@ for (const id of PRODUCT_IDS) {
 console.log('\n======== SUMMARY ========');
 for (const r of results) {
   console.log(JSON.stringify(r));
+}
+
+// Pipeline mode: emit a machine-readable manifest the workflow can capture
+// and forward to the gha-pipeline-callback so DB ends up with permanent URLs.
+if (PIPELINE_MODE && results.length === 1) {
+  const r = results[0];
+  console.log('===PERMANENT_MANIFEST===');
+  console.log(JSON.stringify({
+    productId: r.productId,
+    dbUpdated: !!r.dbUpdated,
+    permanent_preview_urls: r.permanent || {},
+    permanent_image_url: r.heroUrl || null,
+  }));
+  console.log('===END_PERMANENT_MANIFEST===');
+}
+
+// Fail the GHA step if any product failed to migrate.
+const failed = results.filter(r => !r.dbUpdated);
+if (failed.length) {
+  console.error(`\n✗ Migration failed for ${failed.length}/${results.length} product(s).`);
+  process.exit(1);
 }

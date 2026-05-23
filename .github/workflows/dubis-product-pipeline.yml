@@ -174,6 +174,46 @@ jobs:
           } >> $GITHUB_OUTPUT
 
       # ──────────────────────────────────────────────────────────
+      # STEP 3.5 — Migrate Gelato presigned mockups → permanent Supabase Storage
+      # Gelato's preview URLs are short-lived presigned S3 links; they expire
+      # within ~24h and break the catalog. We download them, re-upload to the
+      # `product-images` bucket under `products/{N}/`, write the JPGs to
+      # `images/products/{N}/` (committed in step 5), and patch the DB row's
+      # `image_url` + `proof_of_completion` so step 4 regenerates products.js
+      # with PERMANENT URLs.
+      #
+      # Output `permanent_previews_json` is fed back into step 6's callback so
+      # the gha-pipeline-callback writes permanent (not presigned) URLs to DB.
+      # ──────────────────────────────────────────────────────────
+      - name: 3️⃣.5 Migrate mockups to permanent Supabase Storage
+        id: migrate_images
+        working-directory: .
+        env:
+          PRODUCT_ID_NUMERIC: ${{ env.PRODUCT_NUMERIC }}
+          PREVIEWS_JSON: ${{ steps.gelato_draft.outputs.previews_json }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -o pipefail
+          node scripts/_migrate-products-images.mjs 2>&1 | tee /tmp/migrate.log
+          # Extract the permanent-URLs manifest emitted in pipeline mode.
+          awk '/===PERMANENT_MANIFEST===/{flag=1;next}/===END_PERMANENT_MANIFEST===/{flag=0}flag' /tmp/migrate.log > /tmp/permanent.json
+          if [ ! -s /tmp/permanent.json ]; then
+            echo "ERROR: migration produced no permanent manifest." >&2
+            exit 1
+          fi
+          cat /tmp/permanent.json
+          PERMANENT_PREVIEWS=$(node -e "const m=require('/tmp/permanent.json');console.log(JSON.stringify(m.permanent_preview_urls||{}))")
+          PERMANENT_HERO=$(node -e "const m=require('/tmp/permanent.json');console.log(m.permanent_image_url||'')")
+          {
+            echo "permanent_previews_json<<__END__"
+            echo "$PERMANENT_PREVIEWS"
+            echo "__END__"
+          } >> $GITHUB_OUTPUT
+          echo "permanent_image_url=$PERMANENT_HERO" >> $GITHUB_OUTPUT
+
+      # ──────────────────────────────────────────────────────────
       # STEP 4 — Regenerate js/products.js from DB
       # ──────────────────────────────────────────────────────────
       - name: 4️⃣ Regenerate js/products.js from DB
@@ -213,7 +253,9 @@ jobs:
           EDGE_URL: ${{ secrets.SUPABASE_URL }}/functions/v1/agents
           AGENT_SECRET: ${{ secrets.DUBIS_AGENT_SECRET }}
           DRAFT_ID: ${{ steps.gelato_draft.outputs.draft_id }}
-          PREVIEWS_JSON: ${{ steps.gelato_draft.outputs.previews_json }}
+          # Use migration step's permanent URLs so DB ends up with permanent
+          # links (not Gelato presigned ones that expire ~24h).
+          PREVIEWS_JSON: ${{ steps.migrate_images.outputs.permanent_previews_json }}
         run: |
           # Build the callback payload safely via Node (avoids shell-quoting hell on URLs with &)
           PAYLOAD=$(node -e "
