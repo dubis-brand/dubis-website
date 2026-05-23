@@ -14,6 +14,17 @@ const { splitCartByWarehouse } = require('./_orderSplit');
 
 const GELATO_API_BASE = 'https://order.gelatoapis.com';
 const DESIGN_BASE_URL = 'https://www.dubis.net/designs';
+// 2026-05-23: GELATO_DRAFT_MODE env var — when "true" (set on Preview env only),
+// every real customer order POST gets `orderType: 'draft'`. Gelato creates a
+// mockup in the dashboard with full preview images BUT does NOT print, does NOT
+// ship, and does NOT charge our Gelato account. Lets oren E2E-test any code
+// change against the real Gelato API on a Preview deploy without spending money.
+// MUST stay false in production. The startup banner below confirms which mode
+// each Vercel deployment booted in.
+const GELATO_DRAFT_MODE = String(process.env.GELATO_DRAFT_MODE || '').toLowerCase() === 'true';
+if (GELATO_DRAFT_MODE) {
+  console.log('[DUBIS-GELATO] 🧪 GELATO_DRAFT_MODE=true — all customer orders will be created as DRAFT (no print, no ship, no charge). Should ONLY happen on Preview deploys.');
+}
 // Cache-busting version — bump whenever designs are regenerated.
 // Gelato CDN caches by full URL; same URL = same cached file. Without this
 // param, re-uploading a fixed PNG has no effect — Gelato keeps serving the
@@ -1302,6 +1313,8 @@ async function handleSubmitCorrectedAddress(req, res) {
 
   const { firstName, lastName } = parseName(shippingAddress.name);
   const gelatoOrder = {
+    // 2026-05-23: GELATO_DRAFT_MODE — Preview-only safety net (see top of file).
+    ...(GELATO_DRAFT_MODE ? { orderType: 'draft' } : {}),
     orderReferenceId:    `DUBIS-${paypalOrderId}`,
     customerReferenceId: paypalOrderId,
     currency:            'USD',
@@ -1423,6 +1436,8 @@ async function cancelAllSubOrders(submittedOrders, apiKey) {
 // Build a single Gelato POST payload for a sub-cart of a split.
 function buildGelatoSubOrderPayload({ paypalOrderId, subCart, splitIndex, splitCount, shippingAddress, firstName, lastName, buyerEmail }) {
   return {
+    // 2026-05-23: GELATO_DRAFT_MODE — Preview-only safety net (see top of file).
+    ...(GELATO_DRAFT_MODE ? { orderType: 'draft' } : {}),
     orderReferenceId:    `DUBIS-${paypalOrderId}-${splitIndex}of${splitCount}`,
     customerReferenceId: paypalOrderId,
     currency:            'USD',
