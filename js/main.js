@@ -87,6 +87,37 @@ function countryFlagsForProduct(product) {
   return Array.isArray(product?.supportedCountries) ? product.supportedCountries : DEFAULT_SUPPORTED;
 }
 
+// 2026-05-23 (oren feedback on country-UX pilot): modal "Ships in ... business days"
+// was hardcoded to "...to US", confusing for IL / EU / other customers. Pick the
+// right range based on the customer's detected country.
+//
+// Estimates per Gelato Dispatch published windows (production 1–3d + DHL transit):
+//   US                  → 5–7 business days  (US facility — Chicago/NJ/CA/TX)
+//   IL                  → 7–10 business days (CZ facility + DHL international)
+//   EU (DE/AT/NL/BE/FR/IT/ES/DK/FI/SE/PL/GR/IE/PT/CZ) → 5–7
+//   GB                  → 5–7
+//   Long-haul (AU/NZ/JP/SG/HK/MX/BR/CH/AR/SA + everything else) → 7–12
+const _SHIP_EU = new Set(['DE','AT','NL','BE','FR','IT','ES','DK','FI','SE','PL','GR','IE','PT','CZ','SK','HU','LU']);
+function shippingDaysForCountry(country) {
+  const c = (country || '').toUpperCase();
+  if (c === 'US')                     return { days: '5–7',  region: 'US' };
+  if (c === 'IL')                     return { days: '7–10', region: 'IL' };
+  if (c === 'GB' || c === 'UK')       return { days: '5–7',  region: 'GB' };
+  if (_SHIP_EU.has(c))                return { days: '5–7',  region: c   };
+  if (c)                              return { days: '7–12', region: c   };
+  return                                     { days: '5–10', region: null }; // unknown country
+}
+function modalShipsTextFor(country, lang) {
+  const { days, region } = shippingDaysForCountry(country);
+  const cName = region ? ((COUNTRY_NAME[region] || {})[lang] || region) : null;
+  if (lang === 'he') {
+    return cName ? `🚚 משלוח תוך ${days} ימי עסקים ל${cName}`
+                 : `🚚 משלוח תוך ${days} ימי עסקים`;
+  }
+  return   cName ? `🚚 Ships in ${days} business days to ${cName}`
+                 : `🚚 Ships in ${days} business days`;
+}
+
 // 2026-05-22: Customer's GEOGRAPHIC country — independent of UI language.
 // Bug oren caught: previously inferred IL from dubis-lang='he' which is wrong
 // (a US user toggling Hebrew because they're a Hebrew speaker isn't in IL).
@@ -1405,7 +1436,7 @@ function openProductModal(productId) {
       <h2 class="modal-phrase">"${product.phrase}"</h2>
       <div class="modal-price" id="modal-price-${product.id}" data-base-price="${product.price}">${formatPrice(getVariantPrice(product.id, product.colors[0], product.sizes[0], product.price))}</div>
       <div class="modal-price-note" id="modal-price-note-${product.id}" style="font-size:0.78rem;color:#888;margin-top:-4px;margin-bottom:6px;display:none;">${currentLang === 'he' ? 'המחיר משתנה לפי צבע/מידה' : 'Price varies by color/size'}</div>
-      <div class="modal-shipping-info">${t.modal_ships} · <span class="free-ship-badge">${t.modal_free_ship}</span></div>
+      <div class="modal-shipping-info">${modalShipsTextFor(detectedCustomerCountry(), currentLang)} · <span class="free-ship-badge">${t.modal_free_ship}</span></div>
       ${countryFlagsHTML(product)}
       <div class="modal-dtg-badge">${t.modal_dtg}</div>
       <div class="modal-option">
