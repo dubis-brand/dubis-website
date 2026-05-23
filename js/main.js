@@ -303,30 +303,41 @@ function countryFlagsHTML(product, opts = {}) {
   });
 
   if (compact) {
-    // CARD VIEW: when customer is known → prominent ✓ or ✕ pinned flag,
-    // then up to 6 more + "+N". When customer unknown (geo lookup hasn't
-    // completed) → just the alphabetical flag list, no pinned highlight.
-    const MAX_VISIBLE = 7;
-    const visible = sorted.slice(0, MAX_VISIBLE);
-    const rest    = sorted.length - visible.length;
+    // CARD VIEW (2026-05-23 redesign per oren feedback — make country
+    // relevance OBVIOUS, not subtle):
+    //   - Customer KNOWN + product ships there → green ✅ pill saying so.
+    //   - Customer KNOWN + product does NOT ship there → red ❌ pill +
+    //     the .product-card carries data-not-shippable="true" which CSS
+    //     dims to opacity .55 + grayscale.
+    //   - Customer UNKNOWN (geo lookup pending) → fall through to the
+    //     compact flag row so the user still sees coverage.
     const titleAll = currentLang === 'he'
       ? `זמין ב-${arr.length} מדינות: ${arr.map(c => (COUNTRY_NAME[c]||{}).he||c).join(', ')}`
       : `Ships to ${arr.length} countries: ${arr.map(c => (COUNTRY_NAME[c]||{}).en||c).join(', ')}`;
-    let customerBadge = '';
+
     if (customer) {
-      customerBadge = shipsToCustomer
-        ? `<span class="ship-flag flag-customer" title="${(COUNTRY_NAME[customer]||{})[currentLang]||customer} ✓">${COUNTRY_FLAG[customer]||customer}</span>`
-        : `<span class="ship-flag flag-customer-no" title="${currentLang === 'he' ? 'לא נשלח ל' : 'Not shipping to '}${(COUNTRY_NAME[customer]||{})[currentLang]||customer}">${COUNTRY_FLAG[customer]||customer}<span class="flag-x">✕</span></span>`;
+      const cName = (COUNTRY_NAME[customer]||{})[currentLang] || customer;
+      const flag  = COUNTRY_FLAG[customer] || customer;
+      if (shipsToCustomer) {
+        const txt = currentLang === 'he' ? `נשלח ל${cName}` : `Ships to ${cName}`;
+        return `<div class="ships-to ships-to-pill ships-yes" title="${titleAll}"><span class="pill-flag">${flag}</span><span class="pill-check">✓</span> ${txt}</div>`;
+      } else {
+        const txt = currentLang === 'he' ? `לא זמין ב${cName}` : `Not available in ${cName}`;
+        return `<div class="ships-to ships-to-pill ships-no" title="${titleAll}"><span class="pill-flag">${flag}</span><span class="pill-x">✕</span> ${txt}</div>`;
+      }
     }
+
+    // Unknown country — show the compact flag row (existing behavior).
+    const MAX_VISIBLE = 7;
+    const visible = sorted.slice(0, MAX_VISIBLE);
+    const rest    = sorted.length - visible.length;
     const otherFlags = visible
-      .filter(c => c !== customer)
       .map(c => `<span class="ship-flag" title="${(COUNTRY_NAME[c]||{})[currentLang]||c}">${COUNTRY_FLAG[c]||c}</span>`)
       .join('');
     const moreBadge = rest > 0
       ? `<span class="ship-flag ship-more">+${rest}</span>`
       : '';
-    const cls = (customer && !shipsToCustomer) ? ' ships-to-not-customer' : '';
-    return `<div class="ships-to ships-to-compact${cls}" title="${titleAll}">${customerBadge}${otherFlags}${moreBadge}</div>`;
+    return `<div class="ships-to ships-to-compact" title="${titleAll}">${otherFlags}${moreBadge}</div>`;
   }
   // MODAL VIEW: prominent customer-country headline (when known) + always-visible
   // flag grid. Per oren 2026-05-22: country is GEOGRAPHIC, not language-derived.
@@ -1244,11 +1255,18 @@ function renderProducts(filter, gender) {
     tanktop:    t.type_tanktop,
   };
 
+  // 2026-05-23 (oren UX directive): compute per-card shippability so
+  // CSS can dim the cards that the detected customer cannot order.
+  // Customer-unknown → don't dim (no signal to act on yet).
+  const _customerCountry = detectedCustomerCountry();
+
   grid.innerHTML = filtered.map(product => {
     const displayColor = pickDisplayColor(product) || product.colors[0];
+    const _supported = Array.isArray(product.supportedCountries) ? product.supportedCountries : DEFAULT_SUPPORTED;
+    const _notShippable = _customerCountry && !_supported.includes(_customerCountry);
     return `
-    <div class="product-card${shouldShowBackDefault(product.id) ? ' show-back-default' : ''}" data-id="${product.id}" data-type="${product.type}"
-         data-selected-color="${displayColor}"
+    <div class="product-card${shouldShowBackDefault(product.id) ? ' show-back-default' : ''}${_notShippable ? ' not-shippable' : ''}" data-id="${product.id}" data-type="${product.type}"
+         data-selected-color="${displayColor}"${_notShippable ? ' data-not-shippable="true"' : ''}
          onclick="openProductModal(${product.id})">
       <div class="product-image" id="card-img-${product.id}">
         <img class="img-view img-back"  src="${productImg(product.id, displayColor, 'back')}"  alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}';const c=this.closest('.product-card');if(c)c.classList.remove('show-back-default');" />
@@ -2584,7 +2602,28 @@ async function loadProductReviews() {
   } catch { /* non-critical */ }
 }
 
+// 2026-05-23: PREVIEW banner — auto-appears on any host that isn't the
+// production domain. Visual signal so oren (and anyone else) knows they're
+// looking at a Vercel Preview deployment and that any test purchase here
+// hits Sandbox PayPal + Gelato draft mode (when env wiring is configured).
+function _dubisShowPreviewBannerIfNeeded() {
+  try {
+    const host = (window.location.hostname || '').toLowerCase();
+    const isProduction = host === 'www.dubis.net' || host === 'dubis.net';
+    if (isProduction) return;
+    if (document.getElementById('dubis-preview-banner')) return;
+    const isLocal = host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local');
+    const env = isLocal ? 'LOCAL DEV' : 'VERCEL PREVIEW';
+    const banner = document.createElement('div');
+    banner.id = 'dubis-preview-banner';
+    banner.innerHTML = `🧪 ${env} — not the live site. Test purchases only. <code>${host}</code>`;
+    document.body.appendChild(banner);
+    document.body.classList.add('has-preview-banner');
+  } catch (_) {}
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+  _dubisShowPreviewBannerIfNeeded();
   loadCart();
   checkCookieConsent();
   // Wait for DB catalog (if products.js kicked off loadFromDB() async) BEFORE

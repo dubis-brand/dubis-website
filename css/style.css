@@ -891,6 +891,73 @@ body[dir="rtl"] .product-price .price-from { margin-left: 2px; margin-right: 0; 
     background: rgba(201, 81, 79, 0.07);
     border-color: rgba(201, 81, 79, 0.25);
 }
+
+/* 2026-05-23 (oren UX directive): make country relevance OBVIOUS on cards.
+   When customer's geo is known, replace the flag-row with a clear pill. */
+.ships-to-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+    padding: 4px 10px;
+    border-radius: 14px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: help;
+}
+[dir="rtl"] .ships-to-pill { margin-left: 0; margin-right: auto; }
+.ships-to-pill .pill-flag { font-size: 1.05rem; line-height: 1; }
+.ships-to-pill .pill-check { color: #2e6d2c; font-weight: 800; }
+.ships-to-pill .pill-x     { color: #c8514f; font-weight: 800; }
+.ships-to-pill.ships-yes {
+    background: rgba(46, 109, 44, 0.10);
+    border: 1px solid rgba(46, 109, 44, 0.35);
+    color: #2e6d2c;
+}
+.ships-to-pill.ships-no {
+    background: rgba(201, 81, 79, 0.10);
+    border: 1px solid rgba(201, 81, 79, 0.40);
+    color: #9b3a38;
+}
+
+/* Dim the entire card when the detected customer can't order it. The card
+   stays clickable (modal will explain) but it's visibly de-emphasized so
+   the customer's eye skips to the cards they CAN buy. */
+.product-card.not-shippable {
+    opacity: 0.55;
+    filter: grayscale(35%);
+    transition: opacity 0.2s ease, filter 0.2s ease;
+}
+.product-card.not-shippable:hover {
+    opacity: 0.85;
+    filter: grayscale(15%);
+}
+
+/* 2026-05-23: PREVIEW MODE banner — auto-appears on Vercel preview URLs
+   (any host that's NOT dubis.net / www.dubis.net). Painted by main.js init. */
+#dubis-preview-banner {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    background: linear-gradient(90deg, #C17E3A, #d99a5b);
+    color: #fff;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 6px 12px;
+    z-index: 99999;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+    font-family: -apple-system, "Segoe UI", sans-serif;
+}
+#dubis-preview-banner code {
+    background: rgba(0,0,0,0.18);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    margin-left: 8px;
+}
+body.has-preview-banner { padding-top: 32px; }
 .ship-flag.flag-customer {
     border: 2px solid #2e6d2c;
     border-radius: 6px;
