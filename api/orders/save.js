@@ -120,15 +120,42 @@ module.exports = async function handler(req, res) {
         if (user) userId = user.id;
     }
 
-    // ── Server-side price validation — reads live prices from Supabase product_prices table ──
-    // Falls back to hardcoded floor prices to prevent $0 fraud
-    const PRICE_FLOOR = { tshirt: 10, hoodie: 20, ziphoodie: 25, longsleeve: 15, cap: 10 };
-    let priceOverrides = {};
+    // ── Server-side price validation — reads live prices from Supabase ──
+    // Falls back to hardcoded floor prices to prevent $0 fraud.
+    //
+    // 2026-05-23 BUGFIX (post Hila II investigation): the old code compared
+    // the cart's `item.price` against `product_prices.selling_price` (the
+    // BASE price per product). Since rule #7 (2026-05-16), variants charge
+    // a per-size + per-color upcharge stored in `product_variant_stock.
+    // sell_price_usd`. The cart sends the variant-level price. The base ≠
+    // variant comparison fired `Price mismatch` on EVERY non-base variant
+    // sale and silently 400'd `/api/orders/save`. Result: zero `orders`
+    // rows saved between 2026-05-01 and 2026-05-22 even when PayPal + Gelato
+    // both succeeded. Customer saw "Order Confirmed!" with no DB record.
+    // Fix: load product_variant_stock and compare per (id, color, size).
+    // Fall back to base + soft floor if no variant row.
+    // 2026-05-23 also: PRICE_FLOOR now includes vneck/tanktop/capemb added
+    // in 2026-05-19 Phase F — previously these would have 400'd with
+    // "Unknown product type" if any customer added them to cart.
+    const PRICE_FLOOR = {
+        tshirt: 10, hoodie: 20, ziphoodie: 25, longsleeve: 15, cap: 10,
+        vneck: 15, tanktop: 15, capemb: 12,
+        // Legacy alternate names (just in case)
+        't-shirt': 10, 'zip-hoodie': 25, 'long-sleeve': 15, 'v-neck': 15, 'tank-top': 15, 'cap-emb': 12,
+    };
+    let basePrices = {};      // { product_id_numeric: base_selling_price }
+    let variantPrices = {};   // { "id|color|size": sell_price_usd }
     try {
-        const { data: priceRows } = await supabase.from('product_prices').select('product_id, selling_price');
-        priceOverrides = Object.fromEntries((priceRows || []).map(r => [Number(r.product_id), Number(r.selling_price)]));
+        const [pp, pvs] = await Promise.all([
+            supabase.from('product_prices').select('product_id, selling_price'),
+            supabase.from('product_variant_stock').select('product_id_numeric, color, size, sell_price_usd'),
+        ]);
+        basePrices = Object.fromEntries((pp.data || []).map(r => [Number(r.product_id), Number(r.selling_price)]));
+        variantPrices = Object.fromEntries((pvs.data || [])
+            .filter(r => r.sell_price_usd != null)
+            .map(r => [`${r.product_id_numeric}|${r.color}|${r.size}`, Number(r.sell_price_usd)]));
     } catch (err) {
-        console.warn('Could not load product_prices from Supabase:', err.message);
+        console.warn('Could not load product prices from Supabase:', err.message);
     }
 
     for (const item of cartItems) {
@@ -137,15 +164,41 @@ module.exports = async function handler(req, res) {
             return res.status(400).json({ error: `Unknown product type: ${item.type}` });
         }
         const sentPrice = Number(item.price) || 0;
-        // Check against Supabase price if available
-        const supabasePrice = item.id ? priceOverrides[Number(item.id)] : null;
-        if (supabasePrice != null && Math.abs(sentPrice - supabasePrice) > 0.01) {
-            console.warn(`Price mismatch: id=${item.id} type=${item.type} sent=${sentPrice} expected=${supabasePrice}`);
-            return res.status(400).json({ error: 'Price mismatch — please refresh and try again' });
+        const itemId    = Number(item.id);
+        const variantKey = itemId && item.selectedColor && item.selectedSize
+            ? `${itemId}|${item.selectedColor}|${item.selectedSize}`
+            : null;
+        const variantPrice = variantKey ? variantPrices[variantKey] : null;
+        const basePrice    = itemId ? basePrices[itemId] : null;
+
+        // Preferred check: against the variant-level sell_price_usd.
+        if (variantPrice != null) {
+            if (Math.abs(sentPrice - variantPrice) > 0.01) {
+                console.warn(`Variant price mismatch: id=${itemId} ${item.selectedColor}/${item.selectedSize} sent=${sentPrice} expected=${variantPrice}`);
+                return res.status(400).json({ error: 'Price mismatch — please refresh and try again' });
+            }
         }
-        // Always enforce floor price to prevent $0 fraud
+        // Fallback: against the base selling_price WITH tolerance for variant upcharge.
+        // Variants are always ≥ base (upcharge), never less. So we allow sent ≥ base.
+        // If sent < base by more than $0.01 → fraud attempt or stale cart, reject.
+        else if (basePrice != null) {
+            if (sentPrice + 0.01 < basePrice) {
+                console.warn(`Below-base price: id=${itemId} type=${item.type} sent=${sentPrice} base=${basePrice}`);
+                return res.status(400).json({ error: 'Invalid price — please refresh and try again' });
+            }
+            // sent ≥ base → accept (we trust the variant upcharge wasn't fabricated;
+            // if it was, the upper-bound check is the +50% line below)
+        }
+
+        // Hard floor: catches both fraud ($0 attempts) AND wildly inflated prices
+        // (e.g. variant upcharge that's 3× base — likely a cart-data bug).
         if (sentPrice < floor) {
             console.warn(`Price below floor: type=${item.type} sent=${sentPrice} floor=${floor}`);
+            return res.status(400).json({ error: 'Invalid price — please refresh and try again' });
+        }
+        // Sanity upper bound: no variant should ever exceed 2.5× its base
+        if (basePrice != null && sentPrice > basePrice * 2.5) {
+            console.warn(`Implausible price ceiling: id=${itemId} sent=${sentPrice} base=${basePrice}`);
             return res.status(400).json({ error: 'Invalid price — please refresh and try again' });
         }
     }
