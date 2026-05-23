@@ -247,7 +247,7 @@ function generateProductEntry(p, stockMap) {
     `        typeLabel: "${meta.typeLabel}",`,
     `        gender: "${p.gender || 'unisex'}",`,
     `        price: ${price},`,
-    `        image: "images/product-${p.product_id_numeric || p.id}.jpg",`,
+    `        image: "${escapeStr(p.image_url || `images/product-${p.product_id_numeric || p.id}.jpg`)}",`,
     `        colors: ${colors},`,
     `        supportedCountries: ${supportedCountries},`,
     `        launchedAt: ${launchedAt},`,
