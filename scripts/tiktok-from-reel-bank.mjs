@@ -81,50 +81,41 @@ function buildCaption(persona, lang) {
   return `${persona.slogan}\n\nDUBIS — for the rest of us.\n\n👉 ${url}\n\n#DUBIS #realbodies #hoodieseason #fortherestofus`;
 }
 
-async function getLateCreds() {
-  const { data, error } = await sb.rpc('exec_sql_admin', {
-    sql: `SELECT name, decrypted_secret AS s FROM vault.decrypted_secrets WHERE name IN ('dubis_late_api_key','dubis_late_tiktok_account_id')`,
-  }).catch(() => ({ data: null, error: 'rpc-not-available' }));
-
-  // Fallback: read directly via PostgREST + vault (requires service role)
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/dubis_get_late_creds`, {
-    method: 'POST',
-    headers: { 'apikey': SERVICE_ROLE, 'Authorization': `Bearer ${SERVICE_ROLE}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
-  });
-  if (r.ok) return r.json();
-
-  // Last resort: SQL via raw query — works if the dubis_get_late_creds RPC exists
-  throw new Error('Late.com creds not available. Either set DUBIS_LATE_API_KEY + DUBIS_LATE_TIKTOK_ACCOUNT_ID env vars, OR ensure vault has dubis_late_api_key + dubis_late_tiktok_account_id.');
+async function vaultGet(name) {
+  const { data, error } = await sb.rpc('get_vault_secret', { secret_name: name });
+  if (error) throw new Error(`vault ${name}: ${error.message}`);
+  return (data || '').toString();
 }
 
 async function publishToLate({ videoUrl, caption, persona, lang }) {
-  // Read Late creds from env first (CI/CD prefers env), fall back to vault RPC
   let apiKey  = process.env.DUBIS_LATE_API_KEY        || '';
   let account = process.env.DUBIS_LATE_TIKTOK_ACCOUNT || '';
-  if (!apiKey || !account) {
-    const creds = await getLateCreds();
-    apiKey  = creds.api_key   || apiKey;
-    account = creds.account_id || account;
-  }
-  if (!apiKey || !account) throw new Error('Late.com creds missing');
+  if (!apiKey)  apiKey  = await vaultGet('dubis_late_api_key');
+  if (!account) account = await vaultGet('dubis_late_tiktok_account_id');
+  if (!apiKey || !account) throw new Error('Late.com creds missing (env + vault both empty)');
 
   const payload = {
-    platform: 'tiktok',
-    account_id: account,
-    video_url: videoUrl,
-    caption,
-    scheduled_at: new Date().toISOString(), // publish now
+    content: caption,
+    platforms: [{ platform: 'tiktok', accountId: account }],
+    mediaItems: [{ type: 'video', url: videoUrl }],
+    tiktokSettings: {
+      privacy_level: 'PUBLIC_TO_EVERYONE',
+      allow_comment: true,
+      allow_duet: true,
+      allow_stitch: true,
+    },
+    publishNow: true,
   };
-  const r = await fetch('https://api.late.io/v1/posts', {
+  const r = await fetch('https://getlate.dev/api/v1/posts', {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(90_000),
   });
   const txt = await r.text();
   console.log('Late response', r.status, txt.slice(0, 1000));
   if (!r.ok) throw new Error(`Late.com publish failed ${r.status}: ${txt.slice(0, 300)}`);
-  return JSON.parse(txt);
+  try { return JSON.parse(txt); } catch { return { raw: txt.slice(0, 500) }; }
 }
 
 async function recordTask({ persona, lang, videoUrl, caption, lateResponse, rotationDay, rotationIdx }) {
@@ -162,8 +153,29 @@ async function recordTask({ persona, lang, videoUrl, caption, lateResponse, rota
   return data.id;
 }
 
+// IL campaign reels are manually scheduled in Late.com for this window
+// (men-3, women-3, men-4, women-4, women-5 — see scripts/publish-il-campaign-to-late.mjs).
+// The daily cron must NOT post on those days or it will duplicate.
+// Resumes deterministic rotation from 2026-05-28 onward.
+const MANUAL_SKIP_FROM = Date.UTC(2026, 4, 23); // 2026-05-23
+const MANUAL_SKIP_TO   = Date.UTC(2026, 4, 27); // 2026-05-27
+
+function todayInManualWindow() {
+  const now = new Date();
+  const utcMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return utcMidnight >= MANUAL_SKIP_FROM && utcMidnight <= MANUAL_SKIP_TO;
+}
+
 async function main() {
   console.log('=== DUBIS TikTok Daily (reel-bank rotation) ===', new Date().toISOString());
+
+  if (todayInManualWindow() && !process.env.FORCE_PERSONA) {
+    console.log('Today falls inside the manual IL-campaign window (2026-05-23 → 2026-05-27).');
+    console.log('Reels for this window were scheduled in Late.com via publish-il-campaign-to-late.mjs.');
+    console.log('Skipping daily rotation to avoid duplicate posts. (Pass FORCE_PERSONA via workflow_dispatch to override.)');
+    return;
+  }
+
   const { persona, lang, day, idx } = pickReelForToday();
   console.log(`Day ${day}, idx ${idx}/${BANK_SIZE} → persona=${persona.id} lang=${lang}`);
 
