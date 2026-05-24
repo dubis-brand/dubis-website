@@ -38,17 +38,15 @@ module.exports = async function handler(req, res) {
     const ytdStart = new Date(new Date().getFullYear(), 0, 1).toISOString();
 
     // ── Run all queries in parallel for speed ──
-    // Split page_views into 3 chunks of 10 days. Each chunk capped at 10000 rows
-    // (Supabase REST default is 1000 — silently drops everything beyond, which on 2026-05-23
-    // hid all traffic after 2026-05-16 from the admin chart for a full week.)
-    const split1 = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
-    const split2 = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+    // Page-views aggregation runs server-side via `admin_page_views_summary` RPC
+    // (migration `admin_page_views_summary_rpc_2026_05_24`). The previous 3-chunk JS
+    // aggregation hit the PostgREST db-max-rows ceiling (~1000) on the most-recent chunk:
+    // on 2026-05-24 it had 3,946 rows but PostgREST truncated to ~1000, hiding all traffic
+    // after 2026-05-16 from the admin chart. RPC returns ~30 rows of pre-aggregated counts.
     const [
         totalViewsRes,
         todayViewsRes,
-        viewsChunk1,
-        viewsChunk2,
-        viewsChunk3,
+        pageViewsSummaryRes,
         allOrdersRes,
         recentOrdersRes,
         subscribersRes,
@@ -57,16 +55,12 @@ module.exports = async function handler(req, res) {
         reviewsRes,
         reviewsSummaryRes
     ] = await Promise.all([
-        // Page views — total
+        // Page views — total (uses index-only count, no row scan)
         supabase.from('page_views').select('*', { count: 'exact', head: true }),
         // Page views — today
         supabase.from('page_views').select('*', { count: 'exact', head: true }).gte('created_at', today),
-        // Page views — days 21-30
-        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', since30).lt('created_at', split1).order('created_at', { ascending: true }).limit(10000),
-        // Page views — days 11-20
-        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', split1).lt('created_at', split2).order('created_at', { ascending: true }).limit(10000),
-        // Page views — days 1-10 (most recent, includes today)
-        supabase.from('page_views').select('path, referrer, created_at').gte('created_at', split2).order('created_at', { ascending: true }).limit(10000),
+        // Page views — 30-day aggregation (per_day, top_pages, top_referrers, views_7d, views_7d_prev)
+        supabase.rpc('admin_page_views_summary', { days_back: 30 }),
         // All orders (include buyer_email + shipping_address + is_test for sandbox filtering and tax nexus tracking)
         supabase.from('orders').select('id, status, total_amount, currency, coupon_code, discount_amount, items, buyer_email, shipping_address, is_test, created_at'),
         // Recent orders (30 days) — include shipping_address for tax nexus tracking + items for profit calc
@@ -83,49 +77,28 @@ module.exports = async function handler(req, res) {
         supabase.from('product_reviews').select('*', { count: 'exact', head: true }),
     ]);
 
-    // ── PAGE VIEWS ── (merge all three chunks)
-    const rows = [...(viewsChunk1.data || []), ...(viewsChunk2.data || []), ...(viewsChunk3.data || [])];
+    // ── PAGE VIEWS ── (RPC payload — defensive fallbacks on RPC failure)
+    const pvSummary = (pageViewsSummaryRes && pageViewsSummaryRes.data) || {};
+    const rpcPerDay = Array.isArray(pvSummary.per_day) ? pvSummary.per_day : [];
     const byDay = {};
-    rows.forEach(r => {
-        const day = r.created_at.slice(0, 10);
-        byDay[day] = (byDay[day] || 0) + 1;
-    });
+    rpcPerDay.forEach(r => { byDay[r.day] = Number(r.views) || 0; });
     const viewsPerDay = [];
     for (let i = 29; i >= 0; i--) {
         const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
         viewsPerDay.push({ date: d, views: byDay[d] || 0 });
     }
 
-    // Top pages
-    const pageCounts = {};
-    rows.forEach(r => { pageCounts[r.path] = (pageCounts[r.path] || 0) + 1; });
-    const topPages = Object.entries(pageCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
-        .map(([path, views]) => ({ path, views }));
+    const topPages = Array.isArray(pvSummary.top_pages)
+        ? pvSummary.top_pages.map(p => ({ path: p.path, views: Number(p.views) || 0 }))
+        : [];
+    const topReferrers = Array.isArray(pvSummary.top_referrers)
+        ? pvSummary.top_referrers.map(r => ({ source: r.source, count: Number(r.count) || 0 }))
+        : [];
 
-    // Top referrers
-    const refCounts = {};
-    rows.forEach(r => {
-        const ref = r.referrer || 'Direct';
-        let source = 'Direct';
-        if (ref !== 'Direct') {
-            try {
-                const u = new URL(ref);
-                source = u.hostname.replace('www.', '');
-            } catch { source = ref.slice(0, 40); }
-        }
-        refCounts[source] = (refCounts[source] || 0) + 1;
-    });
-    const topReferrers = Object.entries(refCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 8)
-        .map(([source, count]) => ({ source, count }));
-
-    // Views last 7 days vs previous 7 days for trend
-    const views7 = rows.filter(r => r.created_at >= since7).length;
-    const prev7Start = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-    const views7prev = rows.filter(r => r.created_at >= prev7Start && r.created_at < since7).length;
+    // 7-day trend (real counts from RPC, no row-cap artefacts)
+    const views7     = Number(pvSummary.views_7d) || 0;
+    const views7prev = Number(pvSummary.views_7d_prev) || 0;
+    const totalRows30d = Number(pvSummary.total_rows) || 0;
 
     // ── ORDERS ──
     // Helper: filter out test/sandbox orders, reprints, and cancelled
@@ -198,7 +171,9 @@ module.exports = async function handler(req, res) {
     });
 
     // Unique visitors (approximate from page views)
-    const uniqueVisitors = rows.length;
+    // "Unique visitors" is an approximation = 30-day page-view count from the RPC
+    // (NOT a real unique count — would need DISTINCT session_id; deferred).
+    const uniqueVisitors = totalRows30d;
     const conversionRate = uniqueVisitors > 0 ? Math.round((totalOrders / uniqueVisitors) * 10000) / 100 : 0;
 
     // ── NEWSLETTER ──
