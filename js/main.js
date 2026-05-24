@@ -2417,7 +2417,11 @@ window.addEventListener('DOMContentLoaded', dubisShowFbCouponBanner);
 // data-en attributes on the text + button nodes are already in place.
 function dubisShowFbiaBanner() {
     try {
-        if (!window.dubisIsFacebookWebView || !window.dubisIsFacebookWebView()) return;
+        // Test escape hatch: ?test_fbia=1 forces the banner so reviewers can
+        // verify on a regular Chrome (Vercel Preview SSO token doesn't survive
+        // FB IAB's redirect chain, making real FBIA testing hard for previews).
+        const isForced = (new URLSearchParams(window.location.search || '')).get('test_fbia') === '1';
+        if (!isForced && (!window.dubisIsFacebookWebView || !window.dubisIsFacebookWebView())) return;
         if (sessionStorage.getItem('dubis-fbia-dismissed') === '1') return;
         const banner = document.getElementById('fbia-handoff-banner');
         if (!banner) return;
