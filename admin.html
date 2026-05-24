@@ -4823,9 +4823,9 @@
     // ROI = (Gross Profit - Ad Spend) / Ad Spend * 100
     // COGS ~60% for print-on-demand (Gelato production + shipping)
     const COGS_RATE = 0.60;
-    const grossProfit = monthlyRevenue * (1 - COGS_RATE);
+    const grossProfit = monthlyRevenue30d * (1 - COGS_RATE);
     const netProfit = grossProfit - spentUSD;
-    const roi = spentUSD > 0 ? (netProfit / spentUSD * 100).toFixed(0) + '%' : (monthlyRevenue > 0 ? '∞' : 'N/A');
+    const roi = spentUSD > 0 ? (netProfit / spentUSD * 100).toFixed(0) + '%' : (monthlyRevenue30d > 0 ? '∞' : 'N/A');
 
     document.getElementById('budget-spent').textContent = `$${spentUSD.toFixed(0)} (₪${Math.round(totalSpentILS)})`;
     document.getElementById('budget-remaining').textContent = '$' + remainingUSD.toFixed(0);
@@ -4837,7 +4837,7 @@
     if (apiRoas != null) {
       document.getElementById('av-conversion').textContent = apiRoas.toFixed(2) + 'x';
     } else {
-      const roasFallback = spentUSD > 0 ? ((monthlyRevenue / spentUSD) * 100).toFixed(0) + '%' : (monthlyRevenue > 0 ? 'אין הוצאה' : 'אין נתונים');
+      const roasFallback = spentUSD > 0 ? ((monthlyRevenue30d / spentUSD) * 100).toFixed(0) + '%' : (monthlyRevenue30d > 0 ? 'אין הוצאה' : 'אין נתונים');
       document.getElementById('av-conversion').textContent = roasFallback;
     }
 
@@ -4846,7 +4846,7 @@
     const apiBudget = analyticsData.totalBudget;
     const apiActive = analyticsData.activeCampaigns;
     if (document.getElementById('api-roas')) {
-      document.getElementById('api-roas').textContent      = apiRoas  != null ? apiRoas.toFixed(2) + 'x'  : (spentUSD > 0 ? ((monthlyRevenue / spentUSD)).toFixed(2) + 'x' : '—');
+      document.getElementById('api-roas').textContent      = apiRoas  != null ? apiRoas.toFixed(2) + 'x'  : (spentUSD > 0 ? ((monthlyRevenue30d / spentUSD)).toFixed(2) + 'x' : '—');
       document.getElementById('api-roi').textContent       = apiRoi   != null ? apiRoi.toFixed(0) + '%'   : roi;
       document.getElementById('api-ad-spend').textContent  = apiSpend  != null ? '₪' + apiSpend.toFixed(0)  : `$${spentUSD.toFixed(0)} (₪${Math.round(totalSpentILS)})`;
       document.getElementById('api-total-budget').textContent = apiBudget != null ? '₪' + apiBudget.toFixed(0) : `$${masterBudget}`;

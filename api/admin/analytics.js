@@ -355,6 +355,11 @@ module.exports = async function handler(req, res) {
         .filter(t => t.content_data?.qa_score)
         .reduce((acc, t, _, arr) => acc + (t.content_data.qa_score / arr.length), 0);
 
+    // Prevent browser/CDN caching — the 2026-05-23 chart fix was invisible to oren
+    // for ~32h because Chrome served the pre-fix JSON from disk cache. Admin data is
+    // user-specific and time-sensitive; never cache it.
+    res.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
     return res.status(200).json({
         // Page views
         totalViews: totalViewsRes.count || 0,
