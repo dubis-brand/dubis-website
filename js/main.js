@@ -2384,6 +2384,10 @@ function dubisShowFbCouponBanner() {
     try {
         if (!window.dubisCameFromFacebook()) return;
         if (sessionStorage.getItem('dubis-fb-banner-dismissed') === '1') return;
+        // 2026-05-24 — FBIA handoff banner takes priority. Stacking both is too
+        // much vertical clutter on mobile + the coupon is moot if the visitor
+        // can't checkout from FBIA anyway.
+        if (window.dubisIsFacebookWebView && window.dubisIsFacebookWebView()) return;
         const banner = document.getElementById('fb-coupon-banner');
         if (!banner) return;
         banner.classList.add('visible');
@@ -2401,6 +2405,102 @@ window.dubisDismissFbCouponBanner = function() {
 };
 
 window.addEventListener('DOMContentLoaded', dubisShowFbCouponBanner);
+
+// ===== FBIA HANDOFF BANNER (open in Chrome) =====
+// Fires only for visitors currently inside Facebook / Instagram / Messenger
+// In-App Browser. The PayPal popup does NOT load in those WebViews, so a
+// banner that hands the visitor off to Chrome BEFORE they try to check out
+// is the single highest-impact fix for the IL paid funnel (88% of clicks
+// land here per the 2026-05-24 audit — 0 purchases over 16 days).
+// Bilingual hook: HE copy is the default for the IL campaign. To switch to
+// EN for a future campaign, swap based on currentLang — the data-he /
+// data-en attributes on the text + button nodes are already in place.
+function dubisShowFbiaBanner() {
+    try {
+        if (!window.dubisIsFacebookWebView || !window.dubisIsFacebookWebView()) return;
+        if (sessionStorage.getItem('dubis-fbia-dismissed') === '1') return;
+        const banner = document.getElementById('fbia-handoff-banner');
+        if (!banner) return;
+        banner.classList.add('visible');
+        document.body.classList.add('fbia-active');
+        if (window.dubisTrack) {
+            try { window.dubisTrack('fbia_banner_shown', { ua: (navigator.userAgent || '').slice(0, 120) }); } catch(_) {}
+        }
+    } catch(e) {}
+}
+
+window.dubisFbiaDismiss = function() {
+    try {
+        sessionStorage.setItem('dubis-fbia-dismissed', '1');
+        const b = document.getElementById('fbia-handoff-banner');
+        if (b) b.classList.remove('visible');
+        document.body.classList.remove('fbia-active');
+        if (window.dubisTrack) {
+            try { window.dubisTrack('fbia_banner_dismiss'); } catch(_) {}
+        }
+    } catch(e) {}
+};
+
+// Handoff: opens the current URL outside FBIA.
+// Android: intent:// hands the page to Chrome directly (falls back to the
+//   default browser chooser if Chrome isn't installed).
+// iOS: FB IAB on iOS cannot programmatically open Safari (Apple sandbox).
+//   Copy URL to clipboard + flip button label so the user knows what to do.
+// Other: defensive — window.open in a new tab.
+window.dubisFbiaHandoff = function(btnEl) {
+    try {
+        const ua = navigator.userAgent || '';
+        const isAndroid = /Android/i.test(ua);
+        const isIOS = /iPhone|iPad|iPod/i.test(ua);
+        const fullUrl = window.location.href;
+        const platform = isAndroid ? 'android' : (isIOS ? 'ios' : 'other');
+
+        if (window.dubisTrack) {
+            try { window.dubisTrack('fbia_handoff_click', { platform: platform }); } catch(_) {}
+        }
+
+        if (isAndroid) {
+            const urlSansScheme = fullUrl.replace(/^https?:\/\//, '');
+            window.location.href = 'intent://' + urlSansScheme + '#Intent;scheme=https;package=com.android.chrome;end';
+        } else if (isIOS) {
+            const showCopied = () => {
+                if (!btnEl) return;
+                const origText = btnEl.textContent;
+                btnEl.classList.add('copied');
+                btnEl.textContent = '✓ הקישור הועתק — פתח Safari';
+                setTimeout(() => {
+                    btnEl.classList.remove('copied');
+                    btnEl.textContent = origText;
+                }, 4500);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(fullUrl).then(showCopied).catch(() => _dubisFbiaFallbackCopy(fullUrl, showCopied));
+            } else {
+                _dubisFbiaFallbackCopy(fullUrl, showCopied);
+            }
+        } else {
+            window.open(fullUrl, '_blank');
+        }
+    } catch(e) {}
+};
+
+function _dubisFbiaFallbackCopy(text, onDone) {
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        try { document.execCommand('copy'); } catch(_) {}
+        document.body.removeChild(ta);
+        if (onDone) onDone();
+    } catch(_) {}
+}
+
+window.addEventListener('DOMContentLoaded', dubisShowFbiaBanner);
 
 // Helper for checkout / orders.save — returns the first-touch attribution object,
 // or null if storage is unavailable. Always inspect both localStorage (long-lived)
