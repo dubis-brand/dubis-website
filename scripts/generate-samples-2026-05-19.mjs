@@ -62,17 +62,17 @@ function pickMockupPath(productId, color, face) {
 }
 
 function buildFrontPrompt(persona, slogan, garmentType, color) {
-  return `${persona.age}-year-old Israeli ${persona.gender === 'men' ? 'man' : 'woman'} with ${persona.body_anchor}. ${persona.scene_anchor}. Wearing the EXACT ${color} DUBIS ${garmentType} shown in the reference, front-facing camera, three-quarter body framing. Soft window light, late afternoon golden tone, visible skin pores and natural imperfections, slight asymmetry, anti-stunning real-body aesthetic, candid authentic feel. Shot on Sony A7IV 85mm f/1.8, Kodak Portra 400 film grain, natural eye catchlights. The DUBIS™ chest logo from the reference garment must be clearly visible on the wearer's left chest.`;
+  return `${persona.age}-year-old Israeli ${persona.gender === 'men' ? 'man' : 'woman'} with ${persona.body_anchor}. ${persona.scene_anchor_en || persona.scene_anchor}. Wearing the EXACT ${color} DUBIS ${garmentType} shown in the reference, front-facing camera, three-quarter body framing. Soft window light, late afternoon golden tone, visible skin pores and natural imperfections, slight asymmetry, anti-stunning real-body aesthetic, candid authentic feel. Shot on Sony A7IV 85mm f/1.8, Kodak Portra 400 film grain, natural eye catchlights. The DUBIS™ chest logo from the reference garment must be clearly visible on the wearer's left chest.`;
 }
 
 function buildBackPrompt(persona, slogan, garmentType, color) {
   // NSFW-safe phrasing (no "shoulder blades", no "viewed from behind" — those triggered
   // Higgsfield's content filter in the 2026-05-19 batch). Focus on the GARMENT, not the body.
-  return `Three-quarter rear angle of a ${persona.age}-year-old Israeli ${persona.gender === 'men' ? 'man' : 'woman'} with ${persona.body_anchor}, looking back over the shoulder toward the camera with a calm expression. ${persona.scene_anchor}. The DUBIS ${color} ${garmentType} from the reference is the focal point — the back slogan "${slogan}" is sharply rendered, fully readable, centered on the garment, matching the typography of the reference exactly. Soft window light, late afternoon golden tone, Kodak Portra 400 film grain, candid authentic feel, photographic documentary style.`;
+  return `Three-quarter rear angle of a ${persona.age}-year-old Israeli ${persona.gender === 'men' ? 'man' : 'woman'} with ${persona.body_anchor}, looking back over the shoulder toward the camera with a calm expression. ${persona.scene_anchor_en || persona.scene_anchor}. The DUBIS ${color} ${garmentType} from the reference is the focal point — the back slogan "${slogan}" is sharply rendered, fully readable, centered on the garment, matching the typography of the reference exactly. Soft window light, late afternoon golden tone, Kodak Portra 400 film grain, candid authentic feel, photographic documentary style.`;
 }
 
 function buildReelPrompt(persona, slogan, garmentType, color) {
-  return `10-second documentary lifestyle reel of a ${persona.age}-year-old Israeli ${persona.gender === 'men' ? 'man' : 'woman'} wearing the ${color} DUBIS ${garmentType} from the start frame. ${persona.scene_anchor}.
+  return `10-second documentary lifestyle reel of a ${persona.age}-year-old Israeli ${persona.gender === 'men' ? 'man' : 'woman'} wearing the ${color} DUBIS ${garmentType} from the start frame. ${persona.scene_anchor_en || persona.scene_anchor}.
 
 Subtle natural motion throughout: slow camera dolly-in, gentle hair movement in breeze, small head turn left then back to camera, blinking, hand adjustment, slight smile then neutral. Character STAYS FRONT-FACING — never turns around, do not show back of garment in motion (the back slogan reveal is handled separately in post-compose).
 
