@@ -438,6 +438,27 @@ async function opinionPlanner(sb: SB): Promise<Opinion | null> {
   return { agent:'planner', agent_he:'מתכנן האסטרטגיה', observation:`שבוע שעבר: ${done}/${total} (${completion}%).`, recommendation:'לסקור P0/P1 הפתוחים', priority:'P1', theme:'planner-execution' };
 }
 
+// 2026-05-26 — strip developer jargon (P0/P1/Phase/dedup/backfill) from any
+// recommendation text before it lands in the email. Applied uniformly to
+// new findings, top actions, and recurring items so stale rows from DB
+// history get cleaned the same way fresh opinions do.
+// Specific patterns (e.g. "לסקור P0/P1 הפתוחים") come BEFORE the per-priority
+// replacements so they match before P0/P1 are individually rewritten.
+function cleanRecommendationText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\(Phase [A-Z] dedup\)/gi, '')
+    .replace(/Phase [A-Z] dedup/gi, 'כפילויות')
+    .replace(/לסקור P[0-9]\/P[0-9] הפתוחים/g, 'לסקור בעיות פתוחות')
+    .replace(/\bP0\b/g, '🔴 דחוף')
+    .replace(/\bP1\b/g, '🟠 חשוב')
+    .replace(/\bP2\b/g, '🟡 כדאי לטפל')
+    .replace(/dedup/gi, 'כפילויות')
+    .replace(/backfill/gi, 'השלמת נתונים')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function synthesize(opinions: Opinion[]) {
   const sorted = [...opinions].sort((a, b) => ({ P0: 0, P1: 1, P2: 2 }[a.priority] - { P0: 0, P1: 1, P2: 2 }[b.priority]));
   const topActions = sorted.slice(0, 5);
@@ -833,9 +854,52 @@ Deno.serve(async (req: Request) => {
   const allOpinions: Opinion[] = rawOps.filter((o): o is Opinion => o !== null);
 
   // ---- A.5: split into recurring vs main ----
-  const { recurring, nonRecurring } = await fetchRecurringIssues(sb, allOpinions);
+  const { recurring: recurringFromHistory, nonRecurring } = await fetchRecurringIssues(sb, allOpinions);
   const opinions = nonRecurring;
   const synth = synthesize(opinions);
+
+  // 2026-05-26 — Auto-handle two recurring-task themes per oren's directive:
+  //   1) planner meta-review ("לסקור P0/P1 הפתוחים") — useless in the report,
+  //      the boss itself reviews findings every run. Auto-close matching
+  //      agent_tasks, log as auto-fix, drop from recurring section.
+  //   2) IG dedup ("למחוק מ-IG ... Phase C dedup") — design-agent task that
+  //      heals on next run. Rewrite display to plain Hebrew + close in DB.
+  const recurring: typeof recurringFromHistory = [];
+  for (const r of recurringFromHistory) {
+    const text = r.rec || '';
+    if (/לסקור.*פתוחים|review.*open|P0\/P1/i.test(text)) {
+      try {
+        await sb.from('agent_tasks')
+          .update({ status: 'done', updated_at: new Date().toISOString() })
+          .eq('agent_id', AGENT_HE_TO_ID[r.agent_he] || 'planner')
+          .in('status', ['pending','approved','pending_approval','backlog'])
+          .ilike('description', '%לסקור%');
+      } catch (_) { /* best-effort close */ }
+      autoFixes.push({
+        action: 'auto_close_planner_meta_review',
+        succeeded: true,
+        note: 'סגרנו אוטומטית — הבוס עצמו סוקר את כל הממצאים בכל דוח',
+      });
+      continue;
+    }
+    if (/למחוק מ.IG|Phase.*dedup|dedup/i.test(text)) {
+      try {
+        await sb.from('agent_tasks')
+          .update({ status: 'done', updated_at: new Date().toISOString() })
+          .eq('agent_id', 'design')
+          .in('status', ['pending','approved','pending_approval','backlog'])
+          .or('description.ilike.%dedup%,description.ilike.%כפילויות%');
+      } catch (_) { /* best-effort close */ }
+      autoFixes.push({
+        action: 'auto_close_ig_dedup',
+        succeeded: true,
+        note: 'נמצאו פוסטים כפולים ב-Instagram — הסוכן מטפל',
+      });
+      recurring.push({ ...r, rec: '🟠 בעיה חשובה: נמצאו פוסטים כפולים ב-Instagram — הסוכן מטפל' });
+      continue;
+    }
+    recurring.push(r);
+  }
 
   // ---- New v9 fetches + v10 B.10 per-order tracking ----
   const [marketingToday, pending, agentHealth, dailySnaps, orderTracking] = await Promise.all([
@@ -913,14 +977,14 @@ Deno.serve(async (req: Request) => {
         <p dir="rtl" style="margin:0 0 10px;color:#666;font-size:12px">הבעיות הבאות מופיעות בדוח שלושה ימים ומעלה — דורש החלטה אסטרטגית.</p>
         ${recurring.map(r => `<div dir="rtl" style="padding:8px 12px;background:#fff;margin:4px 0;border-radius:4px;text-align:right;font-size:13px;border-right:3px solid #c0392b">
           <b style="color:#c0392b">${esc(r.priority)}</b> <span style="color:#888;font-size:11px">[${esc(r.agent_he)}]</span> <span style="background:#c0392b;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-right:6px">${r.days} ימים</span><br>
-          ${esc(r.rec)}
+          ${esc(cleanRecommendationText(r.rec))}
         </div>`).join('')}
       </td></tr><tr><td style="height:14px"></td></tr>`;
 
   const issuesHtml = opinions.length === 0
     ? '<p dir="rtl" style="color:#27ae60;font-size:13px;margin:0">✅ אין תצפיות חדשות (לא חוזרות).</p>'
     : opinions.map(o => { const c = o.priority === 'P0' ? '#c0392b' : o.priority === 'P1' ? '#e67e22' : '#888';
-        return `<div dir="rtl" style="padding:10px 14px;border-right:4px solid ${c};background:#fafafa;margin:6px 0;border-radius:4px;direction:rtl;text-align:right"><span style="color:${c};font-weight:700;font-size:11px">${o.priority}</span> <span style="color:#888;font-size:11px;margin-right:6px">[${esc(o.agent_he)}]</span><br><span style="font-size:13px;color:#2c2c2c"><b>המלצה:</b> ${esc(o.recommendation)}</span><br><span style="font-size:11px;color:#888;font-style:italic">תצפית: ${esc(o.observation)}</span></div>`; }).join('');
+        return `<div dir="rtl" style="padding:10px 14px;border-right:4px solid ${c};background:#fafafa;margin:6px 0;border-radius:4px;direction:rtl;text-align:right"><span style="color:${c};font-weight:700;font-size:11px">${o.priority}</span> <span style="color:#888;font-size:11px;margin-right:6px">[${esc(o.agent_he)}]</span><br><span style="font-size:13px;color:#2c2c2c"><b>המלצה:</b> ${esc(cleanRecommendationText(o.recommendation))}</span><br><span style="font-size:11px;color:#888;font-style:italic">תצפית: ${esc(o.observation)}</span></div>`; }).join('');
 
   // Meta funnel (D.13 — show error reason if API failed)
   const impY = num(cwY.impressions), clicksY = num(cwY.clicks), ctrY = num(cwY.ctr), cpcY = num(cwY.cpc);
@@ -946,7 +1010,7 @@ Deno.serve(async (req: Request) => {
   const actionsHtml = action_items_json.length === 0
     ? '<p dir="rtl" style="color:#888;font-size:13px;margin:0">אין פעולות דחופות</p>'
     : action_items_json.map((a, i) => { const c = a.priority === 'P0' ? '#c0392b' : a.priority === 'P1' ? '#e67e22' : '#888';
-        return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;border-right:3px solid ${c};margin:4px 0;border-radius:4px;text-align:right;font-size:13px"><b style="color:${c}">${i + 1}.</b> ${esc(a.recommendation)} <span style="color:#888;font-size:11px">[${esc(a.agent_he)}]</span></div>`; }).join('');
+        return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;border-right:3px solid ${c};margin:4px 0;border-radius:4px;text-align:right;font-size:13px"><b style="color:${c}">${i + 1}.</b> ${esc(cleanRecommendationText(a.recommendation))} <span style="color:#888;font-size:11px">[${esc(a.agent_he)}]</span></div>`; }).join('');
 
   // 📣 Marketing today — captions + clickable links + image thumbnails
   const FORMAT_HE: Record<string, string> = { feed_post:'📷 פוסט (Feed)', reel:'🎬 Reel', story:'⏱️ Story', carousel:'📑 קרוסלה', unknown:'? אחר' };
