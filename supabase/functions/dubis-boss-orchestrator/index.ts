@@ -244,6 +244,158 @@ async function autoTicketStuckOrders(sb: SB): Promise<{ ticketsOpened: number; t
 }
 
 // =============================================================
+// B.11 — Auto-hide products whose every (color × size) variant is OOS.
+// Threshold: ≥6 OOS variants for a single product_id_numeric. Sets
+// dubis_products.active=false and records in boss_auto_fixes so we don't
+// hide the same product twice. Per oren 2026-05-23: stop "reporting" OOS,
+// just hide and report what was hidden.
+// =============================================================
+async function tryAutoHideFullyOosProducts(sb: SB): Promise<{
+  hidden: Array<{ id: string; numeric: number | null; slogan: string }>;
+  attempted: boolean;
+  skipped_already_hidden: number;
+}> {
+  if (!await isAutoHealEnabled(sb, 'auto_hide_oos' as 'gelato_stock_retry')) return { hidden: [], attempted: false, skipped_already_hidden: 0 };
+  const { data: oosVariants } = await sb.from('product_variant_stock').select('product_id_numeric, in_stock').eq('in_stock', false);
+  const oosByProd: Record<string, number> = {};
+  for (const v of (oosVariants || [])) {
+    const pid = String((v as Record<string, unknown>).product_id_numeric || '?');
+    oosByProd[pid] = (oosByProd[pid] || 0) + 1;
+  }
+  const fullyOOSNumeric = Object.entries(oosByProd)
+    .filter(([, cnt]) => cnt >= 6)
+    .map(([pid]) => parseInt(pid, 10))
+    .filter(n => Number.isFinite(n));
+  if (fullyOOSNumeric.length === 0) return { hidden: [], attempted: false, skipped_already_hidden: 0 };
+
+  // Only target products currently active=true (don't re-hide what's already hidden).
+  const { data: actives } = await sb.from('dubis_products')
+    .select('id, slogan, product_id_numeric')
+    .eq('active', true)
+    .in('product_id_numeric', fullyOOSNumeric);
+  const candidates = (actives || []) as Array<Record<string, unknown>>;
+  if (candidates.length === 0) return { hidden: [], attempted: true, skipped_already_hidden: 0 };
+
+  const hidden: Array<{ id: string; numeric: number | null; slogan: string }> = [];
+  let skipped = 0;
+  for (const p of candidates) {
+    const pid = String(p.id);
+    // De-dupe — don't hide the same product twice within 7 days even if it bounces back to active.
+    const recent = await hasRecentAutoFix(sb, 'auto_hide_oos', pid, 7 * 24);
+    if (recent.count > 0) { skipped++; continue; }
+    const { error } = await sb.from('dubis_products')
+      .update({ active: false })
+      .eq('id', pid);
+    if (!error) {
+      hidden.push({
+        id: pid,
+        numeric: (p.product_id_numeric as number) || null,
+        slogan: String(p.slogan || `#${p.product_id_numeric || '?'}`),
+      });
+      await recordAutoFix(sb, {
+        action: 'auto_hide_oos',
+        target: pid,
+        succeeded: true,
+        side_effects: { product_id_numeric: p.product_id_numeric, slogan: p.slogan, oos_variants: oosByProd[String(p.product_id_numeric)] },
+      });
+    } else {
+      await recordAutoFix(sb, { action: 'auto_hide_oos', target: pid, succeeded: false, error: error.message });
+    }
+  }
+  return { hidden, attempted: true, skipped_already_hidden: skipped };
+}
+
+// =============================================================
+// B.12 — Auto-retry failed product pipeline rows (oren 2026-05-23).
+// Re-dispatches `boss-approved-product` via GitHub Actions for queue rows
+// in `failed` state that have NOT been retried yet. Capped at 5 per run.
+// Manual-attention list (in fetchPendingApprovals) only shows rows where
+// a retry has already been attempted, so brand-new failures auto-recover
+// before bothering oren.
+// =============================================================
+async function tryAutoRetryFailedPipeline(sb: SB): Promise<{
+  retried: Array<{ queue_id: string; numeric: number | null; dispatched: boolean; error?: string }>;
+  attempted: boolean;
+}> {
+  if (!await isAutoHealEnabled(sb, 'pipeline_auto_retry' as 'gelato_stock_retry')) return { retried: [], attempted: false };
+  const ghToken = Deno.env.get('GH_DISPATCH_TOKEN') ?? '';
+  if (!ghToken) return { retried: [], attempted: false };
+  const ghRepo = Deno.env.get('GH_REPO') ?? 'dubis-brand/dubis-website';
+  // Only consider failures in the last 7 days — older ones probably already got attention.
+  const since = new Date(Date.now() - 7 * 86400000).toISOString();
+  const { data: failed } = await sb.from('product_pipeline_queue')
+    .select('id, product_id, product_id_numeric, last_error, created_at')
+    .eq('status', 'failed')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(20);
+  const candidates = (failed || []) as Array<Record<string, unknown>>;
+  if (candidates.length === 0) return { retried: [], attempted: false };
+
+  const retried: Array<{ queue_id: string; numeric: number | null; dispatched: boolean; error?: string }> = [];
+  let dispatchedCount = 0;
+  for (const row of candidates) {
+    if (dispatchedCount >= 5) break; // cap
+    const queueId = row.id as string;
+    // One auto-retry per queue row, ever — after that, oren handles it manually.
+    const prior = await hasRecentAutoFix(sb, 'pipeline_auto_retry', queueId, 30 * 24);
+    if (prior.count > 0) continue;
+
+    try {
+      const dispatchRes = await fetch(`https://api.github.com/repos/${ghRepo}/dispatches`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${ghToken}`,
+          'Accept': 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          'Content-Type': 'application/json',
+          'User-Agent': 'dubis-boss-retry/1.0',
+        },
+        body: JSON.stringify({
+          event_type: 'boss-approved-product',
+          client_payload: {
+            product_id: row.product_id as string,
+            product_id_numeric: row.product_id_numeric as number,
+            queue_id: queueId,
+          },
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      const ok = dispatchRes.status === 204;
+      if (ok) {
+        dispatchedCount++;
+        await sb.from('product_pipeline_queue').update({
+          status: 'dispatched',
+          dispatched_at: new Date().toISOString(),
+          last_error: null,
+        }).eq('id', queueId);
+      }
+      await recordAutoFix(sb, {
+        action: 'pipeline_auto_retry',
+        target: queueId,
+        succeeded: ok,
+        error: ok ? undefined : `dispatch returned ${dispatchRes.status}`,
+        side_effects: {
+          product_id_numeric: row.product_id_numeric,
+          original_error: (row.last_error as string) || null,
+        },
+      });
+      retried.push({
+        queue_id: queueId,
+        numeric: (row.product_id_numeric as number) || null,
+        dispatched: ok,
+        error: ok ? undefined : `HTTP ${dispatchRes.status}`,
+      });
+    } catch (e) {
+      const msg = (e as Error).message;
+      await recordAutoFix(sb, { action: 'pipeline_auto_retry', target: queueId, succeeded: false, error: msg });
+      retried.push({ queue_id: queueId, numeric: (row.product_id_numeric as number) || null, dispatched: false, error: msg });
+    }
+  }
+  return { retried, attempted: true };
+}
+
+// =============================================================
 // Opinions (v9 — minor refinements for self-healing handoff)
 // =============================================================
 async function opinionContent(sb: SB, igPosts7d: number): Promise<Opinion | null> {
@@ -324,14 +476,27 @@ async function opinionStock(sb: SB, autoHealResult: { healed: boolean; attempted
   const { data: oosVariants } = await sb.from('product_variant_stock').select('product_id_numeric, in_stock').eq('in_stock', false);
   const oosByProd: Record<string, number> = {};
   for (const v of (oosVariants || [])) { const pid = String((v as Record<string, unknown>).product_id_numeric || '?'); oosByProd[pid] = (oosByProd[pid] || 0) + 1; }
-  const fullyOOS = Object.entries(oosByProd).filter(([, cnt]) => cnt >= 6).map(([pid]) => pid);
+  const fullyOOSNumeric = Object.entries(oosByProd)
+    .filter(([, cnt]) => cnt >= 6)
+    .map(([pid]) => parseInt(pid, 10))
+    .filter(n => Number.isFinite(n));
   const lr = await latestRun(sb, 'gelato_stock', 3);
   if (lr?.status === 'failed' && !autoHealResult.healed) {
     // B.7 — failed and self-heal didn't fix it → keep as P0
     return { agent:'gelato_stock', agent_he:'בודק המלאי', observation:`הרצה אחרונה נכשלה: ${extractError(lr.side_effects) || ''}. ${autoHealResult.attempted ? 'auto-heal ניסה ונכשל גם כן.' : 'auto-heal לא הופעל (לא שגיאת auth).'}`, recommendation:'לבדוק Authorization header של gelato-stock-check', priority:'P0', theme:'stock-check-broken' };
   }
-  if (fullyOOS.length > 0) return { agent:'gelato_stock', agent_he:'בודק המלאי', observation:`${fullyOOS.length} מוצרים אזלו לחלוטין: ${fullyOOS.join(', ')}.`, recommendation:'להסתיר מ-catalog או לבקש restock', priority:'P1', theme:'inventory-fully-oos' };
-  return null;
+  if (fullyOOSNumeric.length === 0) return null;
+  // B.11 handoff — only nag about fully-OOS products that are STILL active.
+  // The auto-hider has already hidden the ones it could; what's left is
+  // either already-inactive (no action needed) or hide-failed (oren handles).
+  const { data: stillActive } = await sb.from('dubis_products')
+    .select('product_id_numeric, slogan')
+    .eq('active', true)
+    .in('product_id_numeric', fullyOOSNumeric);
+  const remaining = (stillActive || []) as Array<Record<string, unknown>>;
+  if (remaining.length === 0) return null;
+  const names = remaining.map(p => `#${p.product_id_numeric}`).join(', ');
+  return { agent:'gelato_stock', agent_he:'בודק המלאי', observation:`${remaining.length} מוצרים אזלו לחלוטין ולא הוסתרו אוטומטית: ${names}.`, recommendation:'להסתיר ידנית או לבקש restock', priority:'P1', theme:'inventory-fully-oos' };
 }
 // 2026-05-23 — Canary for the save.js silent-rejection class of bugs.
 // Calls Gelato API to count real (non-draft, non-mockup) orders in the
@@ -438,27 +603,6 @@ async function opinionPlanner(sb: SB): Promise<Opinion | null> {
   return { agent:'planner', agent_he:'מתכנן האסטרטגיה', observation:`שבוע שעבר: ${done}/${total} (${completion}%).`, recommendation:'לסקור P0/P1 הפתוחים', priority:'P1', theme:'planner-execution' };
 }
 
-// 2026-05-26 — strip developer jargon (P0/P1/Phase/dedup/backfill) from any
-// recommendation text before it lands in the email. Applied uniformly to
-// new findings, top actions, and recurring items so stale rows from DB
-// history get cleaned the same way fresh opinions do.
-// Specific patterns (e.g. "לסקור P0/P1 הפתוחים") come BEFORE the per-priority
-// replacements so they match before P0/P1 are individually rewritten.
-function cleanRecommendationText(text: string): string {
-  if (!text) return '';
-  return text
-    .replace(/\(Phase [A-Z] dedup\)/gi, '')
-    .replace(/Phase [A-Z] dedup/gi, 'כפילויות')
-    .replace(/לסקור P[0-9]\/P[0-9] הפתוחים/g, 'לסקור בעיות פתוחות')
-    .replace(/\bP0\b/g, '🔴 דחוף')
-    .replace(/\bP1\b/g, '🟠 חשוב')
-    .replace(/\bP2\b/g, '🟡 כדאי לטפל')
-    .replace(/dedup/gi, 'כפילויות')
-    .replace(/backfill/gi, 'השלמת נתונים')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function synthesize(opinions: Opinion[]) {
   const sorted = [...opinions].sort((a, b) => ({ P0: 0, P1: 1, P2: 2 }[a.priority] - { P0: 0, P1: 1, P2: 2 }[b.priority]));
   const topActions = sorted.slice(0, 5);
@@ -479,6 +623,163 @@ async function checkLastWeek(sb: SB) {
   return { total: list.length, done: list.filter(i => i.status === 'done').length, open: list.filter(i => i.status === 'open').length, details: list.map(i => ({ rec: i.recommendation as string, agent: i.agent_he as string, status: i.status as string })) };
 }
 
+// =============================================================
+// humanizeAgentSummary — turn raw "cloud-run X completed: {json}" into one
+// plain-Hebrew sentence per agent. Oren's directive 2026-05-23: never show
+// raw JSON in the daily report. Each agent gets a templated translation
+// based on the keys it tends to emit. Unknown agents fall back to a stripped
+// summary line with all JSON removed.
+// =============================================================
+function translateErrorPhrase(err: string): string {
+  const e = err.toLowerCase();
+  if (/unauthor|missing auth|authorization|401|403/i.test(e)) return 'בעיית הרשאות';
+  if (/timeout|timed out/i.test(e)) return 'פג זמן';
+  if (/refresh.*token|gmail_refresh/i.test(e)) return 'טוקן Gmail פג';
+  if (/network|enotfound|econnreset|fetch failed/i.test(e)) return 'בעיית רשת';
+  if (/rate.?limit|429/i.test(e)) return 'רייט-לימיט';
+  if (/500|502|503|504/.test(e)) return 'שרת לא זמין';
+  return err.slice(0, 80);
+}
+// 2026-05-26 — strip developer jargon (P0/P1/Phase/dedup/backfill) from any
+// recommendation text before it lands in the email. Applied uniformly to
+// new findings, top actions, and recurring items so stale rows from DB
+// history get cleaned the same way fresh opinions do.
+// Specific patterns (e.g. "לסקור P0/P1 הפתוחים") come BEFORE the per-priority
+// replacements so they match before P0/P1 are individually rewritten.
+function cleanRecommendationText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\(Phase [A-Z] dedup\)/gi, '')
+    .replace(/Phase [A-Z] dedup/gi, 'כפילויות')
+    .replace(/לסקור P[0-9]\/P[0-9] הפתוחים/g, 'לסקור בעיות פתוחות')
+    .replace(/\bP0\b/g, '🔴 דחוף')
+    .replace(/\bP1\b/g, '🟠 חשוב')
+    .replace(/\bP2\b/g, '🟡 כדאי לטפל')
+    .replace(/dedup/gi, 'כפילויות')
+    .replace(/backfill/gi, 'השלמת נתונים')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function humanizeAgentSummary(
+  agentId: string,
+  raw: string | null,
+  sideEffects: Record<string, unknown> | null,
+  hoursAgo: number,
+  isFailed: boolean,
+  errText: string | null,
+  autoHealNote?: string | null,
+): string {
+  // ⚪ never ran — short phrase per oren spec.
+  if (raw === null && !sideEffects) return 'לא הופעל היום';
+  // Strip "cloud-run X status:" prefix and any embedded {...} JSON.
+  let cleaned = String(raw || '').replace(/cloud-run\s+[\w-]+\s+\w+:\s*/i, '').trim();
+  let jsonData: Record<string, unknown> = sideEffects ? { ...sideEffects } : {};
+  const jsonMatch = cleaned.match(/\{[\s\S]+\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      jsonData = { ...jsonData, ...parsed };
+    } catch { /* keep cleaned text fallback */ }
+    cleaned = cleaned.replace(jsonMatch[0], '').trim();
+  }
+  // Failed run gets a different shape: "לא עבד Nד — סיבה: X (status)"
+  if (isFailed) {
+    const days = hoursAgo >= 24 ? Math.round(hoursAgo / 24) : null;
+    const ago = days ? `${days} ימים` : `${Math.round(hoursAgo)} שעות`;
+    const reason = translateErrorPhrase(errText || cleaned || 'unknown');
+    const suffix = autoHealNote ? ` (${autoHealNote})` : '';
+    return `לא עבד מ-${ago} — סיבה: ${reason}${suffix}`;
+  }
+  // Successful run — per-agent template.
+  const n = (k: string) => num(jsonData[k]);
+  switch (agentId) {
+    case 'boss': {
+      const newIssues = n('opinion_count');
+      const pending = n('pending_count');
+      const fixed = n('auto_fix_count');
+      const parts = ['סרק הכל'];
+      parts.push(newIssues === 0 ? 'לא מצא בעיות חדשות' : `מצא ${newIssues} בע${newIssues === 1 ? 'יה' : 'יות'} חדש${newIssues === 1 ? 'ה' : 'ות'}`);
+      if (pending > 0) parts.push(`${pending} מחכים לאישורך`);
+      if (fixed > 0) parts.push(`${fixed} תוקנו אוטומטית`);
+      return parts.join(' · ');
+    }
+    case 'content': {
+      const published = n('published') || n('publishedCount');
+      const queued = n('queued');
+      const backfilled = n('backfilled') || n('updated');
+      if (published > 0) return `פרסם ${published} פוסט${published === 1 ? '' : 'ים'} (IG+FB)`;
+      if (queued > 0) return `יצר ${queued} משימות תוכן חדשות`;
+      if (backfilled > 0) return `עדכן קישורים ל-${backfilled} פוסטים מה-72 שעות האחרונות`;
+      return cleaned.split(/\n|\.\s/)[0]?.slice(0, 120) || 'רץ — אין שינוי';
+    }
+    case 'tiktok': {
+      const caption = String(jsonData.caption || jsonData.script || '').replace(/\s+/g, ' ').slice(0, 60);
+      const slug = String(jsonData.product_slug || jsonData.product_uid || '');
+      const tag = [slug, caption].filter(Boolean).join(', ');
+      return tag ? `פרסם סרטון לטיק טוק (${tag})` : 'פרסם סרטון לטיק טוק';
+    }
+    case 'gelato_stock': {
+      const checked = n('checked');
+      const tr = jsonData.transitions as Record<string, unknown> | undefined;
+      const toOos = tr ? num(tr.to_oos) : 0;
+      const back = tr ? num(tr.back_in_stock) : 0;
+      if (checked > 0) {
+        const parts = [`בדק ${checked} variants`];
+        if (toOos > 0) parts.push(`${toOos} עברו ל-OOS`);
+        if (back > 0) parts.push(`${back} חזרו למלאי`);
+        return parts.join(' · ');
+      }
+      return cleaned.split(/\n|\.\s/)[0]?.slice(0, 120) || 'בדק מלאי — אין שינוי';
+    }
+    case 'site_audit': {
+      const checks = jsonData.checks as Array<{ ok?: boolean }> | undefined;
+      if (Array.isArray(checks)) {
+        const broken = checks.filter(c => c && c.ok === false).length;
+        return broken > 0
+          ? `בדק ${checks.length} URLs · 🔴 ${broken} שבורים`
+          : `בדק ${checks.length} URLs · הכל תקין ✅`;
+      }
+      return cleaned.split(/\n|\.\s/)[0]?.slice(0, 120) || 'בדק את האתר';
+    }
+    case 'email_monitor': {
+      const processed = n('processed') || n('found') || n('messages');
+      return processed > 0 ? `סרק מיילים — ${processed} חדשים` : 'סרק מיילים — אין חדשים';
+    }
+    case 'security': {
+      const issues = n('issues_count') || n('issues');
+      return issues > 0 ? `סקירת אבטחה — ${issues} ממצאים` : 'סקירת אבטחה — נקי ✅';
+    }
+    case 'product': {
+      const created = n('created') || n('queued');
+      const slogans = n('slogans');
+      if (created > 0) return `יצר ${created} משימות מוצר חדשות`;
+      if (slogans > 0) return `${slogans} סלוגנים חדשים מומלצים`;
+      return cleaned.split(/\n|\.\s/)[0]?.slice(0, 120) || 'רץ — אין מוצרים חדשים';
+    }
+    case 'marketing': {
+      const spend = n('spend');
+      const clicks = n('clicks');
+      if (spend > 0) return `סקירת קמפיין — הוצאה $${spend.toFixed(0)} · ${clicks} קליקים`;
+      return cleaned.split(/\n|\.\s/)[0]?.slice(0, 120) || 'בדק את הקמפיין';
+    }
+    case 'supply': {
+      const synced = n('synced') || n('updated');
+      return synced > 0 ? `סינכרון Gelato — ${synced} הזמנות עודכנו` : 'סינכרון Gelato — אין שינויים';
+    }
+    case 'design': {
+      const created = n('created') || n('queued');
+      return created > 0 ? `יצר ${created} ויזואלים חדשים` : (cleaned.split(/\n|\.\s/)[0]?.slice(0, 120) || 'רץ — אין שינוי');
+    }
+    case 'cto':
+    case 'planner':
+    case 'video':
+    default: {
+      const first = cleaned.split(/\n|\.\s/)[0]?.trim() || '';
+      return first.slice(0, 120) || 'רץ ללא שינוי';
+    }
+  }
+}
+
 const AGENT_HE_TO_ID: Record<string, string> = {
   'יוצר התוכן':'content', 'מנהל השיווק':'marketing', 'מנהל המוצרים':'product', 'מנהל ההזמנות':'supply',
   'מעצב הוויזואל':'design', 'בודק האתר':'site_audit', 'סורק המייל':'email_monitor', 'בודק המלאי':'gelato_stock',
@@ -492,7 +793,7 @@ AGENT_ID_TO_HE['tiktok'] = 'TikTok';
 async function fetchAgentHealth(sb: SB) {
   const since = new Date(Date.now() - 30*86400000).toISOString();
   const { data } = await sb.from('agent_runs').select('agent_id, status, created_at, summary, side_effects').gte('created_at', since).order('created_at', { ascending: false }).limit(800);
-  const map: Record<string, { last_run: string | null; status: string | null; summary: string | null; error: string | null; runs_24h: number; done_24h: number }> = {};
+  const map: Record<string, { last_run: string | null; status: string | null; summary: string | null; side_effects: Record<string, unknown> | null; error: string | null; runs_24h: number; done_24h: number }> = {};
   const cutoff24h = Date.now() - 24*3600000;
   for (const r of (data || [])) {
     const row = r as Record<string, unknown>;
@@ -502,6 +803,7 @@ async function fetchAgentHealth(sb: SB) {
         last_run: row.created_at as string,
         status: row.status as string,
         summary: (row.summary as string) || null,
+        side_effects: (row.side_effects as Record<string, unknown>) || null,
         error: row.status === 'failed' ? (extractError(row.side_effects) || (row.summary as string) || null) : null,
         runs_24h: 0, done_24h: 0,
       };
@@ -519,6 +821,221 @@ async function fetchDailySnapshots(sb: SB) {
   const { data } = await sb.from('daily_snapshots').select('snapshot_date, revenue_usd, orders_today').order('snapshot_date', { ascending: false }).limit(14);
   return ((data || []).map(s => ({ snapshot_date: (s as Record<string, unknown>).snapshot_date as string, revenue_usd: num((s as Record<string, unknown>).revenue_usd), orders_today: num((s as Record<string, unknown>).orders_today) }))).reverse();
 }
+
+// =============================================================
+// $1,000 Plan tracker — added 2026-05-27.
+// Reads plan_milestones (plan_id = road_to_1000_2026-04-28) and produces
+// a daily snapshot: KPI rows with color coding, oren-blocked items,
+// current phase, completion %. All best-effort: any failure returns null
+// and the boss email omits the section silently.
+// =============================================================
+const PLAN_ID = 'road_to_1000_2026-04-28';
+const W7_TARGET_DATE = '2026-06-15';
+
+interface PlanKpi { title: string; current: string; target: string; color: 'green' | 'yellow' | 'red'; icon: string; }
+interface PlanBlocked { title: string; oren_action: string; days_late: number; }
+interface PlanStatus {
+  total_actionable: number;
+  done_count: number;
+  in_progress_count: number;
+  current_phase: number;
+  phase_name: string;
+  completion_pct: number;
+  days_to_w7: number;
+  blocked_on_oren: PlanBlocked[];
+  kpis: PlanKpi[];
+}
+
+function parseKpiNumber(s: string): number | null {
+  if (!s) return null;
+  const m = String(s).match(/-?\$?[\d,]+\.?\d*/);
+  if (!m) return null;
+  const n = Number(m[0].replace(/[$,]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+function classifyKpi(title: string, currentStr: string): { color: 'green' | 'yellow' | 'red'; icon: string } {
+  const cur = parseKpiNumber(currentStr);
+  const lt = title.toLowerCase();
+  let color: 'green' | 'yellow' | 'red' = 'yellow';
+  if (cur === null) {
+    color = 'yellow';
+  } else if (/pageview|page view|visit|כניס|תנוע/i.test(lt)) {
+    color = cur > 250 ? 'green' : cur >= 150 ? 'yellow' : 'red';
+  } else if (/sales|מכיר|order|הזמנ/i.test(lt)) {
+    color = cur >= 1 ? 'green' : 'red';
+  } else if (/subscri|מייל|מנוי|email|newsletter/i.test(lt)) {
+    color = cur > 40 ? 'green' : cur >= 20 ? 'yellow' : 'red';
+  } else if (/profit|רווח|net/i.test(lt)) {
+    color = cur > 0 ? 'green' : 'red';
+  }
+  const icon = color === 'green' ? '🟢' : color === 'yellow' ? '🟡' : '🔴';
+  return { color, icon };
+}
+
+async function syncPlanKpisFromSnapshot(sb: SB): Promise<{ updated: number; errors: string[] }> {
+  const out = { updated: 0, errors: [] as string[] };
+  try {
+    const { data: snap } = await sb.from('daily_snapshots')
+      .select('snapshot_date, page_views_today, subscribers_total, orders_today, revenue_usd, campaigns_spend_total')
+      .order('snapshot_date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!snap) { out.errors.push('no daily snapshot'); return out; }
+    const s = snap as Record<string, unknown>;
+    const pageViewsWeekly = Math.round(num(s.page_views_today) * 7);
+    const subs = Math.round(num(s.subscribers_total));
+    const ordersWeekly = Math.round(num(s.orders_today));
+    const adSpend = num(s.campaigns_spend_total);
+    const profit = Math.round(num(s.revenue_usd) - adSpend);
+    const profitStr = profit >= 0 ? `$${profit}` : `-$${Math.abs(profit)}`;
+
+    const { data: kpiRows } = await sb.from('plan_milestones')
+      .select('id, title')
+      .eq('plan_id', PLAN_ID)
+      .eq('is_kpi', true);
+    for (const r of (kpiRows || [])) {
+      const row = r as Record<string, unknown>;
+      const title = String(row.title || '').toLowerCase();
+      let newVal: string | null = null;
+      if (/pageview|page view|visit|כניס|תנוע/i.test(title)) newVal = String(pageViewsWeekly);
+      else if (/sales|מכיר|order|הזמנ/i.test(title)) newVal = String(ordersWeekly);
+      else if (/subscri|מייל|מנוי|email|newsletter/i.test(title)) newVal = String(subs);
+      else if (/profit|רווח|net/i.test(title)) newVal = profitStr;
+      if (newVal !== null) {
+        const { error } = await sb.from('plan_milestones')
+          .update({ kpi_current: newVal })
+          .eq('id', row.id as string);
+        if (error) out.errors.push(`${row.id}: ${error.message}`);
+        else out.updated++;
+      }
+    }
+  } catch (e) {
+    out.errors.push((e as Error).message);
+  }
+  return out;
+}
+
+async function fetchPlanStatus(sb: SB): Promise<PlanStatus | null> {
+  try {
+    const { data } = await sb.from('plan_milestones')
+      .select('id, phase, phase_name, title, status, due_date, is_kpi, kpi_current, kpi_target, oren_action')
+      .eq('plan_id', PLAN_ID)
+      .order('phase', { ascending: true });
+    if (!data || data.length === 0) return null;
+    const ml = data as Array<Record<string, unknown>>;
+
+    let currentPhase = 1;
+    let phaseName = '';
+    for (const p of [1, 2, 3, 4]) {
+      const phaseItems = ml.filter(m => m.phase === p && !m.is_kpi);
+      if (phaseItems.length === 0) continue;
+      const allDone = phaseItems.every(m => m.status === 'done');
+      phaseName = String((phaseItems[0] as Record<string, unknown>).phase_name || '');
+      if (!allDone) { currentPhase = p; break; }
+      currentPhase = p;
+    }
+
+    const actionable = ml.filter(m => !m.is_kpi);
+    const total = actionable.length;
+    const done = actionable.filter(m => m.status === 'done').length;
+    const inProgress = actionable.filter(m => m.status === 'in_progress').length;
+
+    const blocked: PlanBlocked[] = ml
+      .filter(m => m.status === 'blocked_on_oren')
+      .map(m => {
+        const dueStr = m.due_date ? String(m.due_date) : '';
+        const daysLate = dueStr ? Math.max(0, Math.floor((Date.now() - new Date(dueStr).getTime()) / 86400000)) : 0;
+        return {
+          title: String(m.title || ''),
+          oren_action: String(m.oren_action || ''),
+          days_late: daysLate,
+        };
+      });
+
+    const kpis: PlanKpi[] = ml.filter(m => m.is_kpi).map(k => {
+      const title = String(k.title || '').replace(/\s*\(W7 target\).*$/i, '').trim();
+      const current = String(k.kpi_current ?? '?');
+      const target = String(k.kpi_target ?? '?');
+      const cls = classifyKpi(title, current);
+      return { title, current, target, color: cls.color, icon: cls.icon };
+    });
+
+    const w7Ms = new Date(`${W7_TARGET_DATE}T00:00:00Z`).getTime();
+    const daysToW7 = Math.max(0, Math.ceil((w7Ms - Date.now()) / 86400000));
+    const completion = total > 0 ? Math.round((done / total) * 100) : 0;
+
+    return {
+      total_actionable: total,
+      done_count: done,
+      in_progress_count: inProgress,
+      current_phase: currentPhase,
+      phase_name: phaseName,
+      completion_pct: completion,
+      days_to_w7: daysToW7,
+      blocked_on_oren: blocked,
+      kpis,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+function buildPlanSectionHtml(p: PlanStatus): string {
+  const KPI_COLOR: Record<string, string> = { green: '#27ae60', yellow: '#e67e22', red: '#c0392b' };
+  const phaseLabel = p.phase_name ? `${p.phase_name}` : '';
+  const kpiRows = p.kpis.length === 0
+    ? '<tr><td dir="rtl" style="padding:8px;color:#888;font-size:12px">אין מדדי הצלחה מוגדרים בתוכנית</td></tr>'
+    : p.kpis.map(k => `<tr style="border-bottom:1px solid #f0ebe0">
+        <td dir="rtl" style="padding:8px 10px;text-align:right;font-size:12.5px;color:#2c2c2c;vertical-align:middle">${k.icon} ${esc(k.title)}</td>
+        <td dir="rtl" style="padding:8px 10px;text-align:right;font-size:12.5px;color:${KPI_COLOR[k.color]};font-weight:700;vertical-align:middle;direction:rtl">${esc(k.current)} <span style="color:#999;font-weight:400">מתוך</span> <span style="color:#c8a96e">${esc(k.target)}</span></td>
+      </tr>`).join('');
+
+  const blockedHtml = p.blocked_on_oren.length === 0
+    ? '<p dir="rtl" style="color:#27ae60;font-size:12.5px;margin:0">✅ אין פריטים שמחכים לך — אפשר להמשיך הלאה</p>'
+    : p.blocked_on_oren.map(b => {
+        const lateBadge = b.days_late > 0
+          ? ` <span style="background:#c0392b;color:#fff;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;margin-right:4px">חוסם ${b.days_late} ימים</span>`
+          : '';
+        const actionHtml = b.oren_action
+          ? `<div dir="rtl" style="margin-top:6px;padding:8px 10px;background:#f0fbf4;border-radius:4px;color:#1e6e3a;font-size:11.5px;line-height:1.55"><b>פעולה דרושה ממך:</b> ${esc(b.oren_action)}</div>`
+          : '';
+        return `<div dir="rtl" style="padding:10px 12px;background:#fff5f5;border-right:3px solid #c0392b;margin:6px 0;border-radius:4px;text-align:right">
+          <div style="font-size:13px;color:#2c2c2c;font-weight:600">🚧 ${esc(b.title)}${lateBadge}</div>
+          ${actionHtml}
+        </div>`;
+      }).join('');
+
+  const daysColor = p.days_to_w7 <= 7 ? '#c0392b' : p.days_to_w7 <= 21 ? '#e67e22' : '#c8a96e';
+  const pctBarColor = p.completion_pct >= 60 ? '#27ae60' : p.completion_pct >= 30 ? '#e67e22' : '#c0392b';
+
+  return `<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right">
+    <h2 dir="rtl" style="margin:0 0 4px;font-size:17px;direction:rtl;text-align:right">📊 תוכנית $1,000 — מצב היום</h2>
+    <p dir="rtl" style="margin:0 0 16px;color:#666;font-size:12.5px">
+      ⏰ נותרו <b style="color:${daysColor}">${p.days_to_w7} ימים</b> ליעד שבוע 7 (15 ביוני)
+      <span style="color:#ccc"> · </span>
+      פאזה נוכחית: <b style="color:#c8a96e">${p.current_phase}${phaseLabel ? ' — ' + esc(phaseLabel) : ''}</b>
+    </p>
+
+    <div dir="rtl" style="margin:0 0 14px">
+      <div dir="rtl" style="font-size:13px;color:#444;font-weight:700;margin:0 0 8px">מדדי הצלחה (בפועל מול יעד W7):</div>
+      <table dir="rtl" width="100%" cellspacing="0" cellpadding="0" style="background:#fafafa;border-radius:6px;border-collapse:collapse">${kpiRows}</table>
+    </div>
+
+    <div dir="rtl" style="margin:0 0 14px">
+      <div dir="rtl" style="font-size:13px;color:#444;font-weight:700;margin:0 0 8px">🚨 מחכה לך (אורן):</div>
+      ${blockedHtml}
+    </div>
+
+    <div dir="rtl" style="margin:0;padding:10px 14px;background:#f8f6f0;border-radius:6px;direction:rtl;text-align:right">
+      <div dir="rtl" style="font-size:12.5px;color:#444;margin:0 0 6px">📈 התקדמות: <b>${p.done_count}/${p.total_actionable}</b> שלבים הושלמו${p.in_progress_count > 0 ? ` <span style="color:#888">· ${p.in_progress_count} בעבודה</span>` : ''} <span style="color:${pctBarColor};font-weight:700">(${p.completion_pct}%)</span></div>
+      <div dir="rtl" style="background:#f0ebe0;border-radius:3px;height:8px;overflow:hidden;width:100%">
+        <div style="background:${pctBarColor};height:100%;width:${Math.max(2, p.completion_pct)}%"></div>
+      </div>
+    </div>
+  </td></tr><tr><td style="height:14px"></td></tr>`;
+}
+
 
 // =============================================================
 // A.5 — Recurring issues: same recommendation 3+ days running
@@ -560,7 +1077,7 @@ async function fetchMarketingToday(sb: SB): Promise<{
   total: number;
   byFormat: Record<string, number>;
   items: Array<{ format: string; caption: string; ig: string | null; fb: string | null; product_id: string | null; product_url: string | null; image: string | null; created_at: string }>;
-  tiktok: { runs: number; latest: string | null; items: Array<{ caption: string; url: string | null; product_url: string | null; created_at: string }> };
+  tiktok: { runs: number; latest: string | null; items: Array<{ caption: string; url: string | null; product_url: string | null; late_id: string | null; product_slug: string | null; created_at: string }> };
 }> {
   const since = new Date(Date.now() - 24*3600000).toISOString();
   const { data: tasks } = await sb.from('agent_tasks')
@@ -605,10 +1122,23 @@ async function fetchMarketingToday(sb: SB): Promise<{
   const tiktokItems = (ttRuns || []).map(r => {
     const row = r as Record<string, unknown>;
     const se = (row.side_effects as Record<string, unknown>) || {};
+    // Use ONLY caption/script fields — never row.summary (often raw JSON).
+    let rawCaption = String(se.caption || se.script || '').trim();
+    // If still empty, last-resort try summary BUT only the first non-JSON line.
+    if (!rawCaption) {
+      const sumStr = String(row.summary || '').trim();
+      // Strip leading "cloud-run ...:" prefix and any {...} JSON blob.
+      const cleaned = sumStr.replace(/cloud-run\s+[\w-]+\s+\w+:\s*/i, '').replace(/\{[\s\S]+\}/g, '').trim();
+      rawCaption = cleaned.split(/\n|\.\s/)[0] || '';
+    }
+    const lateId = (se.late_post_id as string) || (se.late_id as string) || (se.id as string) || null;
+    const productSlug = (se.product_slug as string) || (se.product_uid as string) || null;
     return {
-      caption: String(se.caption || se.script || row.summary || '').slice(0, 240),
+      caption: rawCaption.slice(0, 240),
       url: (se.tiktok_url as string) || (se.permalink as string) || null,
       product_url: (se.product_url as string) || null,
+      late_id: lateId ? String(lateId).slice(0, 16) : null,
+      product_slug: productSlug,
       created_at: row.created_at as string,
     };
   });
@@ -621,52 +1151,94 @@ async function fetchMarketingToday(sb: SB): Promise<{
 // "בכל הזמנה אמיתית חדשה כל יום יהיה מעקב על תהליך ההזמנה ויגיע אלי במייל"
 // One row per active real order, what changed in last 24h, status + days.
 // =============================================================
+// Highlighted-order tracking — Hila's order (manual ask 2026-05-23). Always
+// surfaced separately even if older than the 30-day window. Add more rows here
+// when oren wants another order in the spotlight.
+const HIGHLIGHTED_ORDERS: Array<{ name_he: string; email?: string; gelato_prefix?: string }> = [
+  { name_he: 'הילה טהרלב', email: 'hilateharlev@gmail.com', gelato_prefix: '0cf6a5f1' },
+];
+
+interface TrackedOrderRow {
+  id: string;
+  buyer_email: string;
+  created_at: string;
+  updated_at: string;
+  days_in_status: number;
+  age_days: number;
+  status: string;
+  total_amount: number;
+  tracking_number: string | null;
+  tracking_url: string | null;
+  gelato_ref: string | null;
+  handled_offline: boolean;
+  changed_in_24h: boolean;
+  highlight_name: string | null; // e.g. "הילה טהרלב" if matches HIGHLIGHTED_ORDERS
+}
+
+function mapOrderRow(o: Record<string, unknown>): TrackedOrderRow {
+  const ageMs = Date.now() - new Date(o.created_at as string).getTime();
+  const updatedMs = Date.now() - new Date((o.updated_at || o.created_at) as string).getTime();
+  const email = ((o.buyer_email as string) || '').toLowerCase();
+  const gelatoRef = (o.printful_order_id as string) || '';
+  const highlight = HIGHLIGHTED_ORDERS.find(h =>
+    (h.email && email === h.email.toLowerCase()) ||
+    (h.gelato_prefix && gelatoRef.toLowerCase().startsWith(h.gelato_prefix.toLowerCase()))
+  );
+  return {
+    id: o.id as string,
+    buyer_email: (o.buyer_email as string) || '?',
+    created_at: o.created_at as string,
+    updated_at: (o.updated_at as string) || (o.created_at as string),
+    days_in_status: Math.floor(updatedMs / 86400000),
+    age_days: Math.floor(ageMs / 86400000),
+    status: (o.status as string) || 'unknown',
+    total_amount: num(o.total_amount),
+    tracking_number: (o.tracking_number as string) || null,
+    tracking_url: (o.tracking_url as string) || null,
+    gelato_ref: gelatoRef || null,
+    handled_offline: typeof o.gelato_ticket_id === 'string' && (o.gelato_ticket_id as string).startsWith('OREN-HANDLED-OFFLINE'),
+    changed_in_24h: updatedMs < 24*3600000 && updatedMs < ageMs - 3600000,
+    highlight_name: highlight?.name_he || null,
+  };
+}
+
 async function fetchActiveOrdersTracking(sb: SB): Promise<{
   total: number;
-  rows: Array<{
-    id: string;
-    buyer_email: string;
-    created_at: string;
-    updated_at: string;
-    days_in_status: number;
-    age_days: number;
-    status: string;
-    total_amount: number;
-    tracking_number: string | null;
-    tracking_url: string | null;
-    gelato_ref: string | null;
-    handled_offline: boolean;
-    changed_in_24h: boolean;
-  }>;
+  highlighted: TrackedOrderRow[];
+  rows: TrackedOrderRow[]; // last-30-day rows excluding highlighted
 }> {
-  const since = new Date(Date.now() - 90*86400000).toISOString();
+  // 30-day window for normal tracking (was 90d, oren 2026-05-23: cluttered).
+  const since = new Date(Date.now() - 30*86400000).toISOString();
   const { data: orders } = await sb.from('orders')
     .select('id, buyer_email, created_at, updated_at, status, total_amount, tracking_number, tracking_url, printful_order_id, gelato_ticket_id, shipped_at')
     .eq('is_test', false)
     .not('status', 'in', '(cancelled,refunded)')
     .gte('created_at', since)
     .order('created_at', { ascending: true });
-  const rows = (orders || []).map(o => {
-    const row = o as Record<string, unknown>;
-    const ageMs = Date.now() - new Date(row.created_at as string).getTime();
-    const updatedMs = Date.now() - new Date((row.updated_at || row.created_at) as string).getTime();
-    return {
-      id: row.id as string,
-      buyer_email: (row.buyer_email as string) || '?',
-      created_at: row.created_at as string,
-      updated_at: (row.updated_at as string) || (row.created_at as string),
-      days_in_status: Math.floor(updatedMs / 86400000),
-      age_days: Math.floor(ageMs / 86400000),
-      status: (row.status as string) || 'unknown',
-      total_amount: num(row.total_amount),
-      tracking_number: (row.tracking_number as string) || null,
-      tracking_url: (row.tracking_url as string) || null,
-      gelato_ref: (row.printful_order_id as string) || null,
-      handled_offline: typeof row.gelato_ticket_id === 'string' && (row.gelato_ticket_id as string).startsWith('OREN-HANDLED-OFFLINE'),
-      changed_in_24h: updatedMs < 24*3600000 && updatedMs < ageMs - 3600000, // updated AFTER create AND in last 24h
-    };
-  });
-  return { total: rows.length, rows };
+  const windowRows = (orders || []).map(o => mapOrderRow(o as Record<string, unknown>));
+
+  // Pull highlighted orders separately so they survive even if older than 30 days.
+  const highlightFilters: string[] = [];
+  for (const h of HIGHLIGHTED_ORDERS) {
+    if (h.email) highlightFilters.push(`buyer_email.eq.${h.email}`);
+    if (h.gelato_prefix) highlightFilters.push(`printful_order_id.ilike.${h.gelato_prefix}%`);
+  }
+  const highlightedRows: TrackedOrderRow[] = [];
+  if (highlightFilters.length > 0) {
+    const { data: hOrders } = await sb.from('orders')
+      .select('id, buyer_email, created_at, updated_at, status, total_amount, tracking_number, tracking_url, printful_order_id, gelato_ticket_id, shipped_at')
+      .eq('is_test', false)
+      .or(highlightFilters.join(','))
+      .order('created_at', { ascending: false });
+    for (const o of (hOrders || [])) {
+      const mapped = mapOrderRow(o as Record<string, unknown>);
+      if (mapped.highlight_name) highlightedRows.push(mapped);
+    }
+  }
+  // Dedupe: drop highlighted IDs from the main window list to avoid double display.
+  const highlightIds = new Set(highlightedRows.map(r => r.id));
+  const rows = windowRows.filter(r => !highlightIds.has(r.id));
+  return { total: rows.length + highlightedRows.length, highlighted: highlightedRows, rows };
 }
 
 // =============================================================
@@ -692,10 +1264,24 @@ async function fetchPendingApprovals(sb: SB): Promise<{
     .eq('status', 'failed')
     .gte('created_at', new Date(Date.now() - 14*86400000).toISOString())
     .order('created_at', { ascending: false }).limit(10);
-  const pipelineFailed = (failedPipeline || []).map(r => {
-    const row = r as Record<string, unknown>;
-    return { id: row.id as string, pid: (row.product_id_numeric as number) || null, error: (row.last_error as string) || 'unknown', age_days: Math.floor(hoursSince(row.created_at as string) / 24) };
-  });
+  // B.12 — only list pipeline failures that we've ALREADY retried at least once.
+  // Brand-new failures (no retry yet) get retried automatically by tryAutoRetryFailedPipeline
+  // and either flip to 'dispatched' (gone) or come back here next run as already-retried.
+  const failedIds = (failedPipeline || []).map(r => (r as Record<string, unknown>).id as string);
+  let retriedFailedIds = new Set<string>();
+  if (failedIds.length > 0) {
+    const { data: retryFixes } = await sb.from('boss_auto_fixes')
+      .select('target_ref')
+      .eq('action_type', 'pipeline_auto_retry')
+      .in('target_ref', failedIds);
+    retriedFailedIds = new Set((retryFixes || []).map(r => (r as Record<string, unknown>).target_ref as string));
+  }
+  const pipelineFailed = (failedPipeline || [])
+    .filter(r => retriedFailedIds.has((r as Record<string, unknown>).id as string))
+    .map(r => {
+      const row = r as Record<string, unknown>;
+      return { id: row.id as string, pid: (row.product_id_numeric as number) || null, error: (row.last_error as string) || 'unknown', age_days: Math.floor(hoursSince(row.created_at as string) / 24) };
+    });
   const { data: dispatchedPipeline } = await sb.from('product_pipeline_queue')
     .select('id, product_id_numeric, dispatched_at')
     .eq('status', 'dispatched')
@@ -827,13 +1413,32 @@ Deno.serve(async (req: Request) => {
   const cur = (metaData.currency as string) || 'ILS';
   const sym = cur === 'ILS' ? '₪' : '$';
 
-  // ---- B.7 + B.9: Self-healing — runs BEFORE opinions so they reflect fixes ----
+  // ---- B.7 + B.9 + B.11 + B.12: Self-healing — runs BEFORE opinions so they reflect fixes ----
   const gelatoStockHeal = await tryAutoHealGelatoStock(sb);
   const ticketing = await autoTicketStuckOrders(sb);
+  const oosHide = await tryAutoHideFullyOosProducts(sb);          // B.11
+  const pipelineRetry = await tryAutoRetryFailedPipeline(sb);     // B.12
   const autoFixes: AutoFix[] = [];
   if (gelatoStockHeal.attempted) autoFixes.push({ action: 'gelato_stock_retry', succeeded: gelatoStockHeal.healed, note: gelatoStockHeal.summary || gelatoStockHeal.error });
   for (const tid of ticketing.ticketIds) autoFixes.push({ action: 'gelato_auto_ticket', succeeded: true, target: tid });
   for (const err of ticketing.errors) autoFixes.push({ action: 'gelato_auto_ticket', succeeded: false, error: err });
+  if (oosHide.hidden.length > 0) {
+    const names = oosHide.hidden.map(h => `#${h.numeric ?? '?'} "${h.slogan}"`).join(', ');
+    autoFixes.push({
+      action: 'auto_hide_oos',
+      succeeded: true,
+      note: `${oosHide.hidden.length} מוצרים אזלו — הסתרנו אוטומטית מהקטלוג: ${names}`,
+    });
+  }
+  for (const r of pipelineRetry.retried) {
+    autoFixes.push({
+      action: 'pipeline_auto_retry',
+      succeeded: r.dispatched,
+      target: `pipeline #${r.numeric ?? '?'}`,
+      note: r.dispatched ? 'הצינור הופעל מחדש אוטומטית' : undefined,
+      error: r.dispatched ? undefined : r.error,
+    });
+  }
 
   // ---- Opinions ----
   const rawOps = await Promise.all([
@@ -902,12 +1507,17 @@ Deno.serve(async (req: Request) => {
   }
 
   // ---- New v9 fetches + v10 B.10 per-order tracking ----
-  const [marketingToday, pending, agentHealth, dailySnaps, orderTracking] = await Promise.all([
+  // Sync KPI values from latest daily snapshot BEFORE reading the plan,
+  // so the fetched kpi_current reflects today's numbers. Best-effort —
+  // if either step fails we still build the rest of the report.
+  const planKpiSync = await syncPlanKpisFromSnapshot(sb).catch(() => ({ updated: 0, errors: ['sync-threw'] }));
+  const [marketingToday, pending, agentHealth, dailySnaps, orderTracking, planStatus] = await Promise.all([
     fetchMarketingToday(sb),
     fetchPendingApprovals(sb),
     fetchAgentHealth(sb),
     fetchDailySnapshots(sb),
     fetchActiveOrdersTracking(sb),
+    fetchPlanStatus(sb).catch(() => null),
   ]);
 
   let action_items_json: Opinion[] = synth.topActions.slice(0, isWeekly ? 5 : 3);
@@ -969,22 +1579,37 @@ Deno.serve(async (req: Request) => {
         </div>`).join('')}
       </td></tr><tr><td style="height:14px"></td></tr>`;
 
+  // Priority → friendly Hebrew label (oren 2026-05-23: no P0/P1/P2 anywhere).
+  const PRIORITY_HE: Record<string, { label: string; color: string }> = {
+    'P0': { label: '🔴 דחוף', color: '#c0392b' },
+    'P1': { label: '🟠 בעיה חשובה', color: '#e67e22' },
+    'P2': { label: '🟡 כדאי לטפל', color: '#888' },
+  };
+
   // 🔁 Recurring issues card
   const recurringHtml = recurring.length === 0
     ? ''
     : `<tr><td dir="rtl" style="background:#fff5f5;border-radius:12px;padding:14px 20px;direction:rtl;text-align:right;border:1px solid #ffcfcf">
         <h3 dir="rtl" style="margin:0 0 8px;color:#c0392b;font-size:15px;direction:rtl;text-align:right">🔁 חוזר על עצמו (3+ ימים)</h3>
-        <p dir="rtl" style="margin:0 0 10px;color:#666;font-size:12px">הבעיות הבאות מופיעות בדוח שלושה ימים ומעלה — דורש החלטה אסטרטגית.</p>
-        ${recurring.map(r => `<div dir="rtl" style="padding:8px 12px;background:#fff;margin:4px 0;border-radius:4px;text-align:right;font-size:13px;border-right:3px solid #c0392b">
-          <b style="color:#c0392b">${esc(r.priority)}</b> <span style="color:#888;font-size:11px">[${esc(r.agent_he)}]</span> <span style="background:#c0392b;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-right:6px">${r.days} ימים</span><br>
-          ${esc(cleanRecommendationText(r.rec))}
-        </div>`).join('')}
+        <p dir="rtl" style="margin:0 0 10px;color:#666;font-size:12px">הבעיות הבאות מופיעות בדוח שלושה ימים ומעלה — דורש החלטה.</p>
+        ${recurring.map(r => {
+          const p = PRIORITY_HE[r.priority] || { label: r.priority, color: '#888' };
+          return `<div dir="rtl" style="padding:8px 12px;background:#fff;margin:4px 0;border-radius:4px;text-align:right;font-size:13px;border-right:3px solid ${p.color}">
+            <b style="color:${p.color}">${p.label}:</b> ${esc(cleanRecommendationText(r.rec))}
+            <span style="background:${p.color};color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-right:6px">${r.days} ימים</span>
+          </div>`;
+        }).join('')}
       </td></tr><tr><td style="height:14px"></td></tr>`;
 
   const issuesHtml = opinions.length === 0
-    ? '<p dir="rtl" style="color:#27ae60;font-size:13px;margin:0">✅ אין תצפיות חדשות (לא חוזרות).</p>'
-    : opinions.map(o => { const c = o.priority === 'P0' ? '#c0392b' : o.priority === 'P1' ? '#e67e22' : '#888';
-        return `<div dir="rtl" style="padding:10px 14px;border-right:4px solid ${c};background:#fafafa;margin:6px 0;border-radius:4px;direction:rtl;text-align:right"><span style="color:${c};font-weight:700;font-size:11px">${o.priority}</span> <span style="color:#888;font-size:11px;margin-right:6px">[${esc(o.agent_he)}]</span><br><span style="font-size:13px;color:#2c2c2c"><b>המלצה:</b> ${esc(cleanRecommendationText(o.recommendation))}</span><br><span style="font-size:11px;color:#888;font-style:italic">תצפית: ${esc(o.observation)}</span></div>`; }).join('');
+    ? '<p dir="rtl" style="color:#27ae60;font-size:13px;margin:0">✅ אין בעיות חדשות.</p>'
+    : opinions.map(o => {
+        const p = PRIORITY_HE[o.priority] || { label: o.priority, color: '#888' };
+        return `<div dir="rtl" style="padding:10px 14px;border-right:4px solid ${p.color};background:#fafafa;margin:6px 0;border-radius:4px;direction:rtl;text-align:right">
+          <div style="font-size:13px;color:#2c2c2c"><b style="color:${p.color}">${p.label}:</b> ${esc(o.observation)}</div>
+          <div style="font-size:11.5px;color:#666;margin-top:4px">↳ ${esc(cleanRecommendationText(o.recommendation))}</div>
+        </div>`;
+      }).join('');
 
   // Meta funnel (D.13 — show error reason if API failed)
   const impY = num(cwY.impressions), clicksY = num(cwY.clicks), ctrY = num(cwY.ctr), cpcY = num(cwY.cpc);
@@ -1009,8 +1634,10 @@ Deno.serve(async (req: Request) => {
 
   const actionsHtml = action_items_json.length === 0
     ? '<p dir="rtl" style="color:#888;font-size:13px;margin:0">אין פעולות דחופות</p>'
-    : action_items_json.map((a, i) => { const c = a.priority === 'P0' ? '#c0392b' : a.priority === 'P1' ? '#e67e22' : '#888';
-        return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;border-right:3px solid ${c};margin:4px 0;border-radius:4px;text-align:right;font-size:13px"><b style="color:${c}">${i + 1}.</b> ${esc(cleanRecommendationText(a.recommendation))} <span style="color:#888;font-size:11px">[${esc(a.agent_he)}]</span></div>`; }).join('');
+    : action_items_json.map((a, i) => {
+        const p = PRIORITY_HE[a.priority] || { label: a.priority, color: '#888' };
+        return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;border-right:3px solid ${p.color};margin:4px 0;border-radius:4px;text-align:right;font-size:13px"><b style="color:${p.color}">${i + 1}.</b> ${esc(cleanRecommendationText(a.recommendation))} <span style="color:#888;font-size:11px">· ${p.label}</span></div>`;
+      }).join('');
 
   // 📣 Marketing today — captions + clickable links + image thumbnails
   const FORMAT_HE: Record<string, string> = { feed_post:'📷 פוסט (Feed)', reel:'🎬 Reel', story:'⏱️ Story', carousel:'📑 קרוסלה', unknown:'? אחר' };
@@ -1022,9 +1649,13 @@ Deno.serve(async (req: Request) => {
     const label = FORMAT_HE[it.format] || it.format;
     const captionText = it.caption?.trim() || '<span style="color:#bbb">[אין קופי בשדה content_data]</span>';
     const truncated = it.caption && it.caption.length > 180 ? esc(it.caption.slice(0, 180)) + '…' : (it.caption ? esc(it.caption) : captionText);
-    // Permalink with fallback hint
-    const igLink = it.ig ? `<a href="${esc(it.ig)}" style="color:#e1306c;text-decoration:none;font-weight:600">📷 פתח ב-Instagram →</a>` : `<span style="color:#bbb;font-size:11px">📷 IG (פורסם, ממתין ל-backfill)</span>`;
-    const fbLink = it.fb ? `<a href="${esc(it.fb)}" style="color:#1877f2;text-decoration:none;font-weight:600">📘 פתח ב-Facebook →</a>` : `<span style="color:#bbb;font-size:11px">📘 FB (פורסם, ממתין ל-backfill)</span>`;
+    // Permalink with friendly fallback hint
+    const igLink = it.ig
+      ? `<a href="${esc(it.ig)}" style="color:#e1306c;text-decoration:none;font-weight:600">📷 IG → ראה פוסט</a>`
+      : `<span style="color:#888;font-size:11px">📷 IG — 🔄 פורסם, קישור יגיע תוך שעה</span>`;
+    const fbLink = it.fb
+      ? `<a href="${esc(it.fb)}" style="color:#1877f2;text-decoration:none;font-weight:600">📘 FB → ראה פוסט</a>`
+      : `<span style="color:#888;font-size:11px">📘 FB — 🔄 פורסם, קישור יגיע תוך שעה</span>`;
     const prodLink = it.product_url ? `<a href="${esc(it.product_url)}" style="color:#c8a96e;text-decoration:none;font-weight:600">🛍 מוצר →</a>` : '';
     const thumb = it.image ? `<img src="${esc(it.image)}" alt="" width="60" height="60" style="width:60px;height:60px;border-radius:6px;object-fit:cover;display:block;flex-shrink:0;border:1px solid #e8e4d4">` : '';
     return `<div dir="rtl" style="padding:10px 12px;background:#fafafa;margin:6px 0;border-radius:6px;text-align:right;font-size:12px;direction:rtl">
@@ -1038,14 +1669,24 @@ Deno.serve(async (req: Request) => {
       </tr></table>
     </div>`;
   };
-  const renderTiktokItem = (it: { caption: string; url: string | null; product_url: string | null }) => {
-    const truncated = it.caption ? esc(it.caption.slice(0, 180)) : '<span style="color:#bbb">[אין script]</span>';
-    const ttLink = it.url ? `<a href="${esc(it.url)}" style="color:#000;text-decoration:none;font-weight:600">🎵 פתח ב-TikTok →</a>` : `<span style="color:#bbb;font-size:11px">🎵 TikTok (פורסם, אין permalink)</span>`;
-    const prodLink = it.product_url ? `<a href="${esc(it.product_url)}" style="color:#c8a96e;text-decoration:none;font-weight:600">🛍 מוצר →</a>` : '';
+  const renderTiktokItem = (it: { caption: string; url: string | null; product_url: string | null; late_id: string | null; product_slug: string | null }) => {
+    // Caption is already cleaned of JSON upstream. Build a friendly label.
+    const captionShort = it.caption ? esc(it.caption.slice(0, 120)) : '';
+    const productBit = it.product_slug ? esc(it.product_slug) : '';
+    const label = [productBit, captionShort].filter(Boolean).join(' · ');
+    const headlineHtml = label
+      ? `🎵 TikTok — פורסם ✅ <span style="color:#666">(${label})</span>`
+      : `🎵 TikTok — פורסם ✅`;
+    const ttLink = it.url
+      ? `<a href="${esc(it.url)}" style="color:#000;text-decoration:none;font-weight:600">🎵 פתח ב-TikTok →</a>`
+      : `<span style="color:#888;font-size:11px">🎵 TikTok — 🔄 קישור יגיע תוך שעה</span>`;
+    const lateBit = it.late_id
+      ? ` <span style="color:#ddd">·</span> <code style="font-size:10px;color:#888">Late ${esc(it.late_id)}</code>`
+      : '';
+    const prodLink = it.product_url ? ` <span style="color:#ddd">·</span> <a href="${esc(it.product_url)}" style="color:#c8a96e;text-decoration:none;font-weight:600">🛍 מוצר →</a>` : '';
     return `<div dir="rtl" style="padding:10px 12px;background:#fafafa;margin:6px 0;border-radius:6px;text-align:right;font-size:12px;direction:rtl">
-      <div style="margin-bottom:4px"><b style="color:#666;font-size:11px">🎵 TikTok</b></div>
-      <div style="color:#2c2c2c;font-size:12.5px;line-height:1.55;margin:0 0 6px;white-space:pre-wrap">${truncated}</div>
-      <div style="font-size:11px">${ttLink}${prodLink ? ' <span style="color:#ddd">·</span> ' + prodLink : ''}</div>
+      <div style="color:#2c2c2c;font-size:12.5px;line-height:1.55;margin:0 0 6px">${headlineHtml}</div>
+      <div style="font-size:11px">${ttLink}${lateBit}${prodLink}</div>
     </div>`;
   };
   const marketingItemsHtml = (marketingToday.items.length === 0 && marketingToday.tiktok.items.length === 0)
@@ -1058,7 +1699,7 @@ Deno.serve(async (req: Request) => {
     ? '<p dir="rtl" style="color:#27ae60;font-size:13px;margin:0">✅ אין שום מוצר מחכה לאישור</p>'
     : [
       pending.products.length === 0 ? '' : `<div dir="rtl" style="margin:8px 0;direction:rtl;text-align:right"><b style="color:#e67e22;font-size:13px">✍️ סלוגנים לאישור (${pending.products.length})</b>${pending.products.slice(0, 6).map(p => `<div dir="rtl" style="padding:6px 10px;background:#fafafa;margin:3px 0;border-radius:4px;text-align:right;font-size:12px">${esc(p.title)} <span style="color:${p.age_days > 7 ? '#c0392b' : '#888'};font-size:11px">· ${p.age_days} ימים</span></div>`).join('')}</div>`,
-      pending.pipelineFailed.length === 0 ? '' : `<div dir="rtl" style="margin:8px 0;direction:rtl;text-align:right"><b style="color:#c0392b;font-size:13px">🔴 צינור מוצר שנכשל (${pending.pipelineFailed.length})</b>${pending.pipelineFailed.slice(0, 4).map(p => `<div dir="rtl" style="padding:6px 10px;background:#fafafa;margin:3px 0;border-radius:4px;text-align:right;font-size:12px">מוצר #${p.pid || '?'} · <span style="color:#888">${esc(p.error).slice(0, 80)}</span> · ${p.age_days} ימים</div>`).join('')}</div>`,
+      pending.pipelineFailed.length === 0 ? '' : `<div dir="rtl" style="margin:8px 0;direction:rtl;text-align:right"><b style="color:#c0392b;font-size:13px">🔴 מוצרים שממתינים לטיפול ידני (${pending.pipelineFailed.length})</b><div dir="rtl" style="color:#888;font-size:10.5px;margin:2px 0 4px">כבר ניסינו אוטומטית פעם אחת — עדיין נכשל.</div>${pending.pipelineFailed.slice(0, 4).map(p => `<div dir="rtl" style="padding:6px 10px;background:#fafafa;margin:3px 0;border-radius:4px;text-align:right;font-size:12px">מוצר #${p.pid || '?'} · <span style="color:#888">${esc(p.error).slice(0, 80)}</span> · ${p.age_days} ימים</div>`).join('')}</div>`,
       pending.pipelineDispatched.length === 0 ? '' : `<div dir="rtl" style="margin:8px 0;direction:rtl;text-align:right"><b style="color:#e67e22;font-size:13px">⏳ צינור מוצר תקוע (${pending.pipelineDispatched.length})</b>${pending.pipelineDispatched.map(p => `<div dir="rtl" style="padding:6px 10px;background:#fafafa;margin:3px 0;border-radius:4px;text-align:right;font-size:12px">מוצר #${p.pid || '?'} · ממתין כבר ${p.age_hours} שעות</div>`).join('')}</div>`,
       pending.candidates.length === 0 ? '' : `<div dir="rtl" style="margin:8px 0;direction:rtl;text-align:right"><b style="color:#3498db;font-size:13px">📊 מומלצות מ-Gelato Discovery (${pending.candidates.length})</b>${pending.candidates.map(c => `<div dir="rtl" style="padding:6px 10px;background:#fafafa;margin:3px 0;border-radius:4px;text-align:right;font-size:12px">${esc(c.brand)} · score ${c.score.toFixed(1)} · <code style="font-size:10px;color:#888">${esc(c.uid)}</code></div>`).join('')}</div>`,
       pending.slogans === 0 ? '' : `<div dir="rtl" style="margin:8px 0;direction:rtl;text-align:right;font-size:12px;color:#666">📝 ${pending.slogans} סלוגנים מומלצים מחכים בתור (slogan_candidates)</div>`,
@@ -1082,37 +1723,47 @@ Deno.serve(async (req: Request) => {
     'pending': '#e67e22', 'in_production': '#3498db', 'shipped': '#9b59b6',
     'delivered': '#27ae60', 'unknown': '#999',
   };
+  const renderOrderRow = (r: TrackedOrderRow, highlighted: boolean) => {
+    const statusLabel = STATUS_HE[r.status] || r.status;
+    const statusColor = STATUS_COLOR[r.status] || '#999';
+    const buyerShort = r.highlight_name || (r.buyer_email.length > 28 ? r.buyer_email.slice(0, 28) + '…' : r.buyer_email);
+    const recentBadge = r.changed_in_24h ? '<span style="background:#27ae60;color:#fff;padding:2px 6px;border-radius:8px;font-size:9px;margin-right:4px">⚡ עודכן 24h</span>' : '';
+    const handledBadge = r.handled_offline ? '<span style="background:#888;color:#fff;padding:2px 6px;border-radius:8px;font-size:9px;margin-right:4px">🤝 טופל ידנית</span>' : '';
+    const highlightBadge = highlighted ? '<span style="background:#c8a96e;color:#fff;padding:2px 6px;border-radius:8px;font-size:9px;margin-right:4px">⭐ מעקב אישי</span>' : '';
+    const stalenessColor = r.handled_offline ? '#888' : (r.days_in_status > 14 ? '#c0392b' : r.days_in_status > 7 ? '#e67e22' : '#666');
+    const trackingLink = r.tracking_url
+      ? ` · <a href="${esc(r.tracking_url)}" style="color:#9b59b6;text-decoration:none;font-weight:600">📦 מעקב משלוח →</a>`
+      : (r.tracking_number ? ` · <code style="font-size:10px">${esc(r.tracking_number)}</code>` : '');
+    const gelatoRef = r.gelato_ref ? `Gelato ID: <code style="font-size:10.5px;color:#666">${esc(String(r.gelato_ref).slice(0, 12))}</code>` : '';
+    const bg = highlighted ? '#fff8ec' : (r.handled_offline ? '#f5f5f5' : (r.days_in_status > 14 ? '#fff5f5' : '#fafafa'));
+    const borderColor = highlighted ? '#c8a96e' : statusColor;
+    return `<div dir="rtl" style="padding:8px 12px;background:${bg};margin:4px 0;border-radius:6px;text-align:right;font-size:12px;border-right:3px solid ${borderColor}">
+       <div style="margin-bottom:4px">
+         ${highlightBadge}<b style="color:${statusColor}">${statusLabel}</b>
+         ${recentBadge}${handledBadge}
+         <span style="color:#999;font-size:11px;margin-right:4px">· $${r.total_amount.toFixed(0)}</span>
+       </div>
+       <div style="color:#444;font-size:11.5px">
+         📦 <b>${esc(buyerShort)}</b>
+         <span style="color:#999"> · </span>
+         📅 ${esc(r.created_at.slice(0,10))} (${r.age_days}י)
+         <span style="color:#999"> · </span>
+         <span style="color:${stalenessColor}">בסטטוס ${r.days_in_status}י</span>
+         ${trackingLink}
+       </div>
+       ${gelatoRef ? `<div style="margin-top:3px;color:#888;font-size:10.5px">${gelatoRef} · <code style="font-size:10px;color:#bbb">${esc(r.id.slice(0,8))}</code></div>` : ''}
+     </div>`;
+  };
+  const highlightedHtml = orderTracking.highlighted.length === 0 ? '' :
+    `<div dir="rtl" style="margin:0 0 10px;direction:rtl;text-align:right">
+       <div style="color:#c8a96e;font-size:11.5px;font-weight:700;margin-bottom:4px">⭐ מעקב אישי</div>
+       ${orderTracking.highlighted.map(r => renderOrderRow(r, true)).join('')}
+     </div>`;
   const trackingHtml = orderTracking.total === 0
-    ? '<p dir="rtl" style="color:#888;font-size:13px;margin:0">אין הזמנות פעילות ב-90 ימים אחרונים.</p>'
-    : `<p dir="rtl" style="color:#666;font-size:11px;margin:0 0 10px">${orderTracking.total} הזמנות פעילות (לא cancelled/refunded). ${orderTracking.rows.filter(r => r.changed_in_24h).length} שינו סטטוס ב-24 שעות אחרונות.</p>` +
-       orderTracking.rows.map(r => {
-         const statusLabel = STATUS_HE[r.status] || r.status;
-         const statusColor = STATUS_COLOR[r.status] || '#999';
-         const buyerShort = r.buyer_email.length > 28 ? r.buyer_email.slice(0, 28) + '…' : r.buyer_email;
-         const recentBadge = r.changed_in_24h ? '<span style="background:#27ae60;color:#fff;padding:2px 6px;border-radius:8px;font-size:9px;margin-right:4px">⚡ עודכן 24h</span>' : '';
-         const handledBadge = r.handled_offline ? '<span style="background:#888;color:#fff;padding:2px 6px;border-radius:8px;font-size:9px;margin-right:4px">🤝 טופל ידנית</span>' : '';
-         const stalenessColor = r.handled_offline ? '#888' : (r.days_in_status > 14 ? '#c0392b' : r.days_in_status > 7 ? '#e67e22' : '#666');
-         const trackingLink = r.tracking_url
-           ? ` · <a href="${esc(r.tracking_url)}" style="color:#9b59b6;text-decoration:none">📦 מעקב משלוח →</a>`
-           : (r.tracking_number ? ` · <code style="font-size:10px">${esc(r.tracking_number)}</code>` : '');
-         const gelatoRef = r.gelato_ref ? `<code style="font-size:10px;color:#bbb">Gelato: ${esc(String(r.gelato_ref).slice(0, 12))}</code>` : '';
-         return `<div dir="rtl" style="padding:8px 12px;background:${r.handled_offline ? '#f5f5f5' : (r.days_in_status > 14 ? '#fff5f5' : '#fafafa')};margin:4px 0;border-radius:6px;text-align:right;font-size:12px;border-right:3px solid ${statusColor}">
-           <div style="margin-bottom:4px">
-             <b style="color:${statusColor}">${statusLabel}</b>
-             ${recentBadge}${handledBadge}
-             <span style="color:#999;font-size:11px;margin-right:4px">· $${r.total_amount.toFixed(0)}</span>
-           </div>
-           <div style="color:#444;font-size:11.5px">
-             📧 <b>${esc(buyerShort)}</b>
-             <span style="color:#999"> · </span>
-             📅 ${esc(r.created_at.slice(0,10))} (${r.age_days}י)
-             <span style="color:#999"> · </span>
-             <span style="color:${stalenessColor}">בסטטוס ${r.days_in_status}י</span>
-             ${trackingLink}
-           </div>
-           ${gelatoRef ? `<div style="margin-top:3px">${gelatoRef} · <code style="font-size:10px;color:#bbb">${esc(r.id.slice(0,8))}</code></div>` : ''}
-         </div>`;
-       }).join('');
+    ? '<p dir="rtl" style="color:#888;font-size:13px;margin:0">אין הזמנות פעילות ב-30 ימים אחרונים.</p>'
+    : `<p dir="rtl" style="color:#666;font-size:11px;margin:0 0 10px">${orderTracking.total} הזמנות פעילות ב-30 ימים אחרונים (לא cancelled/refunded). ${[...orderTracking.highlighted, ...orderTracking.rows].filter(r => r.changed_in_24h).length} שינו סטטוס ב-24 שעות אחרונות.</p>` +
+       highlightedHtml +
+       orderTracking.rows.map(r => renderOrderRow(r, false)).join('');
 
   // A.3 — Rich agent status table: name | when | what it did | error
   const allAgentIds = ['boss','content','marketing','product','supply','design','site_audit','email_monitor','gelato_stock','cto','security','video','planner','tiktok'];
@@ -1125,28 +1776,36 @@ Deno.serve(async (req: Request) => {
     ${allAgentIds.map(id => {
       const h = agentHealth[id];
       const he = AGENT_ID_TO_HE[id] || id;
-      let icon = '⚪', color = '#999', when = 'לא רץ', actionText = '<span style="color:#bbb">—</span>', errorText = '';
+      let icon = '⚪', color = '#999', when = '—', actionText = 'לא הופעל היום';
       if (h) {
         const hs = hoursSince(h.last_run);
-        if (h.status === 'failed' || h.status === 'error') { icon = '🔴'; color = '#c0392b'; }
+        const isFailed = h.status === 'failed' || h.status === 'error';
+        if (isFailed) { icon = '🔴'; color = '#c0392b'; }
         else if ((h.status === 'completed' || h.status === 'ok') && hs < 26) { icon = '✅'; color = '#27ae60'; }
         else if (hs < 72) { icon = '🟡'; color = '#e67e22'; }
         when = hs < 1 ? `${Math.round(hs*60)} דק׳` : hs < 48 ? `${Math.round(hs)}ש` : `${Math.round(hs/24)}י`;
-        const summaryClean = (h.summary || '').replace(/\s+/g, ' ').trim();
-        if (summaryClean) actionText = esc(summaryClean.slice(0, 180));
-        if (h.error) errorText = `<br><span style="color:#c0392b;font-size:11px;font-style:italic">⚠ ${esc(h.error.slice(0, 160))}</span>`;
-        if (h.runs_24h > 0) actionText += ` <span style="color:#999;font-size:10px">· ${h.runs_24h}× ב-24h${h.done_24h !== h.runs_24h ? ` (${h.done_24h} done)` : ''}</span>`;
+        // Auto-heal contextual hint for stock-check failure
+        let healNote: string | null = null;
+        if (id === 'gelato_stock' && isFailed) {
+          if (gelatoStockHeal.attempted && gelatoStockHeal.healed) healNote = 'נפתרה אוטומטית, מחכה לריצה הבאה';
+          else if (gelatoStockHeal.attempted) healNote = 'ניסה לתקן אוטומטית — נכשל גם כן';
+        }
+        actionText = esc(humanizeAgentSummary(id, h.summary, h.side_effects, hs, isFailed, h.error, healNote));
+        if (h.runs_24h > 0) actionText += ` <span style="color:#999;font-size:10px">· ${h.runs_24h}× ב-24h${h.done_24h !== h.runs_24h ? ` (${h.done_24h} הצליחו)` : ''}</span>`;
       }
       return `<tr style="border-bottom:1px solid #f0ebe0">
-        <td dir="rtl" style="padding:6px 8px;direction:rtl;text-align:right;vertical-align:top">${icon} <b>${esc(he)}</b><br><span style="color:#bbb;font-size:10px">${esc(id)}</span></td>
+        <td dir="rtl" style="padding:6px 8px;direction:rtl;text-align:right;vertical-align:top">${icon} <b>${esc(he)}</b></td>
         <td dir="rtl" style="padding:6px 8px;direction:rtl;text-align:right;vertical-align:top;color:${color};font-size:11px">${esc(when)}</td>
-        <td dir="rtl" style="padding:6px 8px;direction:rtl;text-align:right;vertical-align:top;color:#333;font-size:11.5px;line-height:1.5">${actionText}${errorText}</td>
+        <td dir="rtl" style="padding:6px 8px;direction:rtl;text-align:right;vertical-align:top;color:#333;font-size:11.5px;line-height:1.5">${actionText}</td>
       </tr>`;
     }).join('')}
   </table>`;
 
   // A.4 — SVG sparkline
   const trendHtml = buildSparkline(dailySnaps);
+
+  // 📊 $1,000 Plan section — silently omitted if fetch failed or no data.
+  const planSectionHtml = planStatus ? buildPlanSectionHtml(planStatus) : '';
 
   const lastWeekSection = isWeekly && lastWeekCheck.total > 0
     ? `<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📊 מהשבוע הקודם</h2><p dir="rtl" style="font-size:13px;margin:0 0 10px"><b>${lastWeekCheck.done}/${lastWeekCheck.total} הושלמו (${Math.round(lastWeekCheck.done/lastWeekCheck.total*100)}%).</b></p>${lastWeekCheck.details.slice(0,5).map(d => { const ic = d.status === 'done' ? '✅' : d.status === 'open' ? '⏳' : '❌'; return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;margin:4px 0;border-radius:4px;text-align:right;font-size:12px">${ic} <b>${esc(d.agent)}:</b> ${esc(d.rec.slice(0,100))}</div>`; }).join('')}</td></tr><tr><td style="height:14px"></td></tr>` : '';
@@ -1156,7 +1815,7 @@ Deno.serve(async (req: Request) => {
   const html = `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"></head><body dir="rtl" style="margin:0;padding:0;background:#f5f0e8;font-family:Arial,sans-serif;direction:rtl;text-align:right;color:#2c2c2c"><table dir="rtl" align="center" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:24px 16px"><tr><td align="center"><table dir="rtl" align="center" width="720" cellpadding="0" cellspacing="0" style="max-width:720px;width:100%">
 <tr><td dir="rtl" align="center" style="padding-bottom:18px"><span style="font-size:30px;font-weight:700;letter-spacing:4px;color:#c8a96e;font-family:Georgia,serif">DUBIS</span><p style="margin:6px 0 0;color:#666;font-size:15px;text-align:center">${reportTypeLabel}</p><p style="margin:6px 0 0;color:#999;font-size:13px;text-align:center">${dateStr}</p></td></tr>
 <tr><td dir="rtl" style="background:#2c2c2c;border-radius:12px;padding:18px 22px;color:#fff;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 10px;font-size:16px;color:#c8a96e;direction:rtl;text-align:right">שורה תחתונה</h2>${heroStats}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📈 מגמה 14 ימים</h2>${trendHtml}</td></tr><tr><td style="height:14px"></td></tr>
+<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📈 הכנסות 14 הימים האחרונים</h2>${trendHtml}</td></tr><tr><td style="height:14px"></td></tr>
 ${autoFixHtml}
 ${recurringHtml}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🚨 ממצאים חדשים (${opinions.length})</h2>${issuesHtml}</td></tr><tr><td style="height:14px"></td></tr>
@@ -1167,6 +1826,7 @@ ${lastWeekSection}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🎯 ${isWeekly?'5':'3'} פעולות מומלצות</h2>${actionsHtml}<div dir="rtl" style="background:#2c2c2c;color:#fff;padding:12px 16px;margin-top:14px;border-radius:6px;direction:rtl;text-align:right"><h3 dir="rtl" style="margin:0 0 6px;color:#c8a96e;font-size:13px">דעת המנהל</h3><p dir="rtl" style="margin:0;font-size:12.5px;line-height:1.7">${esc(synth.managerView)}</p></div></td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🛒 הזמנות חדשות ב-${isWeekly?'7 ימים':'24 שעות'} (${(realOrders || []).length})</h2>${ordersHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📋 מעקב הזמנות פעילות (${orderTracking.total})</h2>${trackingHtml}</td></tr><tr><td style="height:14px"></td></tr>
+${planSectionHtml}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🤖 מצב הסוכנים (24 שעות)</h2>${agentHealthHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" align="center" style="padding-top:18px;text-align:center"><p style="margin:0;color:#aaa;font-size:11px">${reportTypeLabel} v10 · ${autoFixes.length > 0 ? `🔧 ${autoFixes.filter(f=>f.succeeded).length}/${autoFixes.length} תיקונים אוטומטיים · ` : ''}<a href="https://www.dubis.net/admin" style="color:#c8a96e">פתח Admin</a></p></td></tr>
 </table></td></tr></table></body></html>`;
@@ -1202,14 +1862,33 @@ ${lastWeekSection}
       pending_count:totalPending, marketing_total:totalMarketing,
       meta_error: metaData.ok ? null : String(metaData.fetch_error || 'unknown'),
       created_task_ids:createdTaskIds, last_week:lastWeekCheck,
+      plan_status: planStatus,
+      plan_kpi_sync: planKpiSync,
     },
   });
   await sb.from('agent_runs').insert({
     agent_id:'boss', run_date:reportDate, status:'completed',
     summary:`${isWeekly ? 'weekly' : 'daily'} v10: ${opinions.length} new, ${recurring.length} recurring, ${autoFixes.filter(f=>f.succeeded).length} auto-fixed, ${totalPending} pending, ${totalMarketing} marketing`,
     tasks_created:createdTaskIds.length, tasks_completed_ids:[],
-    side_effects:{ mode, resend_id:resendId, resend_error:resendError, version:'v10', opinion_count:opinions.length, recurring_count: recurring.length, auto_fix_count: autoFixes.filter(f=>f.succeeded).length, pending_count:totalPending, marketing_total:totalMarketing, created_task_ids:createdTaskIds, meta_error: metaData.fetch_error || null },
+    side_effects:{ mode, resend_id:resendId, resend_error:resendError, version:'v10', opinion_count:opinions.length, recurring_count: recurring.length, auto_fix_count: autoFixes.filter(f=>f.succeeded).length, pending_count:totalPending, marketing_total:totalMarketing, created_task_ids:createdTaskIds, meta_error: metaData.fetch_error || null, plan_status: planStatus },
   });
+
+  // Best-effort: stash a plan_status snapshot into today's daily_snapshots.raw_data.
+  // morning-report.js owns the main upsert; we patch raw_data only. If the column
+  // doesn't exist or the row is missing we move on silently.
+  if (planStatus) {
+    try {
+      const { data: existingSnap } = await sb.from('daily_snapshots')
+        .select('snapshot_date, raw_data')
+        .eq('snapshot_date', reportDate)
+        .maybeSingle();
+      const prev = (existingSnap?.raw_data as Record<string, unknown>) || {};
+      await sb.from('daily_snapshots').upsert({
+        snapshot_date: reportDate,
+        raw_data: { ...prev, plan_status: planStatus, plan_status_at: new Date().toISOString() },
+      }, { onConflict: 'snapshot_date' });
+    } catch (e) { console.error('[boss] daily_snapshots.raw_data patch failed:', (e as Error).message); }
+  }
 
   return json({
     ok:true, mode, version:'v10-self-healing', resend_id:resendId, resend_error:resendError,
