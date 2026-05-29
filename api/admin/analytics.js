@@ -98,15 +98,21 @@ module.exports = async function handler(req, res) {
     // 7-day trend (real counts from RPC, no row-cap artefacts)
     const views7     = Number(pvSummary.views_7d) || 0;
     const views7prev = Number(pvSummary.views_7d_prev) || 0;
-    const totalRows30d = Number(pvSummary.total_rows) || 0;
 
     // ── ORDERS ──
-    // Helper: filter out test/sandbox orders, reprints, and cancelled
+    // Family/internal emails — oren placed these himself (incl. Hila, his wife).
+    // Excluded from real-revenue per oren directive 2026-05-29: show TRUE stranger sales only.
+    const FAMILY_EMAILS = ['hilateharlev@gmail.com', 'teharlev1976@gmail.com', 'dubis.brand@gmail.com'];
+    const FAMILY_NAME_RE = /\b(hila|oren)\b.*tehar|tehar.?lev/i;
+    // Helper: filter out test/sandbox orders, reprints, cancelled, AND family orders
     const isRealOrder = (o) => {
         if (o.is_test === true) return false;
         if (o.status === 'cancelled' || o.status === 'refunded') return false;
         if (o.buyer_email && o.buyer_email.includes('example.com')) return false; // PayPal Sandbox
         if (o.coupon_code === 'GELATO-REPRINT') return false; // Reprints (not a new sale)
+        if (o.buyer_email && FAMILY_EMAILS.includes(o.buyer_email.toLowerCase().trim())) return false;
+        const shipName = (o.shipping_address && (o.shipping_address.name || o.shipping_address.full_name)) || o.ship_name || '';
+        if (shipName && FAMILY_NAME_RE.test(shipName)) return false;
         return true;
     };
 
@@ -170,11 +176,23 @@ module.exports = async function handler(req, res) {
         }
     });
 
-    // Unique visitors (approximate from page views)
-    // "Unique visitors" is an approximation = 30-day page-view count from the RPC
-    // (NOT a real unique count — would need DISTINCT session_id; deferred).
-    const uniqueVisitors = totalRows30d;
-    const conversionRate = uniqueVisitors > 0 ? Math.round((totalOrders / uniqueVisitors) * 10000) / 100 : 0;
+    // ── VISITORS (REAL — excludes oren's own machine + bots, per directive 2026-05-29) ──
+    // real_visitors  = DISTINCT ip_hash, is_internal NOT TRUE, non-bot UA
+    // fbia_visitors  = subset trapped in Facebook In-App Browser (can't checkout — PayPal popup blocked)
+    // realbrowser_visitors = subset on a real browser (CAN convert)
+    // persisted_sessions = DISTINCT session_id (FBIA strips localStorage → session can't persist)
+    const realVisitors = Number(pvSummary.real_visitors) || 0;
+    const fbiaVisitors = Number(pvSummary.fbia_visitors) || 0;
+    const realBrowserVisitors = Number(pvSummary.realbrowser_visitors) || 0;
+    const persistedSessions = Number(pvSummary.persisted_sessions) || 0;
+    const excludedInternal = Number(pvSummary.excluded_internal) || 0;
+    const excludedBots = Number(pvSummary.excluded_bots) || 0;
+
+    // Unique visitors = REAL distinct visitors (de-internal'd, de-bot'd). NOT raw page-view count.
+    const uniqueVisitors = realVisitors;
+    // Conversion rate against the visitors who CAN actually buy (real-browser, not FBIA-trapped).
+    const conversionBase = realBrowserVisitors > 0 ? realBrowserVisitors : realVisitors;
+    const conversionRate = conversionBase > 0 ? Math.round((totalOrders / conversionBase) * 10000) / 100 : 0;
 
     // ── NEWSLETTER ──
     const totalSubscribers = subscribersRes.count || 0;
@@ -348,6 +366,13 @@ module.exports = async function handler(req, res) {
         totalOrders,
         totalRevenue: Math.round(totalRevenue * 100) / 100,
         uniqueVisitors,
+        // Visitor segmentation (real = de-internal'd + de-bot'd; per directive 2026-05-29)
+        realVisitors,
+        fbiaVisitors,           // trapped in Facebook In-App Browser — cannot checkout
+        realBrowserVisitors,    // on a real browser — CAN convert
+        persistedSessions,      // DISTINCT session_id (FBIA strips localStorage)
+        excludedInternal,       // oren's own machine, filtered out
+        excludedBots,
         todayOrders: todayOrders.length,
         todayRevenue: Math.round(todayRevenue * 100) / 100,
         avgOrderValue,
