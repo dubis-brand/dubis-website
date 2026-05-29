@@ -118,7 +118,21 @@ async function publishToLate({ videoUrl, caption, persona, lang }) {
   try { return JSON.parse(txt); } catch { return { raw: txt.slice(0, 500) }; }
 }
 
+function extractLatePostId(lateResponse) {
+  if (!lateResponse || typeof lateResponse !== 'object') return null;
+  return (
+    lateResponse.post?._id ||
+    lateResponse.post?.id ||
+    lateResponse._id ||
+    lateResponse.id ||
+    lateResponse.data?._id ||
+    lateResponse.posts?.[0]?._id ||
+    null
+  );
+}
+
 async function recordTask({ persona, lang, videoUrl, caption, lateResponse, rotationDay, rotationIdx }) {
+  const latePostId = extractLatePostId(lateResponse);
   const row = {
     agent_id: 'tiktok',
     category: 'tiktok_post',
@@ -140,6 +154,8 @@ async function recordTask({ persona, lang, videoUrl, caption, lateResponse, rota
       rotation_day: rotationDay,
       rotation_idx: rotationIdx,
       late_response: lateResponse,
+      tiktok_late_post_id: latePostId,
+      api_response: latePostId ? `late:${latePostId}` : JSON.stringify(lateResponse).slice(0, 500),
       content_approved: true,
       auto_approved: true,
     },
