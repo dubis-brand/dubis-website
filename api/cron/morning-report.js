@@ -322,6 +322,82 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ ok: true, paypalOrderId, refundResult: result });
     }
 
+    // ── Route: ?type=sync-meta-spend — pull real Meta performance into ad_campaigns ──
+    // 2026-06-01 (oren: "למה אין נתונים בקמפיין"). The ad_campaigns table was
+    // manual-entry-only — spend_to_date was hand-set, clicks/impressions stuck at 0
+    // even though the IL campaign was live and driving traffic. This route iterates
+    // every ad_campaigns row whose `notes` carries "campaign_id: NNNN", calls the
+    // Meta Graph insights endpoint, and writes back real spend/clicks/impressions.
+    // Reads META_ACCESS_TOKEN from Vercel env (Meta token does NOT live in Supabase
+    // Vault). Safe to run on a cron — idempotent, only UPDATEs numeric metrics.
+    if (urlType === 'sync-meta-spend') {
+        // Lenient lookup — token may be stored under a few possible names.
+        const metaToken = process.env.META_ACCESS_TOKEN || process.env.META_TOKEN ||
+            process.env.FB_ACCESS_TOKEN || process.env.FACEBOOK_ACCESS_TOKEN ||
+            process.env.INSTAGRAM_ACCESS_TOKEN || '';
+        if (!metaToken) {
+            return res.status(500).json({ error: 'no_meta_token', detail: 'META_ACCESS_TOKEN not set in Vercel env' });
+        }
+        const GRAPH = 'https://graph.facebook.com/v21.0';
+        // Pull candidate rows: any campaign whose notes embed a numeric Meta campaign_id.
+        const { data: rows, error: selErr } = await supabase
+            .from('ad_campaigns')
+            .select('id, status, spend_to_date, clicks, impressions, notes')
+            .not('notes', 'is', null);
+        if (selErr) return res.status(500).json({ error: 'select_failed', detail: selErr.message });
+        const targets = (rows || [])
+            .map(r => {
+                const m = /campaign_id:\s*(\d{6,})/i.exec(r.notes || '');
+                return m ? { ...r, campaign_id: m[1] } : null;
+            })
+            .filter(Boolean);
+        if (targets.length === 0) {
+            return res.status(200).json({ ok: true, synced: 0, message: 'no ad_campaigns rows carry a Meta campaign_id in notes' });
+        }
+        const results = [];
+        for (const t of targets) {
+            try {
+                const url = `${GRAPH}/${t.campaign_id}/insights` +
+                    `?fields=spend,clicks,impressions,reach,cpc,ctr` +
+                    `&date_preset=maximum&access_token=${encodeURIComponent(metaToken)}`;
+                const r = await fetch(url);
+                const j = await r.json();
+                if (!r.ok || j.error) {
+                    results.push({ id: t.id, campaign_id: t.campaign_id, ok: false, http: r.status, error: (j.error && j.error.message) || 'graph_error' });
+                    continue;
+                }
+                const d = (j.data && j.data[0]) || null;
+                if (!d) {
+                    results.push({ id: t.id, campaign_id: t.campaign_id, ok: true, note: 'no_insights_data (campaign may have 0 delivery)' });
+                    continue;
+                }
+                const spend = d.spend != null ? Number(d.spend) : null;
+                const clicks = d.clicks != null ? parseInt(d.clicks, 10) : null;
+                const impressions = d.impressions != null ? parseInt(d.impressions, 10) : null;
+                const patch = {};
+                if (spend != null && !Number.isNaN(spend)) patch.spend_to_date = spend.toFixed(2);
+                if (clicks != null && !Number.isNaN(clicks)) patch.clicks = clicks;
+                if (impressions != null && !Number.isNaN(impressions)) patch.impressions = impressions;
+                if (Object.keys(patch).length === 0) {
+                    results.push({ id: t.id, campaign_id: t.campaign_id, ok: true, note: 'insights returned but no numeric fields' });
+                    continue;
+                }
+                const { error: updErr } = await supabase.from('ad_campaigns').update(patch).eq('id', t.id);
+                results.push({
+                    id: t.id, campaign_id: t.campaign_id, ok: !updErr,
+                    before: { spend_to_date: t.spend_to_date, clicks: t.clicks, impressions: t.impressions },
+                    after: patch,
+                    cpc: d.cpc || null, ctr: d.ctr || null, reach: d.reach || null,
+                    update_error: updErr ? updErr.message : null,
+                });
+            } catch (e) {
+                results.push({ id: t.id, campaign_id: t.campaign_id, ok: false, error: e.message });
+            }
+        }
+        const synced = results.filter(x => x.ok && x.after).length;
+        return res.status(200).json({ ok: true, synced, total_candidates: targets.length, results });
+    }
+
     // ── Route: ?type=reconcile-orders — background safety net (added 2026-05-21) ──
     // The Hila checkout catastrophe revealed: Gelato can async-cancel an order
     // 60+ seconds AFTER our /api/create-gelato-order POST returns success to
