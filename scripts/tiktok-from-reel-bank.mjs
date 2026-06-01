@@ -40,28 +40,52 @@ const BANK = [
 const LANGS = ['HE', 'EN'];
 const BANK_SIZE = BANK.length * LANGS.length; // 20
 
-function pickReelForToday() {
+function dayOfYearUTC() {
   const now = new Date();
   // Day-of-year in UTC — TikTok cron fires at 15:00 UTC = 18:00 IL (IDT)
   const start = Date.UTC(now.getUTCFullYear(), 0, 0);
-  const day   = Math.floor((Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - start) / 86400000);
-  let idx     = day % BANK_SIZE;
+  return Math.floor((Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - start) / 86400000);
+}
+
+// Probe every one of the 20 bank slots and return only the reels that actually
+// exist in Supabase Storage, in stable bank order.
+//
+// 2026-06-01 (oren complaint "בטיק טוק אותו פוסט עלה פעמיים" — the same post went
+// up twice): the bank has 20 slots (10 personas × 2 langs) but only ~8 are
+// populated. The old rotation did `idx = day % 20` then walked FORWARD to the
+// next existing reel when the slot was empty — so most days collapsed onto the
+// earliest populated slot (men-1/HE), publishing it again and again. Rotating
+// over ONLY the populated reels gives each one an equal, non-repeating turn.
+async function buildAvailableBank() {
+  const slots = [];
+  for (let i = 0; i < BANK_SIZE; i++) {
+    const persona = BANK[Math.floor(i / 2)];
+    const lang    = LANGS[i % 2];
+    slots.push({ persona, lang, idx: i, url: bankUrl(persona, lang) });
+  }
+  const checks = await Promise.all(slots.map(s => checkReelExists(s.url)));
+  return slots.filter((_, i) => checks[i]);
+}
+
+function pickReelForToday(available) {
+  const day = dayOfYearUTC();
 
   // Manual override via workflow_dispatch inputs (forwarded as env vars by the workflow)
   const fPersona = (process.env.FORCE_PERSONA || '').trim();
   const fLang    = (process.env.FORCE_LANG    || '').trim().toUpperCase();
   if (fPersona) {
-    const p = BANK.findIndex(b => b.id === fPersona);
-    if (p < 0) throw new Error(`FORCE_PERSONA "${fPersona}" not in bank`);
-    const l = LANGS.indexOf(fLang || LANGS[idx % 2]);
-    if (l < 0) throw new Error(`FORCE_LANG "${fLang}" not HE or EN`);
-    idx = p * 2 + l;
-    console.log(`Override: forced persona=${fPersona} lang=${LANGS[l]} → idx=${idx}`);
+    if (fLang && !LANGS.includes(fLang)) throw new Error(`FORCE_LANG "${fLang}" not HE or EN`);
+    const match = available.find(s => s.persona.id === fPersona && (!fLang || s.lang === fLang));
+    if (!match) throw new Error(`FORCE_PERSONA "${fPersona}"${fLang ? '/' + fLang : ''} not in available bank`);
+    console.log(`Override: forced persona=${fPersona} lang=${match.lang} → bank idx=${match.idx}`);
+    return { persona: match.persona, lang: match.lang, day, idx: match.idx, pos: -1 };
   }
 
-  const persona = BANK[Math.floor(idx / 2)];
-  const lang    = LANGS[idx % 2];
-  return { persona, lang, day, idx };
+  // Rotate over ONLY the populated reels — consecutive days always advance to a
+  // different reel (no repeats until the whole available set is exhausted).
+  const pos     = day % available.length;
+  const chosen  = available[pos];
+  return { persona: chosen.persona, lang: chosen.lang, day, idx: chosen.idx, pos };
 }
 
 function bankUrl(persona, lang) {
@@ -169,6 +193,42 @@ async function recordTask({ persona, lang, videoUrl, caption, lateResponse, rota
   return data.id;
 }
 
+// The Boss daily-report staleness check reads `agent_runs`, NOT `agent_tasks`.
+// Without this row, the Boss falsely flags TikTok as "N days idle" even though we
+// publish daily (false-alarm diagnosed 2026-06-01: agent_runs last tiktok = 2026-05-22,
+// while agent_tasks shows 05-29/05-30/05-31). The old render-and-publish.js wrote
+// agent_runs; this reel-bank rewrite forgot to. This closes the tracking gap so the
+// Boss correctly shows tiktok GREEN.
+async function recordRun({ persona, lang, taskId, latePostId, rotationDay, rotationIdx, startedAt }) {
+  const row = {
+    agent_id: 'tiktok',
+    status: 'completed',
+    summary: `TikTok published ${persona.id}/${lang} (day ${rotationDay} idx ${rotationIdx})`
+           + (latePostId ? ` → late:${latePostId}` : ''),
+    tasks_created: 1,
+    tasks_completed_ids: taskId ? [taskId] : [],
+    duration_ms: startedAt ? (Date.now() - startedAt) : null,
+    side_effects: {
+      publisher: 'late-direct',
+      renderer: 'reel-bank-rotation-v1',
+      persona_id: persona.id,
+      lang: lang.toLowerCase(),
+      product_id: persona.product_id,
+      tiktok_late_post_id: latePostId || null,
+      rotation_day: rotationDay,
+      rotation_idx: rotationIdx,
+    },
+  };
+  const { data, error } = await sb.from('agent_runs').insert(row).select('id').single();
+  if (error) {
+    // Non-fatal: the post already published; don't fail the run over bookkeeping.
+    console.error('agent_runs insert failed (non-fatal):', error.message);
+    return null;
+  }
+  console.log('Recorded run:', data.id);
+  return data.id;
+}
+
 // IL campaign reels are manually scheduled in Late.com for this window
 // (men-3, women-3, men-4, women-4, women-5 — see scripts/publish-il-campaign-to-late.mjs).
 // The daily cron must NOT post on those days or it will duplicate.
@@ -183,6 +243,7 @@ function todayInManualWindow() {
 }
 
 async function main() {
+  const startedAt = Date.now();
   console.log('=== DUBIS TikTok Daily (reel-bank rotation) ===', new Date().toISOString());
 
   if (todayInManualWindow() && !process.env.FORCE_PERSONA) {
@@ -192,35 +253,19 @@ async function main() {
     return;
   }
 
-  const { persona, lang, day, idx } = pickReelForToday();
-  console.log(`Day ${day}, idx ${idx}/${BANK_SIZE} → persona=${persona.id} lang=${lang}`);
+  const available = await buildAvailableBank();
+  console.log(`Bank probe: ${available.length}/${BANK_SIZE} reels populated → ${available.map(s => `${s.persona.id}/${s.lang}`).join(', ') || '(none)'}`);
+  if (!available.length) throw new Error('No reel available in bank. Run batch-he-reels.mjs first.');
+
+  const { persona, lang, day, idx, pos } = pickReelForToday(available);
+  console.log(`Day ${day} → rotation slot ${pos < 0 ? 'forced' : `${pos}/${available.length}`} → persona=${persona.id} lang=${lang} (bank idx ${idx})`);
 
   const videoUrl = bankUrl(persona, lang);
-  const exists = await checkReelExists(videoUrl);
-  if (!exists) {
-    console.error(`✗ Reel not in bank yet: ${videoUrl}`);
-    console.error('  The batch-he-reels.mjs run might still be in progress, or this persona failed.');
-    console.error('  Falling back: try the immediately-next index, walking forward up to BANK_SIZE times.');
-    for (let bump = 1; bump < BANK_SIZE; bump++) {
-      const altIdx = (idx + bump) % BANK_SIZE;
-      const altPersona = BANK[Math.floor(altIdx / 2)];
-      const altLang    = LANGS[altIdx % 2];
-      const altUrl     = bankUrl(altPersona, altLang);
-      if (await checkReelExists(altUrl)) {
-        console.log(`Fallback hit at idx=${altIdx} (${altPersona.id} / ${altLang})`);
-        const caption = buildCaption(altPersona, altLang);
-        const late = await publishToLate({ videoUrl: altUrl, caption, persona: altPersona, lang: altLang });
-        await recordTask({ persona: altPersona, lang: altLang, videoUrl: altUrl, caption, lateResponse: late, rotationDay: day, rotationIdx: altIdx });
-        return;
-      }
-    }
-    throw new Error('No reel available in bank. Run batch-he-reels.mjs first.');
-  }
-
   const caption = buildCaption(persona, lang);
   console.log('Caption preview:', caption.slice(0, 120));
   const late = await publishToLate({ videoUrl, caption, persona, lang });
-  await recordTask({ persona, lang, videoUrl, caption, lateResponse: late, rotationDay: day, rotationIdx: idx });
+  const taskId = await recordTask({ persona, lang, videoUrl, caption, lateResponse: late, rotationDay: day, rotationIdx: idx });
+  await recordRun({ persona, lang, taskId, latePostId: extractLatePostId(late), rotationDay: day, rotationIdx: idx, startedAt });
   console.log('=== DONE ===');
 }
 

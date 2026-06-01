@@ -505,8 +505,34 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
             }
 
             let imageUrl = hasPermImg ? (cd.generated_image_url as string) : '';
+            // 2026-06-01 (oren complaint "למה אין פוסטים עם אנשים"): the feed was
+            // 100% garment back-mockups because this content-run phase always
+            // landed on pickGelatoBackMockupUrl and persisted it into
+            // generated_image_url — so publish-ready's people-photo branch was
+            // dead code. Fix: seeded coin-flip here too. ~half of posts now lead
+            // with a REAL approved lifestyle/person photo from dubis_images.
+            if (!imageUrl) {
+              const lsHex = (task.id as string).replace(/-/g, '').substring(0, 8);
+              const lsSeed = parseInt(lsHex, 16) || 0;
+              const wantsPerson = (lsSeed % 2) === 0;
+              if (wantsPerson) {
+                try {
+                  const { data: lifestyleImgs } = await sb.from('dubis_images')
+                    .select('image_url')
+                    .contains('tags', ['lifestyle'])
+                    .eq('approved', true)
+                    .gte('quality_score', 5)
+                    .limit(50);
+                  if (lifestyleImgs?.length) {
+                    const pick = (lifestyleImgs as Record<string, unknown>[])[lsSeed % lifestyleImgs.length];
+                    const u = pick?.image_url as string | undefined;
+                    if (u) imageUrl = u;
+                  }
+                } catch { /* ignore — fall through to garment mockup */ }
+              }
+            }
             // 2026-05-16: stopped using Gemini to invent lifestyle photos. The
-            // social post now shows the REAL Gelato back-mockup — that's the
+            // social post otherwise shows the REAL Gelato back-mockup — that's the
             // image that carries the actual slogan artwork the customer buys.
             // Resolve product_id + colors so we can pick the right back mockup.
             if (!imageUrl) {
