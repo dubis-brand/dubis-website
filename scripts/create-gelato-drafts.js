@@ -51,7 +51,7 @@ const CLI_JSON             = !!_getFlag('--json');
 
 const GELATO_API_BASE = 'https://order.gelatoapis.com';
 const DESIGN_BASE_URL = 'https://www.dubis.net/designs';
-const DESIGN_VERSION  = process.env.DESIGN_VERSION || '2026051801';
+const DESIGN_VERSION  = process.env.DESIGN_VERSION || '2026052301';
 const OUT_DIR         = CLI_SAVE_AS_SITE
   ? path.join(__dirname, '..', 'images')                    // production: site mockups
   : path.join(__dirname, '..', 'images', 'gelato-mockups'); // QA: separate folder
@@ -64,7 +64,7 @@ const TEMPLATES = {
   'tshirt-women':      { cat: 't-shirt', sub: 'crewneck',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'bella-and-canvas', sku: '6004'   },
   'hoodie-unisex':     { cat: 'hoodie',  sub: 'pullover',        cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '18500'  },
   'hoodie-women':      { cat: 'hoodie',  sub: 'pullover',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
-  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: null,                sku: null    },
+  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: 'lane-seven',       sku: 'ls14003' },
   'longsleeve-unisex': { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '2400'   },
   'longsleeve-women':  { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'sols',             sku: '02075'  },
   'cap-unisex':        { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-dtf', brand: 'as-colour',        sku: '1114'   },
@@ -84,7 +84,7 @@ const COLOR_MAP = {
   'tshirt-women':      { Black:'black', White:'white', Cream:'soft-cream', Navy:'navy' },
   'hoodie-unisex':     { Black:'black', White:'white', Cream:'sand', Navy:'navy', Charcoal:'dark-heather', 'Forest Green':'forest-green', Gray:'sport-grey' },
   'hoodie-women':      { Black:'black', White:'white', Navy:'navy', Charcoal:'charcoal' },
-  'ziphoodie-unisex':  { Black:'black', White:'white', Navy:'navy', Charcoal:'dark-heather' },
+  'ziphoodie-unisex':  { Black:'black', White:'white', Navy:'navy', 'Forest Green':'forest-green', Red:'red' },  // Lane Seven LS14003 (2026-05-23)
   'longsleeve-unisex': { Black:'black', White:'white', Cream:'sand', Navy:'navy', 'Forest Green':'forest-green', Gray:'sports-grey' },
   'longsleeve-women':  { Black:'deep-black', White:'white', Navy:'french-navy' },
   'cap-unisex':        { Black:'black', White:'white', Cream:'ecru', Navy:'navy' },
