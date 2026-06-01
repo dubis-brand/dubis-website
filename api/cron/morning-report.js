@@ -398,6 +398,54 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ ok: true, synced, total_candidates: targets.length, results });
     }
 
+    // ── Route: ?type=pause-campaign&campaign_id=NNNN — pause a live Meta campaign ──
+    // 2026-06-01 (oren: "pause it and fix the FBIA"). The IL campaign 120245295587010267
+    // was burning ₪32/day with 970 clicks / 7,287 impressions but 0 attributable
+    // purchases — the FBIA in-app-browser blocks the PayPal popup, so paid clicks can't
+    // convert. Stop the bleed by PAUSING the actual Meta campaign (DB-row status alone
+    // does NOT stop Meta spend). Reads META_ACCESS_TOKEN from Vercel env. Also flips the
+    // matching ad_campaigns row to status='paused' so the admin + Boss report agree.
+    if (urlType === 'pause-campaign') {
+        const campaignId = (req.query.campaign_id || '').toString().trim();
+        if (!/^\d{6,}$/.test(campaignId)) {
+            return res.status(400).json({ error: 'bad_campaign_id', detail: 'campaign_id query param required (numeric)' });
+        }
+        const metaToken = process.env.META_ACCESS_TOKEN || process.env.META_TOKEN ||
+            process.env.FB_ACCESS_TOKEN || process.env.FACEBOOK_ACCESS_TOKEN ||
+            process.env.INSTAGRAM_ACCESS_TOKEN || '';
+        if (!metaToken) {
+            return res.status(500).json({ error: 'no_meta_token', detail: 'META_ACCESS_TOKEN not set in Vercel env' });
+        }
+        const GRAPH = 'https://graph.facebook.com/v21.0';
+        let metaResult = null;
+        try {
+            const r = await fetch(`${GRAPH}/${campaignId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `status=PAUSED&access_token=${encodeURIComponent(metaToken)}`,
+            });
+            const j = await r.json();
+            if (!r.ok || j.error) {
+                return res.status(502).json({ error: 'meta_pause_failed', http: r.status, detail: (j.error && j.error.message) || j });
+            }
+            metaResult = j;
+        } catch (e) {
+            return res.status(502).json({ error: 'meta_pause_exception', detail: e.message });
+        }
+        // Reflect in the ad_campaigns row(s) carrying this campaign_id in notes.
+        const { data: rows } = await supabase
+            .from('ad_campaigns').select('id, notes').not('notes', 'is', null);
+        const match = (rows || []).find(r => new RegExp(`campaign_id:\\s*${campaignId}\\b`, 'i').test(r.notes || ''));
+        let dbResult = 'no_matching_row';
+        if (match) {
+            const { error: updErr } = await supabase.from('ad_campaigns')
+                .update({ status: 'paused', notes: `${match.notes}\n[paused ${new Date().toISOString()} via pause-campaign — FBIA conversion block, ₪32/day bleed stopped]` })
+                .eq('id', match.id);
+            dbResult = updErr ? `db_error: ${updErr.message}` : 'paused';
+        }
+        return res.status(200).json({ ok: true, campaign_id: campaignId, meta: metaResult, db: dbResult });
+    }
+
     // ── Route: ?type=reconcile-orders — background safety net (added 2026-05-21) ──
     // The Hila checkout catastrophe revealed: Gelato can async-cancel an order
     // 60+ seconds AFTER our /api/create-gelato-order POST returns success to
