@@ -53,7 +53,7 @@ const TEMPLATES = {
   'tshirt-women':      { cat: 't-shirt', sub: 'crewneck',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'bella-and-canvas', sku: '6004'   },
   'hoodie-unisex':     { cat: 'hoodie',  sub: 'pullover',        cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '18500'  },
   'hoodie-women':      { cat: 'hoodie',  sub: 'pullover',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
-  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: null,                sku: null    },
+  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: 'lane-seven',       sku: 'ls14003' },  // K-C 2026-05-23 — was brand:null (silent Just Hoods JH050)
   'longsleeve-unisex': { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '2400'   },
   'longsleeve-women':  { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'sols',             sku: '02075'  },
   'cap-unisex':        { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-dtf', brand: 'as-colour',        sku: '1114'   },
@@ -71,7 +71,7 @@ const COLOR_MAP = {
     'Charcoal': 'dark-heather', 'Forest Green': 'forest-green', 'Gray': 'sport-grey',
   },
   'hoodie-women': { 'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Charcoal': 'charcoal' },
-  'ziphoodie-unisex': { 'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Charcoal': 'dark-heather' },
+  'ziphoodie-unisex': { 'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Forest Green': 'forest-green', 'Red': 'red' },  // Lane Seven LS14003 (2026-05-23)
   'longsleeve-unisex': {
     'Black': 'black', 'White': 'white', 'Cream': 'sand', 'Navy': 'navy',
     'Forest Green': 'forest-green', 'Gray': 'sports-grey',
