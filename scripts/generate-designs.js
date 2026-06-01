@@ -395,15 +395,18 @@ function generateFrontLogo(color, outPath) {
   ctx.fillText('DUBIS', cx, cy);
 
   // --- Superscript TM to the right of the "S" ---
-  // Measure DUBIS width to find the baseline-right position for TM
+  // 2026-05-23 (Phase K-A): replaced single TM (U+2122) with composite "TM"
+  // (basic Latin T+M). Impact font lacks the TM glyph - falls back to system
+  // font that prints with broken/incomplete M on actual garments (Hila's order,
+  // see docs/plans/audits/DUBIS_HILA_ORDER_CATASTROPHE_2026-05-23.html).
+  // T and M are guaranteed to exist in Impact so the composite renders cleanly.
   const dubisWidth = ctx.measureText('DUBIS').width;
-  const tmSize     = LOGO_FONT_SIZE * TM_RATIO;
+  const tmSize     = LOGO_FONT_SIZE * 0.32;  // smaller - TM as tiny superscript
   setFont(ctx, tmSize);
   ctx.textAlign = 'left';
-  // TM baseline sits at top of DUBIS caps → shift cy up by ~30% of LOGO_FONT_SIZE
-  const tmX = cx + dubisWidth / 2 + 6;   // slight gap after "S"
-  const tmY = cy - LOGO_FONT_SIZE * 0.30;
-  ctx.fillText('\u2122', tmX, tmY);
+  const tmX = cx + dubisWidth / 2 + 4;       // small gap after "S"
+  const tmY = cy - LOGO_FONT_SIZE * 0.34;    // higher for proper superscript look
+  ctx.fillText('TM', tmX, tmY);
 
   // Subtle noise to ensure file size > 200 KB AND push non-transparent pixel
   // ratio over Gelato's 5% coverage gate.

@@ -42,7 +42,7 @@ const TEMPLATES: Record<string, Template> = {
   'tshirt-women':      { cat: 't-shirt', sub: 'crewneck',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'bella-and-canvas', sku: '6004'   },
   'hoodie-unisex':     { cat: 'hoodie',  sub: 'pullover',        cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '18500'  },
   'hoodie-women':      { cat: 'hoodie',  sub: 'pullover',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
-  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: null,                sku: null    },
+  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: 'lane-seven',       sku: 'ls14003' },  // 2026-05-23 K-C: was brand-less (silent Just Hoods sub)
   'longsleeve-unisex': { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '2400'   },
   'longsleeve-women':  { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'sols',             sku: '02075'  },
   'cap-unisex':        { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-dtf', brand: 'as-colour',        sku: '1114'   },
@@ -69,8 +69,8 @@ const COLOR_MAP: Record<string, Record<string, ColorEntry>> = {
   'hoodie-women': {
     'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Charcoal': 'charcoal',
   },
-  'ziphoodie-unisex': {
-    'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Charcoal': 'dark-heather',
+  'ziphoodie-unisex': {  // 2026-05-23 K-C: Lane Seven LS14003 verified colors
+    'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Forest Green': 'forest-green', 'Red': 'red',
   },
   'longsleeve-unisex': {
     'Black': 'black', 'White': 'white', 'Cream': 'sand', 'Navy': 'navy',
@@ -526,9 +526,29 @@ Deno.serve(async (req: Request) => {
     console.log(`[DUBIS-STOCK-CHECK] ${event}`, JSON.stringify(fields));
 
   if (!await authorized(req)) return new Response('unauthorized', { status: 401 });
-  if (!GELATO_API_KEY) return new Response('missing GELATO_API_KEY', { status: 500 });
 
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+  // Write a truthful failed row so the Boss reports the REAL reason in Hebrew
+  // instead of a stale 12-day-old RED. Best-effort — never throws.
+  const writeFailed = async (heReason: string) => {
+    try {
+      await sb.from('agent_runs').insert({
+        agent_id: 'gelato_stock',
+        run_date: new Date().toISOString().slice(0, 10),
+        status: 'failed',
+        duration_ms: Date.now() - t0,
+        summary: heReason,
+        error_message: heReason,
+      });
+    } catch (_) { /* swallow */ }
+  };
+
+  if (!GELATO_API_KEY) {
+    log('missing-key', {});
+    await writeFailed('בדיקת מלאי נכשלה: מפתח GELATO_API_KEY חסר בהגדרות הפונקציה.');
+    return new Response('missing GELATO_API_KEY', { status: 500 });
+  }
 
   // Universal: read all active products dynamically. Never hardcode IDs.
   const { data: products, error: pErr } = await sb
@@ -538,6 +558,7 @@ Deno.serve(async (req: Request) => {
     .order('product_id_numeric', { ascending: true });
   if (pErr) {
     log('db-error', { error: pErr.message });
+    await writeFailed(`בדיקת מלאי נכשלה: שגיאת מסד נתונים בקריאת מוצרים פעילים (${pErr.message}).`);
     return new Response(JSON.stringify({ error: pErr.message }), { status: 500 });
   }
 
@@ -677,21 +698,32 @@ Deno.serve(async (req: Request) => {
     orderMonitor.errors.push(`exception: ${(err as Error).message}`);
   }
 
-  // Log summary to agent_runs for observability
-  await sb.from('agent_runs').insert({
-    agent_id: 'gelato-stock-check',
+  // Log summary to agent_runs for observability.
+  // CRITICAL: agent_id MUST be 'gelato_stock' (underscore) — the Boss orchestrator
+  // keys its health verdict off latestRun(sb,'gelato_stock',3). A hyphenated id is
+  // invisible to the Boss and produced 12 days of false-RED. Columns must match the
+  // real agent_runs schema (run_date/status/summary/duration_ms/error_message/side_effects)
+  // — started_at/completed_at/metadata DO NOT EXIST and silently fail the insert.
+  const shipParts = [];
+  if (shipUs != null) shipParts.push(`US $${shipUs}`);
+  if (shipIl != null) shipParts.push(`IL $${shipIl}`);
+  const shipText = shipParts.length ? ` משלוח ${shipParts.join(' / ')}.` : '';
+  const heSummary = `בדיקת מלאי Gelato הסתיימה: נבדקו ${checked} וריאציות, ${transitions.to_oos} עברו לאזל, ${transitions.back_in_stock} חזרו למלאי, ${skippedUnmappable} ללא מיפוי.${shipText} נסרקו ${orderMonitor.scanned} הזמנות, ${orderMonitor.flags_created} התראות חדשות.`;
+  const { error: runErr } = await sb.from('agent_runs').insert({
+    agent_id: 'gelato_stock',
+    run_date: new Date().toISOString().slice(0, 10),
     status: 'completed',
-    started_at: new Date(t0).toISOString(),
-    completed_at: new Date().toISOString(),
     duration_ms: Date.now() - t0,
-    summary: `checked=${checked} to_oos=${transitions.to_oos} back_in_stock=${transitions.back_in_stock} unchanged=${transitions.unchanged} overrides=${transitions.skipped_override} unmapped=${skippedUnmappable} ship_us=${shipUs} ship_il=${shipIl} orders_scanned=${orderMonitor.scanned} alerts_created=${orderMonitor.flags_created} alerts_refreshed=${orderMonitor.flags_refreshed}`,
-    metadata: {
+    summary: heSummary,
+    side_effects: {
+      checked,
       transitions,
       skippedUnmappable,
       shipping: { us: shipUs, il: shipIl },
       order_monitor: orderMonitor,
     },
   });
+  if (runErr) log('agent-runs-insert-error', { error: runErr.message });
 
   log('done', { checked, ...transitions, skippedUnmappable, ship_us: shipUs, ship_il: shipIl, alerts: orderMonitor.flags_created, ms: Date.now() - t0 });
 

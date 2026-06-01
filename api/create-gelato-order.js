@@ -29,7 +29,7 @@ if (GELATO_DRAFT_MODE) {
 // Gelato CDN caches by full URL; same URL = same cached file. Without this
 // param, re-uploading a fixed PNG has no effect — Gelato keeps serving the
 // broken cached version. Set via env or hardcode to a date tag.
-const DESIGN_VERSION = process.env.DESIGN_VERSION || '2026051501';
+const DESIGN_VERSION = process.env.DESIGN_VERSION || '2026052301';
 
 // ─────────────────────────────────────────────────────────────────
 // GELATO TEMPLATES — type+cut → Gelato catalog config
@@ -51,8 +51,13 @@ const TEMPLATES = {
   // Women's hoodie has no single-brand catalog with our colors; the un-suffixed
   // legacy alias (`...gpr_4-4` with no brand) DOES carry charcoal/navy/black/white.
   'hoodie-women':      { cat: 'hoodie',  sub: 'pullover',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
-  // Zip-hoodie: legacy alias only — Gelato hasn't published branded UIDs we can use.
-  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: null,                sku: null    },
+  // 2026-05-23 (Phase K-C): Zip-hoodie switched from brand-less alias to Lane Seven
+  // LS14003 (premium fleece, true-to-size, explicit brand — verified via Gelato API
+  // probe 2026-05-23). The brand-less alias silently fulfilled with Just Hoods AWDis
+  // JH001F, which has UK-shrunken sizing that made Hila's XL fit like S. Lane Seven
+  // LS14003 is $35.94 IL / $32.03 US for sizes S-XL with 5 colors (Black/White/Navy/
+  // Forest Green/Red). NEVER revert to brand=null for zip-hoodies.
+  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: 'lane-seven',       sku: 'ls14003' },
   'longsleeve-unisex': { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '2400'   },
   'longsleeve-women':  { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'sols',             sku: '02075'  },
   // Caps were entirely broken pre-2026-05-15. Old `gca_dad-hat_gsc_classic` no
@@ -126,11 +131,15 @@ const COLOR_MAP = {
     'Charcoal': 'charcoal',
     // No Cream/Sand variant for womens pullover hoodie — Cream removed from product 13.
   },
+  // 2026-05-23 (Phase K-C): Lane Seven LS14003 verified colors. Charcoal was
+  // present on the old brand-less alias but Lane Seven doesn't carry it —
+  // dropped. Forest Green + Red added (verified via Gelato API).
   'ziphoodie-unisex': {
-    'Black':    'black',
-    'White':    'white',
-    'Navy':     'navy',
-    'Charcoal': 'dark-heather',
+    'Black':        'black',
+    'White':        'white',
+    'Navy':         'navy',
+    'Forest Green': 'forest-green',
+    'Red':          'red',
   },
   'longsleeve-unisex': {
     'Black':        'black',

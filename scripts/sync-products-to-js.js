@@ -131,7 +131,7 @@ const TYPE_META = {
 const PRICES = {
   tshirt: 28,
   hoodie: 41,
-  ziphoodie: 46,
+  ziphoodie: 36,  // 2026-05-23 K-C: Lane Seven LS14003 IL $35.94 → CEIL $36 (was 46 with brand-less alias)
   longsleeve: 31,
   cap: 28,
   capemb: 32,  // premium embroidered cap, slightly higher than DTF
