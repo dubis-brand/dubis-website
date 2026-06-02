@@ -91,6 +91,26 @@ DARK_COLORS = Black, Navy, Charcoal, Forest Green → use `_white.png` designs
 - `designs/cap_design_{variant}.png` — cap designs
 - Design files served at: `https://www.dubis.net/designs/`
 
+## Cross-garment design parity — front logo is shared, back uses one generator
+**Verified 2026-06-02 (Phase K zip-hoodie migration).** The DUBIS™ front logo and the
+back slogan render IDENTICALLY across every garment type (t-shirt, zip-hoodie, long-sleeve,
+hoodie) — this is true *by construction*, not by per-product effort:
+- **Front logo = ONE shared pair of files** (`front_logo_white.png` / `front_logo_dark.png`).
+  Every product's front consumes the same file via `getDesignFiles()`. So a zip-hoodie's
+  `DUBIS™` is byte-identical to a t-shirt's. The TM fix (composite `TM` in basic Impact glyphs,
+  `generate-designs.js` ~L398-409, since Impact lacks U+2122) lives here once → all garments inherit it.
+- **Back = ONE `generateBack()` function**, vertically centered (`topY=(BACK_H-totalH)/2`,
+  no per-garment-type `BACK_Y_START` since the 2026-05-16 rewrite). Same Impact font, same
+  small-top-line / big-punchword layout convention, same centering → zip-hoodie back === t-shirt back.
+  The back carries NO ™ (only the front logo does).
+- **Implication for parity checks:** if a t-shirt and a zip-hoodie of the same slogan ever LOOK
+  different in the catalog mockups, it is a *mockup-freshness* problem, never a design-logic one.
+  The `images/product-*.jpg` for the older garment is simply stale relative to the last
+  `designs/` regen — fix via the "Catalog mockup refresh workflow" below, do NOT hand-edit one type.
+- **2026-06-02 state:** zip-hoodies #3/#25 mockups are fresh (show the corrected crisp ™);
+  t-shirt + pullover-hoodie mockups predate the TM fix (May 16 batch) and still show the old
+  rough ™ / dark-on-black low-contrast front — a full non-zip refresh is the open follow-up.
+
 ## Order Reference Format
 `DUBIS-{PaypalOrderId}` — used to find orders in Gelato Dashboard
 
