@@ -42,7 +42,7 @@ const TEMPLATES: Record<string, Template> = {
   'tshirt-women':      { cat: 't-shirt', sub: 'crewneck',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'bella-and-canvas', sku: '6004'   },
   'hoodie-unisex':     { cat: 'hoodie',  sub: 'pullover',        cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '18500'  },
   'hoodie-women':      { cat: 'hoodie',  sub: 'pullover',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
-  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: 'lane-seven',       sku: 'ls14003' },  // 2026-05-23 K-C: was brand-less (silent Just Hoods sub)
+  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'organic', gpr: '4-4',     brand: 'sols',             sku: '04237'  },  // 2026-06-02 K-C: SOL'S 04237 (Lane Seven was Gelato staging, no mockups)
   'longsleeve-unisex': { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '2400'   },
   'longsleeve-women':  { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'sols',             sku: '02075'  },
   'cap-unisex':        { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-dtf', brand: 'as-colour',        sku: '1114'   },
@@ -69,8 +69,8 @@ const COLOR_MAP: Record<string, Record<string, ColorEntry>> = {
   'hoodie-women': {
     'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Charcoal': 'charcoal',
   },
-  'ziphoodie-unisex': {  // 2026-05-23 K-C: Lane Seven LS14003 verified colors
-    'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Forest Green': 'forest-green', 'Red': 'red',
+  'ziphoodie-unisex': {  // 2026-06-02 K-C: SOL'S 04237 verified colors
+    'Black': 'black', 'White': 'white', 'Navy': 'french-navy', 'Gray': 'grey-melange', 'Royal Blue': 'royal-blue',
   },
   'longsleeve-unisex': {
     'Black': 'black', 'White': 'white', 'Cream': 'sand', 'Navy': 'navy',
@@ -101,6 +101,11 @@ const SIZE_MAP: Record<string, string> = {
   'S': 's', 'M': 'm', 'L': 'l', 'XL': 'xl', '2XL': '2xl', '3XL': '3xl', 'One Size': 'onesize',
 };
 
+// SOL'S 04237 zip-hoodie uses `xxl` (not `2xl`) for 2XL — verified live 2026-06-02.
+const SIZE_OVERRIDE: Record<string, Record<string, string>> = {
+  'ziphoodie-unisex': { '2XL': 'xxl' },
+};
+
 function templateKey(type: string, gender: string | undefined | null): string {
   return `${type}-${gender === 'women' ? 'women' : 'unisex'}`;
 }
@@ -114,7 +119,7 @@ function buildProductUid(type: string, dubisColor: string, dubisSize: string, ge
   const gColor = typeof colorEntry === 'string' ? colorEntry : colorEntry.color;
   const brand  = (typeof colorEntry === 'object' && colorEntry.brand) ? colorEntry.brand : t.brand;
   const sku    = (typeof colorEntry === 'object' && colorEntry.sku)   ? colorEntry.sku   : t.sku;
-  const gSize  = SIZE_MAP[dubisSize];
+  const gSize  = (SIZE_OVERRIDE[key] && SIZE_OVERRIDE[key][dubisSize]) || SIZE_MAP[dubisSize];
   if (!gSize) return null;
   const brandSuffix = (brand && sku) ? `_${brand}_${sku}` : '';
   return `apparel_product_gca_${t.cat}_gsc_${t.sub}_gcu_${t.cut}_gqa_${t.qa}_gsi_${gSize}_gco_${gColor}_gpr_${t.gpr}${brandSuffix}`;

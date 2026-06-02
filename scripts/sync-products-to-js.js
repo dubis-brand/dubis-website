@@ -131,7 +131,7 @@ const TYPE_META = {
 const PRICES = {
   tshirt: 28,
   hoodie: 41,
-  ziphoodie: 36,  // 2026-05-23 K-C: Lane Seven LS14003 IL $35.94 → CEIL $36 (was 46 with brand-less alias)
+  ziphoodie: 55,  // 2026-06-02 K-C: SOL'S 04237 IL $52.66-54.90 → CEIL $55 (Lane Seven LS14003 was Gelato staging, no mockups)
   longsleeve: 31,
   cap: 28,
   capemb: 32,  // premium embroidered cap, slightly higher than DTF

@@ -3447,7 +3447,7 @@ ${personaId ? `Persona: ${personaId}\n` : ''}${sloganMismatch ? '⚠️ NOTE: pr
       't-shirt:women':      ['Black', 'White', 'Cream', 'Navy'],
       'hoodie:unisex':      ['Black', 'White', 'Cream', 'Navy', 'Charcoal', 'Forest Green', 'Gray'],
       'hoodie:women':       ['Black', 'White', 'Navy', 'Charcoal'],
-      'zip-hoodie:unisex':  ['Black', 'White', 'Navy', 'Forest Green', 'Red'],  // 2026-05-23 K-C: Lane Seven LS14003 (was Charcoal too on brand-less alias)
+      'zip-hoodie:unisex':  ['Black', 'White', 'Navy', 'Gray', 'Royal Blue'],  // 2026-06-02 K-C: SOL'S 04237 (Lane Seven was Gelato staging, no mockups)
       'long-sleeve:unisex': ['Black', 'White', 'Cream', 'Navy', 'Forest Green', 'Gray'],
       'long-sleeve:women':  ['Black', 'White', 'Navy'],
       'cap:unisex':         ['Black', 'White', 'Cream', 'Navy'],
@@ -3541,7 +3541,7 @@ Generate 3 slogan proposals. Return ONLY valid JSON array. The "colors" field MU
       // 2026-05-19: PRICE_MAP refreshed for the Phase F catalog — vneck/tank/cap-emb added.
       // Defaults per rule #7 (CEIL of cheapest IL cost from gelato-stock-check).
       const PRICE_MAP: Record<string, number> = {
-        't-shirt': 28, hoodie: 41, 'zip-hoodie': 36, 'long-sleeve': 31,  // 2026-05-23 K-C: zip-hoodie 46→36 (Lane Seven LS14003 IL cost $35.94)
+        't-shirt': 28, hoodie: 41, 'zip-hoodie': 55, 'long-sleeve': 31,  // 2026-06-02 K-C: zip-hoodie →55 (SOL'S 04237 IL cost $52.66-54.90; Lane Seven was staging)
         cap: 28, 'cap-emb': 32, 'v-neck': 30, 'tank-top': 30,
       };
       const DB_TYPE_MAP: Record<string, string> = {

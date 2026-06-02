@@ -114,7 +114,7 @@ RETURNING id, product_id_numeric;
 | `t-shirt` | women  | $19.92 | varies | $21 | Black/White/Cream/Navy | Bella+Canvas 6004 |
 | `hoodie` | unisex  | $35.47 | $27.89 | $36 | Black/White/Cream/Navy/Charcoal/Forest Green/Gray | Gildan 18500 |
 | `hoodie` | women   | varies | varies | $36 | Black/White/Navy/Charcoal | ⚠️ Brand-less alias — Gelato silently fulfills via **Just Hoods AWDis JH001F** (UK-shrunken sizing — XL fits like S). **DO NOT USE.** See K-postmortem 2026-05-23. |
-| `zip-hoodie` | unisex | **$35.94** | **$32.03** | **$36** | **Black/White/Navy/Forest Green/Red** | ✅ **Lane Seven LS14003** (explicit brand, qa=prm, gpr=4-4) — replaced brand-less alias on 2026-05-23 |
+| `zip-hoodie` | unisex | **$52.66–54.90** | **~$45** | **$55** | **Black/White/Navy/Gray/Royal Blue** | ✅ **SOL'S 04237** (explicit brand, qa=organic, gpr=4-4) — adopted 2026-06-02. NOTE: Lane Seven LS14003 (tried 2026-05-23) was a Gelato **staging** product — State/ProductStatus undefined, no mockups, absent from search → unusable. SOL'S 04237 is published. |
 | `long-sleeve` | unisex | $27.40 | $19.89 | $28 | Black/White/Cream/Navy/Forest Green/Gray | Gildan 2400, cost via brand-less fallback |
 | `long-sleeve` | women  | varies | varies | $28 | Black/White/Navy | SOLS 02075 |
 | `cap` | unisex | varies | varies | $16 | Black/White/Cream/Navy | AS Colour 1114 DTF |
@@ -140,9 +140,9 @@ When a TEMPLATES row in `api/create-gelato-order.js` has `brand:null, sku:null` 
    - ❌ Just Hoods AWDis JH050 (zip-hoodie) — same vendor, same sizing
 3. **Verified premium replacements:**
    - ✅ `hoodie:unisex` → **Gildan 18500** (already in TEMPLATES, no change needed)
-   - ✅ `zip-hoodie:unisex` → **Lane Seven LS14003** (qa=prm, gpr=4-4) — adopted 2026-05-23, 5 colors (Black/White/Navy/Forest Green/Red), $35.94 IL / $32.03 US
-   - ❓ `hoodie:women` → not yet remapped. **DO NOT activate `hoodie:women` products until a non-Just-Hoods replacement is verified.** Workaround: route women's pullover-hoodie slogans to `zip-hoodie:unisex` (Lane Seven) OR `hoodie:unisex` (Gildan 18500).
-4. **Migration anti-pattern that worked here:** When `clothing_type='hoodie'` products needed to escape Just Hoods, products #3 and #25 were **reclassified to `zip-hoodie`** (Option A from the K plan, per oren "החלף את הכל"). Their existing DUBIS™ front + slogan back artwork was reused; the GHA pipeline regenerated mockups against Lane Seven LS14003 blanks.
+   - ✅ `zip-hoodie:unisex` → **SOL'S 04237** (qa=organic, gpr=4-4) — adopted 2026-06-02, 5 colors (Black/White/Navy/Gray/Royal Blue), $52.66–54.90 IL. (Lane Seven LS14003, tried 2026-05-23, turned out to be a Gelato **staging** product with no mockups and absent from search — abandoned.)
+   - ❓ `hoodie:women` → not yet remapped. **DO NOT activate `hoodie:women` products until a non-Just-Hoods replacement is verified.** Workaround: route women's pullover-hoodie slogans to `zip-hoodie:unisex` (SOL'S 04237) OR `hoodie:unisex` (Gildan 18500).
+4. **Migration anti-pattern that worked here:** When `clothing_type='hoodie'` products needed to escape Just Hoods, products #3 and #25 were **reclassified to `zip-hoodie`** (Option A from the K plan, per oren "החלף את הכל"). Their existing DUBIS™ front + slogan back artwork was reused; mockups regenerated against SOL'S 04237 blanks via the B+ composite pipeline.
 
 **4 products retired by K-B (do not reactivate):** #9 (zip-hoodie unisex), #13 (hoodie women), #17 (zip-hoodie unisex), #24 (hoodie women). Their `publishing_status='visual_rejected'` + `proof_of_completion.retired_reason='Just Hoods JH001F sizing — see Hila order 2026-05-23'`.
 
@@ -160,7 +160,7 @@ These are verified-in-Gelato palettes used by `?type=generate-slogan` when no `p
 | `t-shirt:women` | Black, White, Cream, Navy (4) |
 | `hoodie:unisex` | Black, White, Cream, Navy, Charcoal, Forest Green, Gray (7) |
 | `hoodie:women` | Black, White, Navy, Charcoal (4) |
-| `zip-hoodie:unisex` | Black, White, Navy, Forest Green, Red (5) — **Lane Seven LS14003 since 2026-05-23** |
+| `zip-hoodie:unisex` | Black, White, Navy, Gray, Royal Blue (5) — **SOL'S 04237 since 2026-06-02** |
 | `long-sleeve:unisex` | Black, White, Cream, Navy, Forest Green, Gray (6) |
 | `long-sleeve:women` | Black, White, Navy (3) |
 | `cap:unisex` | Black, White, Cream, Navy (4) |

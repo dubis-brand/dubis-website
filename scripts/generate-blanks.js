@@ -47,6 +47,9 @@ const GELATO_COLOR_HEX = {
   'Red':          '#D50032',
   'Charcoal':     '#36454F',  // TODO: replace with actual Gelato HEX when we fetch it
   'Forest Green': '#0F3D2E',  // TODO: ditto
+  // SOL'S 04237 zip-hoodie fabric colors (fetched from Gelato product API 2026-06-02)
+  'Gray':         '#92949B',  // SOL'S grey-melange
+  'Royal Blue':   '#003373',  // SOL'S royal-blue
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -67,7 +70,7 @@ const GARMENT_DESC = {
 const PRODUCTS = [
   { id: 1,  type: 'tshirt',     colors: ['Black','White','Cream','Navy','Red'] },
   { id: 2,  type: 'tshirt',     colors: ['Black','Cream','Navy'] },
-  { id: 3,  type: 'hoodie',     colors: ['Charcoal','Cream','Navy','Forest Green'] },
+  { id: 3,  type: 'ziphoodie',  colors: ['Black','White','Navy','Gray','Royal Blue'] },  // SOL'S 04237 zip (2026-06-02)
   { id: 4,  type: 'tshirt',     colors: ['Black','White','Charcoal','Navy'] },
   { id: 5,  type: 'tshirt',     colors: ['Black','White','Cream','Charcoal'] },
   { id: 6,  type: 'hoodie',     colors: ['Charcoal','Black','Navy'] },
@@ -83,6 +86,7 @@ const PRODUCTS = [
   { id: 16, type: 'hoodie',     colors: ['Black','White','Navy','Charcoal'] },
   { id: 17, type: 'tshirt',     colors: ['Black','White','Cream','Navy'] },
   { id: 18, type: 'tshirt',     colors: ['Black','White','Cream','Navy'] },
+  { id: 25, type: 'ziphoodie',  colors: ['Black','White','Navy','Gray','Royal Blue'] },  // SOL'S 04237 zip (2026-06-02)
 ];
 
 // ─────────────────────────────────────────────────────────────────

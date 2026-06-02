@@ -64,7 +64,7 @@ const TEMPLATES = {
   'tshirt-women':      { cat: 't-shirt', sub: 'crewneck',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'bella-and-canvas', sku: '6004'   },
   'hoodie-unisex':     { cat: 'hoodie',  sub: 'pullover',        cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '18500'  },
   'hoodie-women':      { cat: 'hoodie',  sub: 'pullover',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
-  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: 'lane-seven',       sku: 'ls14003' },
+  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'organic', gpr: '4-4',     brand: 'sols',             sku: '04237'  },  // 2026-06-02 K-C: SOL'S 04237 (Lane Seven was Gelato staging, no mockups)
   'longsleeve-unisex': { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '2400'   },
   'longsleeve-women':  { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'sols',             sku: '02075'  },
   'cap-unisex':        { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-dtf', brand: 'as-colour',        sku: '1114'   },
@@ -74,6 +74,7 @@ const TEMPLATES = {
 };
 
 const SIZE_MAP = { S:'s', M:'m', L:'l', XL:'xl', '2XL':'2xl', '3XL':'3xl', 'One Size':'onesize' };
+const SIZE_OVERRIDE = { 'ziphoodie-unisex': { '2XL':'xxl' } };  // SOL'S 04237 uses xxl for 2XL
 
 const COLOR_MAP = {
   'tshirt-unisex': {
@@ -84,14 +85,14 @@ const COLOR_MAP = {
   'tshirt-women':      { Black:'black', White:'white', Cream:'soft-cream', Navy:'navy' },
   'hoodie-unisex':     { Black:'black', White:'white', Cream:'sand', Navy:'navy', Charcoal:'dark-heather', 'Forest Green':'forest-green', Gray:'sport-grey' },
   'hoodie-women':      { Black:'black', White:'white', Navy:'navy', Charcoal:'charcoal' },
-  'ziphoodie-unisex':  { Black:'black', White:'white', Navy:'navy', 'Forest Green':'forest-green', Red:'red' },  // Lane Seven LS14003 (2026-05-23)
+  'ziphoodie-unisex':  { Black:'black', White:'white', Navy:'french-navy', Gray:'grey-melange', 'Royal Blue':'royal-blue' },  // SOL'S 04237 (2026-06-02)
   'longsleeve-unisex': { Black:'black', White:'white', Cream:'sand', Navy:'navy', 'Forest Green':'forest-green', Gray:'sports-grey' },
   'longsleeve-women':  { Black:'deep-black', White:'white', Navy:'french-navy' },
   'cap-unisex':        { Black:'black', White:'white', Cream:'ecru', Navy:'navy' },
   'capemb-unisex':     { Black:'black', White:'white', Navy:'navy', Cream:'stone', Charcoal:'dark-grey' },
 };
 
-const DARK = new Set(['Black','Charcoal','Navy','Forest Green']);
+const DARK = new Set(['Black','Charcoal','Navy','Forest Green','Royal Blue']);
 
 function normType(t) { return String(t).replace(/-/g,''); }
 function templateKey(type, gender) { return `${normType(type)}-${gender === 'women' ? 'women' : 'unisex'}`; }
@@ -103,7 +104,7 @@ function buildProductUid(type, color, size, gender) {
   const gColor = typeof entry === 'string' ? entry : entry.color;
   const brand  = (typeof entry === 'object' && entry.brand) ? entry.brand : t.brand;
   const sku    = (typeof entry === 'object' && entry.sku)   ? entry.sku   : t.sku;
-  const gSize = SIZE_MAP[size]; if (!gSize) return null;
+  const gSize = (SIZE_OVERRIDE[key] && SIZE_OVERRIDE[key][size]) || SIZE_MAP[size]; if (!gSize) return null;
   const suffix = (brand && sku) ? `_${brand}_${sku}` : '';
   return `apparel_product_gca_${t.cat}_gsc_${t.sub}_gcu_${t.cut}_gqa_${t.qa}_gsi_${gSize}_gco_${gColor}_gpr_${t.gpr}${suffix}`;
 }

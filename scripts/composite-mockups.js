@@ -50,9 +50,9 @@ const PRODUCTS = [
   { id: 2,  type: 'tshirt',     colors: ['Black','Cream','Navy'],
     phrase: "More of me to love", layout: 'top-bottom',
     small: "more of me to", big: "LOVE", after: "" },
-  { id: 3,  type: 'hoodie',     colors: ['Charcoal','Cream','Navy','Forest Green'],
+  { id: 3,  type: 'ziphoodie',  colors: ['Black','White','Navy','Gray','Royal Blue'],
     phrase: "Napping is my cardio", layout: 'top-bottom',
-    small: "NAPPING IS MY", big: "CARDIO", after: "" },
+    small: "NAPPING IS MY", big: "CARDIO", after: "" },  // SOL'S 04237 zip (2026-06-02)
   { id: 4,  type: 'tshirt',     colors: ['Black','White','Charcoal','Navy'],
     phrase: "I survived. That's enough.", layout: 'top-bottom',
     small: "", big: "I survived.", after: "That\u2019s enough." },
@@ -98,9 +98,14 @@ const PRODUCTS = [
   { id: 18, type: 'tshirt',     colors: ['Black','White','Cream','Navy'],
     phrase: "Unfashionably COMFORTABLE.", layout: 'top-bottom',
     small: "Unfashionably", big: "COMFORTABLE", after: "." },
+  { id: 25, type: 'ziphoodie',  colors: ['Black','White','Navy','Gray','Royal Blue'],
+    phrase: "Today is CANCELLED", layout: 'top-bottom',
+    small: "TODAY IS", big: "CANCELLED", after: "" },  // SOL'S 04237 zip (2026-06-02)
 ];
 
-const DARK_COLORS = new Set(['Black','Charcoal','Navy','Forest Green']);
+// Royal Blue (SOL'S #003373) is a dark garment → white ink. Gray (#92949B) is
+// mid-tone → dark ink reads better, so it stays OUT of this set.
+const DARK_COLORS = new Set(['Black','Charcoal','Navy','Forest Green','Royal Blue']);
 
 // ─────────────────────────────────────────────────────────────────
 // Draw the DUBIS™ chest-left logo onto the front canvas.
