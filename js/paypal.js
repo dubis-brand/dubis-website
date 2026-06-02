@@ -412,38 +412,100 @@ function renderDirectPayPalButton() {
     `;
 }
 
-// ===== FB / INSTAGRAM IN-APP WEBVIEW HANDOFF =====
-// Replaces PayPal buttons with an "open in external browser" UI when the
-// visitor is inside the FB or IG in-app browser, where PayPal popups die.
-// We never want to render PayPal buttons here — the user clicks, sees nothing
-// happen, and bounces. Show them how to bail out to Chrome/Safari instead.
+// ===== FB / INSTAGRAM IN-APP WEBVIEW CHECKOUT (PayPal full-page redirect) =====
+// Inside the FB/IG in-app browser the PayPal SDK popup is blocked/killed, so the
+// JS Buttons never complete. The fix: a server-built PayPal Orders-v2 order with
+// an `approve` HATEOAS link, then a TOP-LEVEL navigation to PayPal's hosted
+// approval page — top-level navigation DOES work inside the webview where popups
+// do not. On return, the server captures + fulfills (see
+// `api/create-gelato-order.js?action=capture-paypal-order`). Cart is stored
+// server-side keyed by the PayPal order id (localStorage is unreliable in FBIA).
+// A copy-link / open-in-Chrome fallback stays as a secondary option.
 function renderWebViewExternalHandoff() {
     const container = document.getElementById('paypal-button-container');
     if (!container) return;
 
-    // Build the external URL with a flag so we can debug / track later.
-    const cleanUrl = window.location.origin + window.location.pathname;
+    const cleanUrl   = window.location.origin + window.location.pathname;
     const externalUrl = cleanUrl + '?ext=1#shop';
-    // Android: intent:// URL forces Chrome to open the page. iOS has no equivalent
-    // (Apple blocks programmatic browser handoff), so we rely on target=_blank
-    // (sometimes pops out of FB) + a copy-link button as the universal fallback.
-    const isAndroid = /Android/i.test(navigator.userAgent || '');
-    const intentUrl = 'intent://' + window.location.host + (window.location.pathname || '/') +
+    const isAndroid  = /Android/i.test(navigator.userAgent || '');
+    const intentUrl  = 'intent://' + window.location.host + (window.location.pathname || '/') +
                       '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' +
                       encodeURIComponent(externalUrl) + ';end';
 
     container.innerHTML = `
         <div class="fb-webview-notice" dir="rtl">
-            <h4>לתשלום מאובטח — פתח בדפדפן חיצוני</h4>
-            <p>תשלום ב-PayPal / כרטיס אשראי לא עובד בדפדפן הפנימי של פייסבוק/אינסטגרם. פתח את האתר ב-Chrome או Safari כדי להשלים את ההזמנה. הקופון <strong>DUBIS15</strong> כבר מוחל בעגלה.</p>
+            <h4>תשלום מאובטח ב-PayPal</h4>
+            <p>לחיצה על הכפתור תעביר אותך לדף התשלום המאובטח של PayPal ותחזיר אותך לכאן בסיום.</p>
             <div class="fb-webview-actions">
-                ${isAndroid ? `<a class="fb-webview-btn" href="${intentUrl}">פתח ב-Chrome</a>` : ''}
-                <a class="fb-webview-btn ${isAndroid ? 'secondary' : ''}" href="${externalUrl}" target="_blank" rel="noopener noreferrer">פתח בדפדפן ברירת מחדל</a>
-                <button type="button" class="fb-webview-btn secondary" onclick="dubisCopyCheckoutLink(this)">העתק קישור לאתר</button>
+                <button type="button" id="fbia-paypal-redirect-btn" class="fb-webview-btn">המשך לתשלום מאובטח →</button>
             </div>
-            <p class="fb-webview-hint">או: פתח את התפריט (⋯) בפינה הימנית-עליונה ובחר "Open in Safari" / "פתח ב-Chrome"</p>
+            <p id="fbia-paypal-error" class="fb-webview-hint" style="display:none;color:#b00020"></p>
+            <details class="fb-webview-fallback" style="margin-top:14px">
+                <summary style="cursor:pointer;font-size:.9em;opacity:.8">התשלום לא נפתח? פתח בדפדפן חיצוני</summary>
+                <p class="fb-webview-hint" style="margin-top:8px">פתח את האתר ב-Chrome / Safari והשלם שם את ההזמנה.</p>
+                <div class="fb-webview-actions">
+                    ${isAndroid ? `<a class="fb-webview-btn secondary" href="${intentUrl}">פתח ב-Chrome</a>` : ''}
+                    <a class="fb-webview-btn secondary" href="${externalUrl}" target="_blank" rel="noopener noreferrer">פתח בדפדפן ברירת מחדל</a>
+                    <button type="button" class="fb-webview-btn secondary" onclick="dubisCopyCheckoutLink(this)">העתק קישור</button>
+                </div>
+            </details>
         </div>
     `;
+
+    const btn    = document.getElementById('fbia-paypal-redirect-btn');
+    const errEl  = document.getElementById('fbia-paypal-error');
+    if (!btn) return;
+
+    btn.addEventListener('click', async () => {
+        if (errEl) errEl.style.display = 'none';
+        const originalLabel = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'מכין תשלום…';
+
+        try {
+            if (!Array.isArray(cart) || cart.length === 0) {
+                throw new Error('empty_cart');
+            }
+            const itemTotal  = cart.reduce((sum, i) => sum + (Number(i.price) || 0), 0);
+            const discountAmt = (typeof appliedCoupon === 'object' && appliedCoupon)
+                ? Math.max(0, itemTotal - appliedCoupon.final_total)
+                : 0;
+            const buyerEmail = (window.checkoutContact && window.checkoutContact.email) || '';
+
+            if (window.dubisTrack) {
+                window.dubisTrack('checkout_start', { items: cart.length, total: itemTotal, channel: 'fbia_redirect' });
+            }
+
+            const res = await fetch('/api/create-gelato-order?action=create-paypal-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    cartItems: cart,
+                    shippingAddress: window.checkoutAddress || null,
+                    buyerEmail: buyerEmail,
+                    discount: discountAmt
+                })
+            });
+
+            let data = null;
+            try { data = await res.json(); } catch (_) { data = null; }
+
+            if (!res.ok || !data || !data.ok || !data.approveUrl) {
+                const reason = (data && (data.error || data.message)) || ('http_' + res.status);
+                throw new Error(reason);
+            }
+
+            // Top-level navigation — works inside the FB/IG webview where popups die.
+            window.location.href = data.approveUrl;
+        } catch (e) {
+            btn.disabled = false;
+            btn.textContent = originalLabel;
+            const msg = (e && e.message === 'empty_cart')
+                ? 'העגלה ריקה.'
+                : 'לא הצלחנו לפתוח את התשלום. נסה שוב או פתח את האתר בדפדפן חיצוני.';
+            if (errEl) { errEl.textContent = msg; errEl.style.display = ''; }
+        }
+    });
 }
 
 window.dubisCopyCheckoutLink = function(btn) {

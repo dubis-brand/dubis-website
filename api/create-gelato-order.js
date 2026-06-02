@@ -9,7 +9,7 @@
 // =================================================================
 
 const crypto = require('crypto');
-const { refundOrder } = require('./_paypal');
+const { refundOrder, createOrder, captureOrder } = require('./_paypal');
 const { splitCartByWarehouse } = require('./_orderSplit');
 
 const GELATO_API_BASE = 'https://order.gelatoapis.com';
@@ -51,13 +51,16 @@ const TEMPLATES = {
   // Women's hoodie has no single-brand catalog with our colors; the un-suffixed
   // legacy alias (`...gpr_4-4` with no brand) DOES carry charcoal/navy/black/white.
   'hoodie-women':      { cat: 'hoodie',  sub: 'pullover',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
-  // 2026-05-23 (Phase K-C): Zip-hoodie switched from brand-less alias to Lane Seven
-  // LS14003 (premium fleece, true-to-size, explicit brand — verified via Gelato API
-  // probe 2026-05-23). The brand-less alias silently fulfilled with Just Hoods AWDis
-  // JH001F, which has UK-shrunken sizing that made Hila's XL fit like S. Lane Seven
-  // LS14003 is $35.94 IL / $32.03 US for sizes S-XL with 5 colors (Black/White/Navy/
-  // Forest Green/Red). NEVER revert to brand=null for zip-hoodies.
-  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: 'lane-seven',       sku: 'ls14003' },
+  // 2026-06-02 (Phase K-C, revised): Zip-hoodie on SOL'S 04237 (unisex DTG,
+  // qa=organic, explicit brand). Replaces the brand-less alias that silently
+  // fulfilled with Just Hoods AWDis JH001F (UK-shrunken sizing → Hila's XL fit
+  // like S). Lane Seven LS14003 was the first pick (2026-05-23) but turned out to
+  // be a Gelato STAGING product (State/ProductStatus undefined, absent from
+  // published search, renders NO mockups). SOL'S 04237 is fully published +
+  // activated + printable: 5 colors (black/white/french-navy/grey-melange/
+  // royal-blue), IL $52.66-54.90 / US $38.64-40.28 → base $55. NEVER revert to
+  // brand=null for zip-hoodies, and NEVER use lane-seven/ls14003 (staging).
+  'ziphoodie-unisex':  { cat: 'hoodie',  sub: 'zip',             cut: 'unisex', qa: 'organic', gpr: '4-4',     brand: 'sols',             sku: '04237'  },
   'longsleeve-unisex': { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '2400'   },
   'longsleeve-women':  { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'sols',             sku: '02075'  },
   // Caps were entirely broken pre-2026-05-15. Old `gca_dad-hat_gsc_classic` no
@@ -86,6 +89,13 @@ const TEMPLATES = {
 const SIZE_MAP = {
   'S': 's', 'M': 'm', 'L': 'l', 'XL': 'xl', '2XL': '2xl', '3XL': '3xl',
   'One Size': 'onesize',
+};
+
+// Per-template size-code overrides. Some Gelato brands use irregular size codes.
+// SOL'S 04237 zip-hoodie uses `xxl` (not `2xl`) for 2XL — verified live 2026-06-02:
+// gsi_2xl → 404, gsi_xxl → 200, gsi_3xl → 200. (3XL stays `3xl`.)
+const SIZE_OVERRIDE = {
+  'ziphoodie-unisex': { '2XL': 'xxl' },
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -131,15 +141,16 @@ const COLOR_MAP = {
     'Charcoal': 'charcoal',
     // No Cream/Sand variant for womens pullover hoodie — Cream removed from product 13.
   },
-  // 2026-05-23 (Phase K-C): Lane Seven LS14003 verified colors. Charcoal was
-  // present on the old brand-less alias but Lane Seven doesn't carry it —
-  // dropped. Forest Green + Red added (verified via Gelato API).
+  // 2026-06-02 (Phase K-C, revised): SOL'S 04237 verified colors (all return 200
+  // on /v3/products/...gco_{color}... with State=published, ProductStatus=activated).
+  // Navy→french-navy, Gray→grey-melange, plus Royal Blue (royal-blue). Forest Green
+  // and Red are NOT in the SOL'S 04237 catalog — dropped.
   'ziphoodie-unisex': {
-    'Black':        'black',
-    'White':        'white',
-    'Navy':         'navy',
-    'Forest Green': 'forest-green',
-    'Red':          'red',
+    'Black':      'black',
+    'White':      'white',
+    'Navy':       'french-navy',
+    'Gray':       'grey-melange',
+    'Royal Blue': 'royal-blue',
   },
   'longsleeve-unisex': {
     'Black':        'black',
@@ -203,7 +214,7 @@ const COLOR_MAP = {
 // ─────────────────────────────────────────────────────────────────
 // DARK COLORS — use white-ink design files on these garments
 // ─────────────────────────────────────────────────────────────────
-const DARK_COLORS = new Set(['Black', 'Charcoal', 'Navy', 'Forest Green']);
+const DARK_COLORS = new Set(['Black', 'Charcoal', 'Navy', 'Forest Green', 'Royal Blue']);
 
 // ─────────────────────────────────────────────────────────────────
 // Build Gelato productUid from item type, DUBIS color, DUBIS size, gender.
@@ -223,7 +234,7 @@ function buildProductUid(type, dubisColor, dubisSize, gender = 'unisex') {
   const gColor = typeof colorEntry === 'string' ? colorEntry : colorEntry.color;
   const brand  = (typeof colorEntry === 'object' && colorEntry.brand) ? colorEntry.brand : t.brand;
   const sku    = (typeof colorEntry === 'object' && colorEntry.sku)   ? colorEntry.sku   : t.sku;
-  const gSize  = SIZE_MAP[dubisSize];
+  const gSize  = (SIZE_OVERRIDE[key] && SIZE_OVERRIDE[key][dubisSize]) || SIZE_MAP[dubisSize];
   if (!gSize) return null;
   const brandSuffix = (brand && sku) ? `_${brand}_${sku}` : '';
   return `apparel_product_gca_${t.cat}_gsc_${t.sub}_gcu_${t.cut}_gqa_${t.qa}_gsi_${gSize}_gco_${gColor}_gpr_${t.gpr}${brandSuffix}`;
@@ -1399,6 +1410,256 @@ async function handleSubmitCorrectedAddress(req, res) {
 }
 
 // =====================================================================
+// FBIA REDIRECT CHECKOUT (2026-06-01)
+// =====================================================================
+// Facebook/Instagram In-App Browser (FBIA) blocks the PayPal JS-SDK
+// popup entirely. ~88% of paid IL Meta clicks land in FBIA → 0 conversion.
+// The fix is a server-driven PayPal redirect (Orders v2 REST) flow:
+//   1. client POSTs cart + address → ?action=create-paypal-order
+//   2. server creates a PayPal order (intent=CAPTURE), stores the cart
+//      server-side in agent_tasks (FBIA strips localStorage + return_url
+//      lands BACK in FBIA, so the cart cannot live on the client), and
+//      returns the PayPal hosted-approval URL.
+//   3. client does a TOP-LEVEL window.location nav to that URL — this
+//      works inside FBIA where the popup does not.
+//   4. PayPal redirects back to ?action=capture-paypal-order&token={id}
+//      → server captures (idempotent), re-reads the stored cart, and
+//      fulfills via a server-to-server POST to this same endpoint (the
+//      existing Gelato dispatch + auto-refund safety net), then 302s the
+//      customer to the thank-you page.
+// Shipping is recomputed authoritatively server-side (never trust client
+// totals); coupon discount is accepted client-validated but clamped to
+// [0, itemTotal] keeping item_total = Σ unit_amount (PayPal arithmetic).
+// =====================================================================
+
+// Server-side shipping table — mirrors js/paypal.js lines 12-42.
+const FBIA_SHIPPING_FEE = 8.99;
+const FBIA_FREE_SHIPPING_THRESHOLD = 60;
+const FBIA_SHIPPING_BY_COUNTRY = {
+  US: 8.99, CA: 12.99, MX: 16.99, GB: 12.99, IE: 14.99, IL: 14.99,
+  DE: 14.99, FR: 14.99, ES: 14.99, IT: 14.99, NL: 14.99, BE: 14.99,
+  AT: 14.99, SE: 14.99, DK: 14.99, FI: 14.99, NO: 16.99, CH: 16.99,
+  PL: 14.99, PT: 14.99, AU: 19.99, NZ: 19.99, JP: 19.99, SG: 19.99,
+};
+const FBIA_FALLBACK_INTL_SHIPPING = 19.99;
+
+async function fbiaResolveShipping(sb, country, itemTotal) {
+  const cc = String(country || 'US').toUpperCase();
+  if (itemTotal >= FBIA_FREE_SHIPPING_THRESHOLD) return 0;
+  let fee = FBIA_SHIPPING_BY_COUNTRY[cc] || FBIA_FALLBACK_INTL_SHIPPING;
+  // Live override for US + IL from app_config (matches __DUBIS_LIVE_SHIP).
+  if ((cc === 'US' || cc === 'IL') && sb) {
+    try {
+      const key = cc === 'US' ? 'gelato_ship_us_usd' : 'gelato_ship_il_usd';
+      const { data } = await sb.from('app_config').select('value').eq('key', key).maybeSingle();
+      const v = data && parseFloat(data.value);
+      if (v && isFinite(v) && v > 0) fee = v;
+    } catch (_) { /* fall back to table */ }
+  }
+  return fee;
+}
+
+function fbiaBaseUrl(req) {
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const proto = req.headers['x-forwarded-proto'] || 'https';
+  return `${proto}://${host}`;
+}
+
+// POST ?action=create-paypal-order
+async function handleCreatePaypalOrder(req, res) {
+  try {
+    const { cartItems, shippingAddress, buyerEmail, discount } = req.body || {};
+
+    if (!Array.isArray(cartItems) || cartItems.length === 0) {
+      return res.status(400).json({ error: 'no_cart_items' });
+    }
+
+    // Validate the shipping address up front — FBIA carts are notorious for
+    // Chrome-autofilled Hebrew chars + missing fields.
+    const addrCheck = validateShippingAddress(shippingAddress || {}, buyerEmail || '');
+    if (!addrCheck.valid) {
+      return res.status(400).json({
+        error: 'address_invalid',
+        missingFields: addrCheck.missing,
+        hebrewFields: addrCheck.hebrewFields,
+      });
+    }
+
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      return res.status(500).json({ error: 'no_supabase' });
+    }
+    const { createClient } = require('@supabase/supabase-js');
+    const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    // Authoritative money math — never trust client totals.
+    const itemTotal = cartItems.reduce((s, i) => s + (Number(i.price) || 0), 0);
+    const country = shippingAddress.country_code;
+    const shipping = await fbiaResolveShipping(sb, country, itemTotal);
+    // Client may pass a validated coupon discount; clamp it so it can never
+    // exceed the item subtotal and never go negative.
+    const discountAmt = Math.min(Math.max(0, Number(discount) || 0), itemTotal);
+    const grandTotal = +(itemTotal + shipping - discountAmt).toFixed(2);
+
+    if (grandTotal <= 0) {
+      return res.status(400).json({ error: 'invalid_total' });
+    }
+
+    // Build PayPal breakdown — item_total = Σ unit_amount, coupon as discount.
+    const items = cartItems.map((i) => ({
+      name: String(i.phrase || i.name || 'DUBIS item').substring(0, 127),
+      unit_amount: { currency_code: 'USD', value: (Number(i.price) || 0).toFixed(2) },
+      quantity: '1',
+    }));
+    const breakdown = {
+      item_total: { currency_code: 'USD', value: itemTotal.toFixed(2) },
+      shipping: { currency_code: 'USD', value: shipping.toFixed(2) },
+    };
+    if (discountAmt > 0) {
+      breakdown.discount = { currency_code: 'USD', value: discountAmt.toFixed(2) };
+    }
+    const amount = {
+      currency_code: 'USD',
+      value: grandTotal.toFixed(2),
+      breakdown,
+    };
+
+    const base = fbiaBaseUrl(req);
+    const order = await createOrder({
+      amount,
+      items,
+      returnUrl: `${base}/api/create-gelato-order?action=capture-paypal-order`,
+      cancelUrl: `${base}/?paypal_cancel=1`,
+      referenceId: `DUBIS-FBIA-${Date.now()}`,
+    });
+
+    if (!order.ok || !order.id || !order.approveUrl) {
+      derr('fbia-create-order-failed', { order });
+      return res.status(502).json({ error: 'paypal_create_failed' });
+    }
+
+    // Persist the cart server-side keyed by PayPal order id — the return URL
+    // re-enters FBIA where localStorage is gone, so the cart MUST live in DB.
+    const { error: insErr } = await sb.from('agent_tasks').insert({
+      agent_id: 'checkout',
+      category: 'fbia_pending',
+      status: 'pending',
+      content_data: {
+        paypal_order_id: order.id,
+        cart_items: cartItems,
+        shipping_address: shippingAddress,
+        buyer_email: buyerEmail || '',
+        shipping_cost: shipping,
+        discount: discountAmt,
+        token: signOrderToken(order.id),
+        created_at: new Date().toISOString(),
+      },
+    });
+    if (insErr) {
+      derr('fbia-task-insert-failed', { paypalOrderId: order.id, err: insErr.message });
+      return res.status(500).json({ error: 'task_insert_failed' });
+    }
+
+    dlog('fbia-create-order-ok', { paypalOrderId: order.id, grandTotal });
+    return res.status(200).json({
+      ok: true,
+      paypalOrderId: order.id,
+      approveUrl: order.approveUrl,
+    });
+  } catch (err) {
+    derr('fbia-create-order-exception', { err: err.message });
+    return res.status(500).json({ error: 'network_error', message: err.message });
+  }
+}
+
+// GET ?action=capture-paypal-order  (PayPal return_url)
+async function handleCapturePaypalOrder(req, res) {
+  const base = fbiaBaseUrl(req);
+  const fail = (reason) => res.redirect(302, `${base}/?paypal_error=${encodeURIComponent(reason)}`);
+  let paypalOrderId = null;
+
+  try {
+    paypalOrderId = req.query && (req.query.token || req.query.paypalOrderId);
+    if (!paypalOrderId) return fail('missing_token');
+
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!SUPABASE_URL || !SUPABASE_KEY) return fail('no_supabase');
+    const { createClient } = require('@supabase/supabase-js');
+    const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    // Re-read the cart we stored at create-order time.
+    const { data: task } = await sb
+      .from('agent_tasks')
+      .select('id, content_data, status')
+      .eq('category', 'fbia_pending')
+      .contains('content_data', { paypal_order_id: paypalOrderId })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!task) return fail('order_not_found');
+    if (task.status === 'done') {
+      return res.redirect(302, `${base}/?paypal_return=1&already=1`);
+    }
+
+    const cd = task.content_data || {};
+    const cartItems = cd.cart_items || [];
+    const shippingAddress = cd.shipping_address || {};
+    const buyerEmail = cd.buyer_email || '';
+    if (!cartItems.length) return fail('no_cart_items');
+
+    // Capture the PayPal money (idempotent — ALREADY_CAPTURED = success).
+    const cap = await captureOrder(paypalOrderId);
+    if (!cap.ok) {
+      derr('fbia-capture-failed', { paypalOrderId, cap });
+      return fail('capture_failed');
+    }
+
+    // Fulfill via a server-to-server POST to THIS same endpoint — reuses the
+    // existing Gelato dispatch + auto-refund safety net (line ~2213). Zero
+    // refactor risk to the money path.
+    let fulfillOk = false;
+    let fulfillBody = null;
+    try {
+      const fRes = await fetch(`${base}/api/create-gelato-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cartItems, shippingAddress, paypalOrderId, buyerEmail }),
+      });
+      fulfillBody = await fRes.json().catch(() => null);
+      fulfillOk = fRes.ok && fulfillBody && !fulfillBody.error;
+    } catch (e) {
+      derr('fbia-fulfill-exception', { paypalOrderId, err: e.message });
+    }
+
+    // Mark the pending task resolved regardless — the capture already happened
+    // and the fulfillment endpoint owns its own refund-on-failure logic.
+    await sb.from('agent_tasks').update({
+      status: 'done',
+      content_data: {
+        ...cd,
+        captured_at: new Date().toISOString(),
+        capture_id: cap.captureId || null,
+        fulfill_ok: fulfillOk,
+        fulfill_response: fulfillBody,
+      },
+    }).eq('id', task.id);
+
+    dlog('fbia-capture-ok', { paypalOrderId, fulfillOk });
+    return res.redirect(302, `${base}/?paypal_return=1`);
+  } catch (err) {
+    derr('fbia-capture-exception', { paypalOrderId, err: err.message });
+    return fail('exception');
+  }
+}
+
+// =====================================================================
 // MULTI-WAREHOUSE ORDER SPLITTING (2026-05-21)
 // =====================================================================
 // Some carts need items from multiple Gelato warehouses. Their API
@@ -2177,6 +2438,23 @@ module.exports = async function handler(req, res) {
   //   Body: { paypalOrderId, token, shippingAddress, buyerEmail }
   if (req.method === 'POST' && req.query && req.query.action === 'submit-corrected-address') {
     return handleSubmitCorrectedAddress(req, res);
+  }
+
+  // ── FBIA (Facebook/Instagram In-App Browser) redirect checkout ──────────────
+  // The PayPal JS-SDK popup is BLOCKED inside the FB/IG in-app browser, so ~88%
+  // of paid Meta clicks could never complete a purchase. These two routes
+  // implement a full-page redirect flow that works inside the webview:
+  //   1) ?action=create-paypal-order  (POST) — server creates a PayPal order
+  //      (intent=CAPTURE), stores the cart server-side keyed by the order id,
+  //      returns the hosted-approval URL. Client does window.location = approveUrl.
+  //   2) ?action=capture-paypal-order (GET)  — PayPal redirects the customer
+  //      back here with ?token={orderId}; server captures, re-reads the stored
+  //      cart, fulfills via the existing money path, redirects to a thank-you.
+  if (req.method === 'POST' && req.query && req.query.action === 'create-paypal-order') {
+    return handleCreatePaypalOrder(req, res);
+  }
+  if (req.method === 'GET' && req.query && req.query.action === 'capture-paypal-order') {
+    return handleCapturePaypalOrder(req, res);
   }
 
   if (req.method !== 'POST') {
