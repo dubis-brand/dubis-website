@@ -161,14 +161,16 @@ function drawFrontLogo(ctx, w, h, color, productType) {
   ctx.textBaseline = 'middle';
   ctx.fillText('DUBIS', cx, cy);
 
-  // TM superscript
+  // TM superscript \u2014 drawn as composite "TM" (two basic-Latin glyphs Impact owns)
+  // instead of the single \u2122 codepoint, which Impact lacks and renders as a broken
+  // fallback glyph. Mirrors the fix in generate-designs.js (Phase K-A, Hila order).
   const dubisW = ctx.measureText('DUBIS').width;
-  const tmSize = fontSize * 0.45;
+  const tmSize = fontSize * 0.32;
   setFont(ctx, tmSize);
   ctx.textAlign = 'left';
-  const tmX = cx + dubisW / 2 + 2;
-  const tmY = cy - fontSize * 0.30;
-  ctx.fillText('\u2122', tmX, tmY);
+  const tmX = cx + dubisW / 2 + 4;
+  const tmY = cy - fontSize * 0.34;
+  ctx.fillText('TM', tmX, tmY);
 }
 
 // ─────────────────────────────────────────────────────────────────
