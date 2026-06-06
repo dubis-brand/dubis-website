@@ -1306,12 +1306,24 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     if (!isAuthed && !adminOk) return json({ error: 'Unauthorized' }, 401);
 
     const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
-    const [{ data: approvedTasks }, { data: pendingTasks }] = await Promise.all([
-      sb.from('agent_tasks').select('id, title, agent_id, category, description, notes, priority, content_data').eq('status', 'approved').eq('agent_id', 'content').order('created_at', { ascending: true }),
-      sb.from('agent_tasks').select('id, title, agent_id, category, description, notes, priority, content_data').eq('status', 'pending_approval').eq('agent_id', 'content').order('created_at', { ascending: true }),
+    // 2026-06-06: also pull weekly-marketing-plan slots whose scheduled time has
+    // arrived (status='backlog'). Previously these sat in backlog forever because
+    // content-run only looked at approved+pending — the weekly plan never executed.
+    // Now a due slot flows: backlog → (caption+media here) → pending_approval → QA
+    // → publish, same as any task. TikTok slots are excluded (the GHA reel-bank
+    // publishes those independently). Earliest-scheduled first so the plan runs in order.
+    const nowIsoForSlots = new Date().toISOString();
+    const [{ data: approvedTasks }, { data: pendingTasks }, { data: backlogSlots }] = await Promise.all([
+      sb.from('agent_tasks').select('id, title, agent_id, category, description, notes, priority, content_data, status').eq('status', 'approved').eq('agent_id', 'content').order('created_at', { ascending: true }),
+      sb.from('agent_tasks').select('id, title, agent_id, category, description, notes, priority, content_data, status').eq('status', 'pending_approval').eq('agent_id', 'content').order('created_at', { ascending: true }),
+      sb.from('agent_tasks').select('id, title, agent_id, category, description, notes, priority, content_data, status').eq('status', 'backlog').eq('agent_id', 'content')
+        .lte('content_data->>scheduled_for', nowIsoForSlots)
+        .neq('content_data->>format', 'tiktok')
+        .order('content_data->>scheduled_for', { ascending: true }),
     ]);
     type Task = Record<string, unknown>;
-    const allTasks = [...(approvedTasks || []), ...(pendingTasks || [])];
+    // approved + pending first (already in-flight), then due plan slots in schedule order.
+    const allTasks = [...(approvedTasks || []), ...(pendingTasks || []), ...(backlogSlots || [])];
     // 2026-05-03 fix: skip noise (boss-agent team-meeting / admin tasks accidentally
     // tagged agent_id='content'). A real post task must carry at least format,
     // product_id, or product_slogan. Anything else is a misrouted admin TODO.

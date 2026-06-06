@@ -27,6 +27,8 @@ type Job = { name: string; url: string; method?: string; auth?: 'x-agent-secret'
 const JOBS: Record<string, Job> = {
   // Content publishing pipeline
   'content-publish':  { name: 'content-publish', url: `${FNS_BASE}/dubis-content-publisher?batch=4`, method: 'POST' },
+  // 2026-06-06: manual content-run (fills caption+media for due weekly-plan slots + pending).
+  'content-run':      { name: 'content-run', url: `${FNS_BASE}/agents?type=content-run`, method: 'POST' },
   'content-backfill': { name: 'content-backfill', url: `${FNS_BASE}/dubis-content-publisher?action=backfill`, method: 'POST' },
   // 2026-06-06: drain approved/content_approved content tasks via the in-house
   // publisher (publish-ready in agents). Manual flush path — the daily content

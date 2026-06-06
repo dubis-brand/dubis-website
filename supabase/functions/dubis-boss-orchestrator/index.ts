@@ -1071,6 +1071,65 @@ async function fetchRecurringIssues(sb: SB, todayOpinions: Opinion[]): Promise<{
 }
 
 // =============================================================
+// Weekly marketing plan vs execution (2026-06-06) — surfaces the plan + progress + links
+// =============================================================
+async function fetchWeeklyMarketing(sb: SB): Promise<{
+  plan: Record<string, unknown> | null; done: number; pending: number; backlog: number; total: number;
+  byFormat: Record<string, { done: number; planned: number }>;
+  published: Array<{ fmt: string; lang: string; slogan: string; ig: string | null; fb: string | null; tiktok: string | null; product_url: string | null }>;
+} | null> {
+  const { data: plans } = await sb.from('weekly_marketing_plans').select('*').order('week_start_date', { ascending: false }).limit(1);
+  const plan = (plans && plans[0]) as Record<string, unknown> | undefined;
+  const since = plan?.week_start_date ? new Date(plan.week_start_date as string).toISOString() : new Date(Date.now() - 7 * 86400000).toISOString();
+  const { data: tasks } = await sb.from('agent_tasks').select('status, content_data, updated_at').eq('agent_id', 'content').gte('created_at', since).order('updated_at', { ascending: false }).limit(300);
+  let done = 0, pending = 0, backlog = 0;
+  const byFormat: Record<string, { done: number; planned: number }> = {};
+  const published: Array<{ fmt: string; lang: string; slogan: string; ig: string | null; fb: string | null; tiktok: string | null; product_url: string | null }> = [];
+  for (const t of (tasks || []) as Array<Record<string, unknown>>) {
+    const cd = (t.content_data as Record<string, unknown>) || {};
+    const fmt = String(cd.format || 'feed_post');
+    const st = String(t.status || '');
+    (byFormat[fmt] ||= { done: 0, planned: 0 }).planned++;
+    if (st === 'done') {
+      done++; byFormat[fmt].done++;
+      const ig = (cd.ig_permalink as string) || null;
+      const fb = (cd.fb_permalink as string) || null;
+      const tk = (cd.tiktok_url as string) || ((cd.tiktok_late_post_id) ? `late:${cd.tiktok_late_post_id}` : null);
+      if (ig || fb || tk) published.push({ fmt, lang: String(cd.lang || cd.language || ''), slogan: String(cd.product_slogan || cd.slogan || cd.caption_he || cd.caption_en || '').slice(0, 50), ig, fb, tiktok: tk, product_url: (cd.product_url as string) || null });
+    } else if (st === 'backlog') backlog++;
+    else if (st === 'pending_approval' || st === 'approved' || st === 'publishing' || st === 'in_progress') pending++;
+  }
+  const total = (plan?.total_slots as number) || (done + pending + backlog);
+  return { plan: plan || null, done, pending, backlog, total, byFormat, published };
+}
+
+function buildWeeklyMarketingHtml(wm: Awaited<ReturnType<typeof fetchWeeklyMarketing>>): string {
+  if (!wm || !wm.plan) return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right">אין תוכנית שבועית פעילה — נוצרת אוטומטית כל יום ראשון 04:00 UTC.</p>';
+  const p = wm.plan;
+  const pct = wm.total > 0 ? Math.round(wm.done / wm.total * 100) : 0;
+  const weekStart = String(p.week_start_date || '').slice(0, 10);
+  const heSlots = (p.he_slots as number) ?? '?'; const enSlots = (p.en_slots as number) ?? '?';
+  const bar = `<div style="background:#eee;border-radius:8px;height:14px;overflow:hidden;margin:8px 0"><div style="background:#c8a96e;height:14px;width:${pct}%"></div></div>`;
+  const fmtRows = Object.entries(wm.byFormat).map(([f, c]) => `<span style="display:inline-block;background:#faf6ee;border:1px solid #e5d9c2;border-radius:6px;padding:3px 9px;margin:2px;font-size:12px">${esc(f)}: ${c.done}/${c.planned}</span>`).join('');
+  const linkChips = (it: { ig: string | null; fb: string | null; tiktok: string | null; product_url: string | null }) => {
+    const links: string[] = [];
+    if (it.ig) links.push(`<a href="${esc(it.ig)}" style="color:#c8a96e">IG</a>`);
+    if (it.fb) links.push(`<a href="${esc(it.fb)}" style="color:#c8a96e">FB</a>`);
+    if (it.tiktok && it.tiktok.startsWith('http')) links.push(`<a href="${esc(it.tiktok)}" style="color:#c8a96e">TikTok</a>`);
+    if (it.product_url) links.push(`<a href="${esc(it.product_url)}" style="color:#888">מוצר</a>`);
+    return links.join(' · ') || '—';
+  };
+  const pubHtml = wm.published.length
+    ? wm.published.slice(0, 12).map(it => `<div dir="rtl" style="padding:7px 10px;background:#fafafa;margin:4px 0;border-radius:5px;text-align:right;font-size:12px">${it.lang === 'he' ? '🇮🇱' : '🇺🇸'} <b>${esc(it.fmt)}</b> — ${esc(it.slogan)} → ${linkChips(it)}</div>`).join('')
+    : '<p dir="rtl" style="font-size:12px;color:#888;text-align:right">עדיין לא פורסם תוכן מהתוכנית השבוע.</p>';
+  return `<p dir="rtl" style="font-size:13px;margin:0 0 6px;text-align:right"><b>שבוע ${esc(weekStart)}</b> · ${esc(String(p.status || ''))} · ${heSlots} HE / ${enSlots} EN</p>
+  <p dir="rtl" style="font-size:14px;margin:0;text-align:right"><b>${wm.done}/${wm.total} פורסמו (${pct}%)</b> · ${wm.pending} בתהליך · ${wm.backlog} בהמתנה</p>
+  ${bar}
+  <div dir="rtl" style="text-align:right;margin:6px 0">${fmtRows}</div>
+  <h3 dir="rtl" style="font-size:13px;margin:12px 0 6px;text-align:right">פורסם השבוע (קישורים):</h3>
+  ${pubHtml}`;
+}
+
 // Marketing-today (v9) — caption pulled from extensive field chain
 // =============================================================
 async function fetchMarketingToday(sb: SB): Promise<{
@@ -1511,13 +1570,14 @@ Deno.serve(async (req: Request) => {
   // so the fetched kpi_current reflects today's numbers. Best-effort —
   // if either step fails we still build the rest of the report.
   const planKpiSync = await syncPlanKpisFromSnapshot(sb).catch(() => ({ updated: 0, errors: ['sync-threw'] }));
-  const [marketingToday, pending, agentHealth, dailySnaps, orderTracking, planStatus] = await Promise.all([
+  const [marketingToday, pending, agentHealth, dailySnaps, orderTracking, planStatus, weeklyMktg] = await Promise.all([
     fetchMarketingToday(sb),
     fetchPendingApprovals(sb),
     fetchAgentHealth(sb),
     fetchDailySnapshots(sb),
     fetchActiveOrdersTracking(sb),
     fetchPlanStatus(sb).catch(() => null),
+    fetchWeeklyMarketing(sb).catch(() => null),
   ]);
 
   let action_items_json: Opinion[] = synth.topActions.slice(0, isWeekly ? 5 : 3);
@@ -1806,6 +1866,7 @@ Deno.serve(async (req: Request) => {
 
   // 📊 $1,000 Plan section — silently omitted if fetch failed or no data.
   const planSectionHtml = planStatus ? buildPlanSectionHtml(planStatus) : '';
+  const weeklyMktgHtml = buildWeeklyMarketingHtml(weeklyMktg);
 
   const lastWeekSection = isWeekly && lastWeekCheck.total > 0
     ? `<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📊 מהשבוע הקודם</h2><p dir="rtl" style="font-size:13px;margin:0 0 10px"><b>${lastWeekCheck.done}/${lastWeekCheck.total} הושלמו (${Math.round(lastWeekCheck.done/lastWeekCheck.total*100)}%).</b></p>${lastWeekCheck.details.slice(0,5).map(d => { const ic = d.status === 'done' ? '✅' : d.status === 'open' ? '⏳' : '❌'; return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;margin:4px 0;border-radius:4px;text-align:right;font-size:12px">${ic} <b>${esc(d.agent)}:</b> ${esc(d.rec.slice(0,100))}</div>`; }).join('')}</td></tr><tr><td style="height:14px"></td></tr>` : '';
@@ -1820,6 +1881,7 @@ ${autoFixHtml}
 ${recurringHtml}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🚨 ממצאים חדשים (${opinions.length})</h2>${issuesHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">✍️ מחכה לאישורך (${totalPending})</h2>${pendingHtml}</td></tr><tr><td style="height:14px"></td></tr>
+<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📅 תוכנית שיווק שבועית — תכנון מול ביצוע</h2>${weeklyMktgHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📣 שיווק היום (${totalMarketing})</h2>${marketingStatsHtml}${marketingItemsHtml}</td></tr><tr><td style="height:14px"></td></tr>
 ${lastWeekSection}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📊 Meta Funnel — אתמול</h2>${funnelHtml}</td></tr><tr><td style="height:14px"></td></tr>
