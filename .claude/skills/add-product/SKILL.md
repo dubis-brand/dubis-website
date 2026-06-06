@@ -9,6 +9,10 @@ CRITICAL: This is the ONLY supported flow as of 2026-05-19. The legacy `generate
 
 Read `memory/checkout-guardrails.md` §1 (site mockup MUST equal what Gelato prints — non-negotiable) before starting.
 
+## 2026-06-06 — two things that changed
+- **Brand font is Anton (not Impact).** `scripts/generate-designs.js` loads `scripts/fonts/Anton-Regular.ttf` (bundled, OFL) via `registerFont(..., {family:'Anton'})` — cross-platform so the GHA Ubuntu runner renders the same condensed-bold type as locally. Impact was Windows-only and silently fell back to a wrong sans in GHA (see `troubleshooting.md` §"Wrong font on GHA-built products"). NEVER reintroduce the `C:\Windows\Fonts\impact.ttf` path; never bundle Impact (proprietary, repo is public).
+- **Autonomous weekly products exist.** `?type=weekly-slogan-product` (Vercel cron Tue 09:00 UTC) creates ONE product/week with `dubis_products.auto_publish=true`. For those, `gha-pipeline-callback` skips the human visual gate — it sets `active=true` directly (proof is complete), dispatches the products.js sync, emails oren a "went live" notice with a 1-click `?type=auto-product-remove` link, and `gelato-stock-check` finalizes `selling_price=CEIL(MIN gelato_cost)` (one-shot via `price_finalized`). Manual products (admin "Add product") still go through the magic-link `product-visual-approve` gate as before — `auto_publish` defaults false. To regen an EXISTING active product's mockups to a new font without taking it offline: set `auto_publish=true` + `price_finalized=true`, then dispatch `boss-approved-product` — the callback re-activates it.
+
 ## Architecture overview — what runs where
 
 ```
