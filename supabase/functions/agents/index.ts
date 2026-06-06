@@ -162,6 +162,30 @@ function pickGelatoBackMockupUrl(
   if (!pick) return null;
   return `https://www.dubis.net/images/product-${id}-${pick.replace(/ /g, '-')}-back.jpg`;
 }
+// ── Reel bank (2026-06-06) ───────────────────────────────────────────────
+// Only these persona reels are FINAL + ready in video-assets/_pilot/. The
+// 2026-05-23 batch stalled after men-1/2/3/5 — men-4 + all 5 women + men-1-EN
+// were never produced. Each persona wears ONE specific product, so a bank
+// reel may attach ONLY to a content task for the SAME product_id (otherwise
+// the caption's product and the video's garment mismatch). Update this map
+// when the batch reel pipeline finishes the rest.
+const REEL_BANK: Record<string, { product_id: number; langs: string[] }> = {
+  'men-1': { product_id: 3,  langs: ['he'] },
+  'men-2': { product_id: 6,  langs: ['he', 'en'] },
+  'men-3': { product_id: 15, langs: ['he', 'en'] },
+  'men-5': { product_id: 8,  langs: ['he', 'en'] },
+};
+function reelBankUrlForProduct(productId: number | string | null | undefined, lang: string): string | null {
+  const pid = Number(productId);
+  if (!pid) return null;
+  const L = (lang || 'en').toLowerCase() === 'he' ? 'he' : 'en';
+  const entry = Object.entries(REEL_BANK).find(([, v]) => v.product_id === pid);
+  if (!entry) return null;
+  const [persona, meta] = entry;
+  if (!meta.langs.includes(L)) return null;
+  const base = (Deno.env.get('SUPABASE_URL') ?? '').replace('/rest/v1', '').replace(/\/$/, '');
+  return `${base}/storage/v1/object/public/video-assets/_pilot/${persona}-FINAL-${L.toUpperCase()}.mp4`;
+}
 function buildVisualVariation(taskId: string, titleLower: string): string {
   // 24 bits of entropy from the task UUID is plenty for picking from small arrays.
   const hex = (taskId || '').replace(/-/g, '').substring(0, 12) || '000000000000';
@@ -1860,13 +1884,66 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     const batchSize = parseInt(url.searchParams.get('batch') || '1', 10);
     const STALE_LOCK_MS = 10 * 60 * 1000; // 10 minutes
     const nowMs = Date.now();
+
+    // ── 2026-06-06 MEDIA HYDRATION ─────────────────────────────────────────
+    // The Boss flagged "reels + stories never publish" for 3+ days. Root cause:
+    // a task approved-to-publish but with NO media (reel without video_url, or
+    // story/feed without generated_image_url) was rejected by the filter below
+    // on every run → rotted forever. Here we guarantee media for every task that
+    // is approved to publish (status='approved' from oren's manual approve in
+    // admin, OR content_approved=true from QA auto-approve at score≥75):
+    //   • reel without video → attach the matching FINAL persona reel from the
+    //     bank if the product matches (men-1/2/3/5 → products 3/6/15/8); else
+    //     downgrade to feed_post so it still publishes (bank has no women / no
+    //     men-4 / no men-1-EN yet — batch reels 2026-05-23 stalled).
+    //   • story/feed without image → attach a Gelato back-mockup.
+    // pending_approval tasks oren is still reviewing are left untouched.
+    for (const t of (candidates || [])) {
+      const cd = (t.content_data as Task) || {};
+      const approvedToPublish = !!cd.content_approved || t.status === 'approved';
+      if (!approvedToPublish || cd.publish_frozen) continue;
+      let mutated = false;
+      const hLang = (((cd.language as string) || (cd.lang as string) || 'en')).toLowerCase();
+      // (a) reel without a ready video → attach bank reel or downgrade to feed_post
+      if (cd.format === 'reel' && !(cd.video_url && cd.reel_status === 'ready')) {
+        const bankUrl = reelBankUrlForProduct(cd.product_id as string, hLang);
+        if (bankUrl) {
+          cd.video_url = bankUrl; cd.reel_status = 'ready'; cd.reel_source = 'bank_pilot'; mutated = true;
+        } else {
+          cd.format = 'feed_post'; cd.reel_downgraded = true;
+          cd.reel_downgraded_reason = 'no FINAL persona reel for this product/lang (bank covers products 3/6/15/8, men only, EN except men-1) — publishing as feed post';
+          mutated = true;
+        }
+      }
+      // (b) non-reel without image → attach a Gelato back-mockup
+      const stillReel = cd.format === 'reel' && cd.video_url && cd.reel_status === 'ready';
+      if (!stillReel && !cd.generated_image_url) {
+        let productColors: string[] = [];
+        try {
+          const { data: pr } = await sb.from('dubis_products').select('colors').eq('active', true).eq('product_id_numeric', cd.product_id as string).limit(1);
+          const c = pr?.length ? (pr[0] as Record<string, unknown>).colors : null;
+          if (Array.isArray(c)) productColors = c as string[];
+        } catch { /* ignore */ }
+        const mockup = pickGelatoBackMockupUrl(cd.product_id as string, productColors, t.id as string);
+        if (mockup) { cd.generated_image_url = mockup; cd.image_source = 'gelato_mockup_hydrate'; mutated = true; }
+      }
+      if (mutated) {
+        t.content_data = cd;
+        await sb.from('agent_tasks').update({ content_data: cd, updated_at: new Date().toISOString() }).eq('id', t.id);
+      }
+    }
+
     const readyTasks = (candidates || []).filter((t: Task) => {
       const cd = (t.content_data as Task) || {};
       // 2026-04-25: hard freeze flag — manual override to skip a task that caused dup-publish
       if (cd.publish_frozen) return false;
       const hasImage = !!(cd.generated_image_url as string); // accept dubis.net OR supabase.co images
       const hasReel  = !!(cd.video_url && cd.reel_status === 'ready');
-      if (!cd.content_approved || (!hasImage && !hasReel)) return false;
+      // 2026-06-06: status='approved' (oren's manual admin approve) counts as an
+      // approval signal even if content_approved was never set by QA. Previously
+      // ONLY content_approved was checked, so manually-approved posts never published.
+      const approvedSignal = !!cd.content_approved || t.status === 'approved';
+      if (!approvedSignal || (!hasImage && !hasReel)) return false;
       // Skip tasks that are already locked (status='publishing') unless the lock is stale
       if (t.status === 'publishing') {
         const lockAt = cd.publish_lock_at as string | undefined;

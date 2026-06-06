@@ -28,6 +28,10 @@ const JOBS: Record<string, Job> = {
   // Content publishing pipeline
   'content-publish':  { name: 'content-publish', url: `${FNS_BASE}/dubis-content-publisher?batch=4`, method: 'POST' },
   'content-backfill': { name: 'content-backfill', url: `${FNS_BASE}/dubis-content-publisher?action=backfill`, method: 'POST' },
+  // 2026-06-06: drain approved/content_approved content tasks via the in-house
+  // publisher (publish-ready in agents). Manual flush path — the daily content
+  // cron already calls publish-ready; this lets us clear the queue on demand.
+  'publish-ready':    { name: 'publish-ready', url: `${FNS_BASE}/agents?type=publish-ready&batch=5`, method: 'POST' },
   // Agent runners
   'marketing':        { name: 'marketing', url: `${FNS_BASE}/dubis-agent-runner?agent=marketing`, method: 'POST' },
   'supply':           { name: 'supply', url: `${FNS_BASE}/dubis-agent-runner?agent=supply`, method: 'POST' },
