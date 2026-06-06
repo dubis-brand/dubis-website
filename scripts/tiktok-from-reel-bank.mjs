@@ -64,7 +64,20 @@ async function buildAvailableBank() {
     slots.push({ persona, lang, idx: i, url: bankUrl(persona, lang) });
   }
   const checks = await Promise.all(slots.map(s => checkReelExists(s.url)));
-  return slots.filter((_, i) => checks[i]);
+  let avail = slots.filter((_, i) => checks[i]);
+  // 2026-06-07: only publish reels whose product is ACTIVE on the site. Old reels
+  // (men-2→product 6, men-3→product 15) point at retired pullover-hoodie products
+  // that no longer exist — the caption's product URL would 404. Filter them out so
+  // we never market a dead product. A fresh reel for an active product rejoins the
+  // rotation automatically once it lands in the bank.
+  try {
+    const { data: actives } = await sb.from('dubis_products').select('product_id_numeric').eq('active', true);
+    const activeIds = new Set((actives || []).map(r => Number(r.product_id_numeric)));
+    const before = avail.length;
+    avail = avail.filter(s => activeIds.has(Number(s.persona.product_id)));
+    if (avail.length < before) console.log(`Skipped ${before - avail.length} reel(s) whose product is inactive (dead-product link guard)`);
+  } catch (e) { console.warn('active-product filter skipped:', e.message); }
+  return avail;
 }
 
 function pickReelForToday(available) {
