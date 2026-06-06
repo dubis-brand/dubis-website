@@ -138,6 +138,54 @@
     setTimeout(dismissPopup, 4000);
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // 1b. COMMUNITY SLOGAN BOX — "Got a slogan idea? Share it"
+  //     Direct anon PostgREST insert into slogan_candidates (pending_review).
+  //     Honeypot + length + 60s localStorage throttle for minimal abuse defense.
+  // ═══════════════════════════════════════════════════════════
+  window.dubisSubmitSlogan = async function () {
+    const ta = document.getElementById('slogan-text');
+    const emailEl = document.getElementById('slogan-email');
+    const hp = document.getElementById('slogan-hp');
+    const btn = document.getElementById('slogan-submit');
+    if (!ta || !btn) return;
+    if (hp && hp.value) return;                       // honeypot tripped → silently drop (bot)
+    const text = (ta.value || '').trim();
+    if (text.length < 3 || text.length > 120) { ta.style.borderColor = '#e74c3c'; ta.focus(); return; }
+    try { const last = +localStorage.getItem('dubis_slogan_last') || 0; if (Date.now() - last < 60000) { btn.textContent = '⏳'; return; } } catch (e) { /* ignore */ }
+    const email = (emailEl && emailEl.value || '').trim().toLowerCase() || null;
+    btn.disabled = true; btn.textContent = '...';
+    try {
+      await fetch(SUPABASE_URL + '/rest/v1/slogan_candidates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON, 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ text_en: text, source: 'visitor_submission', status: 'pending_review', generated_by: 'visitor', brand_voice_score: 0, submitter_email: email }),
+      });
+      try { localStorage.setItem('dubis_slogan_last', String(Date.now())); } catch (e) { /* ignore */ }
+      const form = document.getElementById('slogan-form'); if (form) form.classList.add('hidden');
+      const ok = document.getElementById('slogan-success'); if (ok) ok.classList.remove('hidden');
+    } catch (e) {
+      btn.disabled = false; btn.textContent = 'שלחו';
+      console.warn('Slogan submit error:', e);
+    }
+  };
+  // char counter + bilingual placeholders (translateUI handles textContent, not placeholders)
+  document.addEventListener('DOMContentLoaded', function () {
+    const ta = document.getElementById('slogan-text');
+    const cnt = document.getElementById('slogan-counter');
+    if (ta && cnt) ta.addEventListener('input', function () { cnt.textContent = ta.value.length + '/120'; });
+    function setPh() {
+      const lang = window.currentLang || (function () { try { return localStorage.getItem('dubis-lang'); } catch (e) { return null; } })() || 'he';
+      ['slogan-text', 'slogan-email'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) { const ph = el.getAttribute('data-' + lang + '-ph'); if (ph) el.placeholder = ph; }
+      });
+    }
+    setPh();
+    const tg = document.querySelector('.lang-toggle');
+    if (tg) tg.addEventListener('click', function () { setTimeout(setPh, 50); });
+  });
+
   // Trigger: time-based OR scroll-based
   function initPopup() {
     if (hasSeenPopup()) return;

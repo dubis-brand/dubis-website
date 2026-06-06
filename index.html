@@ -424,6 +424,30 @@
         <a href="mailto:dubis.brand@gmail.com" class="btn-secondary">dubis.brand@gmail.com</a>
     </section>
 
+    <!-- COMMUNITY SLOGAN BOX -->
+    <section id="slogan-box" class="contact fade-in-section">
+        <h2 data-en="Got a slogan idea? Share it with us" data-he="יש לכם רעיון לסלוגן? שתפו אותנו">יש לכם רעיון לסלוגן? שתפו אותנו</h2>
+        <p data-en="The good ones go live on real products. Leave your email — if yours makes it, you get 15% off." data-he="הטובים עולים למוצרים אמיתיים באתר. השאירו מייל — אם הסלוגן שלכם יעלה, תקבלו קופון 15% הנחה.">הטובים עולים למוצרים אמיתיים באתר. השאירו מייל — אם הסלוגן שלכם יעלה, תקבלו קופון 15% הנחה.</p>
+        <div id="slogan-form" style="max-width:480px;margin:1.5rem auto 0;text-align:center">
+            <textarea id="slogan-text" maxlength="120" rows="2"
+                placeholder="הסלוגן שלכם (אנגלית, 2-7 מילים)"
+                data-en-ph="Your slogan (English, 2-7 words)" data-he-ph="הסלוגן שלכם (אנגלית, 2-7 מילים)"
+                style="width:100%;box-sizing:border-box;padding:14px;border:1.5px solid #d8cdbb;border-radius:10px;font-size:1rem;font-family:inherit;resize:vertical"></textarea>
+            <div id="slogan-counter" style="font-size:.78rem;color:#a89a82;text-align:left;margin:4px 2px 10px">0/120</div>
+            <input id="slogan-email" type="email"
+                placeholder="מייל (אופציונלי — לקופון 15%)"
+                data-en-ph="Email (optional — for your 15% coupon)" data-he-ph="מייל (אופציונלי — לקופון 15%)"
+                style="width:100%;box-sizing:border-box;padding:14px;border:1.5px solid #d8cdbb;border-radius:10px;font-size:1rem;font-family:inherit;margin-bottom:12px"/>
+            <input id="slogan-hp" type="text" tabindex="-1" autocomplete="off" aria-hidden="true"
+                style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0"/>
+            <button id="slogan-submit" class="btn-secondary" onclick="dubisSubmitSlogan()"
+                data-en="Send it" data-he="שלחו">שלחו</button>
+        </div>
+        <div id="slogan-success" class="hidden" style="margin-top:1rem">
+            <p style="color:#2d6a4f;font-weight:600" data-en="Got it! We'll review your slogan. 🙌" data-he="קיבלנו! נעבור על הסלוגן שלכם. 🙌">קיבלנו! נעבור על הסלוגן שלכם. 🙌</p>
+        </div>
+    </section>
+
     <!-- PRIVACY POLICY -->
     <section id="privacy" class="privacy-section">
         <div class="privacy-container">
