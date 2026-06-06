@@ -22,13 +22,24 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 // Font registration
 // Impact is pre-installed on Windows. Register it so canvas can use it.
 // ---------------------------------------------------------------------------
-const IMPACT_PATH = 'C:\\Windows\\Fonts\\impact.ttf';
-if (fs.existsSync(IMPACT_PATH)) {
-  registerFont(IMPACT_PATH, { family: 'Impact' });
-  console.log('Registered Impact font from Windows Fonts.');
+// Brand display font. Anton (Google Fonts, OFL license) ships IN the repo at
+// scripts/fonts/ so the EXACT same condensed-bold typeface renders both on
+// Windows (local) AND on the Ubuntu GitHub Actions runner. Before 2026-06-06
+// this loaded Impact from C:\Windows\Fonts — which exists only on Windows, so
+// GHA-generated products fell back to a wrong system font (the non-Impact logo
+// Hila received on her white tee). Anton ≈ Impact; one font, every environment.
+// Must match the TTF's internal family name — node-canvas ignores a custom
+// {family} override on some platforms and resolves by the font's real name.
+const FONT_FAMILY = 'Anton';
+const ANTON_PATH  = path.join(__dirname, 'fonts', 'Anton-Regular.ttf');
+if (fs.existsSync(ANTON_PATH)) {
+  registerFont(ANTON_PATH, { family: FONT_FAMILY });
+  console.log('Registered Anton brand font from repo:', ANTON_PATH);
 } else {
-  console.warn('WARNING: Impact font not found at', IMPACT_PATH,
-    '— canvas will fall back to a system font. Output may differ.');
+  // Fail fast — never silently render with a fallback font (that is exactly the
+  // bug we are fixing). A missing brand font is a build-breaking error.
+  throw new Error('FATAL: brand font missing at ' + ANTON_PATH +
+    ' — refusing to render with a fallback typeface. Restore scripts/fonts/Anton-Regular.ttf.');
 }
 
 // ---------------------------------------------------------------------------
@@ -88,7 +99,7 @@ const PRODUCTS = [
 // ---------------------------------------------------------------------------
 function setFont(ctx, size) {
   // Impact is inherently bold/condensed — no weight needed
-  ctx.font = `${size}px "Impact"`;
+  ctx.font = `${size}px "${FONT_FAMILY}"`;
 }
 
 /**
