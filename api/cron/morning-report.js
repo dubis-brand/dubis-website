@@ -770,7 +770,19 @@ ${[
                 body: JSON.stringify({ trigger: 'vercel-auto-run', timestamp: new Date().toISOString() }),
             });
             const dispatchData = await dispatchRes.json();
-            return res.status(dispatchRes.ok ? 200 : 500).json({ ok: dispatchRes.ok, delegated: true, result: dispatchData });
+            // 2026-06-06: also moderate community slogan submissions (folded into
+            // auto-run to conserve cron slots; runs twice daily, keeps the pool fresh
+            // for the Tuesday weekly-slogan-product pick).
+            let sloganReview = null;
+            try {
+                const agentsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1/agents';
+                const authToken  = process.env.CRON_SECRET || process.env.AGENT_SECRET || '';
+                const rr = await fetch(`${agentsBase}?type=review-slogan-submissions`, {
+                    method: 'POST', headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+                });
+                sloganReview = await rr.json();
+            } catch (e) { sloganReview = { error: e.message }; }
+            return res.status(dispatchRes.ok ? 200 : 500).json({ ok: dispatchRes.ok, delegated: true, result: dispatchData, slogan_review: sloganReview });
         } catch (e) {
             return res.status(500).json({ success: false, error: e.message });
         }
@@ -831,6 +843,33 @@ ${[
             return res.status(r.ok ? 200 : 500).json(data);
         } catch (e) {
             console.error('[weekly-plan-cron] Error:', e.message);
+            return res.status(500).json({ success: false, error: e.message });
+        }
+    }
+
+    // ── Route: ?type=weekly-slogan-product ─────────────────────────────
+    // Vercel cron Tuesday 09:00 UTC (~12:00 Israel) — one autonomous product/week.
+    // Picks a slot + slogan (community pool first, else Gemini), creates the
+    // product with auto_publish=true, kicks off the GHA pipeline. Goes live with
+    // no human gate (gha-pipeline-callback auto-activates), priced at cost.
+    if (urlType === 'weekly-slogan-product') {
+        const agentsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1/agents';
+        const authToken  = process.env.CRON_SECRET || process.env.AGENT_SECRET || '';
+        try {
+            const force = req.query.force === '1' ? '&force=1' : '';
+            const r = await fetch(`${agentsBase}?type=weekly-slogan-product${force}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+            });
+            const data = await r.json();
+            console.log('[weekly-slogan-cron]', JSON.stringify({
+                ok: data.ok, product_id_numeric: data.product_id_numeric,
+                slogan: data.slogan, type: data.type, from_submission: data.from_submission,
+                dispatched: data.dispatched, skipped: data.skipped,
+            }));
+            return res.status(r.ok ? 200 : 500).json(data);
+        } catch (e) {
+            console.error('[weekly-slogan-cron] Error:', e.message);
             return res.status(500).json({ success: false, error: e.message });
         }
     }

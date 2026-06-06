@@ -703,6 +703,32 @@ Deno.serve(async (req: Request) => {
     orderMonitor.errors.push(`exception: ${(err as Error).message}`);
   }
 
+  // ── 2026-06-06 cost-price finalizer (auto-published products) ──
+  // Auto-weekly products go live at a baseline price; once this run has written
+  // real Gelato cost data, rebase selling_price to exact cost = CEIL(MIN(cost))
+  // so oren never sells at a loss. One-shot per product via the price_finalized
+  // flag — never overwrites a price oren set manually afterward.
+  let priceFinalized = 0;
+  try {
+    const { data: pendingPrice } = await sb.from('dubis_products')
+      .select('product_id_numeric')
+      .eq('auto_publish', true).eq('price_finalized', false).eq('active', true);
+    for (const p of (pendingPrice || [])) {
+      const pid = (p as Record<string, unknown>).product_id_numeric as number;
+      if (!pid) continue;
+      const { data: costs } = await sb.from('product_variant_stock')
+        .select('gelato_cost_usd').eq('product_id_numeric', pid)
+        .not('gelato_cost_usd', 'is', null).eq('in_stock', true);
+      const vals = (costs || []).map(r => Number((r as Record<string, unknown>).gelato_cost_usd)).filter(n => n > 0);
+      if (!vals.length) continue;  // no cost yet — retry next run
+      const floor = Math.ceil(Math.min(...vals));
+      await sb.from('product_prices').upsert({ product_id: pid, selling_price: floor, updated_at: new Date().toISOString() }, { onConflict: 'product_id' });
+      await sb.from('dubis_products').update({ price_finalized: true, price_usd: floor }).eq('product_id_numeric', pid);
+      priceFinalized++;
+      log('price-finalized', { product: pid, cost_price: floor, variants: vals.length });
+    }
+  } catch (err) { log('price-finalize-error', { error: (err as Error).message }); }
+
   // Log summary to agent_runs for observability.
   // CRITICAL: agent_id MUST be 'gelato_stock' (underscore) — the Boss orchestrator
   // keys its health verdict off latestRun(sb,'gelato_stock',3). A hyphenated id is

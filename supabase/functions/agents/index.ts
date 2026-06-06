@@ -3939,7 +3939,7 @@ Generate 3 slogan proposals. Return ONLY valid JSON array. The "colors" field MU
 
     // Fetch the product so we can send oren a useful email.
     const { data: prodRow } = await sb.from('dubis_products')
-      .select('id,slogan,clothing_type,gender,colors,product_id_numeric')
+      .select('id,slogan,clothing_type,gender,colors,product_id_numeric,auto_publish')
       .eq('id', productId).single();
     const prod = (prodRow || {}) as Record<string, unknown>;
     const slogan = (prod.slogan as string) || '(no slogan)';
@@ -3970,6 +3970,83 @@ Generate 3 slogan proposals. Return ONLY valid JSON array. The "colors" field MU
           leadImage = colorBlock.front as string;
           break;
         }
+      }
+
+      // ── 2026-06-06 AUTO-PUBLISH branch ──────────────────────────────────
+      // auto_publish=true products (weekly-slogan-product cron OR a catalog
+      // regen we flagged) skip the human visual gate: proof is complete here,
+      // so activate directly (trg_enforce_product_activation_proof passes),
+      // dispatch the products.js sync, seed+finalize a cost price, and email
+      // oren a "went live" notice WITH a 1-click remove link (no pre-approval).
+      if (prod.auto_publish === true) {
+        const removalToken = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '');
+        const { error: actErr } = await sb.from('dubis_products').update({
+          active: true,
+          publishing_status: 'live',
+          pending_visual_approval: false,
+          visual_approval_token: null,
+          launched_at: new Date().toISOString(),
+          proof_of_completion: proof,
+          removal_token: removalToken,
+          ...(leadImage ? { image_url: leadImage } : {}),
+        }).eq('id', productId);
+        if (actErr) {
+          await sb.from('product_pipeline_queue').update({ status: 'failed', last_error: `auto_activate_failed: ${actErr.message}` }).eq('id', queueId ?? '');
+          return json({ error: 'auto_activate_failed', detail: actErr.message }, 500);
+        }
+        if (queueId) await sb.from('product_pipeline_queue').update({ status: 'live', completed_at: new Date().toISOString() }).eq('id', queueId);
+        // products.js sync
+        try {
+          const ghToken = Deno.env.get('GH_DISPATCH_TOKEN') ?? '';
+          const ghRepo  = Deno.env.get('GH_REPO') ?? 'dubis-brand/dubis-website';
+          if (ghToken) await fetch(`https://api.github.com/repos/${ghRepo}/dispatches`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${ghToken}`, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json', 'User-Agent': 'dubis-edge-fn/1.0' },
+            body: JSON.stringify({ event_type: 'oren-approved-visual', client_payload: { product_id: productId, product_id_numeric: numericId } }),
+            signal: AbortSignal.timeout(15000),
+          }).catch(() => {});
+        } catch { /* sync best-effort */ }
+        // baseline price (INSERT-only) + fire gelato-stock → finalizes CEIL(MIN cost) for auto_publish (see gelato-stock-check)
+        try {
+          const { data: existingPrice } = await sb.from('product_prices').select('product_id').eq('product_id', numericId).maybeSingle();
+          if (!existingPrice) {
+            const { data: pp } = await sb.from('dubis_products').select('price_usd').eq('id', productId).single();
+            await sb.from('product_prices').insert({ product_id: numericId, selling_price: Number((pp as Record<string, unknown>)?.price_usd ?? 28), updated_at: new Date().toISOString() });
+          }
+          const supaUrl = Deno.env.get('SUPABASE_URL') ?? '';
+          const PG_CRON_TOKEN = 'dubis-pg-cron-trigger-a554cd187bdfaf88a0a5dd8dcf571bea32658e1eb8ec217c';
+          if (supaUrl) fetch(`${supaUrl.replace('/rest/v1', '')}/functions/v1/dubis-cron-dispatcher?job=gelato-stock&token=${encodeURIComponent(PG_CRON_TOKEN)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(2000) }).catch(() => {});
+        } catch { /* price best-effort */ }
+        // close agent_task (proof satisfies the guard)
+        await sb.from('agent_tasks').update({
+          status: 'done',
+          updated_at: new Date().toISOString(),
+          proof_of_completion: { auto_published: true, verified_by_oren: false, deployed_url: `https://www.dubis.net/#product-${numericId}`, api_response: `gha-run:${workflowRunId}` },
+          notes: `🤖 מוצר #${numericId} עלה אוטומטית (Anton, מחיר עלות) — ${slogan}`,
+        }).eq('agent_id', 'product').filter('content_data->>product_id', 'eq', productId);
+        // notify oren: went live + 1-click remove
+        try {
+          const resendKey = Deno.env.get('RESEND_API_KEY') ?? '';
+          if (resendKey) {
+            const previewBlocks = Object.entries(gelatoPreviews).map(([color, urls]) => {
+              const u = urls as Record<string, unknown>;
+              return `<div style="display:inline-block;margin:8px;text-align:center"><p style="margin:4px 0;font-weight:bold">${color}</p>${u.front ? `<img src="${u.front}" style="width:150px;border:1px solid #ddd;border-radius:4px"/>` : ''}${u.back ? `<img src="${u.back}" style="width:150px;border:1px solid #ddd;border-radius:4px;margin-right:4px"/>` : ''}</div>`;
+            }).join('');
+            const removeUrl = `${(Deno.env.get('SUPABASE_URL') ?? '').replace('/rest/v1', '')}/functions/v1/agents?type=auto-product-remove&product_id=${productId}&token=${removalToken}`;
+            await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                from: 'DUBIS <orders@dubis.net>',
+                to: ['dubis.brand@gmail.com'],
+                subject: `🤖 מוצר #${numericId} עלה אוטומטית — "${slogan}"`,
+                html: `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:680px"><h2 style="color:#2d6a4f">מוצר חדש עלה לאוויר אוטומטית</h2><p>הסוכן יצר ופרסם מוצר חדש לפי כל התהליכים — הוא <strong>כבר חי באתר</strong> במחיר עלות. עדכן מחיר מתי שתרצה.</p><p><strong>סלוגן:</strong> ${slogan}</p><p><strong>סוג:</strong> ${prod.clothing_type} / ${prod.gender}</p><p>קישור: <a href="https://www.dubis.net/#product-${numericId}">dubis.net/#product-${numericId}</a></p><div style="text-align:center;margin:20px 0"><a href="${removeUrl}" style="display:inline-block;background:#b91c1c;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700">🗑 הסר מוצר זה</a><p style="color:#6b7280;font-size:12px">לחץ רק אם המוקאפ פגום או שאתה לא רוצה אותו — הוא יורד מהאתר מיד</p></div><hr><h3 style="color:#C17E3A">המוקאפים:</h3><div>${previewBlocks || '<em>אין תמונות</em>'}</div></div>`,
+              }),
+              signal: AbortSignal.timeout(8000),
+            }).catch(() => {});
+          }
+        } catch { /* email best-effort */ }
+        return json({ success: true, status: 'auto_published', product_id: productId, product_id_numeric: numericId });
       }
 
       // 2026-05-16: NOT setting active=true here anymore. Pipeline produced
@@ -5924,7 +6001,197 @@ ${items.join('\n')}
     return json({ success: true, ...summary });
   }
 
+  // ── WEEKLY-SLOGAN-PRODUCT (2026-06-06) — autonomous one-product-per-week ──
+  // Picks a slot (varied across all 8 garment types incl cap/tanktop/vneck),
+  // prefers an approved community slogan from the pool else generates one via
+  // Gemini, inserts the product with auto_publish=true and kicks off the GHA
+  // pipeline. gha-pipeline-callback then auto-activates it (no human gate) and
+  // gelato-stock-check finalizes the price to cost. One product/week.
+  if (type === 'weekly-slogan-product') {
+    const cronSecret = Deno.env.get('CRON_SECRET') ?? '';
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const wToken = url.searchParams.get('token') || (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
+    const wAuthed = (cronSecret && wToken === cronSecret) || (agentSecret && wToken === agentSecret) || (svcKey && wToken === svcKey);
+    if (!wAuthed && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);
+    const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+    if (!geminiKey) return json({ error: 'GEMINI_API_KEY not configured' }, 503);
+
+    // Idempotency: one auto product per ISO week (unless ?force=1)
+    if (url.searchParams.get('force') !== '1') {
+      const sixDaysAgo = new Date(Date.now() - 6 * 86400000).toISOString();
+      const { data: recent } = await sb.from('dubis_products').select('id').eq('auto_publish', true).gte('created_at', sixDaysAgo).limit(1);
+      if (recent && recent.length) return json({ ok: true, skipped: 'already ran this week' });
+    }
+
+    const W_TYPE_POOL: Array<{ type: string; gender: string; weight: number }> = [
+      { type: 'tshirt', gender: 'unisex', weight: 3 }, { type: 'tshirt', gender: 'women', weight: 2 },
+      { type: 'vneck', gender: 'unisex', weight: 4 }, { type: 'vneck', gender: 'women', weight: 3 },
+      { type: 'tanktop', gender: 'unisex', weight: 4 }, { type: 'tanktop', gender: 'women', weight: 2 },
+      { type: 'hoodie', gender: 'unisex', weight: 2 }, { type: 'hoodie', gender: 'women', weight: 2 },
+      { type: 'ziphoodie', gender: 'unisex', weight: 2 }, { type: 'longsleeve', gender: 'unisex', weight: 2 },
+      { type: 'longsleeve', gender: 'women', weight: 2 }, { type: 'cap', gender: 'unisex', weight: 1 },
+      { type: 'capemb', gender: 'unisex', weight: 1 },
+    ];
+    const W_CATALOG_COLORS: Record<string, string[]> = {
+      't-shirt:unisex': ['Black', 'White', 'Cream', 'Navy', 'Charcoal', 'Red', 'Gray', 'Forest Green'],
+      't-shirt:women': ['Black', 'White', 'Cream', 'Navy'],
+      'hoodie:unisex': ['Black', 'White', 'Cream', 'Navy', 'Charcoal', 'Forest Green', 'Gray'],
+      'hoodie:women': ['Black', 'White', 'Navy', 'Charcoal'],
+      'zip-hoodie:unisex': ['Black', 'White', 'Navy', 'Gray', 'Royal Blue'],
+      'long-sleeve:unisex': ['Black', 'White', 'Cream', 'Navy', 'Forest Green', 'Gray'],
+      'long-sleeve:women': ['Black', 'White', 'Navy'],
+      'cap:unisex': ['Black', 'White', 'Cream', 'Navy'], 'cap-emb:unisex': ['Black', 'White', 'Navy', 'Cream', 'Charcoal'],
+      'v-neck:unisex': ['Black', 'White', 'Navy', 'Red'], 'v-neck:women': ['Black', 'White', 'Navy'],
+      'tank-top:unisex': ['Black', 'White', 'Navy', 'Red'], 'tank-top:women': ['Black'],
+    };
+    const W_PRICE_MAP: Record<string, number> = { 't-shirt': 28, hoodie: 41, 'zip-hoodie': 55, 'long-sleeve': 31, cap: 28, 'cap-emb': 32, 'v-neck': 30, 'tank-top': 30 };
+    const W_DB_TYPE: Record<string, string> = { tshirt: 't-shirt', hoodie: 'hoodie', ziphoodie: 'zip-hoodie', longsleeve: 'long-sleeve', cap: 'cap', capemb: 'cap-emb', vneck: 'v-neck', tanktop: 'tank-top' };
+
+    // Weighted pick of ONE slot, down-weighting saturated types
+    const { data: allProds } = await sb.from('dubis_products').select('slogan, clothing_type');
+    const counts: Record<string, number> = {};
+    for (const p of (allProds || []) as Array<Record<string, unknown>>) {
+      const dt = String(p.clothing_type || '');
+      const jt = ({ 't-shirt': 'tshirt', 'zip-hoodie': 'ziphoodie', 'long-sleeve': 'longsleeve', 'v-neck': 'vneck', 'tank-top': 'tanktop', 'cap-emb': 'capemb' } as Record<string, string>)[dt] || dt;
+      counts[jt] = (counts[jt] || 0) + 1;
+    }
+    const pool = W_TYPE_POOL.map(p => ({ ...p, fw: p.weight / (1 + (counts[p.type] || 0) * 0.5) }));
+    const totalW = pool.reduce((s, p) => s + p.fw, 0);
+    let r = Math.random() * totalW; let slot = pool[0];
+    for (const p of pool) { r -= p.fw; if (r <= 0) { slot = p; break; } }
+    const dbType = W_DB_TYPE[slot.type] || 't-shirt';
+    const genderKey = slot.gender === 'women' ? 'women' : 'unisex';
+    const slotColors = W_CATALOG_COLORS[`${dbType}:${genderKey}`] || ['Black', 'White'];
+
+    // Prefer an approved community submission
+    let fromSubmission: string | null = null; let submitterEmail: string | null = null; let presetSlogan: string | null = null;
+    const { data: poolRows } = await sb.from('slogan_candidates').select('id,text_en,submitter_email').eq('source', 'visitor_submission').eq('status', 'approved').order('brand_voice_score', { ascending: false }).limit(1);
+    if (poolRows && poolRows.length) {
+      const pr = poolRows[0] as Record<string, unknown>;
+      presetSlogan = pr.text_en as string; fromSubmission = pr.id as string; submitterEmail = (pr.submitter_email as string) || null;
+    }
+
+    const { data: existingProducts2 } = await sb.from('dubis_products').select('slogan');
+    const dupList = (existingProducts2 || []).map((p: Record<string, unknown>) => p.slogan).filter(Boolean).join(' | ');
+    const wPrompt = presetSlogan
+      ? `You are DUBIS's copywriter. We will print this customer-submitted slogan on a ${dbType} (${genderKey}): "${presetSlogan}". Break it into typography. Return ONLY JSON: {"slogan":"${presetSlogan}","power_word":"THE ONE BIG WORD","text_before":"words before","text_after":"words after","layout":"top-bottom","description_en":"2 sentences","description_he":"2 משפטים עברית טבעית"}`
+      : `You are DUBIS's head copywriter — CYNICAL humor, body-positive, anti-fashion, for ages 35+. Generate ONE original slogan (2-7 words, English, one POWER WORD) for a ${dbType} (${genderKey}). Not offensive/political. Do NOT repeat: ${dupList}. Return ONLY JSON: {"slogan":"...","power_word":"BIG WORD","text_before":"...","text_after":"...","layout":"top-bottom","description_en":"2 sentences","description_he":"2 משפטים עברית טבעית"}`;
+    let g: Record<string, string> = {};
+    try {
+      const gr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: wPrompt }] }] }), signal: AbortSignal.timeout(30000) });
+      const raw = (await gr.json()).candidates?.[0]?.content?.parts?.[0]?.text || '';
+      g = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    } catch (e) { return json({ error: 'gemini_failed', detail: (e as Error).message }, 500); }
+    const finalSlogan = presetSlogan || g.slogan;
+    if (!finalSlogan) return json({ error: 'no_slogan_produced' }, 500);
+
+    // Insert product (auto_publish=true) + assign numeric + queue + dispatch GHA
+    const { data: product, error: insErr } = await sb.from('dubis_products').insert({
+      slogan: finalSlogan, clothing_type: dbType, category: genderKey, gender: slot.gender,
+      price_usd: W_PRICE_MAP[dbType] || 28, description_en: g.description_en || '', description_he: g.description_he || '',
+      colors: slotColors, typography_small: g.text_before || '', typography_big: g.power_word || '', typography_after: g.text_after || '',
+      typography_layout: g.layout || 'top-bottom', source: 'ai-generated', active: false, auto_publish: true,
+    }).select('id').single();
+    if (insErr || !product) return json({ error: 'insert_failed', detail: insErr?.message }, 500);
+    const newProdId = (product as Record<string, unknown>).id as string;
+
+    const { data: maxRow } = await sb.from('dubis_products').select('product_id_numeric').not('product_id_numeric', 'is', null).order('product_id_numeric', { ascending: false }).limit(1).single();
+    const nextId = (((maxRow as Record<string, unknown>)?.product_id_numeric as number) || 14) + 1;
+    await sb.from('dubis_products').update({ source: 'approved', product_id_numeric: nextId, publishing_status: 'pending_pipeline', proof_of_completion: {} }).eq('id', newProdId);
+    const { data: qRow } = await sb.from('product_pipeline_queue').insert({ product_id: newProdId, product_id_numeric: nextId, status: 'pending_dispatch' }).select('id').single();
+    const queueId2 = (qRow as Record<string, unknown>)?.id as string;
+    if (fromSubmission) await sb.from('slogan_candidates').update({ status: 'live' }).eq('id', fromSubmission);
+    await sb.from('agent_tasks').insert({ agent_id: 'product', title: `סלוגן שבועי אוטומטי: ${finalSlogan}`, description: `Auto-weekly product. type=${dbType}/${genderKey}${fromSubmission ? ' (from community submission)' : ''}`, category: 'new_product', status: 'in_progress', priority: 'medium', content_data: { product_id: newProdId, auto_weekly: true, from_submission: fromSubmission, submitter_email: submitterEmail } });
+
+    let dispatchOk = false;
+    const ghToken = Deno.env.get('GH_DISPATCH_TOKEN') ?? '';
+    const ghRepo = Deno.env.get('GH_REPO') ?? 'dubis-brand/dubis-website';
+    if (ghToken) {
+      try {
+        const dr = await fetch(`https://api.github.com/repos/${ghRepo}/dispatches`, { method: 'POST', headers: { 'Authorization': `Bearer ${ghToken}`, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json', 'User-Agent': 'dubis-edge-fn/1.0' }, body: JSON.stringify({ event_type: 'boss-approved-product', client_payload: { product_id: newProdId, product_id_numeric: nextId, queue_id: queueId2 } }), signal: AbortSignal.timeout(15000) });
+        dispatchOk = dr.status === 204;
+        if (dispatchOk && queueId2) await sb.from('product_pipeline_queue').update({ status: 'dispatched', dispatched_at: new Date().toISOString() }).eq('id', queueId2);
+      } catch { /* dispatch best-effort — queue stays pending_dispatch */ }
+    }
+
+    // Reward the submitter (best-effort): 15% coupon + email
+    if (fromSubmission && submitterEmail) {
+      try {
+        const couponCode = 'SLOGAN' + nextId + Math.random().toString(36).slice(2, 6).toUpperCase();
+        const { error: cErr } = await sb.from('coupons').insert({ code: couponCode, name: `Slogan reward — ${finalSlogan.slice(0, 40)}`, discount_type: 'percentage', discount_value: 15, valid_from: new Date().toISOString(), valid_until: new Date(Date.now() + 30 * 86400000).toISOString(), max_uses: 1, enabled: true });
+        if (!cErr) {
+          await sb.from('slogan_candidates').update({ coupon_code: couponCode }).eq('id', fromSubmission);
+          const resendKey = Deno.env.get('RESEND_API_KEY') ?? '';
+          if (resendKey) await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: 'DUBIS <orders@dubis.net>', to: [submitterEmail], subject: '🎉 הסלוגן שלך עולה לאתר DUBIS!', html: `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:560px"><h2 style="color:#C17E3A">בחרנו את הסלוגן שלך!</h2><p>"<strong>${finalSlogan}</strong>" עולה לאתר שלנו בקרוב על ${dbType}.</p><p>כמו שהבטחנו — קופון <strong>15% הנחה</strong> לקנייה הבאה שלך:</p><div style="text-align:center;margin:20px 0"><span style="display:inline-block;background:#2C2C2C;color:#fff;padding:12px 28px;border-radius:8px;font-size:22px;letter-spacing:2px;font-weight:700">${couponCode}</span></div><p style="color:#6b7280;font-size:13px">תקף 30 יום · שימוש יחיד · <a href="https://www.dubis.net">dubis.net</a></p></div>` }), signal: AbortSignal.timeout(8000) }).catch(() => {});
+        }
+      } catch { /* reward best-effort */ }
+    }
+
+    return json({ ok: true, product_id: newProdId, product_id_numeric: nextId, slogan: finalSlogan, type: dbType, gender: slot.gender, from_submission: fromSubmission, dispatched: dispatchOk });
+  }
+
+  // ── AUTO-PRODUCT-REMOVE (2026-06-06) — 1-click remove link from the auto-publish email ──
+  if (type === 'auto-product-remove') {
+    const productId = url.searchParams.get('product_id') || '';
+    const token = url.searchParams.get('token') || '';
+    const htmlResp = (msg: string, code = 200) => new Response(`<!doctype html><html lang="he"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="font-family:Arial,sans-serif;text-align:center;padding:60px 20px;direction:rtl"><h2 style="color:#2C2C2C">${msg}</h2><p style="color:#888"><a href="https://www.dubis.net" style="color:#C17E3A">חזרה ל-dubis.net</a></p></body></html>`, { status: code, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    if (!productId || !token) return htmlResp('קישור לא תקין.', 400);
+    const { data: p } = await sb.from('dubis_products').select('id,product_id_numeric,slogan,removal_token').eq('id', productId).single();
+    if (!p) return htmlResp('המוצר לא נמצא.', 404);
+    if ((p as Record<string, unknown>).removal_token !== token) return htmlResp('הקישור פג או כבר נוצל.', 401);
+    await sb.from('dubis_products').update({ active: false, publishing_status: 'auto_removed', removal_token: null }).eq('id', productId);
+    const numericId = (p as Record<string, unknown>).product_id_numeric;
+    try {
+      const ghToken = Deno.env.get('GH_DISPATCH_TOKEN') ?? '';
+      const ghRepo = Deno.env.get('GH_REPO') ?? 'dubis-brand/dubis-website';
+      if (ghToken) await fetch(`https://api.github.com/repos/${ghRepo}/dispatches`, { method: 'POST', headers: { 'Authorization': `Bearer ${ghToken}`, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json', 'User-Agent': 'dubis-edge-fn/1.0' }, body: JSON.stringify({ event_type: 'oren-approved-visual', client_payload: { product_id: productId, product_id_numeric: numericId } }), signal: AbortSignal.timeout(15000) }).catch(() => {});
+    } catch { /* sync best-effort */ }
+    return htmlResp(`✅ מוצר #${numericId} הוסר מהאתר.<br><span style="font-size:14px;color:#888">"${(p as Record<string, unknown>).slogan}"</span>`);
+  }
+
+  // ── REVIEW-SLOGAN-SUBMISSIONS (2026-06-06) — score community slogans vs brand rules ──
+  if (type === 'review-slogan-submissions') {
+    const cronSecret = Deno.env.get('CRON_SECRET') ?? '';
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const rToken = url.searchParams.get('token') || (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
+    const rAuthed = (cronSecret && rToken === cronSecret) || (agentSecret && rToken === agentSecret) || (svcKey && rToken === svcKey);
+    if (!rAuthed && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);
+    const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+    if (!geminiKey) return json({ error: 'GEMINI_API_KEY not configured' }, 503);
+
+    const { data: pending } = await sb.from('slogan_candidates').select('id,text_en').eq('source', 'visitor_submission').eq('status', 'pending_review').order('created_at', { ascending: true }).limit(25);
+    if (!pending || !pending.length) return json({ ok: true, reviewed: 0 });
+    let approved = 0, rejected = 0, blacklisted = 0;
+    for (const c of pending as Array<Record<string, unknown>>) {
+      const text = c.text_en as string;
+      const jPrompt = `You are DUBIS's brand-voice gatekeeper. DUBIS = cynical-from-strength humor, body-positive (never body-shaming), anti-fashion, ages 35+. A garment slogan must be 2-7 words, have one strong POWER WORD, NOT be offensive/political/racist/sexist, NOT use banned words (perfect, stunning, must-have, premium, luxury, exclusive). Score this customer-submitted slogan: "${text}". Return ONLY JSON: {"score":0-100,"verdict":"approve|reject|blacklist","reject_reason":"one short line (Hebrew)","fits_product_types":["tshirt","hoodie"]}. verdict=blacklist only if offensive/hateful. approve if score>=70 and on-brand.`;
+      let v: Record<string, unknown> = {};
+      try {
+        const jr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: jPrompt }] }] }), signal: AbortSignal.timeout(30000) });
+        v = JSON.parse(((await jr.json()).candidates?.[0]?.content?.parts?.[0]?.text || '{}').replace(/```json|```/g, '').trim());
+      } catch { v = { score: 0, verdict: 'reject', reject_reason: 'בדיקה אוטומטית נכשלה' }; }
+      const score = Number(v.score) || 0;
+      const now = new Date().toISOString();
+      if (v.verdict === 'blacklist') {
+        await sb.from('slogan_candidates').update({ status: 'blacklisted', brand_voice_score: score, reject_reason: (v.reject_reason as string) || 'תוכן לא הולם', reviewed_at: now, reviewed_by: 'gemini-review' }).eq('id', c.id as string);
+        blacklisted++;
+      } else if (score >= 70 && v.verdict === 'approve') {
+        await sb.from('slogan_candidates').update({ status: 'approved', brand_voice_score: score, fits_product_types: Array.isArray(v.fits_product_types) ? v.fits_product_types : [], reviewed_at: now, reviewed_by: 'gemini-review' }).eq('id', c.id as string);
+        approved++;
+      } else {
+        await sb.from('slogan_candidates').update({ status: 'rejected', brand_voice_score: score, reject_reason: (v.reject_reason as string) || `ציון ${score} מתחת לסף`, reviewed_at: now, reviewed_by: 'gemini-review' }).eq('id', c.id as string);
+        rejected++;
+      }
+    }
+    try {
+      await sb.from('agent_runs').insert({ agent_id: 'product', run_date: new Date().toISOString().slice(0, 10), status: 'completed', summary: `סקירת סלוגני קהל: ${pending.length} נבדקו — ${approved} אושרו, ${rejected} נדחו, ${blacklisted} נחסמו`, side_effects: { reviewed: pending.length, approved, rejected, blacklisted } });
+    } catch { /* log best-effort */ }
+    return json({ ok: true, reviewed: pending.length, approved, rejected, blacklisted });
+  }
+
   return json({
-    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, weekly-marketing-plan, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image, meta-ads-manage, shopping-feed, gelato-discovery',
+    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, weekly-marketing-plan, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image, meta-ads-manage, shopping-feed, gelato-discovery, weekly-slogan-product, auto-product-remove, review-slogan-submissions',
   }, 400);
 });
