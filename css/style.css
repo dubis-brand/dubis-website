@@ -2300,6 +2300,20 @@ body.has-preview-banner { padding-top: 32px; }
     .nav-links li { border-bottom: 1px solid rgba(255,255,255,0.07); }
     .nav-links a { display: block; padding: 14px 0; font-size: 1rem; }
 
+    /* Mobile nav fit (2026-06-07): the wordy country pill + account label +
+       wide gaps pushed the cart button (last in .nav-right, leftmost in RTL)
+       off-screen — and overflow-x:hidden then clipped it, so customers who
+       added to cart couldn't reach checkout. Compact everything so the cart
+       🛒 is always visible. */
+    .nav-right { gap: 0.4rem; flex-shrink: 1; min-width: 0; }
+    .country-toggle { padding: 5px 8px; gap: 4px; max-width: 92px; }
+    .country-toggle-label { display: none; }   /* hide "Ship to" / "משלוח ל-" */
+    .country-code-display { max-width: 52px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .account-btn { padding: .3rem .5rem; font-size: .78rem; }
+    .account-btn span { display: none; }        /* keep only the 👤 icon */
+    .lang-toggle { padding: 4px 7px; font-size: .75rem; }
+    .cart-btn { padding: 7px 11px; flex-shrink: 0; }   /* cart never shrinks/clips */
+
     .color-dot { width: 32px; height: 32px; }
     .product-colors { gap: 10px; }
 
