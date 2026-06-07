@@ -54,6 +54,13 @@
 
 html {
     scroll-behavior: smooth;
+    /* Kill horizontal pan on mobile. The marquee (inline-block, 2x width) and
+       the crew-carousel avatar track extend ~10,000px past the viewport; without
+       this guard the whole page becomes swipeable sideways into empty space on
+       touch devices ("the site disappears"). Desktop hid it behind a scrollbar.
+       Fixed 2026-06-07 — see memory/troubleshooting.md. */
+    overflow-x: hidden;
+    max-width: 100%;
 }
 
 body {
@@ -66,6 +73,8 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+    max-width: 100%;
 }
 
 /* Headlines default to editorial serif */
