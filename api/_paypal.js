@@ -220,9 +220,126 @@ async function refundCaptureById({ captureId, reason = 'manual_refund' } = {}) {
   }
 }
 
+/**
+ * Create a PayPal order for the FULL-PAGE REDIRECT flow (FBIA-safe).
+ *
+ * The JS SDK popup flow does NOT work inside the Facebook/Instagram in-app
+ * browser — the popup is blocked, so ~88% of paid IL clicks can never pay.
+ * This creates a server-side order whose `approve` HATEOAS link is a normal
+ * top-level URL; navigating to it via window.location works inside FBIA.
+ *
+ * @param {object} opts
+ * @param {object} opts.amount         purchase_units[0].amount (value + breakdown), pre-built by caller
+ * @param {Array}  opts.items          purchase_units[0].items (line items)
+ * @param {string} opts.returnUrl      where PayPal sends the buyer after approval
+ * @param {string} opts.cancelUrl      where PayPal sends the buyer on cancel
+ * @param {string} [opts.referenceId]  custom_id / reference_id for reconciliation
+ * @returns {Promise<{ok:boolean, id?:string, approveUrl?:string, reason?:string, details?:object}>}
+ */
+async function createOrder({ amount, items, returnUrl, cancelUrl, referenceId } = {}) {
+  if (!amount || !returnUrl || !cancelUrl) {
+    return { ok: false, reason: 'missing_args' };
+  }
+  const token = await getAccessToken();
+  if (!token) return { ok: false, reason: 'oauth_failed' };
+
+  const purchaseUnit = {
+    amount,
+    ...(items && items.length ? { items } : {}),
+    ...(referenceId ? { custom_id: String(referenceId).slice(0, 127), reference_id: 'default' } : {}),
+  };
+  const body = {
+    intent: 'CAPTURE',
+    purchase_units: [purchaseUnit],
+    application_context: {
+      brand_name: 'DUBIS',
+      shipping_preference: 'NO_SHIPPING',  // we collect address ourselves
+      user_action: 'PAY_NOW',
+      landing_page: 'LOGIN',
+      return_url: returnUrl,
+      cancel_url: cancelUrl,
+    },
+  };
+  try {
+    const res = await fetch(`${PAYPAL_API_BASE()}/v2/checkout/orders`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.id) {
+      perr('create-order-failed', { httpStatus: res.status, errorType: data?.name || null, details: data?.details || null });
+      return { ok: false, reason: `create_api_${res.status}`, details: data };
+    }
+    const approve = (data.links || []).find(l => l.rel === 'approve' || l.rel === 'payer-action');
+    plog('create-order-success', { id: data.id, status: data.status, hasApprove: !!approve });
+    return { ok: true, id: data.id, status: data.status, approveUrl: approve?.href || null };
+  } catch (err) {
+    perr('create-order-exception', { message: err.message });
+    return { ok: false, reason: 'exception', details: err.message };
+  }
+}
+
+/**
+ * Capture a PayPal order created via the redirect flow (after buyer approves).
+ * @param {string} paypalOrderId
+ * @returns {Promise<{ok:boolean, status?:string, captureId?:string, amount?:string, currency?:string, payerEmail?:string, alreadyCaptured?:boolean, reason?:string, details?:object}>}
+ */
+async function captureOrder(paypalOrderId) {
+  if (!paypalOrderId) return { ok: false, reason: 'no_order_id' };
+  const token = await getAccessToken();
+  if (!token) return { ok: false, reason: 'oauth_failed' };
+  try {
+    const res = await fetch(`${PAYPAL_API_BASE()}/v2/checkout/orders/${paypalOrderId}/capture`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        // Idempotency: a duplicate return-url hit must not double-capture.
+        'PayPal-Request-Id': `capture-${paypalOrderId}`,
+      },
+      body: '{}',
+    });
+    const data = await res.json().catch(() => null);
+    // ORDER_ALREADY_CAPTURED → treat as success (idempotent return-url replay)
+    const issue = data?.details?.[0]?.issue;
+    if (!res.ok && issue === 'ORDER_ALREADY_CAPTURED') {
+      plog('capture-already', { paypalOrderId });
+      const prior = await getCaptureFromOrder(paypalOrderId, token);
+      return {
+        ok: true, alreadyCaptured: true, status: 'COMPLETED',
+        captureId: prior?.captureId, amount: prior?.amount, currency: prior?.currency,
+      };
+    }
+    if (!res.ok) {
+      perr('capture-failed', { paypalOrderId, httpStatus: res.status, errorType: data?.name || null, issue: issue || null });
+      return { ok: false, reason: `capture_api_${res.status}`, issue, details: data };
+    }
+    const cap = data?.purchase_units?.[0]?.payments?.captures?.[0];
+    const payerEmail = data?.payer?.email_address || null;
+    plog('capture-success', { paypalOrderId, status: data.status, captureId: cap?.id });
+    return {
+      ok: true,
+      status: data.status,
+      captureId: cap?.id || null,
+      amount: cap?.amount?.value || null,
+      currency: cap?.amount?.currency_code || 'USD',
+      payerEmail,
+    };
+  } catch (err) {
+    perr('capture-exception', { paypalOrderId, message: err.message });
+    return { ok: false, reason: 'exception', details: err.message };
+  }
+}
+
 module.exports = {
   refundOrder,
   refundCaptureById,
   getAccessToken,
   getCaptureFromOrder,
+  createOrder,
+  captureOrder,
 };

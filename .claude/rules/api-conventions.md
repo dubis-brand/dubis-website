@@ -19,10 +19,21 @@ All API files use query param routing internally:
 /api/cron/morning-report?type=feedback-notify      → pg_net trigger from feedback_responses INSERT.
 /api/cron/morning-report?type=feedback-apology     → 6 personal HE reminder drafts to non-responders.
 
-/api/create-gelato-order                           → POST. PayPal capture → Gelato order(s).
+/api/create-gelato-order                           → POST. Fulfillment. Client SDK already captured PayPal in onApprove; this POST takes {cartItems, shippingAddress, paypalOrderId, buyerEmail} → Gelato order(s). Does NOT itself capture PayPal.
 /api/create-gelato-order?action=stock-probe        → POST. Pre-flight quote-API probe. Returns mode ∈ {quote_ok, quote_split_required, quote_partial_oos, all_blocked_pre_gelato}.
 /api/create-gelato-order?action=create-draft       → POST. Admin-only. Creates FREE Gelato draft order for QA (no real charge).
+/api/create-gelato-order?action=create-paypal-order → POST. FBIA redirect-checkout step 1. Body {cartItems, shippingAddress, buyerEmail, discount}. Creates a PayPal Orders-v2 order (intent=CAPTURE) via api/_paypal.js createOrder(), stores the cart server-side in agent_tasks (category='fbia_pending', cart in content_data.cart_items, keyed by paypalOrderId), resolves shipping via fbiaResolveShipping(). Returns {ok:true, paypalOrderId, approveUrl}. Client then sets window.location.href = approveUrl (top-level nav — works inside FBIA where the SDK popup is blocked).
+/api/create-gelato-order?action=capture-paypal-order → GET. FBIA redirect-checkout step 2 (PayPal return_url). PayPal appends ?token={orderId}&PayerID={pid}; req.query.token = PayPal order id. Captures idempotently via captureOrder() (ORDER_ALREADY_CAPTURED treated as success), re-reads the stored cart from agent_tasks, fires server-to-server POST to /api/create-gelato-order fulfillment with the stored body, then 302 redirect to /?paypal_return=1 (or /?paypal_error=... on failure).
 ```
+
+## FBIA redirect-checkout (PayPal full-page redirect — the FBIA fix)
+The PayPal JS-SDK popup is **blocked inside Facebook/Instagram in-app browsers (FBIA)**. The true fix is a PayPal **full-page redirect** (Orders v2 REST) flow, NOT the SDK popup. Architecture (zero refactor to the proven ~500-line money/refund path):
+1. **Client (FBIA only):** `js/paypal.js` `renderWebViewExternalHandoff()` renders a redirect button. On click → POST `?action=create-paypal-order` → `window.location.href = approveUrl`.
+2. **Server step 1 (`?action=create-paypal-order`):** create PayPal order (intent=CAPTURE), store cart in `agent_tasks` (`category='fbia_pending'`) keyed by the new PayPal order id. `return_url` = self (`fbiaBaseUrl(req)` from x-forwarded-host/proto) + `?action=capture-paypal-order`.
+3. **Server step 2 (`?action=capture-paypal-order`, GET return):** capture idempotently, re-read the stored cart, server-to-server POST to the SAME fulfillment endpoint with the stored body, redirect to `/?paypal_return=1`.
+- Cart is stored **server-side** because localStorage fails in FBIA AND the return_url lands back inside FBIA.
+- Shared PayPal helper: `api/_paypal.js` exports `createOrder()` + `captureOrder()` (underscore prefix = NOT a Vercel function slot; still 12/12).
+- See `.claude/skills/meta-ads/SKILL.md` §FBIA for the conversion context.
 
 ## Authentication
 - **Admin endpoints:** Supabase JWT token in `Authorization: Bearer <token>` header
