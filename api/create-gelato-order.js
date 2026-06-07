@@ -1544,9 +1544,10 @@ async function handleCreatePaypalOrder(req, res) {
     // Persist the cart server-side keyed by PayPal order id — the return URL
     // re-enters FBIA where localStorage is gone, so the cart MUST live in DB.
     const { error: insErr } = await sb.from('agent_tasks').insert({
-      agent_id: 'checkout',
+      agent_id: 'manual',
       category: 'fbia_pending',
-      status: 'pending',
+      status: 'backlog',
+      title: `FBIA pending checkout ${order.id}`,
       content_data: {
         paypal_order_id: order.id,
         cart_items: cartItems,
