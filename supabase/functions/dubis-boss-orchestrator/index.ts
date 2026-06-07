@@ -1205,6 +1205,57 @@ function buildWeeklyMarketingHtml(wm: Awaited<ReturnType<typeof fetchWeeklyMarke
   <p dir="rtl" style="font-size:10px;color:#aaa;margin:6px 0 0;text-align:right">התג הצבעוני = הרשת שאליה התוכן מיועד (📷IG / 📘FB / 🎵TikTok). ▶ = קישור לפוסט עצמו ברשת, לא לעמוד המוצר.</p>`;
 }
 
+// Agent-personas series ("מאחורי הקוד") — what published in 24h + who's next
+// =============================================================
+const PERSONA_HE: Record<string, string> = {
+  boss:'גדי (הבוס)', supply:'משה (אספקה)', email:'מירי (שירות)', content:'שירה (תוכן)',
+  cto:'רון (CTO)', design:'נועה (עיצוב)', marketing:'איתי (שיווק)', planner:'דורון (תכנון)',
+  product:'טל (מוצר)', security:'בני (אבטחה)', siteaudit:'אורית (בקרת אתר)', video:'ליאת (וידאו)', team:'כל הצוות',
+};
+async function fetchPersonaSeries(sb: SB): Promise<{
+  published: Array<{ persona: string; fb: string | null; ig: string | null }>;
+  next: { persona: string; seq: number } | null;
+  remaining: number;
+} | null> {
+  const since = new Date(Date.now() - 24 * 3600000).toISOString();
+  const { data: rows } = await sb.from('agent_tasks')
+    .select('status, content_data, updated_at')
+    .eq('agent_id', 'content')
+    .filter('content_data->>series', 'eq', 'agent_personas')
+    .order('updated_at', { ascending: false }).limit(60);
+  if (!rows) return null;
+  const published: Array<{ persona: string; fb: string | null; ig: string | null }> = [];
+  const frozen: Array<{ persona: string; seq: number }> = [];
+  for (const r of rows as Array<Record<string, unknown>>) {
+    const cd = (r.content_data as Record<string, unknown>) || {};
+    const persona = String(cd.persona || '');
+    const st = String(r.status || '');
+    const frozenFlag = cd.publish_frozen === true || String(cd.publish_frozen || '') === 'true';
+    if (st === 'done' && String(r.updated_at || '') >= since) {
+      published.push({ persona, fb: (cd.fb_permalink as string) || null, ig: (cd.ig_permalink as string) || null });
+    }
+    if (st === 'approved' && frozenFlag) frozen.push({ persona, seq: Number(cd.persona_seq || 0) });
+  }
+  frozen.sort((a, b) => a.seq - b.seq);
+  return { published, next: frozen[0] || null, remaining: frozen.length };
+}
+function buildPersonaSeriesHtml(ps: Awaited<ReturnType<typeof fetchPersonaSeries>>): string {
+  if (!ps) return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right">סדרת הסוכנים — אין נתונים.</p>';
+  const pub = ps.published.length
+    ? ps.published.map(p => {
+        const links = [
+          p.fb ? `<a href="${esc(p.fb)}" style="color:#c8a96e;font-weight:600;text-decoration:none">▶ FB</a>` : '',
+          p.ig ? `<a href="${esc(p.ig)}" style="color:#c8a96e;font-weight:600;text-decoration:none">▶ IG</a>` : '',
+        ].filter(Boolean).join(' · ');
+        return `<div dir="rtl" style="font-size:12.5px;margin:4px 0;text-align:right">🐻 <b>${esc(PERSONA_HE[p.persona] || p.persona)}</b> פורסם ${links}</div>`;
+      }).join('')
+    : '<div style="font-size:12px;color:#999">לא עלה פוסט-סדרה ב-24 השעות האחרונות.</div>';
+  const next = ps.next
+    ? `<p dir="rtl" style="font-size:12.5px;margin:10px 0 0;text-align:right">📅 <b>הבא בתור (12:00 היום):</b> ${esc(PERSONA_HE[ps.next.persona] || ps.next.persona)}</p>`
+    : '<p dir="rtl" style="font-size:12px;color:#999;margin:10px 0 0;text-align:right">תור ההיכרות הסתיים — עוברים לתוכן נרטיבי + 3/שבוע.</p>';
+  return `<p dir="rtl" style="font-size:13px;margin:0 0 6px;text-align:right"><b>"מאחורי הקוד — יומן הסוכנים"</b> · נשארו ${ps.remaining} דמויות בתור</p>${pub}${next}`;
+}
+
 // Marketing-today (v9) — caption pulled from extensive field chain
 // =============================================================
 async function fetchMarketingToday(sb: SB): Promise<{
@@ -1933,6 +1984,7 @@ Deno.serve(async (req: Request) => {
   // 📊 $1,000 Plan section — silently omitted if fetch failed or no data.
   const planSectionHtml = planStatus ? buildPlanSectionHtml(planStatus) : '';
   const weeklyMktgHtml = buildWeeklyMarketingHtml(weeklyMktg);
+  const personaHtml = buildPersonaSeriesHtml(await fetchPersonaSeries(sb).catch(() => null));
 
   const lastWeekSection = isWeekly && lastWeekCheck.total > 0
     ? `<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📊 מהשבוע הקודם</h2><p dir="rtl" style="font-size:13px;margin:0 0 10px"><b>${lastWeekCheck.done}/${lastWeekCheck.total} הושלמו (${Math.round(lastWeekCheck.done/lastWeekCheck.total*100)}%).</b></p>${lastWeekCheck.details.slice(0,5).map(d => { const ic = d.status === 'done' ? '✅' : d.status === 'open' ? '⏳' : '❌'; return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;margin:4px 0;border-radius:4px;text-align:right;font-size:12px">${ic} <b>${esc(d.agent)}:</b> ${esc(d.rec.slice(0,100))}</div>`; }).join('')}</td></tr><tr><td style="height:14px"></td></tr>` : '';
@@ -1948,6 +2000,7 @@ ${recurringHtml}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🚨 ממצאים חדשים (${opinions.length})</h2>${issuesHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">✍️ מחכה לאישורך (${totalPending})</h2>${pendingHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📅 תוכנית שיווק שבועית — תכנון מול ביצוע</h2>${weeklyMktgHtml}</td></tr><tr><td style="height:14px"></td></tr>
+<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🐻 סדרת הסוכנים — מאחורי הקוד</h2>${personaHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📣 שיווק היום (${totalMarketing})</h2>${marketingStatsHtml}${marketingItemsHtml}</td></tr><tr><td style="height:14px"></td></tr>
 ${lastWeekSection}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📊 Meta Funnel — אתמול</h2>${funnelHtml}</td></tr><tr><td style="height:14px"></td></tr>
