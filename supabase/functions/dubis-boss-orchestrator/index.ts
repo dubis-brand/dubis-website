@@ -1128,7 +1128,7 @@ const FMT_ICON: Record<string, string> = { feed_post: '🖼️', carousel: '🎠
 // Weekly plan as a 7-day calendar: each day → planned + published items with the POST link.
 async function fetchWeeklyMarketing(sb: SB): Promise<{
   plan: Record<string, unknown>; weekStart: string; total: number; done: number; pending: number; backlog: number;
-  days: Array<{ date: string; label: string; items: Array<{ fmt: string; lang: string; status: string; slogan: string; link: { url: string; channel: string } | null }> }>;
+  days: Array<{ date: string; label: string; items: Array<{ fmt: string; lang: string; status: string; slogan: string; platform: string; link: { url: string; channel: string } | null}> }>;
 } | null> {
   const { data: plans } = await sb.from('weekly_marketing_plans').select('*').order('week_start_date', { ascending: false }).limit(1);
   const plan = (plans && plans[0]) as Record<string, unknown> | undefined;
@@ -1142,7 +1142,7 @@ async function fetchWeeklyMarketing(sb: SB): Promise<{
     sb.from('agent_tasks').select('status, content_data, updated_at').eq('agent_id', 'tiktok').eq('status', 'done').gte('updated_at', sinceIso).lt('updated_at', untilIso).limit(60),
   ]);
   const DOW_HE = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
-  type Day = { date: string; label: string; items: Array<{ fmt: string; lang: string; status: string; slogan: string; link: { url: string; channel: string } | null }> };
+  type Day = { date: string; label: string; items: Array<{ fmt: string; lang: string; status: string; slogan: string; platform: string; link: { url: string; channel: string } | null}> };
   const days: Day[] = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(startMs + i * 86400000); const date = d.toISOString().slice(0, 10);
     return { date, label: `${DOW_HE[d.getUTCDay()]} ${date.slice(5)}`, items: [] };
@@ -1156,14 +1156,14 @@ async function fetchWeeklyMarketing(sb: SB): Promise<{
     const sched = String(cd.scheduled_for || '').slice(0, 10);
     const day = byDate[sched] || (st === 'done' ? byDate[String(t.updated_at || '').slice(0, 10)] : null);
     if (!day) continue;
-    day.items.push({ fmt: String(cd.format || 'feed_post'), lang: String(cd.lang || cd.language || ''), status: st, slogan: String(cd.product_slogan || cd.slogan || cd.caption_he || cd.caption_en || '').slice(0, 46), link: bestPostLink(cd) });
+    day.items.push({ fmt: String(cd.format || 'feed_post'), lang: String(cd.lang || cd.language || ''), status: st, slogan: String(cd.product_slogan || cd.slogan || cd.caption_he || cd.caption_en || '').slice(0, 46), platform: String(cd.platform || cd.channel || ''), link: bestPostLink(cd) });
   }
   for (const t of (ttTasks || []) as Array<Record<string, unknown>>) {
     const cd = (t.content_data as Record<string, unknown>) || {};
     const day = byDate[String(t.updated_at || '').slice(0, 10)];
     if (!day) continue;
     done++;
-    day.items.push({ fmt: 'tiktok', lang: String(cd.lang || ''), status: 'done', slogan: String(cd.product_slogan || cd.slogan || '').slice(0, 46), link: bestPostLink(cd) });
+    day.items.push({ fmt: 'tiktok', lang: String(cd.lang || ''), status: 'done', slogan: String(cd.product_slogan || cd.slogan || '').slice(0, 46), platform: 'tiktok', link: bestPostLink(cd) });
   }
   for (const d of days) d.items.sort((a, b) => (a.status === 'done' ? -1 : 1) - (b.status === 'done' ? -1 : 1));
   const total = (plan.total_slots as number) || (done + pending + backlog);
@@ -1175,6 +1175,16 @@ function buildWeeklyMarketingHtml(wm: Awaited<ReturnType<typeof fetchWeeklyMarke
   const pct = wm.total > 0 ? Math.round(wm.done / wm.total * 100) : 0;
   const heSlots = (wm.plan.he_slots as number) ?? '?'; const enSlots = (wm.plan.en_slots as number) ?? '?';
   const badge = (st: string) => st === 'done' ? '<span style="color:#2e7d32">✅</span>' : st === 'backlog' ? '<span style="color:#bbb">⚪</span>' : '<span style="color:#c8a96e">🟡</span>';
+  // Target social network(s) per item — derived from content_data.platform/channel (else from format).
+  const netBadges = (platform: string, fmt: string): string => {
+    const p = (platform || '').toLowerCase();
+    const out: string[] = [];
+    if (fmt === 'tiktok' || p.includes('tiktok')) out.push('🎵TikTok');
+    if (p.includes('instagram') || p.includes('ig')) out.push('📷IG');
+    if (p.includes('facebook') || p.includes('fb')) out.push('📘FB');
+    if (!out.length) out.push(fmt === 'tiktok' ? '🎵TikTok' : '📷IG 📘FB');
+    return `<span style="background:#f3eee2;border-radius:4px;padding:1px 5px;color:#7a6a4f;font-size:10px;font-weight:600">${out.join(' ')}</span>`;
+  };
   const dayRows = wm.days.map(d => {
     const items = d.items.length
       ? d.items.map(it => {
@@ -1183,7 +1193,7 @@ function buildWeeklyMarketingHtml(wm: Awaited<ReturnType<typeof fetchWeeklyMarke
           const link = it.link
             ? ` <a href="${esc(it.link.url)}" style="color:#c8a96e;font-weight:600;text-decoration:none">▶ ${esc(it.link.channel)}</a>`
             : (it.status === 'done' ? ' <span style="color:#bbb;font-size:10px">פורסם — קישור בקרוב</span>' : '');
-          return `<div dir="rtl" style="font-size:11.5px;margin:2px 0;text-align:right">${badge(it.status)} ${icon} ${flag} ${esc(it.slogan)}${link}</div>`;
+          return `<div dir="rtl" style="font-size:11.5px;margin:3px 0;text-align:right">${badge(it.status)} ${icon} ${netBadges(it.platform, it.fmt)} ${flag} ${esc(it.slogan)}${link}</div>`;
         }).join('')
       : '<div style="font-size:11px;color:#ccc">—</div>';
     return `<tr><td valign="top" style="padding:6px 8px;border-bottom:1px solid #f0ece0;white-space:nowrap;font-weight:700;font-size:12px;color:#2c2c2c">${esc(d.label)}</td><td valign="top" style="padding:6px 8px;border-bottom:1px solid #f0ece0">${items}</td></tr>`;
@@ -1192,7 +1202,7 @@ function buildWeeklyMarketingHtml(wm: Awaited<ReturnType<typeof fetchWeeklyMarke
   <p dir="rtl" style="font-size:14px;margin:0;text-align:right"><b>${wm.done}/${wm.total} פורסמו (${pct}%)</b> · ${wm.pending} בתהליך · ${wm.backlog} בהמתנה</p>
   <div style="background:#eee;border-radius:8px;height:12px;overflow:hidden;margin:6px 0"><div style="background:#c8a96e;height:12px;width:${pct}%"></div></div>
   <table dir="rtl" width="100%" style="border-collapse:collapse;margin-top:8px"><tr><th align="right" style="font-size:11px;color:#888;padding:4px 8px;text-align:right">יום</th><th align="right" style="font-size:11px;color:#888;padding:4px 8px;text-align:right">מתוכנן/פורסם · קישור לפוסט</th></tr>${dayRows}</table>
-  <p dir="rtl" style="font-size:10px;color:#aaa;margin:6px 0 0;text-align:right">▶ = קישור לפוסט עצמו ברשת (IG / FB / TikTok), לא לעמוד המוצר.</p>`;
+  <p dir="rtl" style="font-size:10px;color:#aaa;margin:6px 0 0;text-align:right">התג הצבעוני = הרשת שאליה התוכן מיועד (📷IG / 📘FB / 🎵TikTok). ▶ = קישור לפוסט עצמו ברשת, לא לעמוד המוצר.</p>`;
 }
 
 // Marketing-today (v9) — caption pulled from extensive field chain
