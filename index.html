@@ -20,6 +20,49 @@
     (function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y)})(window, document, "clarity", "script", "wysjio6jpk");
     </script>
 
+    <!-- DIAGNOSTIC OVERLAY — only active with ?diag=1 (zero impact on real customers).
+         Surfaces on-device JS errors + render state for debugging the mobile blank-screen.
+         Remove after the mobile render bug is resolved. -->
+    <script>
+    (function(){
+      try {
+        if (!/[?&]diag=1/.test(location.search)) return;
+        var errors = [];
+        window.addEventListener('error', function(e){
+          errors.push('ERR: ' + (e.message||'') + ' @ ' + (e.filename||'').split('/').pop() + ':' + (e.lineno||'') + ':' + (e.colno||''));
+          paint();
+        }, true);
+        window.addEventListener('unhandledrejection', function(e){
+          var r = e && e.reason; errors.push('REJECT: ' + (r && (r.message||r) || 'unknown'));
+          paint();
+        });
+        var box;
+        function paint(){
+          try{
+            if(!box){
+              box = document.createElement('div');
+              box.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:2147483647;background:#111;color:#0f0;font:11px/1.45 monospace;padding:8px 10px;max-height:55vh;overflow:auto;white-space:pre-wrap;border-top:2px solid #0f0;direction:ltr;text-align:left';
+              (document.body||document.documentElement).appendChild(box);
+            }
+            var cards = document.querySelectorAll('.product-card,[class*="product-card"]').length;
+            var hero = document.querySelector('.hero,#home');
+            box.textContent = 'DUBIS DIAG ' + new Date().toISOString().slice(11,19)
+              + '\nvp ' + innerWidth + 'x' + innerHeight + ' dpr' + (window.devicePixelRatio||'?')
+              + '\nlang ' + document.documentElement.lang + ' dir ' + (document.documentElement.dir||'(none)')
+              + '\ncards ' + cards + ' bodyH ' + (document.body?document.body.scrollHeight:'?')
+              + ' hero ' + (hero?getComputedStyle(hero).display:'no')
+              + '\nUA ' + navigator.userAgent.slice(0,90)
+              + (errors.length ? '\n\n!! ' + errors.slice(-6).join('\n!! ') : '\n(no JS errors captured)');
+          }catch(_){}
+        }
+        function snap(){ paint(); }
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', snap); else snap();
+        [500,1500,3000,6000,10000].forEach(function(t){ setTimeout(snap, t); });
+        window.addEventListener('load', snap);
+      } catch(_){}
+    })();
+    </script>
+
     <!-- Trust Bar + legacy modal styles (stock/urgency kept for any dynamic modal callouts) -->
     <style>
     .trust-bar{background:#F5EFE4;color:#1A1A1A;border-bottom:1px solid #D4CFC4;position:fixed;top:0;left:0;right:0;z-index:999;height:38px}body{padding-top:38px}.navbar{top:38px !important}
