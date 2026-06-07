@@ -34,17 +34,22 @@ fs.mkdirSync(OUT_BASE, { recursive: true });
 // product_default → garment color. ONLY combos validated against dubis_products.colors DB.
 // (Honey-Brown removed 2026-04-23 — leftover mockup files don't reflect real SKUs.)
 // 7 colors across 10 personas.
+// 2026-06-07: refreshed to CURRENT active products (oren: persona must wear the EXACT
+// current product, front+back). #3 is now a zip-hoodie (was hoodie/Forest-Green — retired).
+// Colors below are verified to have BOTH front+back mockups in images/. Only the 4
+// active-product personas are kept current; the 6 inactive ones are left as-is (not regen'd).
 const PRODUCT_SLOGANS = {
-  3:  { slogan: "Napping is my cardio", type: "hoodie", color: "Forest-Green" },         // men-1
-  6:  { slogan: "Not a model. Never wanted to be.", type: "hoodie", color: "Charcoal" }, // men-2 (DONE)
-  15: { slogan: "Fashion? I prefer comfort.", type: "hoodie", color: "Navy" },           // men-3
-  9:  { slogan: "Certified overthinker", type: "zip-hoodie", color: "Navy" },            // men-4
-  8:  { slogan: "Born to nap, forced to work", type: "t-shirt", color: "Red" },          // men-5 (was 10)
-  11: { slogan: "She believed she could, so she took a nap", type: "t-shirt", color: "Cream" }, // women-1
-  13: { slogan: "Zero Motivation Club", type: "hoodie", color: "Cream" },                // women-2 (was Honey-Brown, not in DB)
-  16: { slogan: "My goal: minimal EXISTENCE.", type: "hoodie", color: "White" },         // women-3
-  17: { slogan: "Experienced in EXHAUSTION.", type: "zip-hoodie", color: "Black" },      // women-4
-  31: { slogan: "You're prettier when you're comfortable.", type: "t-shirt", color: "White" }, // women-5
+  3:  { slogan: "Napping is my cardio", type: "zip-hoodie", color: "Navy" },             // men-1  (#3 active)
+  8:  { slogan: "Born to nap, forced to work", type: "t-shirt", color: "Navy" },         // men-5  (#8 active)
+  11: { slogan: "She believed she could, so she took a nap", type: "t-shirt", color: "Navy" }, // women-1 (#11 active)
+  31: { slogan: "You're prettier when you're comfortable.", type: "t-shirt", color: "Navy" }, // women-5 (#31 active)
+  // --- inactive/retired products below (not regenerated) ---
+  6:  { slogan: "Not a model. Never wanted to be.", type: "hoodie", color: "Charcoal" }, // men-2 (inactive)
+  15: { slogan: "Fashion? I prefer comfort.", type: "hoodie", color: "Navy" },           // men-3 (inactive)
+  9:  { slogan: "Certified overthinker", type: "zip-hoodie", color: "Navy" },            // men-4 (inactive)
+  13: { slogan: "Zero Motivation Club", type: "hoodie", color: "Cream" },                // women-2 (inactive)
+  16: { slogan: "My goal: minimal EXISTENCE.", type: "hoodie", color: "White" },         // women-3 (inactive)
+  17: { slogan: "Experienced in EXHAUSTION.", type: "zip-hoodie", color: "Black" },      // women-4 (inactive)
 };
 
 function hf(args, opts = {}) {
