@@ -163,17 +163,19 @@ function pickGelatoBackMockupUrl(
   return `https://www.dubis.net/images/product-${id}-${pick.replace(/ /g, '-')}-back.jpg`;
 }
 // ── Reel bank (2026-06-06) ───────────────────────────────────────────────
-// Only these persona reels are FINAL + ready in video-assets/_pilot/. The
-// 2026-05-23 batch stalled after men-1/2/3/5 — men-4 + all 5 women + men-1-EN
-// were never produced. Each persona wears ONE specific product, so a bank
-// reel may attach ONLY to a content task for the SAME product_id (otherwise
-// the caption's product and the video's garment mismatch). Update this map
-// when the batch reel pipeline finishes the rest.
+// Persona reels that are FINAL + ready in video-assets/_pilot/, mapped to their
+// ACTIVE product. Each persona wears ONE specific product, so a bank reel may
+// attach ONLY to a content task for the SAME product_id (otherwise the caption's
+// product and the video's garment mismatch).
+// 2026-06-07: all reels are now ENGLISH (Veo native audio) — the Hebrew slot holds
+// the SAME English video; the Hebrew STORY lives in the caption (oren: no HE voice,
+// no on-screen subtitles). So every active persona has both 'he' + 'en' slots filled.
+// Only personas tied to ACTIVE products are listed (men-2→#6 / men-3→#15 retired → removed).
 const REEL_BANK: Record<string, { product_id: number; langs: string[] }> = {
-  'men-1': { product_id: 3,  langs: ['he'] },
-  'men-2': { product_id: 6,  langs: ['he', 'en'] },
-  'men-3': { product_id: 15, langs: ['he', 'en'] },
-  'men-5': { product_id: 8,  langs: ['he', 'en'] },
+  'men-1':   { product_id: 3,  langs: ['he', 'en'] },
+  'men-5':   { product_id: 8,  langs: ['he', 'en'] },
+  'women-1': { product_id: 11, langs: ['he', 'en'] },
+  'women-5': { product_id: 31, langs: ['he', 'en'] },
 };
 function reelBankUrlForProduct(productId: number | string | null | undefined, lang: string): string | null {
   const pid = Number(productId);

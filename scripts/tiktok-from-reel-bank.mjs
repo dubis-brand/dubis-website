@@ -26,16 +26,24 @@ const sb = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: fa
 // Bank — 10 personas × 2 langs = 20 reels, walked deterministically.
 // Each persona has product_default which we use to build the caption + URL.
 const BANK = [
-  { id: 'men-1',   gender: 'men',   product_id: 3,  slogan: 'Napping is my cardio' },
+  { id: 'men-1',   gender: 'men',   product_id: 3,  slogan: 'Napping is my cardio',
+    narration_he: 'כולם רצים בשש בבוקר לאסיק. אני? אני מאסטר ב-Power Nap. זה הקרדיו האמיתי. קפוצון לכל השאר.',
+    narration_en: "Everyone's at the 6 AM CrossFit. I'm a master of the power nap. That's the real cardio. A hoodie for the rest of us." },
   { id: 'men-2',   gender: 'men',   product_id: 6,  slogan: 'Not a model. Never wanted to be.' },
   { id: 'men-3',   gender: 'men',   product_id: 15, slogan: 'Low maintenance, high value.' },
   { id: 'men-4',   gender: 'men',   product_id: 9,  slogan: 'Certified overthinker.' },
-  { id: 'men-5',   gender: 'men',   product_id: 8,  slogan: 'Born to nap, forced to work.' },
-  { id: 'women-1', gender: 'women', product_id: 11, slogan: 'She believed she could, so she took a nap.' },
+  { id: 'men-5',   gender: 'men',   product_id: 8,  slogan: 'Born to nap, forced to work.',
+    narration_he: 'נולדתי לישון. אילצו אותי לעבוד. את שני המסרים האלה לובש על הגב. בכבוד.',
+    narration_en: 'Born to nap, forced to work. Both messages, on my back. With respect.' },
+  { id: 'women-1', gender: 'women', product_id: 11, slogan: 'She believed she could, so she took a nap.',
+    narration_he: 'האמינו בי שאוכל. אז לקחתי שלוף קצר. מסתבר שזה היה הדבר הכי חכם של היום.',
+    narration_en: 'They believed she could. So she took a nap. Turns out that was the smartest move of the day.' },
   { id: 'women-2', gender: 'women', product_id: 13, slogan: 'Zero Motivation Club.' },
   { id: 'women-3', gender: 'women', product_id: 16, slogan: 'Minimal existence.' },
   { id: 'women-4', gender: 'women', product_id: 17, slogan: 'Experienced in exhaustion.' },
-  { id: 'women-5', gender: 'women', product_id: 31, slogan: "You're prettier when you're comfortable." },
+  { id: 'women-5', gender: 'women', product_id: 31, slogan: "You're prettier when you're comfortable.",
+    narration_he: 'את יפה יותר כשנוח לך. הם אמרו לי לפני עשרים שנה. רק עכשיו אני מתחילה להאמין.',
+    narration_en: "You're prettier when you're comfortable. Someone told me twenty years ago. I'm only starting to believe it now." },
 ];
 const LANGS = ['HE', 'EN'];
 const BANK_SIZE = BANK.length * LANGS.length; // 20
@@ -112,10 +120,15 @@ async function checkReelExists(url) {
 
 function buildCaption(persona, lang) {
   const url = `https://www.dubis.net/?p=${persona.product_id}`;
+  // 2026-06-07 (oren): all reels are English (Veo native). The STORY goes in the caption,
+  // per language — the Hebrew caption tells the Hebrew story; the English caption the English
+  // one. No on-screen subtitles. narration_* falls back to the slogan if absent.
   if (lang === 'HE') {
-    return `${persona.slogan}\n\nDUBIS — בשביל כולנו.\n\n👉 ${url}\n\n#DUBIS #גוףאמיתי #קפוצון #פוראופנה`;
+    const story = persona.narration_he || persona.slogan;
+    return `${story}\n\nDUBIS — בשביל כולנו.\n\n👉 ${url}\n\n#DUBIS #גוףאמיתי #קפוצון #פוראופנה`;
   }
-  return `${persona.slogan}\n\nDUBIS — for the rest of us.\n\n👉 ${url}\n\n#DUBIS #realbodies #hoodieseason #fortherestofus`;
+  const story = persona.narration_en || persona.slogan;
+  return `${story}\n\nDUBIS — for the rest of us.\n\n👉 ${url}\n\n#DUBIS #realbodies #hoodieseason #fortherestofus`;
 }
 
 async function vaultGet(name) {
