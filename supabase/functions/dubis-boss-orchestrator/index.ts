@@ -1073,61 +1073,126 @@ async function fetchRecurringIssues(sb: SB, todayOpinions: Opinion[]): Promise<{
 // =============================================================
 // Weekly marketing plan vs execution (2026-06-06) — surfaces the plan + progress + links
 // =============================================================
+// ---- TikTok post-URL backfill ----------------------------------------------
+// Late.com publishes to TikTok ASYNC: the immediate POST response is status
+// "publishing" with no public URL. Once TikTok finalizes, GET /posts/{id} returns
+// platforms[0].platformPostId (the TikTok video id) + tiktokUsername → we build
+// https://www.tiktok.com/@{user}/video/{id}. We backfill that onto the agent_tasks
+// row so the daily report (next morning, after finalize) links to the real post.
+let _lateKeyCache: string | null = null;
+async function getLateKey(sb: SB): Promise<string | null> {
+  if (_lateKeyCache !== null) return _lateKeyCache || null;
+  try { const { data } = await sb.rpc('get_vault_secret', { secret_name: 'dubis_late_api_key' }); _lateKeyCache = (data || '').toString(); }
+  catch { _lateKeyCache = ''; }
+  return _lateKeyCache || null;
+}
+async function resolveTiktokUrl(lateId: string, key: string): Promise<string | null> {
+  try {
+    const r = await fetch(`https://getlate.dev/api/v1/posts/${lateId}`, { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+    if (!r.ok) return null;
+    const j = await r.json() as Record<string, unknown>;
+    const p = (j.post as Record<string, unknown>) || j;
+    const pf = ((((p.platforms as unknown[]) || [])[0]) || {}) as Record<string, unknown>;
+    if (String(pf.status || '') !== 'published') return null;
+    const vid = pf.platformPostId ? String(pf.platformPostId) : null;
+    const user = ((pf.platformSpecificData as Record<string, unknown>)?.tiktokUsername as string) || 'dubis.brand';
+    return vid ? `https://www.tiktok.com/@${user}/video/${vid}` : null;
+  } catch { return null; }
+}
+async function backfillTiktokUrls(sb: SB): Promise<void> {
+  const key = await getLateKey(sb);
+  if (!key) return;
+  const since = new Date(Date.now() - 9 * 86400000).toISOString();
+  const { data: rows } = await sb.from('agent_tasks').select('id, content_data').eq('agent_id', 'tiktok').eq('status', 'done').gte('updated_at', since).limit(60);
+  for (const t of (rows || []) as Array<Record<string, unknown>>) {
+    const cd = (t.content_data as Record<string, unknown>) || {};
+    if (cd.tiktok_url) continue;
+    const lateId = (cd.tiktok_late_post_id as string) || ((((cd.late_response as Record<string, unknown>)?.post) as Record<string, unknown>)?._id as string) || null;
+    if (!lateId) continue;
+    const url = await resolveTiktokUrl(String(lateId), key);
+    if (!url) continue;
+    await sb.from('agent_tasks').update({ content_data: { ...cd, tiktok_url: url } }).eq('id', t.id as string);
+  }
+}
+
+// Best published-post link from a content_data blob (POST itself, never the product page).
+function bestPostLink(cd: Record<string, unknown>): { url: string; channel: string } | null {
+  if (cd.ig_permalink) return { url: String(cd.ig_permalink), channel: 'IG' };
+  if (cd.fb_permalink) return { url: String(cd.fb_permalink), channel: 'FB' };
+  const tk = cd.tiktok_url ? String(cd.tiktok_url) : '';
+  if (tk.startsWith('http')) return { url: tk, channel: 'TikTok' };
+  return null;
+}
+const FMT_ICON: Record<string, string> = { feed_post: '🖼️', carousel: '🎠', reel: '🎬', tiktok: '🎵', story: '📖', unknown: '•' };
+
+// Weekly plan as a 7-day calendar: each day → planned + published items with the POST link.
 async function fetchWeeklyMarketing(sb: SB): Promise<{
-  plan: Record<string, unknown> | null; done: number; pending: number; backlog: number; total: number;
-  byFormat: Record<string, { done: number; planned: number }>;
-  published: Array<{ fmt: string; lang: string; slogan: string; ig: string | null; fb: string | null; tiktok: string | null; product_url: string | null }>;
+  plan: Record<string, unknown>; weekStart: string; total: number; done: number; pending: number; backlog: number;
+  days: Array<{ date: string; label: string; items: Array<{ fmt: string; lang: string; status: string; slogan: string; link: { url: string; channel: string } | null }> }>;
 } | null> {
   const { data: plans } = await sb.from('weekly_marketing_plans').select('*').order('week_start_date', { ascending: false }).limit(1);
   const plan = (plans && plans[0]) as Record<string, unknown> | undefined;
-  const since = plan?.week_start_date ? new Date(plan.week_start_date as string).toISOString() : new Date(Date.now() - 7 * 86400000).toISOString();
-  const { data: tasks } = await sb.from('agent_tasks').select('status, content_data, updated_at').eq('agent_id', 'content').gte('created_at', since).order('updated_at', { ascending: false }).limit(300);
+  if (!plan) return null;
+  const weekStart = String(plan.week_start_date || '').slice(0, 10);
+  const startMs = new Date(weekStart + 'T00:00:00Z').getTime();
+  const sinceIso = new Date(startMs).toISOString();
+  const untilIso = new Date(startMs + 7 * 86400000).toISOString();
+  const [{ data: contentTasks }, { data: ttTasks }] = await Promise.all([
+    sb.from('agent_tasks').select('status, content_data, updated_at').eq('agent_id', 'content').gte('created_at', sinceIso).limit(300),
+    sb.from('agent_tasks').select('status, content_data, updated_at').eq('agent_id', 'tiktok').eq('status', 'done').gte('updated_at', sinceIso).lt('updated_at', untilIso).limit(60),
+  ]);
+  const DOW_HE = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
+  type Day = { date: string; label: string; items: Array<{ fmt: string; lang: string; status: string; slogan: string; link: { url: string; channel: string } | null }> };
+  const days: Day[] = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(startMs + i * 86400000); const date = d.toISOString().slice(0, 10);
+    return { date, label: `${DOW_HE[d.getUTCDay()]} ${date.slice(5)}`, items: [] };
+  });
+  const byDate: Record<string, Day> = {}; for (const d of days) byDate[d.date] = d;
   let done = 0, pending = 0, backlog = 0;
-  const byFormat: Record<string, { done: number; planned: number }> = {};
-  const published: Array<{ fmt: string; lang: string; slogan: string; ig: string | null; fb: string | null; tiktok: string | null; product_url: string | null }> = [];
-  for (const t of (tasks || []) as Array<Record<string, unknown>>) {
+  for (const t of (contentTasks || []) as Array<Record<string, unknown>>) {
     const cd = (t.content_data as Record<string, unknown>) || {};
-    const fmt = String(cd.format || 'feed_post');
     const st = String(t.status || '');
-    (byFormat[fmt] ||= { done: 0, planned: 0 }).planned++;
-    if (st === 'done') {
-      done++; byFormat[fmt].done++;
-      const ig = (cd.ig_permalink as string) || null;
-      const fb = (cd.fb_permalink as string) || null;
-      const tk = (cd.tiktok_url as string) || ((cd.tiktok_late_post_id) ? `late:${cd.tiktok_late_post_id}` : null);
-      if (ig || fb || tk) published.push({ fmt, lang: String(cd.lang || cd.language || ''), slogan: String(cd.product_slogan || cd.slogan || cd.caption_he || cd.caption_en || '').slice(0, 50), ig, fb, tiktok: tk, product_url: (cd.product_url as string) || null });
-    } else if (st === 'backlog') backlog++;
-    else if (st === 'pending_approval' || st === 'approved' || st === 'publishing' || st === 'in_progress') pending++;
+    if (st === 'done') done++; else if (st === 'backlog') backlog++; else pending++;
+    const sched = String(cd.scheduled_for || '').slice(0, 10);
+    const day = byDate[sched] || (st === 'done' ? byDate[String(t.updated_at || '').slice(0, 10)] : null);
+    if (!day) continue;
+    day.items.push({ fmt: String(cd.format || 'feed_post'), lang: String(cd.lang || cd.language || ''), status: st, slogan: String(cd.product_slogan || cd.slogan || cd.caption_he || cd.caption_en || '').slice(0, 46), link: bestPostLink(cd) });
   }
-  const total = (plan?.total_slots as number) || (done + pending + backlog);
-  return { plan: plan || null, done, pending, backlog, total, byFormat, published };
+  for (const t of (ttTasks || []) as Array<Record<string, unknown>>) {
+    const cd = (t.content_data as Record<string, unknown>) || {};
+    const day = byDate[String(t.updated_at || '').slice(0, 10)];
+    if (!day) continue;
+    done++;
+    day.items.push({ fmt: 'tiktok', lang: String(cd.lang || ''), status: 'done', slogan: String(cd.product_slogan || cd.slogan || '').slice(0, 46), link: bestPostLink(cd) });
+  }
+  for (const d of days) d.items.sort((a, b) => (a.status === 'done' ? -1 : 1) - (b.status === 'done' ? -1 : 1));
+  const total = (plan.total_slots as number) || (done + pending + backlog);
+  return { plan, weekStart, total, done, pending, backlog, days };
 }
 
 function buildWeeklyMarketingHtml(wm: Awaited<ReturnType<typeof fetchWeeklyMarketing>>): string {
-  if (!wm || !wm.plan) return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right">אין תוכנית שבועית פעילה — נוצרת אוטומטית כל יום ראשון 04:00 UTC.</p>';
-  const p = wm.plan;
+  if (!wm) return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right">אין תוכנית שבועית פעילה — נוצרת אוטומטית כל יום ראשון 04:00 UTC.</p>';
   const pct = wm.total > 0 ? Math.round(wm.done / wm.total * 100) : 0;
-  const weekStart = String(p.week_start_date || '').slice(0, 10);
-  const heSlots = (p.he_slots as number) ?? '?'; const enSlots = (p.en_slots as number) ?? '?';
-  const bar = `<div style="background:#eee;border-radius:8px;height:14px;overflow:hidden;margin:8px 0"><div style="background:#c8a96e;height:14px;width:${pct}%"></div></div>`;
-  const fmtRows = Object.entries(wm.byFormat).map(([f, c]) => `<span style="display:inline-block;background:#faf6ee;border:1px solid #e5d9c2;border-radius:6px;padding:3px 9px;margin:2px;font-size:12px">${esc(f)}: ${c.done}/${c.planned}</span>`).join('');
-  const linkChips = (it: { ig: string | null; fb: string | null; tiktok: string | null; product_url: string | null }) => {
-    const links: string[] = [];
-    if (it.ig) links.push(`<a href="${esc(it.ig)}" style="color:#c8a96e">IG</a>`);
-    if (it.fb) links.push(`<a href="${esc(it.fb)}" style="color:#c8a96e">FB</a>`);
-    if (it.tiktok && it.tiktok.startsWith('http')) links.push(`<a href="${esc(it.tiktok)}" style="color:#c8a96e">TikTok</a>`);
-    if (it.product_url) links.push(`<a href="${esc(it.product_url)}" style="color:#888">מוצר</a>`);
-    return links.join(' · ') || '—';
-  };
-  const pubHtml = wm.published.length
-    ? wm.published.slice(0, 12).map(it => `<div dir="rtl" style="padding:7px 10px;background:#fafafa;margin:4px 0;border-radius:5px;text-align:right;font-size:12px">${it.lang === 'he' ? '🇮🇱' : '🇺🇸'} <b>${esc(it.fmt)}</b> — ${esc(it.slogan)} → ${linkChips(it)}</div>`).join('')
-    : '<p dir="rtl" style="font-size:12px;color:#888;text-align:right">עדיין לא פורסם תוכן מהתוכנית השבוע.</p>';
-  return `<p dir="rtl" style="font-size:13px;margin:0 0 6px;text-align:right"><b>שבוע ${esc(weekStart)}</b> · ${esc(String(p.status || ''))} · ${heSlots} HE / ${enSlots} EN</p>
+  const heSlots = (wm.plan.he_slots as number) ?? '?'; const enSlots = (wm.plan.en_slots as number) ?? '?';
+  const badge = (st: string) => st === 'done' ? '<span style="color:#2e7d32">✅</span>' : st === 'backlog' ? '<span style="color:#bbb">⚪</span>' : '<span style="color:#c8a96e">🟡</span>';
+  const dayRows = wm.days.map(d => {
+    const items = d.items.length
+      ? d.items.map(it => {
+          const icon = FMT_ICON[it.fmt] || '•';
+          const flag = it.lang === 'he' ? '🇮🇱' : it.lang === 'en' ? '🇺🇸' : '';
+          const link = it.link
+            ? ` <a href="${esc(it.link.url)}" style="color:#c8a96e;font-weight:600;text-decoration:none">▶ ${esc(it.link.channel)}</a>`
+            : (it.status === 'done' ? ' <span style="color:#bbb;font-size:10px">פורסם — קישור בקרוב</span>' : '');
+          return `<div dir="rtl" style="font-size:11.5px;margin:2px 0;text-align:right">${badge(it.status)} ${icon} ${flag} ${esc(it.slogan)}${link}</div>`;
+        }).join('')
+      : '<div style="font-size:11px;color:#ccc">—</div>';
+    return `<tr><td valign="top" style="padding:6px 8px;border-bottom:1px solid #f0ece0;white-space:nowrap;font-weight:700;font-size:12px;color:#2c2c2c">${esc(d.label)}</td><td valign="top" style="padding:6px 8px;border-bottom:1px solid #f0ece0">${items}</td></tr>`;
+  }).join('');
+  return `<p dir="rtl" style="font-size:13px;margin:0 0 4px;text-align:right"><b>שבוע ${esc(wm.weekStart)}</b> · ${esc(String(wm.plan.status || ''))} · ${heSlots} HE / ${enSlots} EN</p>
   <p dir="rtl" style="font-size:14px;margin:0;text-align:right"><b>${wm.done}/${wm.total} פורסמו (${pct}%)</b> · ${wm.pending} בתהליך · ${wm.backlog} בהמתנה</p>
-  ${bar}
-  <div dir="rtl" style="text-align:right;margin:6px 0">${fmtRows}</div>
-  <h3 dir="rtl" style="font-size:13px;margin:12px 0 6px;text-align:right">פורסם השבוע (קישורים):</h3>
-  ${pubHtml}`;
+  <div style="background:#eee;border-radius:8px;height:12px;overflow:hidden;margin:6px 0"><div style="background:#c8a96e;height:12px;width:${pct}%"></div></div>
+  <table dir="rtl" width="100%" style="border-collapse:collapse;margin-top:8px"><tr><th align="right" style="font-size:11px;color:#888;padding:4px 8px;text-align:right">יום</th><th align="right" style="font-size:11px;color:#888;padding:4px 8px;text-align:right">מתוכנן/פורסם · קישור לפוסט</th></tr>${dayRows}</table>
+  <p dir="rtl" style="font-size:10px;color:#aaa;margin:6px 0 0;text-align:right">▶ = קישור לפוסט עצמו ברשת (IG / FB / TikTok), לא לעמוד המוצר.</p>`;
 }
 
 // Marketing-today (v9) — caption pulled from extensive field chain
@@ -1170,38 +1235,27 @@ async function fetchMarketingToday(sb: SB): Promise<{
       created_at: row.updated_at as string,
     });
   }
-  // TikTok — separate query, captions live in different schema
-  const { data: ttRuns } = await sb.from('agent_runs')
-    .select('summary, side_effects, created_at')
+  // TikTok — read from agent_tasks (carries the real tiktok_url after backfill, plus caption + product).
+  // (agent_runs is still used for staleness elsewhere; the URL only lives on the task row.)
+  const { data: ttTasks } = await sb.from('agent_tasks')
+    .select('content_data, updated_at')
     .eq('agent_id', 'tiktok')
-    .eq('status', 'completed')
-    .gte('created_at', since)
-    .order('created_at', { ascending: false })
-    .limit(5);
-  const tiktokItems = (ttRuns || []).map(r => {
-    const row = r as Record<string, unknown>;
-    const se = (row.side_effects as Record<string, unknown>) || {};
-    // Use ONLY caption/script fields — never row.summary (often raw JSON).
-    let rawCaption = String(se.caption || se.script || '').trim();
-    // If still empty, last-resort try summary BUT only the first non-JSON line.
-    if (!rawCaption) {
-      const sumStr = String(row.summary || '').trim();
-      // Strip leading "cloud-run ...:" prefix and any {...} JSON blob.
-      const cleaned = sumStr.replace(/cloud-run\s+[\w-]+\s+\w+:\s*/i, '').replace(/\{[\s\S]+\}/g, '').trim();
-      rawCaption = cleaned.split(/\n|\.\s/)[0] || '';
-    }
-    const lateId = (se.late_post_id as string) || (se.late_id as string) || (se.id as string) || null;
-    const productSlug = (se.product_slug as string) || (se.product_uid as string) || null;
+    .eq('status', 'done')
+    .gte('updated_at', since)
+    .order('updated_at', { ascending: false })
+    .limit(6);
+  const tiktokItems = (ttTasks || []).map(r => {
+    const cd = ((r as Record<string, unknown>).content_data as Record<string, unknown>) || {};
     return {
-      caption: rawCaption.slice(0, 240),
-      url: (se.tiktok_url as string) || (se.permalink as string) || null,
-      product_url: (se.product_url as string) || null,
-      late_id: lateId ? String(lateId).slice(0, 16) : null,
-      product_slug: productSlug,
-      created_at: row.created_at as string,
+      caption: String(cd.caption || cd.product_slogan || cd.slogan || '').slice(0, 240),
+      url: (cd.tiktok_url as string) || null,
+      product_url: (cd.product_url as string) || null,
+      late_id: cd.tiktok_late_post_id ? String(cd.tiktok_late_post_id).slice(0, 16) : null,
+      product_slug: cd.persona_id ? String(cd.persona_id) : null,
+      created_at: (r as Record<string, unknown>).updated_at as string,
     };
   });
-  const tiktok = { runs: (ttRuns || []).length, latest: tiktokItems[0]?.created_at || null, items: tiktokItems };
+  const tiktok = { runs: (ttTasks || []).length, latest: tiktokItems[0]?.created_at || null, items: tiktokItems };
   return { total: items.length, byFormat, items, tiktok };
 }
 
@@ -1570,6 +1624,8 @@ Deno.serve(async (req: Request) => {
   // so the fetched kpi_current reflects today's numbers. Best-effort —
   // if either step fails we still build the rest of the report.
   const planKpiSync = await syncPlanKpisFromSnapshot(sb).catch(() => ({ updated: 0, errors: ['sync-threw'] }));
+  // Resolve real TikTok post URLs (Late.com finalizes async) so marketing links point at the live post.
+  await backfillTiktokUrls(sb).catch(() => {});
   const [marketingToday, pending, agentHealth, dailySnaps, orderTracking, planStatus, weeklyMktg] = await Promise.all([
     fetchMarketingToday(sb),
     fetchPendingApprovals(sb),
@@ -1716,7 +1772,7 @@ Deno.serve(async (req: Request) => {
     const fbLink = it.fb
       ? `<a href="${esc(it.fb)}" style="color:#1877f2;text-decoration:none;font-weight:600">📘 FB → ראה פוסט</a>`
       : `<span style="color:#888;font-size:11px">📘 FB — 🔄 פורסם, קישור יגיע תוך שעה</span>`;
-    const prodLink = it.product_url ? `<a href="${esc(it.product_url)}" style="color:#c8a96e;text-decoration:none;font-weight:600">🛍 מוצר →</a>` : '';
+    const prodLink = it.product_url ? `<a href="${esc(it.product_url)}" style="color:#aaa;text-decoration:none;font-size:10px">🛍 מוצר</a>` : '';
     const thumb = it.image ? `<img src="${esc(it.image)}" alt="" width="60" height="60" style="width:60px;height:60px;border-radius:6px;object-fit:cover;display:block;flex-shrink:0;border:1px solid #e8e4d4">` : '';
     return `<div dir="rtl" style="padding:10px 12px;background:#fafafa;margin:6px 0;border-radius:6px;text-align:right;font-size:12px;direction:rtl">
       <table dir="rtl" width="100%" cellspacing="0" cellpadding="0"><tr>
@@ -1743,7 +1799,7 @@ Deno.serve(async (req: Request) => {
     const lateBit = it.late_id
       ? ` <span style="color:#ddd">·</span> <code style="font-size:10px;color:#888">Late ${esc(it.late_id)}</code>`
       : '';
-    const prodLink = it.product_url ? ` <span style="color:#ddd">·</span> <a href="${esc(it.product_url)}" style="color:#c8a96e;text-decoration:none;font-weight:600">🛍 מוצר →</a>` : '';
+    const prodLink = it.product_url ? ` <span style="color:#ddd">·</span> <a href="${esc(it.product_url)}" style="color:#aaa;text-decoration:none;font-size:10px">🛍 מוצר</a>` : '';
     return `<div dir="rtl" style="padding:10px 12px;background:#fafafa;margin:6px 0;border-radius:6px;text-align:right;font-size:12px;direction:rtl">
       <div style="color:#2c2c2c;font-size:12.5px;line-height:1.55;margin:0 0 6px">${headlineHtml}</div>
       <div style="font-size:11px">${ttLink}${lateBit}${prodLink}</div>

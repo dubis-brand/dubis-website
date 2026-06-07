@@ -181,7 +181,33 @@ function extractLatePostId(lateResponse) {
   );
 }
 
-async function recordTask({ persona, lang, videoUrl, caption, lateResponse, rotationDay, rotationIdx }) {
+// Late.com publishes to TikTok ASYNC — the immediate POST returns status "publishing"
+// with no public URL. Once TikTok finalizes, GET /posts/{id} returns platformPostId
+// (TikTok video id) + tiktokUsername → build the public URL. Poll briefly; if it isn't
+// ready in time, the Boss daily-report backfill (backfillTiktokUrls) resolves it later.
+async function resolveTiktokUrl(latePostId, tries = 5, delayMs = 15000) {
+  let key = process.env.DUBIS_LATE_API_KEY || '';
+  if (!key) { try { key = await vaultGet('dubis_late_api_key'); } catch { return null; } }
+  if (!key) return null;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const r = await fetch(`https://getlate.dev/api/v1/posts/${latePostId}`, { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+      if (r.ok) {
+        const j = await r.json();
+        const p = j.post || j;
+        const pf = (p.platforms || [])[0] || {};
+        if (pf.status === 'published' && pf.platformPostId) {
+          const user = pf.platformSpecificData?.tiktokUsername || 'dubis.brand';
+          return `https://www.tiktok.com/@${user}/video/${pf.platformPostId}`;
+        }
+      }
+    } catch { /* keep polling */ }
+    if (i < tries - 1) await new Promise(res => setTimeout(res, delayMs));
+  }
+  return null;
+}
+
+async function recordTask({ persona, lang, videoUrl, caption, lateResponse, rotationDay, rotationIdx, tiktokUrl }) {
   const latePostId = extractLatePostId(lateResponse);
   const row = {
     agent_id: 'tiktok',
@@ -205,6 +231,7 @@ async function recordTask({ persona, lang, videoUrl, caption, lateResponse, rota
       rotation_idx: rotationIdx,
       late_response: lateResponse,
       tiktok_late_post_id: latePostId,
+      tiktok_url: tiktokUrl || null,
       api_response: latePostId ? `late:${latePostId}` : JSON.stringify(lateResponse).slice(0, 500),
       content_approved: true,
       auto_approved: true,
@@ -225,7 +252,7 @@ async function recordTask({ persona, lang, videoUrl, caption, lateResponse, rota
 // while agent_tasks shows 05-29/05-30/05-31). The old render-and-publish.js wrote
 // agent_runs; this reel-bank rewrite forgot to. This closes the tracking gap so the
 // Boss correctly shows tiktok GREEN.
-async function recordRun({ persona, lang, taskId, latePostId, rotationDay, rotationIdx, startedAt }) {
+async function recordRun({ persona, lang, taskId, latePostId, rotationDay, rotationIdx, startedAt, tiktokUrl }) {
   const row = {
     agent_id: 'tiktok',
     status: 'completed',
@@ -241,6 +268,7 @@ async function recordRun({ persona, lang, taskId, latePostId, rotationDay, rotat
       lang: lang.toLowerCase(),
       product_id: persona.product_id,
       tiktok_late_post_id: latePostId || null,
+      tiktok_url: tiktokUrl || null,
       rotation_day: rotationDay,
       rotation_idx: rotationIdx,
     },
@@ -290,8 +318,13 @@ async function main() {
   const caption = buildCaption(persona, lang);
   console.log('Caption preview:', caption.slice(0, 120));
   const late = await publishToLate({ videoUrl, caption, persona, lang });
-  const taskId = await recordTask({ persona, lang, videoUrl, caption, lateResponse: late, rotationDay: day, rotationIdx: idx });
-  await recordRun({ persona, lang, taskId, latePostId: extractLatePostId(late), rotationDay: day, rotationIdx: idx, startedAt });
+  const latePostId = extractLatePostId(late);
+  // Best-effort: wait for TikTok to finalize so we can store the real post URL now.
+  // If it isn't ready within ~75s, the Boss report's backfillTiktokUrls fills it later.
+  let tiktokUrl = null;
+  if (latePostId) { tiktokUrl = await resolveTiktokUrl(latePostId); console.log('TikTok URL:', tiktokUrl || '(pending finalize — Boss will backfill)'); }
+  const taskId = await recordTask({ persona, lang, videoUrl, caption, lateResponse: late, rotationDay: day, rotationIdx: idx, tiktokUrl });
+  await recordRun({ persona, lang, taskId, latePostId, rotationDay: day, rotationIdx: idx, startedAt, tiktokUrl });
   console.log('=== DONE ===');
 }
 
