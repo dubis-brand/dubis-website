@@ -6046,12 +6046,17 @@ ${items.join('\n')}
       if (recent && recent.length) return json({ ok: true, skipped: 'already ran this week' });
     }
 
+    // NOTE: 'vneck'/'tanktop' are intentionally EXCLUDED — the dubis_products
+    // clothing_type CHECK constraint only allows t-shirt/hoodie/zip-hoodie/
+    // long-sleeve/cap/cap-emb, and the v-neck/tank-top Gelato TEMPLATES are
+    // brand:null aliases (unpredictable vendor sizing — the Hila-K risk).
+    // Auto-published products must use proven brand+SKU types only. To re-add
+    // them: (1) assign a real brand+SKU to vneck/tanktop in create-gelato-order.js
+    // TEMPLATES, (2) extend the clothing_type CHECK constraint, (3) re-add here.
     const W_TYPE_POOL: Array<{ type: string; gender: string; weight: number }> = [
-      { type: 'tshirt', gender: 'unisex', weight: 3 }, { type: 'tshirt', gender: 'women', weight: 2 },
-      { type: 'vneck', gender: 'unisex', weight: 4 }, { type: 'vneck', gender: 'women', weight: 3 },
-      { type: 'tanktop', gender: 'unisex', weight: 4 }, { type: 'tanktop', gender: 'women', weight: 2 },
-      { type: 'hoodie', gender: 'unisex', weight: 2 }, { type: 'hoodie', gender: 'women', weight: 2 },
-      { type: 'ziphoodie', gender: 'unisex', weight: 2 }, { type: 'longsleeve', gender: 'unisex', weight: 2 },
+      { type: 'tshirt', gender: 'unisex', weight: 4 }, { type: 'tshirt', gender: 'women', weight: 3 },
+      { type: 'hoodie', gender: 'unisex', weight: 3 }, { type: 'hoodie', gender: 'women', weight: 3 },
+      { type: 'ziphoodie', gender: 'unisex', weight: 3 }, { type: 'longsleeve', gender: 'unisex', weight: 3 },
       { type: 'longsleeve', gender: 'women', weight: 2 }, { type: 'cap', gender: 'unisex', weight: 1 },
       { type: 'capemb', gender: 'unisex', weight: 1 },
     ];
