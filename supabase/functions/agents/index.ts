@@ -188,6 +188,30 @@ function reelBankUrlForProduct(productId: number | string | null | undefined, la
   const base = (Deno.env.get('SUPABASE_URL') ?? '').replace('/rest/v1', '').replace(/\/$/, '');
   return `${base}/storage/v1/object/public/video-assets/_pilot/${persona}-FINAL-${L.toUpperCase()}.mp4`;
 }
+// 2026-06-09: prefer a REAL Higgsfield persona-model still (the character wearing
+// THIS exact product) over a bare garment mockup. oren: "posts go out as bare
+// garment, never the model shots we made for ads/videos." These live in
+// dubis_images tagged 'persona', linked to the product via the uuid FK. Currently
+// imported for products 3/8/11/31 (men-1/men-5/women-1/women-5 try-on heroes);
+// returns null for products with no persona image yet → caller falls back.
+// deno-lint-ignore no-explicit-any
+async function pickPersonaModelUrl(sb: any, productId: number | string | null | undefined, seed: number): Promise<string | null> {
+  const pid = Number(productId);
+  if (!pid) return null;
+  try {
+    const { data } = await sb.from('dubis_images')
+      .select('image_url, dubis_products!inner(product_id_numeric)')
+      .eq('dubis_products.product_id_numeric', pid)
+      .eq('approved', true)
+      .contains('tags', ['persona'])
+      .limit(10);
+    if (data && data.length) {
+      const pk = data[(seed >>> 0) % data.length];
+      return (pk?.image_url as string) || null;
+    }
+  } catch { /* ignore — caller falls back to lifestyle/mockup */ }
+  return null;
+}
 function buildVisualVariation(taskId: string, titleLower: string): string {
   // 24 bits of entropy from the task UUID is plenty for picking from small arrays.
   const hex = (taskId || '').replace(/-/g, '').substring(0, 12) || '000000000000';
@@ -1582,10 +1606,20 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
           const taskSeed = parseInt(taskHex, 16) || 0;
           const tryLifestyleFirst = (taskSeed % 2) === 0;
 
+          // ── Persona-model path (HIGHEST priority, 2026-06-09) ──
+          // A real Higgsfield model wearing THIS product (dubis_images tag
+          // 'persona', linked by product uuid) beats both the generic lifestyle
+          // pool and the bare garment mockup. Falls through if none exists yet
+          // for this product (currently imported for products 3/8/11/31).
+          if (!imageUrl && productId) {
+            const personaUrl = await pickPersonaModelUrl(sb, productId, taskSeed);
+            if (personaUrl) imageUrl = personaUrl;
+          }
+
           // ── Lifestyle path ──
           // Quality_score >= 8 + scene_type = 'lifestyle' selects the curated
           // V3 carousel pool. Seeded pick keeps re-runs deterministic.
-          if (tryLifestyleFirst) {
+          if (!imageUrl && tryLifestyleFirst) {
             try {
               // dubis_images.quality_score is constrained 0-5; curated V3 lifestyle
               // images are inserted at 5 (max). Other auto-generated images live at 0-3.
@@ -1939,14 +1973,23 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       const isPersonaPost = (((cd.series as string) || '')) === 'agent_personas';
       const stillReel = cd.format === 'reel' && cd.video_url && cd.reel_status === 'ready';
       if (!stillReel && !cd.generated_image_url && !isPersonaPost) {
-        let productColors: string[] = [];
-        try {
-          const { data: pr } = await sb.from('dubis_products').select('colors').eq('active', true).eq('product_id_numeric', cd.product_id as string).limit(1);
-          const c = pr?.length ? (pr[0] as Record<string, unknown>).colors : null;
-          if (Array.isArray(c)) productColors = c as string[];
-        } catch { /* ignore */ }
-        const mockup = pickGelatoBackMockupUrl(cd.product_id as string, productColors, t.id as string);
-        if (mockup) { cd.generated_image_url = mockup; cd.image_source = 'gelato_mockup_hydrate'; mutated = true; }
+        // 2026-06-09: prefer a real Higgsfield persona-model still (model wearing
+        // THIS product) over a bare garment mockup. oren wants posts to show the
+        // models we made, not just the garment. Falls to mockup if no persona
+        // image exists for this product yet.
+        const hSeed = parseInt((t.id as string).replace(/-/g, '').substring(0, 8), 16) || 0;
+        const personaUrl = await pickPersonaModelUrl(sb, cd.product_id, hSeed);
+        if (personaUrl) { cd.generated_image_url = personaUrl; cd.image_source = 'persona_model_hydrate'; mutated = true; }
+        if (!cd.generated_image_url) {
+          let productColors: string[] = [];
+          try {
+            const { data: pr } = await sb.from('dubis_products').select('colors').eq('active', true).eq('product_id_numeric', cd.product_id as string).limit(1);
+            const c = pr?.length ? (pr[0] as Record<string, unknown>).colors : null;
+            if (Array.isArray(c)) productColors = c as string[];
+          } catch { /* ignore */ }
+          const mockup = pickGelatoBackMockupUrl(cd.product_id as string, productColors, t.id as string);
+          if (mockup) { cd.generated_image_url = mockup; cd.image_source = 'gelato_mockup_hydrate'; mutated = true; }
+        }
       }
       if (mutated) {
         t.content_data = cd;
