@@ -223,6 +223,42 @@ async function pickPersonaModelUrl(sb: any, productId: number | string | null | 
   } catch { /* ignore — caller falls back to lifestyle/mockup */ }
   return null;
 }
+// 2026-06-09: build an Instagram carousel from EXISTING catalog mockups (front +
+// back per color) + the persona-model still — the same undistorted square images
+// the product page shows. No AI generation. oren: "prepare what's needed for
+// carousels." Returns 2-6 public image URLs (HEAD-verified), or [] if too few.
+// deno-lint-ignore no-explicit-any
+async function buildCarouselImages(sb: any, productId: number | string | null | undefined): Promise<string[]> {
+  const pid = Number(productId);
+  if (!pid) return [];
+  let colors: string[] = [];
+  try {
+    const { data: pr } = await sb.from('dubis_products').select('colors').eq('active', true).eq('product_id_numeric', pid).limit(1);
+    const c = pr?.length ? (pr[0] as Record<string, unknown>).colors : null;
+    if (Array.isArray(c)) colors = c as string[];
+  } catch { /* ignore */ }
+  // high-contrast, photogenic colors first
+  const pref = ['Navy', 'Black', 'White', 'Charcoal', 'Cream', 'Red', 'Forest Green', 'Gray', 'Royal Blue'];
+  colors.sort((a, b) => ((pref.indexOf(a) + 1) || 99) - ((pref.indexOf(b) + 1) || 99));
+  const base = 'https://www.dubis.net/images';
+  const c1 = colors[0], c2 = colors[1];
+  const persona = await pickPersonaModelUrl(sb, pid, pid);
+  // order: c1 front, c1 back, persona-model, c2 front, c2 back
+  const ordered = [
+    c1 && `${base}/product-${pid}-${encodeURIComponent(c1)}-front.jpg`,
+    c1 && `${base}/product-${pid}-${encodeURIComponent(c1)}-back.jpg`,
+    persona,
+    c2 && `${base}/product-${pid}-${encodeURIComponent(c2)}-front.jpg`,
+    c2 && `${base}/product-${pid}-${encodeURIComponent(c2)}-back.jpg`,
+  ].filter(Boolean) as string[];
+  const slides: string[] = [];
+  for (const u of ordered) {
+    if (slides.includes(u)) continue;
+    try { const r = await fetch(u, { method: 'HEAD' }); if (r.ok) slides.push(u); } catch { /* skip */ }
+    if (slides.length >= 6) break;
+  }
+  return slides;
+}
 function buildVisualVariation(taskId: string, titleLower: string): string {
   // 24 bits of entropy from the task UUID is plenty for picking from small arrays.
   const hex = (taskId || '').replace(/-/g, '').substring(0, 12) || '000000000000';
@@ -1978,6 +2014,19 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       if (!approvedToPublish || cd.publish_frozen) continue;
       let mutated = false;
       const hLang = (((cd.language as string) || (cd.lang as string) || 'en')).toLowerCase();
+      // (a0) carousel without slides → build from existing catalog mockups + persona
+      // (2026-06-09). If we can't assemble ≥2 slides, degrade to a single feed_post.
+      if (cd.format === 'carousel' && !(Array.isArray(cd.carousel_images) && (cd.carousel_images as string[]).length >= 2)) {
+        const slides = await buildCarouselImages(sb, cd.product_id);
+        if (slides.length >= 2) {
+          cd.carousel_images = slides;
+          if (!cd.generated_image_url) cd.generated_image_url = slides[0]; // hasImage gate + FB first-image
+          cd.image_source = cd.image_source || 'carousel_mockups';
+          mutated = true;
+        } else {
+          cd.format = 'feed_post'; cd.carousel_downgraded = true; mutated = true;
+        }
+      }
       // (a) reel without a ready video → attach bank reel or downgrade to feed_post
       if (cd.format === 'reel' && !(cd.video_url && cd.reel_status === 'ready')) {
         const bankUrl = await reelBankUrlForProduct(cd.product_id as string, hLang);

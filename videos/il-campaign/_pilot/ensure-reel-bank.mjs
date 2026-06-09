@@ -121,8 +121,15 @@ function compose(pid, cfg) {
   const segA = path.join(PILOT, `product-${pid}-segA.mp4`), segB = path.join(PILOT, `product-${pid}-segB.mp4`);
   const segC = path.join(PILOT, `product-${pid}-segC.mp4`), segD = path.join(PILOT, `product-${pid}-segD.mp4`);
   ff(['-y','-i',veo,'-filter_complex','[0:v]scale=-2:1920,crop=1080:1920:(in_w-1080)/2:0,format=yuv420p[v]','-map','[v]','-map','0:a?','-c:v','libx264','-preset','medium','-crf','18','-c:a','aac','-b:a','192k',segA],'segA');
-  ff(['-y','-loop','1','-i',back,'-t','3','-filter_complex',"[0:v]scale=2160:2160,zoompan=z='1.0+0.025*on/72':d=72:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=24,format=yuv420p[v]",'-map','[v]','-an','-c:v','libx264','-preset','medium','-crf','18',segB],'segB');
-  ff(['-y','-loop','1','-i',back,'-t','3','-filter_complex',"[0:v]scale=2160:2160,zoompan=z='1.3+0.3*on/72':d=72:x='iw/2-(iw/zoom/2)':y='ih*0.68-(ih/zoom/2)':s=1080x1920:fps=24,format=yuv420p[v]",'-map','[v]','-an','-c:v','libx264','-preset','medium','-crf','18',segC],'segC');
+  // 2026-06-09: back-reveal must keep the product's TRUE square proportions (oren:
+  // "the product looks distorted"). The square 1500×1500 mockup is fit-to-width
+  // (1080×1080) and centered on a 1080×1920 #D7D7D7 canvas — the SAME gray as the
+  // catalog/site — so it reads exactly like the product page, not a stretched robe.
+  // zoompan operates on the already-padded 1080×1920 frame, so the zoom is uniform
+  // and never changes the garment's aspect ratio.
+  const PADBG = '0xD7D7D7';
+  ff(['-y','-loop','1','-i',back,'-t','3','-filter_complex',`[0:v]scale=1080:1080:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=${PADBG},zoompan=z='1.0+0.04*on/72':d=72:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=24,format=yuv420p[v]`,'-map','[v]','-an','-c:v','libx264','-preset','medium','-crf','18',segB],'segB');
+  ff(['-y','-loop','1','-i',back,'-t','3','-filter_complex',`[0:v]scale=1080:1080:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=${PADBG},zoompan=z='1.12+0.13*on/72':d=72:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=24,format=yuv420p[v]`,'-map','[v]','-an','-c:v','libx264','-preset','medium','-crf','18',segC],'segC');
   ff(['-y','-f','lavfi','-i','color=c=0x2C2C2C:s=1080x1920:d=3:r=24','-vf',"drawtext=text='DUBIS':fontfile='C\\:/Windows/Fonts/impact.ttf':fontsize=240:fontcolor=0xC17E3A:x=(w-text_w)/2:y=(h-text_h)/2-100,drawtext=text='dubis.net':fontfile='C\\:/Windows/Fonts/arial.ttf':fontsize=44:fontcolor=0xF5F0E8:x=(w-text_w)/2:y=(h-text_h)/2+120",'-c:v','libx264','-preset','medium','-crf','18','-pix_fmt','yuv420p',segD],'segD');
   const list = path.join(PILOT, `product-${pid}-concat.txt`);
   writeFileSync(list, `file 'product-${pid}-segA.mp4'\nfile 'product-${pid}-segB.mp4'\nfile 'product-${pid}-segC.mp4'\nfile 'product-${pid}-segD.mp4'\n`);
