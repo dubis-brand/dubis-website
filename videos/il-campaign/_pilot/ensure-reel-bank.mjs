@@ -21,7 +21,7 @@
 //        node ensure-reel-bank.mjs 1 2 4      (only these pids)
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
 import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 
@@ -54,8 +54,14 @@ const CFG = {
   32: { persona: 'women-5', color: 'Navy',  garment: 't-shirt',        nar: "Activewear, for the proudly inactive. The only sprint I do is to the fridge." },
   34: { persona: 'women-1', color: 'Black', garment: 'long-sleeve shirt', nar: "Twenty years in, still waiting for my big break. Until then: soft sleeves, low expectations." },
 };
-// Pre-existing persona reels → copy to product-keyed names (no regeneration).
-const COPY_FROM_PERSONA = { 3: 'men-1', 8: 'men-5', 11: 'women-1', 31: 'women-5' };
+// Pre-existing persona reels → recompose to product-keyed names using the local
+// persona Veo + the aspect-correct back-reveal (so 3/8/11/31 get the same fix).
+const COPY_FROM_PERSONA = {
+  3:  { persona: 'men-1',   color: 'Navy' },
+  8:  { persona: 'men-5',   color: 'Navy' },
+  11: { persona: 'women-1', color: 'Navy' },
+  31: { persona: 'women-5', color: 'Navy' },
+};
 
 function hf(args) {
   const r = spawnSync(HF, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -142,17 +148,28 @@ const onlyPids = process.argv.slice(2).map(Number).filter(Boolean);
 const results = [];
 
 // 1) copy the 4 pre-existing persona reels to product-keyed names (no regen)
-for (const [pid, persona] of Object.entries(COPY_FROM_PERSONA)) {
-  if (onlyPids.length && !onlyPids.includes(Number(pid))) continue;
+for (const [pidStr, info] of Object.entries(COPY_FROM_PERSONA)) {
+  const pid = Number(pidStr);
+  if (onlyPids.length && !onlyPids.includes(pid)) continue;
   try {
-    if (await reelExists(pid)) { log(`#${pid} already product-keyed, skip`); results.push({ pid:Number(pid), status:'exists' }); continue; }
-    log(`▶ #${pid} copy from ${persona}-FINAL`);
-    const src = `${STORAGE}/public/video-assets/_pilot/${persona}-FINAL-EN.mp4`;
-    const r = await fetch(src); if (!r.ok) throw new Error(`source 404: ${persona}`);
-    const buf = Buffer.from(await r.arrayBuffer());
-    await uploadBoth(pid, buf);
-    results.push({ pid:Number(pid), status:'copied', from:persona });
-  } catch (e) { log(`✗ #${pid}: ${e.message}`); results.push({ pid:Number(pid), error:e.message }); }
+    if (await reelExists(pid)) { log(`#${pid} already product-keyed, skip`); results.push({ pid, status:'exists' }); continue; }
+    const personaVeo = path.join(PILOT, `${info.persona}-veo-v2.mp4`);
+    if (existsSync(personaVeo)) {
+      // recompose with the aspect-correct back-reveal (no Higgsfield cost)
+      copyFileSync(personaVeo, path.join(PILOT, `product-${pid}-veo.mp4`));
+      log(`▶ #${pid} recompose from ${info.persona}-veo-v2 (aspect fix)`);
+      const buf = compose(pid, { color: info.color });
+      await uploadBoth(pid, buf);
+      results.push({ pid, status: 'recomposed', from: info.persona });
+    } else {
+      // fallback: copy the persona FINAL as-is (may carry old distortion)
+      log(`▶ #${pid} copy from ${info.persona}-FINAL (no local veo)`);
+      const r = await fetch(`${STORAGE}/public/video-assets/_pilot/${info.persona}-FINAL-EN.mp4`);
+      if (!r.ok) throw new Error(`source 404: ${info.persona}`);
+      await uploadBoth(pid, Buffer.from(await r.arrayBuffer()));
+      results.push({ pid, status: 'copied', from: info.persona });
+    }
+  } catch (e) { log(`✗ #${pid}: ${e.message}`); results.push({ pid, error: e.message }); }
 }
 
 // 2) generate the missing reels
