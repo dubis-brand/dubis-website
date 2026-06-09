@@ -177,16 +177,27 @@ const REEL_BANK: Record<string, { product_id: number; langs: string[] }> = {
   'women-1': { product_id: 11, langs: ['he', 'en'] },
   'women-5': { product_id: 31, langs: ['he', 'en'] },
 };
-function reelBankUrlForProduct(productId: number | string | null | undefined, lang: string): string | null {
+// 2026-06-09: self-wiring product-keyed reel bank. ensure-reel-bank.mjs uploads
+// product-{pid}-FINAL-{EN,HE}.mp4 for every active product; if one exists we use
+// it (HEAD-checked), so newly-generated reels are picked up with no code change.
+// Falls back to the legacy persona-keyed map (men-1/#3 etc.) for older files.
+async function reelBankUrlForProduct(productId: number | string | null | undefined, lang: string): Promise<string | null> {
   const pid = Number(productId);
   if (!pid) return null;
-  const L = (lang || 'en').toLowerCase() === 'he' ? 'he' : 'en';
-  const entry = Object.entries(REEL_BANK).find(([, v]) => v.product_id === pid);
-  if (!entry) return null;
-  const [persona, meta] = entry;
-  if (!meta.langs.includes(L)) return null;
+  const L = (lang || 'en').toLowerCase() === 'he' ? 'HE' : 'EN';
   const base = (Deno.env.get('SUPABASE_URL') ?? '').replace('/rest/v1', '').replace(/\/$/, '');
-  return `${base}/storage/v1/object/public/video-assets/_pilot/${persona}-FINAL-${L.toUpperCase()}.mp4`;
+  // 1) product-keyed bank (preferred, self-wiring)
+  const pUrl = `${base}/storage/v1/object/public/video-assets/_pilot/product-${pid}-FINAL-${L}.mp4`;
+  try { const r = await fetch(pUrl, { method: 'HEAD' }); if (r.ok) return pUrl; } catch { /* fall through */ }
+  // 2) legacy persona-keyed fallback
+  const entry = Object.entries(REEL_BANK).find(([, v]) => v.product_id === pid);
+  if (entry) {
+    const [persona, meta] = entry;
+    if (meta.langs.includes(L.toLowerCase())) {
+      return `${base}/storage/v1/object/public/video-assets/_pilot/${persona}-FINAL-${L}.mp4`;
+    }
+  }
+  return null;
 }
 // 2026-06-09: prefer a REAL Higgsfield persona-model still (the character wearing
 // THIS exact product) over a bare garment mockup. oren: "posts go out as bare
@@ -1969,7 +1980,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       const hLang = (((cd.language as string) || (cd.lang as string) || 'en')).toLowerCase();
       // (a) reel without a ready video → attach bank reel or downgrade to feed_post
       if (cd.format === 'reel' && !(cd.video_url && cd.reel_status === 'ready')) {
-        const bankUrl = reelBankUrlForProduct(cd.product_id as string, hLang);
+        const bankUrl = await reelBankUrlForProduct(cd.product_id as string, hLang);
         if (bankUrl) {
           cd.video_url = bankUrl; cd.reel_status = 'ready'; cd.reel_source = 'bank_pilot'; mutated = true;
         } else {
