@@ -1930,8 +1930,15 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
         }
       }
       // (b) non-reel without image → attach a Gelato back-mockup
+      // 2026-06-09: NEVER garment-mockup a persona post. The agent-personas BTS
+      // series MUST show the character's avatar (images/team/{role}.jpg), set at
+      // creation by the agent-personas skill. A garment mockup here is the bug
+      // that shipped the "I survived" tee on the Moshe/Supply post. If a persona
+      // post somehow has no image, leave it imageless (it won't publish) so the
+      // gap is visible — never publish the wrong image.
+      const isPersonaPost = (((cd.series as string) || '')) === 'agent_personas';
       const stillReel = cd.format === 'reel' && cd.video_url && cd.reel_status === 'ready';
-      if (!stillReel && !cd.generated_image_url) {
+      if (!stillReel && !cd.generated_image_url && !isPersonaPost) {
         let productColors: string[] = [];
         try {
           const { data: pr } = await sb.from('dubis_products').select('colors').eq('active', true).eq('product_id_numeric', cd.product_id as string).limit(1);
