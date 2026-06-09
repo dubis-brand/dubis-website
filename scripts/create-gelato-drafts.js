@@ -300,12 +300,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const needsBack = !isCap(job.type);
 
     // Retry-fetch the order until preview_back is available (or attempts exhausted).
+    // Up to 8 attempts × 30s (~4 min/draft) — Gelato's render queue can be slow
+    // on a bad day (2026-06-09: all colors empty after 5 tries, fine on re-run).
+    // The callback-level auto-retry is the safety net beyond this.
     let order = await getOrder(draft.id);
     let attempts = 1;
-    while (order && attempts < 5) {
+    while (order && attempts < 8) {
       const { front, back } = pickPreviews(order.items?.[0]);
       if (front && (!needsBack || back)) break;
-      console.log(`  [wait ${attempts}/4] ${label} — front=${!!front} back=${!!back}, retrying in 30s…`);
+      console.log(`  [wait ${attempts}/7] ${label} — front=${!!front} back=${!!back}, retrying in 30s…`);
       await sleep(30000);
       order = await getOrder(draft.id);
       attempts++;

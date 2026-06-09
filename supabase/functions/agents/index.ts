@@ -4225,7 +4225,66 @@ Generate 3 slogan proposals. Return ONLY valid JSON array. The "colors" field MU
       return json({ success: true, status: 'pending_visual_approval', product_id: productId, product_id_numeric: numericId, visual_approval_token: visualToken });
     }
 
-    // status === 'failed'
+    // ── status === 'failed' — SELF-HEAL + CONTROL ──────────────────────────
+    // The 2026-06-09 first run failed only because Gelato was slow to render
+    // previews; a plain re-run minutes later succeeded. So: auto-retry the
+    // pipeline ONCE (autonomous flow only) before bothering oren. Every attempt
+    // writes an agent_runs row so the Boss report / monitoring can SEE the
+    // pipeline is working even when individual runs hiccup. GitHub's own
+    // "Run failed" email is suppressed at the account level (Settings →
+    // Notifications → Actions) — our controlled channel is agent_runs + the
+    // single failure email below, sent only after retries are exhausted.
+    const MAX_PIPELINE_RETRIES = 1;
+    let qRetry = 0;
+    if (queueId) {
+      const { data: qr } = await sb.from('product_pipeline_queue').select('retry_count').eq('id', queueId).single();
+      qRetry = Number((qr as Record<string, unknown>)?.retry_count ?? 0);
+    }
+    const canRetry = prod.auto_publish === true && qRetry < MAX_PIPELINE_RETRIES;
+
+    if (canRetry) {
+      let redispatched = false;
+      try {
+        const ghToken = Deno.env.get('GH_DISPATCH_TOKEN') ?? '';
+        const ghRepo  = Deno.env.get('GH_REPO') ?? 'dubis-brand/dubis-website';
+        if (ghToken) {
+          const dr = await fetch(`https://api.github.com/repos/${ghRepo}/dispatches`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${ghToken}`, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json', 'User-Agent': 'dubis-edge-fn/1.0' },
+            body: JSON.stringify({ event_type: 'boss-approved-product', client_payload: { product_id: productId, product_id_numeric: numericId, queue_id: queueId } }),
+            signal: AbortSignal.timeout(15000),
+          });
+          redispatched = dr.status === 204;
+        }
+      } catch { /* re-dispatch best-effort */ }
+
+      if (queueId) {
+        await sb.from('product_pipeline_queue').update({
+          status: redispatched ? 'pending_dispatch' : 'failed',
+          retry_count: qRetry + 1,
+          last_error: `auto-retry ${qRetry + 1}/${MAX_PIPELINE_RETRIES} after: ${errorMsg || 'no previews'}`,
+          dispatched_at: redispatched ? new Date().toISOString() : null,
+        }).eq('id', queueId);
+      }
+      try {
+        await sb.from('agent_runs').insert({
+          agent_id: 'product', run_date: new Date().toISOString().slice(0, 10),
+          status: redispatched ? 'completed' : 'failed',
+          summary: redispatched
+            ? `🔁 auto-retry ${qRetry + 1}/${MAX_PIPELINE_RETRIES} for product #${numericId} "${slogan}" (transient: ${errorMsg || 'no previews'})`
+            : `⚠️ auto-retry re-dispatch FAILED for product #${numericId} "${slogan}" — ${errorMsg || ''}`,
+          side_effects: { auto_product_retry: true, product_id: productId, product_id_numeric: numericId, attempt: qRetry + 1, redispatched, error: errorMsg },
+        });
+      } catch { /* log best-effort */ }
+
+      if (redispatched) {
+        // quiet self-heal — NO oren email. Next callback decides success/final-fail.
+        return json({ success: true, status: 'auto_retry_dispatched', product_id: productId, product_id_numeric: numericId, attempt: qRetry + 1 });
+      }
+      // could not re-dispatch → fall through to the failure email
+    }
+
+    // Retries exhausted (or manual product, or re-dispatch failed) → ONE controlled signal.
     try {
       const resendKey = Deno.env.get('RESEND_API_KEY') ?? '';
       if (resendKey) {
@@ -4238,11 +4297,11 @@ Generate 3 slogan proposals. Return ONLY valid JSON array. The "colors" field MU
             subject: `❌ נכשלה הוספה אוטומטית של מוצר #${numericId} — "${slogan}"`,
             html: `
               <div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px">
-                <h2 style="color:#b91c1c">קו הייצור נכשל</h2>
+                <h2 style="color:#b91c1c">קו הייצור נכשל${qRetry > 0 ? ` (אחרי ${qRetry} ניסיון חוזר אוטומטי)` : ''}</h2>
                 <p><strong>סלוגן:</strong> ${slogan}</p>
                 <p><strong>שגיאה:</strong> ${errorMsg || 'לא ידועה'}</p>
                 <p><strong>Workflow run:</strong> ${workflowRunId ? `<a href="https://github.com/dubis-brand/dubis-website/actions/runs/${workflowRunId}">פתח</a>` : 'n/a'}</p>
-                <p>המוצר נשאר ב-<code>active=false</code> ולא עלה לאוויר.</p>
+                <p>המוצר נשאר ב-<code>active=false</code> ולא עלה לאוויר.${qRetry > 0 ? ' המערכת ניסתה שוב לבד וזה עדיין נכשל — כנראה לא תקלה רגעית.' : ''}</p>
               </div>`,
           }),
           signal: AbortSignal.timeout(8000),
@@ -4250,13 +4309,21 @@ Generate 3 slogan proposals. Return ONLY valid JSON array. The "colors" field MU
       }
     } catch { /* */ }
 
+    try {
+      await sb.from('agent_runs').insert({
+        agent_id: 'product', run_date: new Date().toISOString().slice(0, 10), status: 'failed',
+        summary: `❌ auto-product #${numericId} "${slogan}" failed${qRetry > 0 ? ` after ${qRetry} auto-retry` : ''} — ${errorMsg || 'unknown'}`,
+        side_effects: { auto_product_failed: true, product_id: productId, product_id_numeric: numericId, retries: qRetry, error: errorMsg, workflow_run_id: workflowRunId },
+      });
+    } catch { /* log best-effort */ }
+
     await sb.from('agent_tasks').update({
       status: 'failed',
       updated_at: new Date().toISOString(),
       notes: `❌ קו הייצור נכשל למוצר #${numericId} (${slogan})\n${errorMsg || ''}`,
     }).eq('agent_id', 'product').filter('content_data->>product_id', 'eq', productId);
 
-    return json({ success: true, status: 'failed', product_id: productId, error: errorMsg });
+    return json({ success: true, status: 'failed', product_id: productId, error: errorMsg, retries: qRetry });
   }
 
   // ── PRODUCT-VISUAL-APPROVE — oren clicks "Approve & Publish" ──────
