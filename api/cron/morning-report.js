@@ -105,12 +105,13 @@ async function runContentPipeline(supabase, res) {
         const agentsBase = process.env.SUPABASE_URL.replace('/rest/v1', '') + '/functions/v1/agents';
         const authToken  = process.env.CRON_SECRET || process.env.AGENT_SECRET || '';
 
-        // 1. Create today's content task (auto-rotate products)
-        const autoRes  = await fetch(`${agentsBase}?type=auto-content`, {
-            method:  'POST',
-            headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
-        });
-        const autoData = await autoRes.json();
+        // 1. Auto-content (ad-hoc daily LRU post) — DISABLED 2026-06-09 per oren:
+        // "publish only per the weekly marketing plan." The feed must reflect the
+        // planned 17-slot weekly calendar, not ad-hoc daily posts. Content now
+        // flows ONLY from weekly_marketing_plan backlog slots, which content-run
+        // (step 2) fills + publishes. To re-enable ad-hoc fallback, restore the
+        // fetch to ?type=auto-content below.
+        const autoData = { skipped: true, reason: 'auto-content disabled — weekly-plan-only mode (oren 2026-06-09)' };
         console.log('[content-cron] Auto-content:', JSON.stringify(autoData));
 
         // 2. ALWAYS run content-run — processes any approved tasks missing images

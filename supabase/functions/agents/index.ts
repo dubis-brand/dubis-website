@@ -1373,7 +1373,13 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     }
     if (!tasks.length) return json({ queued: 0, rerouted: skipped.length, summary: 'All content tasks already have Supabase images ✅' });
 
-    const batch = tasks.slice(0, 1);
+    // 2026-06-09: process up to 3 per run (was 1) so the weekly-marketing-plan
+    // backlog actually drains. With auto-content disabled (weekly-plan-only mode),
+    // content-run is the sole filler of plan slots; 1/run was too slow to keep up
+    // with ~2-3 due slots/day. Caption is one Gemini call + image is a fast DB
+    // lookup (persona/mockup), so 3 tasks stay well within the function budget.
+    const batchN = parseInt(url.searchParams.get('batch') || '3', 10);
+    const batch = tasks.slice(0, Math.max(1, batchN));
     const now = new Date().toISOString();
     const taskResults: string[] = [];
 
