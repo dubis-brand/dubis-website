@@ -1357,8 +1357,14 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
       const cd = (t.content_data as Task) || {};
       return !!(cd.format || cd.product_id || cd.product_slogan || cd.caption_en || cd.caption_he);
     };
-    const skipped = allTasks.filter((t: Task) => !looksLikePostTask(t));
-    const tasks = allTasks.filter((t: Task) => looksLikePostTask(t) && !((t.content_data as Task)?.generated_image_url as string)?.includes('supabase.co'));
+    // 2026-06-09: NEVER let content-run touch the agent-personas BTS series. Those
+    // tasks are 'approved' (so they'd otherwise land in content-run's queue) but
+    // are managed exclusively by publish_next_persona (one/day, avatar already set).
+    // content-run was overwriting their avatar with a garment mockup + flipping
+    // them to pending_approval — the recurring "Moshe shipped with a tee" bug class.
+    const isPersonaSeriesTask = (t: Task) => (((t.content_data as Task)?.series as string) || '') === 'agent_personas';
+    const skipped = allTasks.filter((t: Task) => !looksLikePostTask(t) && !isPersonaSeriesTask(t));
+    const tasks = allTasks.filter((t: Task) => looksLikePostTask(t) && !isPersonaSeriesTask(t) && !((t.content_data as Task)?.generated_image_url as string)?.includes('supabase.co'));
     // Mark misrouted tasks so they stop blocking — change agent_id to 'boss'
     // (these are admin TODOs created by the weekly-team-meeting boss subagent)
     // so they show in the boss queue but don't pollute the content quota.
@@ -1436,7 +1442,10 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
 
         // IL re-opened 2026-05-15: gate on the caption matching the post's language.
         // auto-content writes content_data.language (he|en); legacy rows fall back to en.
-        const postLang = ((cd.language as string) || 'en').toLowerCase() === 'he' ? 'he' : 'en';
+        // 2026-06-09: read cd.lang too — the weekly-marketing-plan writes the slot
+        // language as content_data.lang, but auto-content writes content_data.language.
+        // Reading only `language` made every HE plan slot get an EN caption.
+        const postLang = (((cd.language as string) || (cd.lang as string) || 'en')).toLowerCase() === 'he' ? 'he' : 'en';
         const existingCaption = postLang === 'he' ? (cd.caption_he as string) : (cd.caption_en as string);
         if (existingCaption && hasPermImg) {
           await sb.from('agent_tasks').update({
