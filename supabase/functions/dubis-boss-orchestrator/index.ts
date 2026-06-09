@@ -1256,6 +1256,70 @@ function buildPersonaSeriesHtml(ps: Awaited<ReturnType<typeof fetchPersonaSeries
   return `<p dir="rtl" style="font-size:13px;margin:0 0 6px;text-align:right"><b>"מאחורי הקוד — יומן הסוכנים"</b> · נשארו ${ps.remaining} דמויות בתור</p>${pub}${next}`;
 }
 
+// Auto-product pipeline health (2026-06-09) — control surface for the weekly
+// autonomous slogan→product flow. Reads agent_runs self-heal markers
+// (auto_product_retry / auto_product_failed) + the queue + the latest auto product
+// so oren has ONE daily line confirming the flow works even when runs hiccup.
+async function fetchAutoProductHealth(sb: SB): Promise<{
+  latest: { numeric: number; slogan: string; status: string; active: boolean } | null;
+  retries7d: number;
+  failures: Array<{ numeric: number; summary: string; run_id: string | null }>;
+  queueFailed: number;
+} | null> {
+  const since = new Date(Date.now() - 7 * 86400000).toISOString();
+  const { data: prod } = await sb.from('dubis_products')
+    .select('product_id_numeric, slogan, publishing_status, active, created_at')
+    .eq('auto_publish', true)
+    .order('created_at', { ascending: false }).limit(1);
+  const p0 = (prod && prod[0]) as Record<string, unknown> | undefined;
+  const latest = p0 ? {
+    numeric: Number(p0.product_id_numeric || 0),
+    slogan: String(p0.slogan || ''),
+    status: String(p0.publishing_status || ''),
+    active: p0.active === true,
+  } : null;
+
+  const { data: runs } = await sb.from('agent_runs')
+    .select('summary, side_effects, created_at')
+    .eq('agent_id', 'product')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false }).limit(40);
+  let retries7d = 0;
+  const failures: Array<{ numeric: number; summary: string; run_id: string | null }> = [];
+  for (const r of (runs || []) as Array<Record<string, unknown>>) {
+    const se = (r.side_effects as Record<string, unknown>) || {};
+    if (se.auto_product_retry === true) retries7d++;
+    if (se.auto_product_failed === true) {
+      failures.push({ numeric: Number(se.product_id_numeric || 0), summary: String(r.summary || '').slice(0, 100), run_id: (se.workflow_run_id as string) || null });
+    }
+  }
+
+  const { data: q } = await sb.from('product_pipeline_queue')
+    .select('status').eq('status', 'failed').gte('updated_at', since);
+  return { latest, retries7d, failures, queueFailed: (q || []).length };
+}
+function buildAutoProductHealthHtml(h: Awaited<ReturnType<typeof fetchAutoProductHealth>>): string {
+  if (!h) return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right">קו המוצרים האוטומטי — אין נתונים.</p>';
+  const badge = (st: string, active: boolean) =>
+    active ? '<span style="color:#2d6a4f;font-weight:700">✅ חי</span>'
+    : st === 'failed' ? '<span style="color:#b91c1c;font-weight:700">❌ נכשל</span>'
+    : st === 'pending_pipeline' ? '<span style="color:#c8a96e;font-weight:700">⏳ בתהליך</span>'
+    : st === 'pending_visual_approval' ? '<span style="color:#c8a96e;font-weight:700">👀 ממתין לאישור</span>'
+    : `<span style="color:#888">${esc(st)}</span>`;
+  const latestHtml = h.latest
+    ? `<p dir="rtl" style="font-size:12.5px;margin:0 0 6px;text-align:right">מוצר אוטומטי אחרון: <b>#${h.latest.numeric}</b> "${esc(h.latest.slogan)}" — ${badge(h.latest.status, h.latest.active)}${h.latest.active ? ` · <a href="https://www.dubis.net/#product-${h.latest.numeric}" style="color:#c8a96e;font-weight:600;text-decoration:none">▶ לדף המוצר</a>` : ''}</p>`
+    : '<p dir="rtl" style="font-size:12px;color:#999;text-align:right">עדיין לא נוצר מוצר אוטומטי.</p>';
+  const stats = `<p dir="rtl" style="font-size:12.5px;margin:0 0 6px;text-align:right">🔁 ${h.retries7d} ריצות-תיקון אוטומטיות (self-heal) · ❌ ${h.failures.length} כשלים סופיים (7 ימים)</p>`;
+  let alert = '';
+  if (h.failures.length || h.queueFailed) {
+    const list = h.failures.map(f => `<li>#${f.numeric || '?'} — ${esc(f.summary)}${f.run_id ? ` · <a href="https://github.com/dubis-brand/dubis-website/actions/runs/${f.run_id}" style="color:#c8a96e">לוג</a>` : ''}</li>`).join('');
+    alert = `<div dir="rtl" style="background:#fdecea;border-right:3px solid #b91c1c;padding:8px 12px;border-radius:6px;margin-top:6px;text-align:right"><b style="color:#b91c1c">דורש בדיקה ידנית — נכשל גם אחרי retry:</b><ul style="margin:6px 0;padding-right:18px;font-size:12px">${list || `<li>${h.queueFailed} שורות תור במצב failed</li>`}</ul></div>`;
+  } else {
+    alert = '<p dir="rtl" style="font-size:12px;color:#2d6a4f;text-align:right">✅ הצינור תקין — self-heal פעיל, אין כשלים פתוחים.</p>';
+  }
+  return latestHtml + stats + alert;
+}
+
 // Marketing-today (v9) — caption pulled from extensive field chain
 // =============================================================
 async function fetchMarketingToday(sb: SB): Promise<{
@@ -1687,7 +1751,7 @@ Deno.serve(async (req: Request) => {
   const planKpiSync = await syncPlanKpisFromSnapshot(sb).catch(() => ({ updated: 0, errors: ['sync-threw'] }));
   // Resolve real TikTok post URLs (Late.com finalizes async) so marketing links point at the live post.
   await backfillTiktokUrls(sb).catch(() => {});
-  const [marketingToday, pending, agentHealth, dailySnaps, orderTracking, planStatus, weeklyMktg] = await Promise.all([
+  const [marketingToday, pending, agentHealth, dailySnaps, orderTracking, planStatus, weeklyMktg, autoProductHealth] = await Promise.all([
     fetchMarketingToday(sb),
     fetchPendingApprovals(sb),
     fetchAgentHealth(sb),
@@ -1695,6 +1759,7 @@ Deno.serve(async (req: Request) => {
     fetchActiveOrdersTracking(sb),
     fetchPlanStatus(sb).catch(() => null),
     fetchWeeklyMarketing(sb).catch(() => null),
+    fetchAutoProductHealth(sb).catch(() => null),
   ]);
 
   let action_items_json: Opinion[] = synth.topActions.slice(0, isWeekly ? 5 : 3);
@@ -1985,6 +2050,7 @@ Deno.serve(async (req: Request) => {
   const planSectionHtml = planStatus ? buildPlanSectionHtml(planStatus) : '';
   const weeklyMktgHtml = buildWeeklyMarketingHtml(weeklyMktg);
   const personaHtml = buildPersonaSeriesHtml(await fetchPersonaSeries(sb).catch(() => null));
+  const autoProductHealthHtml = buildAutoProductHealthHtml(autoProductHealth);
 
   const lastWeekSection = isWeekly && lastWeekCheck.total > 0
     ? `<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📊 מהשבוע הקודם</h2><p dir="rtl" style="font-size:13px;margin:0 0 10px"><b>${lastWeekCheck.done}/${lastWeekCheck.total} הושלמו (${Math.round(lastWeekCheck.done/lastWeekCheck.total*100)}%).</b></p>${lastWeekCheck.details.slice(0,5).map(d => { const ic = d.status === 'done' ? '✅' : d.status === 'open' ? '⏳' : '❌'; return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;margin:4px 0;border-radius:4px;text-align:right;font-size:12px">${ic} <b>${esc(d.agent)}:</b> ${esc(d.rec.slice(0,100))}</div>`; }).join('')}</td></tr><tr><td style="height:14px"></td></tr>` : '';
@@ -2001,6 +2067,7 @@ ${recurringHtml}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">✍️ מחכה לאישורך (${totalPending})</h2>${pendingHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📅 תוכנית שיווק שבועית — תכנון מול ביצוע</h2>${weeklyMktgHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🐻 סדרת הסוכנים — מאחורי הקוד</h2>${personaHtml}</td></tr><tr><td style="height:14px"></td></tr>
+<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🤖 קו המוצרים האוטומטי</h2>${autoProductHealthHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📣 שיווק היום (${totalMarketing})</h2>${marketingStatsHtml}${marketingItemsHtml}</td></tr><tr><td style="height:14px"></td></tr>
 ${lastWeekSection}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📊 Meta Funnel — אתמול</h2>${funnelHtml}</td></tr><tr><td style="height:14px"></td></tr>
