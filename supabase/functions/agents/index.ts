@@ -1978,27 +1978,28 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       const cd = (task.content_data as Task) || {};
 
       // ── 2026-05-20 PHASE C — Content dedup (7-day window) ──────────
-      // Rule: never publish a post that uses the same product_id OR same slogan
-      // as another published post in the last 7 days. If duplicate found, push
-      // the task back to pending_approval with a reason — oren reviews in admin.
-      // Per DUBIS_BOSS_AUTONOMY_UPGRADE_2026-05-20 plan Phase C.10 + C.11.
+      // Rule: never publish a post that uses the same slogan as another published
+      // post in the last 7 days. If duplicate found, push the task back to
+      // pending_approval with a reason — oren reviews in admin.
+      //
+      // 2026-06-09: product_id dedup REMOVED + persona series EXEMPTED.
+      //   • product_id dedup starved the whole pipeline: with a ~15-product
+      //     catalog and 2 posts/day, every product naturally recurs ~every 7.5
+      //     days — right on the boundary — so posts kept bouncing to
+      //     pending_approval and rotting (nothing ever re-published them). That
+      //     stalled BOTH regular content (last regular post 2026-06-06) AND the
+      //     persona series (day2-5 bounced). A product reappearing within a week
+      //     is normal for a small shop; the slogan dedup below is the real spam
+      //     guard. See troubleshooting.md "Publish pipeline starved by product
+      //     dedup (2026-06-09)".
+      //   • The agent-personas BTS series is exempt entirely — its uniqueness is
+      //     the narrative (Gadi/Shira/...), the product link is incidental and
+      //     intentionally repeats across characters.
+      const isPersonaSeries = (((cd.series as string) || '')) === 'agent_personas';
       const dedupWindow = new Date(Date.now() - 7*86400000).toISOString();
-      const myProductId = cd.product_id != null ? String(cd.product_id) : null;
       const mySlogan    = ((cd.slogan as string) || (cd.product_slogan as string) || '').trim();
       let dedupReason: string | null = null;
-      if (myProductId) {
-        const { data: sameProduct } = await sb.from('agent_tasks')
-          .select('id, updated_at')
-          .eq('agent_id', 'content').eq('status', 'done')
-          .neq('id', task.id)
-          .gte('updated_at', dedupWindow)
-          .filter('content_data->>product_id', 'eq', myProductId)
-          .limit(1);
-        if (sameProduct && sameProduct.length > 0) {
-          dedupReason = `same product_id (${myProductId}) published within last 7 days (task ${(sameProduct[0] as Task).id})`;
-        }
-      }
-      if (!dedupReason && mySlogan && mySlogan.length > 8) {
+      if (!isPersonaSeries && mySlogan && mySlogan.length > 8) {
         const { data: sameSlogan } = await sb.from('agent_tasks')
           .select('id, updated_at')
           .eq('agent_id', 'content').eq('status', 'done')
