@@ -683,6 +683,8 @@ h1, h2, h3, h4 {
     display: inline-block;
     width: 22px;
     height: 22px;
+    flex: 0 0 22px;          /* never shrink in the flex row — keeps the swatch a circle, not an oval */
+    box-sizing: border-box;
     border-radius: 50%;
     border: 2px solid #ddd;
     margin-right: 4px;
@@ -834,6 +836,7 @@ body[dir="rtl"] .product-price .price-from { margin-left: 2px; margin-right: 0; 
 .product-colors {
     margin-bottom: 0.8rem;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 4px;
 }
@@ -1452,10 +1455,12 @@ body.has-preview-banner { padding-top: 32px; }
     color: #999;
     margin-bottom: 0.6rem;
 }
-.modal-colors { display: flex; gap: 8px; margin-bottom: 4px; }
+.modal-colors { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
 .color-btn {
     width: 28px;
     height: 28px;
+    flex: 0 0 28px;          /* never shrink — 8 swatches squished into ovals on mobile without this */
+    box-sizing: border-box;
     border-radius: 50%;
     border: 3px solid transparent;
     cursor: pointer;
@@ -1888,12 +1893,21 @@ body.has-preview-banner { padding-top: 32px; }
     top: 0;
     right: 0;
     width: 380px;
+    /* 100dvh (dynamic viewport) — NOT 100vh. On mobile, 100vh includes the area
+       behind the browser URL bar, so the cart footer + Checkout button fell
+       BELOW the visible screen and the modal couldn't be scrolled to reach it
+       (the customer's cart was a dead end). dvh = the actually-visible height.
+       Fixed 2026-06-07 — see memory/troubleshooting.md. */
     height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
     background: var(--white);
     z-index: 2000;
     flex-direction: column;
     box-shadow: -4px 0 20px rgba(0,0,0,0.15);
 }
+.cart-footer { flex-shrink: 0; }   /* footer + Checkout button never collapse */
 
 .cart-modal.open,
 .cart-overlay.open {
