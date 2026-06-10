@@ -72,6 +72,12 @@ async function main() {
     const m = realMax[pidOf(p)];
     if (m > 0) typeMax[p.clothing_type] = Math.max(typeMax[p.clothing_type] || 0, m);
   }
+  // Cross-type peer fallback for types that have no same-type priced sibling.
+  // e.g. an embroidered cap ('cap-emb') borrows the plain cap price. (oren 2026-06-10)
+  const PEER_TYPE_FALLBACK = { 'cap-emb': 'cap' };
+  for (const [type, fallback] of Object.entries(PEER_TYPE_FALLBACK)) {
+    if (!(typeMax[type] > 0) && typeMax[fallback] > 0) typeMax[type] = typeMax[fallback];
+  }
 
   const plan = [];
   const skipped = [];
