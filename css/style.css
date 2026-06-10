@@ -1906,6 +1906,21 @@ body.has-preview-banner { padding-top: 32px; }
     z-index: 2000;
     flex-direction: column;
     box-shadow: -4px 0 20px rgba(0,0,0,0.15);
+    overflow: hidden;   /* clip — scrolling happens inside .cart-items, never the modal */
+}
+
+/* The modal's ONLY child. It must itself be the full-height flex column —
+   otherwise .cart-items' flex:1/overflow never engages and the whole content
+   block grows past the viewport, burying the Checkout button below the screen
+   (the >3-items mobile dead-end bug). Fixed 2026-06-10 — see memory/troubleshooting.md. */
+.cart-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;      /* allow inner items area to shrink below content size → scrolls */
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
 }
 .cart-footer { flex-shrink: 0; }   /* footer + Checkout button never collapse */
 
@@ -1937,7 +1952,9 @@ body.has-preview-banner { padding-top: 32px; }
 
 .cart-items {
     flex: 1;
+    min-height: 0;        /* critical: lets this area shrink inside the flex column so it scrolls */
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     padding: 1.5rem;
 }
 
@@ -2253,7 +2270,11 @@ body.has-preview-banner { padding-top: 32px; }
 
 .cart-footer {
     padding: 1.5rem;
+    /* extra bottom padding for iOS home indicator / mobile browser bottom bar so the
+       Checkout button is never hidden behind the chrome on small screens */
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid #eee;
+    background: var(--white);   /* opaque — stays readable when items scroll behind it */
 }
 
 .cart-total {
