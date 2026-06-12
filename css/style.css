@@ -1137,27 +1137,8 @@ body.has-preview-banner { padding-top: 32px; }
     background: var(--honey);
 }
 
-/* ===== HOVER OVERLAY ===== */
-.product-hover-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(44,44,44,0.55);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.3s;
-}
-.product-hover-overlay span {
-    color: white;
-    font-size: 0.9rem;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    border: 1px solid white;
-    padding: 8px 20px;
-    border-radius: 4px;
-}
-.product-card:hover .product-hover-overlay { opacity: 1; }
+/* Hover overlay removed 2026-06-12 (Wave 1): the dark scrim hid the front/back
+   crossfade — the card's best feature. Whole-card click opens the modal anyway. */
 
 /* ===== REAL PEOPLE SECTION ===== */
 .real-people {

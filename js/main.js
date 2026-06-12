@@ -1318,7 +1318,6 @@ function renderProducts(filter, gender) {
           const isNewActive = product.isNew === true && product.featuredUntil && new Date(product.featuredUntil) > new Date();
           return isNewActive ? `<div class="product-new-badge">${currentLang === 'he' ? 'חדש' : 'NEW'}</div>` : '';
         })()}
-        <div class="product-hover-overlay"><span>${t.view_details}</span></div>
       </div>
       <div class="product-info">
         <div class="product-phrase">"${product.phrase}"</div>
