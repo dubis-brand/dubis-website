@@ -1140,6 +1140,12 @@ body.has-preview-banner { padding-top: 32px; }
 /* Hover overlay removed 2026-06-12 (Wave 1): the dark scrim hid the front/back
    crossfade — the card's best feature. Whole-card click opens the modal anyway. */
 
+/* Static (build-time) catalog cards — crawler content + no-JS fallback.
+   renderProducts() replaces them on load; these styles only matter pre-JS. */
+.product-card-static { text-decoration: none; color: inherit; display: block; }
+.product-card-static img { width: 100%; height: auto; display: block; }
+.product-card-static .product-meta-static { padding: 0 1rem 1rem; color: #555; font-size: 0.95rem; }
+
 /* ===== REAL PEOPLE SECTION ===== */
 .real-people {
     padding: 5rem 2rem;

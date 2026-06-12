@@ -19,6 +19,10 @@ on:
       product_id_numeric:
         description: 'product_id_numeric just visually-approved (for the commit message)'
         required: false
+  # Daily freshness run (Wave 2, 2026-06-12): regenerates the static catalog
+  # (grid + Product schema + llms.txt) and fails loudly if it drifts from the DB.
+  schedule:
+    - cron: '30 3 * * *'
 
 permissions:
   contents: write
@@ -56,11 +60,21 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/sync-products-to-js.js --write
 
+      # Wave 2 (2026-06-12): static catalog for crawlers/AI bots.
+      # --verify-db is the freshness contract — count+price drift vs the live DB
+      # fails the workflow loudly (we already lived the "three price sources"
+      # postmortem; the static grid never becomes a silent fourth).
+      - name: Regenerate static catalog (grid + schema + llms.txt) + verify freshness
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/generate-static-catalog.js --verify-db
+
       - name: Commit + push (retry-with-rebase on conflict)
         run: |
           git config user.name  "dubis-pipeline-bot"
           git config user.email "dubis-pipeline-bot@users.noreply.github.com"
-          git add js/products.js
+          git add js/products.js index.html llms.txt sitemap.xml
           if git diff --cached --quiet; then
             echo "products.js already in sync — no commit needed."
             exit 0
