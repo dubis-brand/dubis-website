@@ -104,20 +104,26 @@
     <!-- SEO -->
     <title>DUBIS — Clothes Built for the Body You Actually Live In</title>
     <meta name="description" content="DUBIS — fashion that finally sees you. Real fit, real quality, real people. T-shirts, hoodies and caps built for the life you actually live.">
-    <meta name="keywords" content="DUBIS, real people fashion, authentic clothing, real fit, statement t-shirts, hoodies, plus size fashion, body positive clothing">
     <meta name="author" content="DUBIS Brand">
     <link rel="canonical" href="https://www.dubis.net/">
+
+    <!-- Favicons -->
+    <link rel="icon" type="image/svg+xml" href="/images/icon.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
 
     <!-- Open Graph / Social -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://www.dubis.net/">
     <meta property="og:title" content="DUBIS — Built for the Body You Actually Live In">
     <meta property="og:description" content="Fashion spent decades designing for someone else. DUBIS is the correction — real clothes, real quality, real people.">
-    <meta property="og:image" content="https://www.dubis.net/images/real6.jpg">
+    <meta property="og:image" content="https://www.dubis.net/images/og-image.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:title" content="DUBIS — Built for the Body You Actually Live In">
     <meta property="twitter:description" content="Fashion finally sees you. Real clothes for the life you actually live.">
-    <meta property="twitter:image" content="https://www.dubis.net/images/real6.jpg">
+    <meta property="twitter:image" content="https://www.dubis.net/images/og-image.jpg">
 
     <!-- Structured Data -->
     <script type="application/ld+json">
@@ -128,8 +134,35 @@
       "description": "Fashion built for the body you actually live in. Real fit, real quality, real people.",
       "url": "https://www.dubis.net",
       "email": "dubis.brand@gmail.com",
-      "logo": "https://www.dubis.net/images/real4.jpg",
-      "sameAs": []
+      "logo": "https://www.dubis.net/images/dubis-logo.png",
+      "slogan": "Built for the body you actually live in.",
+      "sameAs": [
+        "https://www.instagram.com/dubis.brand",
+        "https://www.facebook.com/people/DUBIS/61577669910761/",
+        "https://www.tiktok.com/@dubis.brand"
+      ]
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "What sizes do you offer?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Our products come in sizes S through 3XL. All sizes run comfortable and roomy — if you're between sizes, take the smaller one. A detailed size chart is available on every product page." } },
+        { "@type": "Question", "name": "How long does shipping take?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Shipping: $8.99 (free on orders over $60). US production: 2–3 business days. US delivery: 3–4 business days. Total to US: 5–7 business days. Rest of world: up to 14 business days." } },
+        { "@type": "Question", "name": "What is your return policy?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Returns only for defective, wrong, or lost items. Email us within 30 days of delivery with a photo and order number." } },
+        { "@type": "Question", "name": "Will the print peel off?",
+          "acceptedAnswer": { "@type": "Answer", "text": "We use DTG (Direct-to-Garment) technology — the print goes directly into the fabric. It's not a sticker, not an iron-on. The print survives dozens of washes." } },
+        { "@type": "Question", "name": "Why is it priced this way?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Every item is made to order — not mass-produced in a factory by the thousands. DTG quality, premium materials, original design. $16–$47 for a product you'll wear for years." } },
+        { "@type": "Question", "name": "Do you have a physical store?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. DUBIS is an online-only brand. That's how we keep prices fair." } },
+        { "@type": "Question", "name": "How do I wash it?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Regular wash at 30°C, turn the garment inside out before washing, do not tumble dry. The print will survive." } }
+      ]
     }
     </script>
 
@@ -142,9 +175,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Supabase JS client (auth + DB queries from browser) -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
     <!-- ═══ Google Analytics 4 — Consent Mode ══════════════════════════════
          Analytics only activates AFTER the user accepts cookies (GDPR-safe).
     ════════════════════════════════════════════════════════════════════════ -->
@@ -266,8 +296,8 @@
     <!-- HERO SECTION — image-first editorial -->
     <section id="home" class="hero hero-v2">
         <picture class="hero-bg">
-            <source media="(max-width: 768px)" srcset="images/real6.jpg">
-            <img src="images/real6.jpg" alt="Real people wearing DUBIS — fashion built for the body you actually live in" loading="eager" fetchpriority="high">
+            <source media="(max-width: 768px)" srcset="images/hero-v3-mobile.jpg">
+            <img src="images/hero-v3-desktop.jpg" alt="A real man in a black DUBIS t-shirt on a city street — fashion built for the body you actually live in" loading="eager" fetchpriority="high">
         </picture>
         <div class="hero-overlay" aria-hidden="true"></div>
         <div class="hero-content">
@@ -846,6 +876,8 @@
     </div>
 
     <!-- Scripts: auth must load before paypal -->
+    <!-- Supabase JS client (auth + DB queries from browser) — end of body so it never blocks first paint; version pinned -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.108.1"></script>
     <script src="js/supabase-config.js"></script>
     <script src="js/products.js"></script>
     <script src="js/main.js"></script>
