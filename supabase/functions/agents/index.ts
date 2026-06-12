@@ -4079,7 +4079,7 @@ Generate 3 slogan proposals. Return ONLY valid JSON array. The "colors" field MU
 
     // Fetch the product so we can send oren a useful email.
     const { data: prodRow } = await sb.from('dubis_products')
-      .select('id,slogan,clothing_type,gender,colors,product_id_numeric,auto_publish')
+      .select('id,slogan,clothing_type,gender,colors,product_id_numeric,auto_publish,launched_at')
       .eq('id', productId).single();
     const prod = (prodRow || {}) as Record<string, unknown>;
     const slogan = (prod.slogan as string) || '(no slogan)';
@@ -4125,7 +4125,10 @@ Generate 3 slogan proposals. Return ONLY valid JSON array. The "colors" field MU
           publishing_status: 'live',
           pending_visual_approval: false,
           visual_approval_token: null,
-          launched_at: new Date().toISOString(),
+          // launched_at = FIRST launch only. Regens/re-approvals must not re-stamp it —
+          // the 2026-06-06 Anton regen re-stamped all 16 veterans and the whole catalog
+          // showed a NEW badge for 30 days (sync script derives isNew from launched_at).
+          launched_at: (prod.launched_at as string) ?? new Date().toISOString(),
           proof_of_completion: proof,
           removal_token: removalToken,
           ...(leadImage ? { image_url: leadImage } : {}),
@@ -4389,7 +4392,7 @@ Generate 3 slogan proposals. Return ONLY valid JSON array. The "colors" field MU
     if (!adminOk && !token) return json({ error: 'Unauthorized — admin JWT or visual_approval_token required' }, 401);
 
     const { data: prodRow, error: fetchErr } = await sb.from('dubis_products')
-      .select('id, product_id_numeric, slogan, pending_visual_approval, visual_approval_token, proof_of_completion')
+      .select('id, product_id_numeric, slogan, pending_visual_approval, visual_approval_token, proof_of_completion, launched_at')
       .eq('id', productId).single();
     if (fetchErr || !prodRow) return json({ error: 'product_not_found' }, 404);
     const p = prodRow as Record<string, unknown>;
@@ -4407,7 +4410,9 @@ Generate 3 slogan proposals. Return ONLY valid JSON array. The "colors" field MU
       publishing_status: 'live',
       pending_visual_approval: false,
       visual_approval_token: null,            // burn token (one-time use)
-      launched_at: new Date().toISOString(),
+      // First launch only — re-approvals/regens keep the original launch date
+      // (see auto-publish branch note; prevents site-wide false NEW badges).
+      launched_at: (p.launched_at as string) ?? new Date().toISOString(),
     }).eq('id', productId);
     if (upErr) return json({ error: 'activation_failed', detail: upErr.message }, 500);
 
