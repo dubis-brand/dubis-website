@@ -480,27 +480,37 @@ function getVariantPrice(productId, color, size, basePrice) {
   return (typeof v === 'number' && Number.isFinite(v)) ? v : basePrice;
 }
 
-// Returns the cheapest variant price for this product (used as the "from X"
-// price on catalog cards when there is price variance across color/size).
-function getCheapestVariantPrice(productId, basePrice) {
-  const map = window.__DUBIS_PRICE_MAP?.[productId];
-  if (!map) return basePrice;
-  let min = basePrice;
-  for (const c of Object.keys(map)) for (const s of Object.keys(map[c])) {
-    const v = map[c][s];
-    if (typeof v === 'number' && v < min) min = v;
+// Effective sell price for every (color, size) the customer can actually pick.
+// Built via getVariantPrice so the base price only counts where a variant truly
+// has no override (i.e. it would really be sold at base). This is the guard
+// against the bait-and-switch class of bug: when EVERY variant carries an
+// explicit override (e.g. all = $35) a stale base price ($26 from a drifting
+// product_prices row) must NOT leak into the catalog "From X" — no variant is
+// purchasable at that base, so advertising it is a lie. By deriving from the
+// same getVariantPrice() the modal/cart use, the card can never advertise a
+// price below the cheapest variant a customer can select.
+function effectiveVariantPrices(product) {
+  const colors = Array.isArray(product.colors) ? product.colors : [];
+  const sizes  = Array.isArray(product.sizes)  ? product.sizes  : [];
+  if (!colors.length || !sizes.length) return [product.price];
+  const out = [];
+  for (const c of colors) for (const s of sizes) {
+    const v = getVariantPrice(product.id, c, s, product.price);
+    if (Number.isFinite(v) && v > 0) out.push(v);
   }
-  return min;
+  return out.length ? out : [product.price];
 }
 
-// True when this product has ≥ 2 distinct prices across its variants — the
-// catalog card should then show "From ₪X" rather than a single flat price.
-function hasPriceVariance(productId, basePrice) {
-  const map = window.__DUBIS_PRICE_MAP?.[productId];
-  if (!map) return false;
-  const all = new Set([basePrice]);
-  for (const c of Object.keys(map)) for (const s of Object.keys(map[c])) all.add(map[c][s]);
-  return all.size > 1;
+// Returns the cheapest price the customer can actually select — the honest
+// "From X" value for catalog cards.
+function getCheapestVariantPrice(product) {
+  return Math.min(...effectiveVariantPrices(product));
+}
+
+// True when this product has ≥ 2 distinct selectable prices — the catalog card
+// should then show "From X" rather than a single flat price.
+function hasPriceVariance(product) {
+  return new Set(effectiveVariantPrices(product)).size > 1;
 }
 
 // "Premium color" = this color's cheapest size still costs more than the
@@ -1325,11 +1335,17 @@ function renderProducts(filter, gender) {
           }).join('')}
         </div>
         <div class="product-bottom">
-          <div class="product-price">${
-            hasPriceVariance(product.id, product.price)
-              ? `<span class="price-from">${currentLang === 'he' ? 'החל מ-' : 'From '}</span>${formatPrice(getCheapestVariantPrice(product.id, product.price))}`
-              : formatPrice(product.price)
-          }</div>
+          <div class="product-price">${(() => {
+            // Always price from the cheapest SELECTABLE variant — never the raw
+            // product.price, which can drift stale-low (e.g. a leftover $26 in
+            // product_prices when every variant actually sells at $35). Both the
+            // "From X" and the flat-price branch use the same purchasable floor,
+            // so the card can never advertise a price no variant is sold at.
+            const fromPrice = getCheapestVariantPrice(product);
+            return hasPriceVariance(product)
+              ? `<span class="price-from">${currentLang === 'he' ? 'החל מ-' : 'From '}</span>${formatPrice(fromPrice)}`
+              : formatPrice(fromPrice);
+          })()}</div>
           <div class="product-shipping-note">${(translations[currentLang]||translations.en).shipping_note}</div>
           ${(() => {
             const stockN = getStockNum(product.id);
