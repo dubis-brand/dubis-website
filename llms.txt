@@ -14,22 +14,22 @@
 ## Catalog (live products, prices in USD — regenerated automatically from the store database)
 
 - Low maintenance, high value — t-shirt, unisex, $26 — https://www.dubis.net/?p=5
-- I am ALLERGIC to mornings — t-shirt, unisex, $39 — https://www.dubis.net/?p=23
+- I am ALLERGIC to mornings — t-shirt, unisex, $26 — https://www.dubis.net/?p=23
 - Still here, somehow. CONGRATS. — long sleeve, unisex, $34 — https://www.dubis.net/?p=30
 - Unfashionably COMFORTABLE. — t-shirt, unisex, $26 — https://www.dubis.net/?p=18
 - I survived. That's enough. — t-shirt, unisex, $26 — https://www.dubis.net/?p=4
-- Activewear for the INACTIVE. — t-shirt, unisex, $39 — https://www.dubis.net/?p=32
+- Activewear for the INACTIVE. — t-shirt, unisex, $26 — https://www.dubis.net/?p=32
 - My ENERGY is a non-renewable resource — long sleeve, unisex, $34 — https://www.dubis.net/?p=29
 - Still waiting for my BREAK. — long sleeve, unisex, $33 — https://www.dubis.net/?p=34
 - Napping is my cardio — zip hoodie, unisex, $61 — https://www.dubis.net/?p=3
 - I'm not fat, I'm a limited edition — t-shirt, unisex, $26 — https://www.dubis.net/?p=1
 - My brain is full of TABS. — hoodie, unisex, $48 — https://www.dubis.net/?p=33
 - Today is CANCELLED — zip hoodie, unisex, $61 — https://www.dubis.net/?p=25
-- You're prettier when you're comfortable. — t-shirt, unisex, $35 — https://www.dubis.net/?p=31
+- You're prettier when you're comfortable. — t-shirt, unisex, $26 — https://www.dubis.net/?p=31
 - More of me to love — t-shirt, unisex, $26 — https://www.dubis.net/?p=2
-- Born to nap, forced to work — t-shirt, men, $39 — https://www.dubis.net/?p=8
+- Born to nap, forced to work — t-shirt, men, $26 — https://www.dubis.net/?p=8
 - Serial napper — long sleeve, men, $34 — https://www.dubis.net/?p=10
-- She believed she could, so she took a nap — t-shirt, women, $35 — https://www.dubis.net/?p=11
+- She believed she could, so she took a nap — t-shirt, women, $26 — https://www.dubis.net/?p=11
 - My only AMBITION is comfort. — long sleeve, women, $34 — https://www.dubis.net/?p=35
 
 ## Links
