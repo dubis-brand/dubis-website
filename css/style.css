@@ -41,9 +41,9 @@
     --shadow-honey: 0 8px 24px rgba(193,126,58,0.35);
 
     /* ===== FONTS ===== */
-    --font-logo: 'Anton', Impact, sans-serif;
-    --font-display: 'Fraunces', 'Playfair Display', Georgia, serif;
-    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-logo: 'Anton', 'Heebo', Impact, sans-serif;        /* Heebo covers Hebrew glyphs (Anton has none) */
+    --font-display: 'Fraunces', 'Heebo', Georgia, serif;      /* Hebrew display text → Heebo, not system serif */
+    --font-body: 'Inter', 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 * {
@@ -3209,3 +3209,7 @@ body.has-preview-banner { padding-top: 32px; }
     .faq-q-text { font-size: 0.92rem; }
     .faq-answer p { font-size: 0.88rem; }
 }
+
+/* Wave 3 (2026-06-12): SVG line icons replace emoji in trust bar + nav (consistent cross-OS, brand-colorable) */
+.trust-icon svg { display:block; color: var(--honey); }
+.account-btn svg, .cart-btn svg { display:inline-block; vertical-align:-3px; }
