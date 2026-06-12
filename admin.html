@@ -4233,6 +4233,14 @@
       });
       if (priceErr) throw priceErr;
 
+      // 1b. 2026-06-12: also update dubis_products.price_usd — it feeds the nightly
+      // products.js sync + static catalog + shopping feed. Without this, the next
+      // sync regenerated the site with the OLD price and oren's edit "changed back".
+      const { error: puErr } = await _sb.from('dubis_products')
+        .update({ price_usd: newPrice })
+        .eq('product_id_numeric', productId);
+      if (puErr) throw puErr;
+
       // 2. Mass-update per-variant sell_price_usd.
       // 2026-05-20 H2: per oren — admin has final say. If newPrice is below cost,
       // we already confirmed above. Now respect oren's decision: set ALL variants
@@ -4245,21 +4253,22 @@
       const belowFloor = (minCostIl != null && newPrice < minCostIl);
       const tag = belowFloor ? 'admin-override-below-cost' : 'admin-base-update';
       if (numericId != null) {
-        const { data: variants } = await _sb.from('product_variant_stock')
-          .select('color,size,gelato_cost_usd')
-          .eq('product_id_numeric', numericId);
-        if (Array.isArray(variants) && variants.length > 0) {
-          const rows = variants.map(v => ({
-            product_id_numeric: numericId,
-            color: v.color,
-            size: v.size,
+        // 2026-06-12: plain UPDATE, not upsert. RLS on product_variant_stock has an
+        // UPDATE policy only (admin_update_pvs_pricing) — upsert = INSERT+UPDATE and
+        // was silently 42501-rejected, so oren's base-price edits never reached the
+        // variants (the card kept showing the old variant price). Rows always exist
+        // (gelato-stock-check seeds them), so UPDATE covers every variant.
+        const { error: varErr } = await _sb.from('product_variant_stock')
+          .update({
             sell_price_usd: newPrice,  // respect oren's chosen base for ALL variants
             price_set_by: tag + '-' + new Date().toISOString().slice(0, 10),
             price_set_at: new Date().toISOString(),
-          }));
-          const { error: varErr } = await _sb.from('product_variant_stock')
-            .upsert(rows, { onConflict: 'product_id_numeric,color,size' });
-          if (varErr) console.warn('variant mass-update failed:', varErr.message);
+          })
+          .eq('product_id_numeric', numericId);
+        if (varErr) {
+          // Loud failure — a silent console.warn hid this for days.
+          window._dubisToast('❌ עדכון מחירי ה-variants נכשל: ' + varErr.message, '#c0392b', 6000);
+          throw varErr;
         }
       }
 
