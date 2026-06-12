@@ -1486,16 +1486,15 @@ function openProductModal(productId) {
         <span>&#8617;&#65039; ${currentLang === 'he' ? 'החזרה על פגמים תוך 30 יום' : '30-Day Defect Returns'}</span>
       </div>
       ${(() => {
+        // Wave 3 (2026-06-12): fake "Only N left" urgency removed here too —
+        // POD has no real scarcity. Sold-out stays (real information).
         const stockN = getStockNum(product.id);
         if (stockN === 0) {
           return `<div class="modal-urgency sold-out">
             <span>${currentLang === 'he' ? 'המוצר אזל זמנית — חזור בקרוב' : 'Currently sold out — back soon'}</span>
           </div>`;
         }
-        return `<div class="modal-urgency">
-          <span class="fire">🔥</span>
-          <span>${currentLang === 'he' ? `נשארו רק ${stockN} יחידות — הזמינו לפני שנגמר` : `Only ${stockN} left — order before it's gone`}</span>
-        </div>`;
+        return '';
       })()}
       <button class="btn-primary modal-add-btn" onclick="addToCartFromModal(${product.id})">
         ${t.modal_add}
