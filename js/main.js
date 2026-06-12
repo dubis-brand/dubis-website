@@ -1312,7 +1312,6 @@ function renderProducts(filter, gender) {
       <div class="product-image" id="card-img-${product.id}">
         <img class="img-view img-back"  src="${productImg(product.id, displayColor, 'back')}"  alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}';const c=this.closest('.product-card');if(c)c.classList.remove('show-back-default');" />
         <img class="img-view img-front" src="${productImg(product.id, displayColor, 'front')}" alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}'" />
-        <div class="product-badge">${typeMap[product.type] || product.typeLabel}</div>
         ${(() => {
           // NEW badge: only on products Boss pipeline added (is_new=true) within featuredUntil window.
           const isNewActive = product.isNew === true && product.featuredUntil && new Date(product.featuredUntil) > new Date();
@@ -1321,18 +1320,6 @@ function renderProducts(filter, gender) {
       </div>
       <div class="product-info">
         <div class="product-phrase">"${product.phrase}"</div>
-        <div class="product-colors">
-          ${product.colors.map(c => {
-            const premium = isPremiumColor(product.id, c);
-            const fromLabel = currentLang === 'he' ? 'תוספת לצבע פרימיום' : 'premium color surcharge';
-            return `
-            <span class="color-dot${c === displayColor ? ' active-color' : ''}${premium ? ' premium-color' : ''}"
-              title="${c}${premium ? ' — ' + fromLabel : ''}"
-              style="background:${colorToHex(c)}"
-              onclick="event.stopPropagation(); selectCardColor(${product.id}, '${c}', this)">
-            </span>`;
-          }).join('')}
-        </div>
         <div class="product-bottom">
           <div class="product-price">${(() => {
             // Always price from the cheapest SELECTABLE variant — never the raw
@@ -1345,13 +1332,12 @@ function renderProducts(filter, gender) {
               ? `<span class="price-from">${currentLang === 'he' ? 'החל מ-' : 'From '}</span>${formatPrice(fromPrice)}`
               : formatPrice(fromPrice);
           })()}</div>
-          <div class="product-shipping-note">${(translations[currentLang]||translations.en).shipping_note}</div>
           ${(() => {
+            // Wave 3 (2026-06-12): in-stock cards show NO stock badge — "Only N left"
+            // on print-on-demand was fake urgency, contradicting the brand's own
+            // "no fake urgency" stance. Sold-out stays (real information).
             const stockN = getStockNum(product.id);
-            if (stockN === 0) {
-              return `<div class="stock-badge sold-out">${currentLang === 'he' ? 'אזל מהמלאי' : 'Sold out'}</div>`;
-            }
-            return `<div class="stock-badge${stockN > 10 ? ' ok' : ''}">${currentLang === 'he' ? `נשארו ${stockN} יחידות` : `Only ${stockN} left`}</div>`;
+            return stockN === 0 ? `<div class="stock-badge sold-out">${currentLang === 'he' ? 'אזל מהמלאי' : 'Sold out'}</div>` : '';
           })()}
           ${countryFlagsHTML(product, { compact: true })}
         </div>

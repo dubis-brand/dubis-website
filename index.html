@@ -581,7 +581,7 @@
     <link rel="stylesheet" href="css/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=Inter:wght@300;400;500;600;700&family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
     <!-- ═══ Google Analytics 4 — Consent Mode ══════════════════════════════
          Analytics only activates AFTER the user accepts cookies (GDPR-safe).
     ════════════════════════════════════════════════════════════════════════ -->
@@ -617,19 +617,19 @@
     <div class="trust-bar" id="trust-bar" role="region" aria-label="Shipping and returns">
         <div class="trust-bar-inner">
             <div class="trust-item">
-                <span class="trust-icon" aria-hidden="true">🚚</span>
+                <span class="trust-icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg></span>
                 <span class="trust-text" data-en="Free shipping over $60" data-he="משלוח חינם מעל $60">Free shipping over $60</span>
             </div>
             <div class="trust-item">
-                <span class="trust-icon" aria-hidden="true">↩</span>
+                <span class="trust-icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg></span>
                 <span class="trust-text" data-en="30-day easy returns" data-he="החזרות 30 יום ללא דרמה">30-day easy returns</span>
             </div>
             <div class="trust-item">
-                <span class="trust-icon" aria-hidden="true">🧵</span>
+                <span class="trust-icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></svg></span>
                 <span class="trust-text" data-en="Printed fresh, made to order" data-he="מודפס לפי הזמנה">Printed fresh, made to order</span>
             </div>
             <div class="trust-item">
-                <span class="trust-icon" aria-hidden="true">★</span>
+                <span class="trust-icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
                 <span class="trust-text" data-en="Real bodies. Real fit. Real reviews." data-he="גופים אמיתיים. גזרה אמיתית. ביקורות אמיתיות.">Real bodies. Real fit. Real reviews.</span>
             </div>
         </div>
@@ -686,7 +686,7 @@
                 <!-- Account button + dropdown -->
                 <div class="account-wrapper">
                     <button class="account-btn" id="account-btn" onclick="openAuthModal('login')">
-                        👤 <span>Sign In</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> <span>Sign In</span>
                     </button>
                     <div class="account-menu" id="account-menu">
                         <div class="account-menu-name" id="account-menu-name"></div>
@@ -695,7 +695,7 @@
                         <a onclick="authLogout()">Sign Out</a>
                     </div>
                 </div>
-                <button class="cart-btn">🛒 <span id="cart-count">0</span></button>
+                <button class="cart-btn" aria-label="Cart"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg> <span id="cart-count">0</span></button>
             </div>
         </div>
     </nav>
