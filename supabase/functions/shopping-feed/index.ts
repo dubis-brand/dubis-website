@@ -69,15 +69,23 @@ Deno.serve(async (_req: Request) => {
 
   const items: string[] = [];
   for (const p of (products || []) as any[]) {
-    const img = bestImageByProduct.get(p.id);
-    if (!img) continue;
     const id = p.product_id_numeric;
+    // Primary image = canonical catalog mockup (SoT per CLAUDE.md): images/product-{id}-{Color}-front.jpg
+    // Prefer Black (every product carries it), else first color; fall back to dubis_images lifestyle shot.
+    const colorList: string[] = Array.isArray(p.colors) ? p.colors : [];
+    const mockColor = colorList.includes('Black') ? 'Black' : colorList[0];
+    const mockupUrl = mockColor
+      ? `https://www.dubis.net/images/product-${id}-${encodeURIComponent(mockColor)}-front.jpg`
+      : null;
+    const img = mockupUrl || bestImageByProduct.get(p.id);
+    if (!img) continue;
     const typeLbl = clothingTypeLabel[p.clothing_type] || p.clothing_type || 'Apparel';
     const title = `DUBIS — ${p.slogan} ${typeLbl}`;
     const descFallback = `${p.slogan}. A ${String(typeLbl).toLowerCase()} from DUBIS — built for the body you actually live in. Body-positive humor apparel for the rest of us. Soft cotton, relaxed fit, sizes S through 3XL, made to order.`;
     const desc = p.description_en || descFallback;
     const price = `${Number(p.price_usd).toFixed(2)} USD`;
-    const link = `https://www.dubis.net/#product-${id}`;
+    // ?p=N (not #product-N): fragments are dropped by redirectors/crawlers — same fix as social links 2026-04-21.
+    const link = `https://www.dubis.net/?p=${id}`;
     const colors = Array.isArray(p.colors) && p.colors.length > 0 ? p.colors.join('/') : 'Mixed';
     const cat = googleCategory[p.clothing_type] || '1604';
     const gender = genderMap[p.gender] || 'unisex';
@@ -92,7 +100,8 @@ Deno.serve(async (_req: Request) => {
       <g:title>${esc(title)} (${esc(size)})</g:title>
       <g:description>${esc(desc)}</g:description>
       <g:link>${link}</g:link>
-      <g:image_link>${esc(img)}</g:image_link>
+      <g:image_link>${esc(img)}</g:image_link>${mockupUrl && bestImageByProduct.get(p.id) ? `
+      <g:additional_image_link>${esc(bestImageByProduct.get(p.id))}</g:additional_image_link>` : ''}
       <g:availability>in_stock</g:availability>
       <g:price>${price}</g:price>
       <g:brand>DUBIS</g:brand>
