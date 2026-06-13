@@ -6291,15 +6291,25 @@ ${items.join('\n')}
     const W_PRICE_MAP: Record<string, number> = { 't-shirt': 28, hoodie: 41, 'zip-hoodie': 55, 'long-sleeve': 31, cap: 28, 'cap-emb': 32, 'v-neck': 30, 'tank-top': 30 };
     const W_DB_TYPE: Record<string, string> = { tshirt: 't-shirt', hoodie: 'hoodie', ziphoodie: 'zip-hoodie', longsleeve: 'long-sleeve', cap: 'cap', capemb: 'cap-emb', vneck: 'v-neck', tanktop: 'tank-top' };
 
+    const DB_TO_JS: Record<string, string> = { 't-shirt': 'tshirt', 'zip-hoodie': 'ziphoodie', 'long-sleeve': 'longsleeve', 'v-neck': 'vneck', 'tank-top': 'tanktop', 'cap-emb': 'capemb' };
     // Weighted pick of ONE slot, down-weighting saturated types
     const { data: allProds } = await sb.from('dubis_products').select('slogan, clothing_type');
     const counts: Record<string, number> = {};
     for (const p of (allProds || []) as Array<Record<string, unknown>>) {
       const dt = String(p.clothing_type || '');
-      const jt = ({ 't-shirt': 'tshirt', 'zip-hoodie': 'ziphoodie', 'long-sleeve': 'longsleeve', 'v-neck': 'vneck', 'tank-top': 'tanktop', 'cap-emb': 'capemb' } as Record<string, string>)[dt] || dt;
+      const jt = DB_TO_JS[dt] || dt;
       counts[jt] = (counts[jt] || 0) + 1;
     }
-    const pool = W_TYPE_POOL.map(p => ({ ...p, fw: p.weight / (1 + (counts[p.type] || 0) * 0.5) }));
+    // Variety guarantee (oren 2026-06-13): never auto-create the SAME garment type
+    // twice in a row. Exclude the type of the most-recent rotation product, so each
+    // weekly product is a different type than the last → the catalog stays diverse.
+    const autoDbTypes = W_TYPE_POOL.map(p => W_DB_TYPE[p.type]);
+    const { data: lastRot } = await sb.from('dubis_products').select('clothing_type')
+      .in('clothing_type', autoDbTypes).order('created_at', { ascending: false }).limit(1);
+    const lastType = (lastRot && lastRot[0]) ? (DB_TO_JS[String((lastRot[0] as Record<string, unknown>).clothing_type)] || String((lastRot[0] as Record<string, unknown>).clothing_type)) : null;
+    let varietyPool = W_TYPE_POOL.filter(p => p.type !== lastType);
+    if (varietyPool.length === 0) varietyPool = W_TYPE_POOL;  // fallback: only one type eligible
+    const pool = varietyPool.map(p => ({ ...p, fw: p.weight / (1 + (counts[p.type] || 0) * 0.5) }));
     const totalW = pool.reduce((s, p) => s + p.fw, 0);
     let r = Math.random() * totalW; let slot = pool[0];
     for (const p of pool) { r -= p.fw; if (r <= 0) { slot = p; break; } }
