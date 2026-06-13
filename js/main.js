@@ -549,45 +549,102 @@ function isColorAnyInStock(productId, color, sizes) {
 }
 
 // ── Currency by language ──
-let USD_TO_ILS = 3.63; // fallback — updated daily from API
-(async function fetchRate() {
+// 2026-06-13: fallback lowered 3.63 → 2.9 and demoted to a genuine LAST RESORT.
+// Root cause we fixed alongside this: open.er-api.com was NOT in the CSP
+// connect-src, so the browser silently blocked the live fetch and EVERY
+// customer saw the stale 3.63 fallback (same failure mode as the Clarity CSP
+// block, 2026-06-07). With the host now whitelisted the live published rate
+// loads on page load AND is re-fetched when checkout opens, so the ₪ shown is
+// a representative rate for the time of purchase — not a baked-in constant.
+let USD_TO_ILS = 2.9; // fallback ONLY — live rate from open.er-api.com overrides it
+window.USD_TO_ILS = USD_TO_ILS;
+async function fetchUsdToIlsRate() {
   try {
     const r = await fetch('https://open.er-api.com/v6/latest/USD');
     if (r.ok) {
       const d = await r.json();
       if (d.rates && d.rates.ILS) {
         USD_TO_ILS = d.rates.ILS;
-        // re-render if products already shown
+        window.USD_TO_ILS = USD_TO_ILS;
+        // re-render anything already priced on screen with the fresh rate
         if (document.querySelector('.product-card')) renderProducts();
+        if (document.querySelector('#paypal-modal.open') && typeof renderOrderSummary === 'function') {
+          try { renderOrderSummary(); } catch (e) { /* modal not ready */ }
+        }
       }
     }
   } catch(e) { /* keep fallback */ }
-})();
+  return USD_TO_ILS;
+}
+window.fetchUsdToIlsRate = fetchUsdToIlsRate;
+fetchUsdToIlsRate(); // initial fetch on load
+
+// ── ILS charge conversion — SINGLE SOURCE OF TRUTH ──────────────────────
+// 2026-06-13: Hebrew shoppers now have the PayPal transaction itself charged
+// in ILS (not USD). That's the only way the ₪ we DISPLAY can equal EXACTLY
+// what PayPal charges — when we charge in USD, the ILS conversion is done by
+// PayPal-at-confirmation OR the buyer's card issuer (+ FX fee), neither of
+// which we can read in advance, so any ₪ figure would be a guess.
+// Product prices use the live REPRESENTATIVE (שער יציג) rate with no markup;
+// PayPal's ~3% FX spread (on converting our received ILS back to the USD we pay
+// Gelato in) is added as ONE transparent fee line at checkout, not hidden in
+// the unit price. Everything is whole shekels so every surface (product cards,
+// cart, checkout summary, PayPal breakdown, email) shows the identical figure
+// and reconciles to the agora in the PayPal order. EVERY ₪ in the app must go
+// through usdToIlsCharge() so display === charge.
+// usdToIlsCharge: the REPRESENTATIVE (שער יציג) market rate, NO markup — the
+// honest ₪ shown on every product card / cart line. 2026-06-13 (oren): show
+// the real rate, then surface PayPal's FX cost as a SEPARATE, visible fee line
+// at checkout — never a hidden markup baked into the unit price.
+function usdToIlsCharge(usdPrice) {
+  return Math.round((Number(usdPrice) || 0) * USD_TO_ILS);
+}
+// ~3% PayPal currency-conversion fee. We charge the buyer in ILS, but PayPal
+// converts the ILS we receive back into the USD we pay Gelato in and takes a
+// ~3% FX spread on the way. We pass it through as one transparent checkout line
+// (PayPal `breakdown.handling`) so the product price stays at the שער יציג and
+// the customer can see exactly what the surcharge is and why.
+const ILS_PAYPAL_FEE_PCT = 0.03;
+// Builds the whole-shekel ILS breakdown used IDENTICALLY by the checkout
+// summary, the PayPal order and the email, so display === charge to the agora.
+// Per-line amounts are rounded first, then summed; the fee is 3% of the net
+// (items + shipping − discount). PayPal validates
+// item_total + shipping + handling − discount === amount.value.
+function buildIlsBreakdown(cartArr, shippingUsd, discountUsd) {
+  const lineItems = (cartArr || []).map(i => usdToIlsCharge(i.price));
+  const itemTotal = lineItems.reduce((s, v) => s + v, 0);
+  const shipping  = usdToIlsCharge(shippingUsd);
+  const discount  = usdToIlsCharge(discountUsd);
+  const net       = Math.max(0, itemTotal + shipping - discount);
+  const fee       = Math.round(net * ILS_PAYPAL_FEE_PCT);
+  const total     = net + fee;
+  return { lineItems, itemTotal, shipping, discount, fee, total };
+}
+window.usdToIlsCharge   = usdToIlsCharge;
+window.buildIlsBreakdown = buildIlsBreakdown;
+
 function formatPrice(usdPrice) {
   // 2026-05-02 (revised): Hebrew → ₪ everywhere, English → $ everywhere.
-  // Earlier same-day fix forced everything to USD which over-corrected.
-  // Right design: language toggle controls currency consistently across
-  // product cards, cart line items, cart total, AND shipping. PayPal still
-  // charges USD always — customer sees a "PayPal will charge $X (≈₪Y)" note
-  // in the checkout modal.
+  // 2026-06-13: Hebrew prices route through usdToIlsCharge so the browse
+  // price equals what PayPal actually charges in ILS at checkout (no 3% jump
+  // between the product card and the payment screen).
   if (currentLang === 'he') {
-    return '₪' + Math.round(usdPrice * USD_TO_ILS);
+    return '₪' + usdToIlsCharge(usdPrice);
   }
   return '$' + usdPrice;
 }
 function freeShippingThreshold() {
-  const ilsThreshold = Math.round(60 * USD_TO_ILS);
-  return currentLang === 'he' ? '₪' + ilsThreshold : '$60';
+  return currentLang === 'he' ? '₪' + usdToIlsCharge(60) : '$60';
 }
 // Helpers used by cart total + shipping rows so the whole cart stays in one currency.
 function formatPriceFloat(usdPrice) {
-  if (currentLang === 'he') return '₪' + Math.round(usdPrice * USD_TO_ILS);
+  if (currentLang === 'he') return '₪' + usdToIlsCharge(usdPrice);
   return '$' + Number(usdPrice).toFixed(2);
 }
 // Used inside hard-coded text to swap any "$N" or "$N.NN" into "₪M" when Hebrew.
 function localizeDollarsInText(text) {
   if (currentLang !== 'he' || !text) return text;
-  return String(text).replace(/\$(\d+(?:\.\d+)?)/g, (_, n) => '₪' + Math.round(Number(n) * USD_TO_ILS));
+  return String(text).replace(/\$(\d+(?:\.\d+)?)/g, (_, n) => '₪' + usdToIlsCharge(Number(n)));
 }
 
 // ===== COMPREHENSIVE TRANSLATIONS =====

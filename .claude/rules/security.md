@@ -12,7 +12,7 @@ paths:
 - style-src: self + unsafe-inline + Google Fonts
 - frame-src: PayPal only
 - img-src: self + data: + https:
-- connect-src: self + PayPal + Supabase + facebook + google-analytics + **`*.clarity.ms`**
+- connect-src: self + PayPal + Supabase + **`open.er-api.com`** (live USD→ILS rate) + facebook + google-analytics + **`*.clarity.ms`**
 - **TODO (P2):** Remove `unsafe-inline` from script-src (requires refactoring 30+ onclick handlers)
 
 ### 🚨 RULE: every new third-party script MUST be whitelisted in CSP — in the SAME change as the snippet
