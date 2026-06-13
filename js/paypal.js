@@ -493,12 +493,29 @@ function renderWebViewExternalHandoff() {
                 window.dubisTrack('checkout_start', { items: cart.length, total: itemTotal, channel: 'fbia_redirect' });
             }
 
+            // Normalize to the SAME shape the SDK fulfillment path sends
+            // (see onApprove ~L837): server validateShippingAddress() requires
+            // `name` + `phone`, but window.checkoutAddress holds `full_name` and
+            // no phone (phone lives in checkoutContact). Without this remap every
+            // FBIA checkout 400s with address_invalid.
+            const a = window.checkoutAddress || {};
+            const normalizedAddress = {
+                name:           a.full_name || (window.checkoutContact && window.checkoutContact.name) || '',
+                address_line_1: a.address_line_1 || '',
+                address_line_2: a.address_line_2 || '',
+                admin_area_2:   a.admin_area_2 || '',
+                admin_area_1:   a.admin_area_1 || '',
+                postal_code:    a.postal_code || '',
+                country_code:   a.country_code || 'US',
+                phone:          (window.checkoutContact && window.checkoutContact.phone) || '',
+            };
+
             const res = await fetch('/api/create-gelato-order?action=create-paypal-order', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     cartItems: cart,
-                    shippingAddress: window.checkoutAddress || null,
+                    shippingAddress: normalizedAddress,
                     buyerEmail: buyerEmail,
                     discount: discountAmt
                 })

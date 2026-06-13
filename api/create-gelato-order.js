@@ -1474,9 +1474,18 @@ async function handleCreatePaypalOrder(req, res) {
       return res.status(400).json({ error: 'no_cart_items' });
     }
 
+    // Defensive normalization: older/cached clients send `full_name` (not `name`)
+    // and omit phone. validateShippingAddress() requires `name` + `phone`, so map
+    // them here too — belt-and-suspenders with the client-side remap in paypal.js.
+    const normAddr = {
+      ...(shippingAddress || {}),
+      name: (shippingAddress && (shippingAddress.name || shippingAddress.full_name)) || '',
+      phone: (shippingAddress && shippingAddress.phone) || (req.body && req.body.phone) || '',
+    };
+
     // Validate the shipping address up front — FBIA carts are notorious for
     // Chrome-autofilled Hebrew chars + missing fields.
-    const addrCheck = validateShippingAddress(shippingAddress || {}, buyerEmail || '');
+    const addrCheck = validateShippingAddress(normAddr, buyerEmail || '');
     if (!addrCheck.valid) {
       return res.status(400).json({
         error: 'address_invalid',
@@ -1497,7 +1506,7 @@ async function handleCreatePaypalOrder(req, res) {
 
     // Authoritative money math — never trust client totals.
     const itemTotal = cartItems.reduce((s, i) => s + (Number(i.price) || 0), 0);
-    const country = shippingAddress.country_code;
+    const country = normAddr.country_code;
     const shipping = await fbiaResolveShipping(sb, country, itemTotal);
     // Client may pass a validated coupon discount; clamp it so it can never
     // exceed the item subtotal and never go negative.
@@ -1551,7 +1560,7 @@ async function handleCreatePaypalOrder(req, res) {
       content_data: {
         paypal_order_id: order.id,
         cart_items: cartItems,
-        shipping_address: shippingAddress,
+        shipping_address: normAddr,
         buyer_email: buyerEmail || '',
         shipping_cost: shipping,
         discount: discountAmt,
