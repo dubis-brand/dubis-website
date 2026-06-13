@@ -585,27 +585,40 @@ fetchUsdToIlsRate(); // initial fetch on load
 // what PayPal charges — when we charge in USD, the ILS conversion is done by
 // PayPal-at-confirmation OR the buyer's card issuer (+ FX fee), neither of
 // which we can read in advance, so any ₪ figure would be a guess.
-// The ILS amount is the live market rate × a buffer that absorbs PayPal's
-// ~3% FX spread when it converts our received ILS back into the USD we pay
-// Gelato / our costs in. Rounded to WHOLE shekels so every surface (product
-// cards, cart, checkout summary, PayPal breakdown) shows the identical figure
-// and it reconciles to the agora in the PayPal order. EVERY ₪ in the app must
-// go through usdToIlsCharge() so display === charge.
-const ILS_FX_BUFFER = 1.03; // ~3% — covers PayPal's FX spread on the ILS→USD payout
+// Product prices use the live REPRESENTATIVE (שער יציג) rate with no markup;
+// PayPal's ~3% FX spread (on converting our received ILS back to the USD we pay
+// Gelato in) is added as ONE transparent fee line at checkout, not hidden in
+// the unit price. Everything is whole shekels so every surface (product cards,
+// cart, checkout summary, PayPal breakdown, email) shows the identical figure
+// and reconciles to the agora in the PayPal order. EVERY ₪ in the app must go
+// through usdToIlsCharge() so display === charge.
+// usdToIlsCharge: the REPRESENTATIVE (שער יציג) market rate, NO markup — the
+// honest ₪ shown on every product card / cart line. 2026-06-13 (oren): show
+// the real rate, then surface PayPal's FX cost as a SEPARATE, visible fee line
+// at checkout — never a hidden markup baked into the unit price.
 function usdToIlsCharge(usdPrice) {
-  return Math.round((Number(usdPrice) || 0) * USD_TO_ILS * ILS_FX_BUFFER);
+  return Math.round((Number(usdPrice) || 0) * USD_TO_ILS);
 }
+// ~3% PayPal currency-conversion fee. We charge the buyer in ILS, but PayPal
+// converts the ILS we receive back into the USD we pay Gelato in and takes a
+// ~3% FX spread on the way. We pass it through as one transparent checkout line
+// (PayPal `breakdown.handling`) so the product price stays at the שער יציג and
+// the customer can see exactly what the surcharge is and why.
+const ILS_PAYPAL_FEE_PCT = 0.03;
 // Builds the whole-shekel ILS breakdown used IDENTICALLY by the checkout
-// summary and the PayPal order, so the displayed total === the charged total.
-// Per-line amounts are rounded first, then summed (PayPal validates
-// item_total + shipping − discount === amount.value to the agora).
+// summary, the PayPal order and the email, so display === charge to the agora.
+// Per-line amounts are rounded first, then summed; the fee is 3% of the net
+// (items + shipping − discount). PayPal validates
+// item_total + shipping + handling − discount === amount.value.
 function buildIlsBreakdown(cartArr, shippingUsd, discountUsd) {
   const lineItems = (cartArr || []).map(i => usdToIlsCharge(i.price));
   const itemTotal = lineItems.reduce((s, v) => s + v, 0);
   const shipping  = usdToIlsCharge(shippingUsd);
   const discount  = usdToIlsCharge(discountUsd);
-  const total     = Math.max(0, itemTotal + shipping - discount);
-  return { lineItems, itemTotal, shipping, discount, total };
+  const net       = Math.max(0, itemTotal + shipping - discount);
+  const fee       = Math.round(net * ILS_PAYPAL_FEE_PCT);
+  const total     = net + fee;
+  return { lineItems, itemTotal, shipping, discount, fee, total };
 }
 window.usdToIlsCharge   = usdToIlsCharge;
 window.buildIlsBreakdown = buildIlsBreakdown;

@@ -153,6 +153,7 @@ module.exports = async function handler(req, res) {
                            : Number(itemsSubtotal != null ? itemsSubtotal : (items || []).reduce((s, i) => s + (Number(i.price) || 0), 0));
     const shipNum     = ch ? Number(ch.shipping || 0) : Number(shippingAmount || 0);
     const discNum     = ch ? Number(ch.discount || 0) : Number(discountAmount || 0);
+    const feeNum      = ch ? Number(ch.fee || 0) : 0; // PayPal FX surcharge (ILS only)
     const totalNum    = ch ? Number(ch.total || 0)
                            : Number(totalAmount != null ? totalAmount : Math.max(0, itemsSubNum + shipNum - discNum));
 
@@ -225,6 +226,7 @@ module.exports = async function handler(req, res) {
                 ${moneyRow('Subtotal', itemsSubNum)}
                 ${discNum > 0 ? moneyRow(`Discount${couponCode ? ' (' + couponCode + ')' : ''}`, discNum, { discount: true }) : ''}
                 ${moneyRow(shipNum === 0 ? 'Shipping (FREE)' : 'Shipping', shipNum)}
+                ${feeNum > 0 ? moneyRow('PayPal currency conversion (~3%)', feeNum) : ''}
                 ${moneyRow('Total', totalNum, { bold: true })}
               </table>
 

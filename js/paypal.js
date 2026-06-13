@@ -667,6 +667,11 @@ function renderPayPalButtons() {
             if (b.discount > 0) {
                 breakdown.discount = { currency_code: 'ILS', value: b.discount.toFixed(2) };
             }
+            // PayPal FX surcharge as a transparent line (PayPal adds `handling`
+            // to the amount: item_total + shipping + handling − discount).
+            if (b.fee > 0) {
+                breakdown.handling = { currency_code: 'ILS', value: b.fee.toFixed(2) };
+            }
             itemsArr = cart.map((item, idx) => ({
                 name:        item.phrase.substring(0, 127),
                 unit_amount: { currency_code: 'ILS', value: b.lineItems[idx].toFixed(2) },
@@ -1005,7 +1010,8 @@ function renderPayPalButtons() {
                         charged = {
                             currency: 'ILS', symbol: '₪',
                             items: b.lineItems, itemsSubtotal: b.itemTotal,
-                            shipping: b.shipping, discount: b.discount, total: b.total,
+                            shipping: b.shipping, discount: b.discount,
+                            fee: b.fee, total: b.total,
                         };
                     }
                     await fetch('/api/email/confirm-order', {
@@ -1235,6 +1241,11 @@ function renderOrderSummary() {
                 <span>${isHe ? 'משלוח' : 'Shipping'}</span>
                 <span>${shipping === 0 ? fmtFree : fmtShip()}</span>
             </div>
+            ${(isHe && ilsB && ilsB.fee > 0) ? `
+            <div class="order-total-row">
+                <span>עמלת המרת מטבע (PayPal) · ~3%</span>
+                <span>₪${ilsB.fee}</span>
+            </div>` : ''}
             <div class="order-total-row total">
                 <span>${isHe ? 'סה"כ' : 'Total'}</span>
                 <span>${fmtTot()}</span>
@@ -1243,7 +1254,7 @@ function renderOrderSummary() {
         ${isHe ? `
         <div style="margin-top:10px;padding:10px 12px;background:#eafaf1;border:1px solid #27ae6033;border-radius:6px;font-size:12px;color:#1e6b43;line-height:1.5">
             💳 <strong>החיוב יבוצע בשקלים — ${fmtTot()}.</strong><br>
-            <span style="font-size:11px;opacity:0.85">זהו הסכום הסופי המדויק שתחויב/י דרך PayPal. ללא המרת מט"ח נוספת או עמלות הפתעה.</span>
+            <span style="font-size:11px;opacity:0.85">המחירים מוצגים לפי השער היציג. נוספת עמלת המרת מטבע של PayPal (~3%) — זהו הסכום הסופי המדויק שתחויב/י, ללא הפתעות.</span>
         </div>` : ''}
     `;
 }
