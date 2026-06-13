@@ -161,6 +161,9 @@ async function checkout() {
     if (window.dubisTrack) window.dubisTrack('checkout_start', { items: cart.length, total: cart.reduce((s,i)=>s+(i.price||0)*(i.quantity||1),0) });
 
     closeCart()
+    // Re-price cart lines against the current catalog BEFORE the summary, so a
+    // stale localStorage price never reaches the total / PayPal / save.js.
+    if (typeof window.reconcileCartPrices === 'function') { try { window.reconcileCartPrices(); } catch (_) {} }
     renderOrderSummary();
 
     // Refresh the live USD→ILS rate at checkout time so the ₪ estimate reflects
@@ -583,6 +586,10 @@ function renderPayPalButtons() {
     }
 
     const createOrder = async (data, actions) => {
+        // Authoritative re-price right before the order is built: the amount we
+        // send PayPal and the prices save.js validates MUST be today's catalog
+        // prices, never a stale localStorage value.
+        if (typeof window.reconcileCartPrices === 'function') { try { window.reconcileCartPrices(); } catch (_) {} }
         if (window.dubisTrack) window.dubisTrack('checkout_start', { items: cart.length, total: cart.reduce((s,i)=>s+i.price,0) });
         const itemTotal = cart.reduce((sum, i) => sum + i.price, 0);
         const ctry      = (window.checkoutAddress && window.checkoutAddress.country_code) || 'US';

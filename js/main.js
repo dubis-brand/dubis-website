@@ -1993,6 +1993,34 @@ function updateCartCount() {
   document.getElementById('cart-count').textContent = cart.length;
 }
 
+// 2026-06-13: cart lines persist in localStorage with the price captured when
+// they were ADDED. When the catalog price later changes (e.g. $21 → $26) the
+// stale cart price lingered — the customer was UNDERCHARGED, and worse, save.js
+// rejected the order (sent price ≠ current DB price → variant-mismatch 400 →
+// the order was silently dropped). That is exactly what swallowed Hila's
+// 2026-06-13 order: 3 lines still carried an old $21 while the catalog had
+// moved to $26. Re-price every line against the CURRENT catalog so the cart,
+// the PayPal charge and the server-side validation all agree on today's price.
+// Returns true if anything changed (so callers can re-render).
+function reconcileCartPrices() {
+  if (typeof products === 'undefined' || !Array.isArray(products) || !cart.length) return false;
+  let changed = false;
+  for (const item of cart) {
+    const prod = products.find(p => p.id === item.id);
+    if (!prod) continue; // ghost SKU — loadCart() prunes these separately
+    const base    = Number(prod.price);
+    const current = getVariantPrice(item.id, item.selectedColor, item.selectedSize, base);
+    if (Number.isFinite(current) && current > 0 && Math.abs((Number(item.price) || 0) - current) > 0.001) {
+      item.price     = current;
+      item.basePrice = base;
+      changed = true;
+    }
+  }
+  if (changed) saveCart();
+  return changed;
+}
+window.reconcileCartPrices = reconcileCartPrices;
+
 function openCart() {
   document.getElementById('cart-modal').classList.add('open');
   document.getElementById('cart-overlay').classList.add('open');
@@ -2175,6 +2203,9 @@ window.runCartLevelProbe = runCartLevelProbe;
 
 function renderCart() {
   const t = translations[currentLang];
+  // Re-price against the current catalog before anything is shown/summed, so a
+  // stale localStorage price can never reach the total, PayPal or save.js.
+  try { reconcileCartPrices(); } catch (_) {}
   const cartItems  = document.getElementById('cart-items');
   // Rebuild the total row every render so the #cart-total span is always live.
   // Previously: setting parent.textContent destroyed the span, so the NEXT
@@ -2826,6 +2857,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     try { await window.dubisProductsReady; } catch (e) { /* fall back to static */ }
   }
   await loadPriceOverrides();
+  // Catalog prices are now live — reconcile any stale localStorage cart lines
+  // so a returning customer's cart reflects today's price (not the price from
+  // the session they added it in).
+  try { if (reconcileCartPrices()) updateCartCount(); } catch (_) {}
   await detectLanguage(); // IP-based geo (IL→HE, else EN); falls back to EN within 3s on failure
   // Belt-and-suspenders: re-run translateUI on the next tick in case loadFromDB
   // resolved late and mutated products[] after detectLanguage finished.
