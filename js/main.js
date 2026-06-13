@@ -578,31 +578,60 @@ async function fetchUsdToIlsRate() {
 }
 window.fetchUsdToIlsRate = fetchUsdToIlsRate;
 fetchUsdToIlsRate(); // initial fetch on load
+
+// ── ILS charge conversion — SINGLE SOURCE OF TRUTH ──────────────────────
+// 2026-06-13: Hebrew shoppers now have the PayPal transaction itself charged
+// in ILS (not USD). That's the only way the ₪ we DISPLAY can equal EXACTLY
+// what PayPal charges — when we charge in USD, the ILS conversion is done by
+// PayPal-at-confirmation OR the buyer's card issuer (+ FX fee), neither of
+// which we can read in advance, so any ₪ figure would be a guess.
+// The ILS amount is the live market rate × a buffer that absorbs PayPal's
+// ~3% FX spread when it converts our received ILS back into the USD we pay
+// Gelato / our costs in. Rounded to WHOLE shekels so every surface (product
+// cards, cart, checkout summary, PayPal breakdown) shows the identical figure
+// and it reconciles to the agora in the PayPal order. EVERY ₪ in the app must
+// go through usdToIlsCharge() so display === charge.
+const ILS_FX_BUFFER = 1.03; // ~3% — covers PayPal's FX spread on the ILS→USD payout
+function usdToIlsCharge(usdPrice) {
+  return Math.round((Number(usdPrice) || 0) * USD_TO_ILS * ILS_FX_BUFFER);
+}
+// Builds the whole-shekel ILS breakdown used IDENTICALLY by the checkout
+// summary and the PayPal order, so the displayed total === the charged total.
+// Per-line amounts are rounded first, then summed (PayPal validates
+// item_total + shipping − discount === amount.value to the agora).
+function buildIlsBreakdown(cartArr, shippingUsd, discountUsd) {
+  const lineItems = (cartArr || []).map(i => usdToIlsCharge(i.price));
+  const itemTotal = lineItems.reduce((s, v) => s + v, 0);
+  const shipping  = usdToIlsCharge(shippingUsd);
+  const discount  = usdToIlsCharge(discountUsd);
+  const total     = Math.max(0, itemTotal + shipping - discount);
+  return { lineItems, itemTotal, shipping, discount, total };
+}
+window.usdToIlsCharge   = usdToIlsCharge;
+window.buildIlsBreakdown = buildIlsBreakdown;
+
 function formatPrice(usdPrice) {
   // 2026-05-02 (revised): Hebrew → ₪ everywhere, English → $ everywhere.
-  // Earlier same-day fix forced everything to USD which over-corrected.
-  // Right design: language toggle controls currency consistently across
-  // product cards, cart line items, cart total, AND shipping. PayPal still
-  // charges USD always — customer sees a "PayPal will charge $X (≈₪Y)" note
-  // in the checkout modal.
+  // 2026-06-13: Hebrew prices route through usdToIlsCharge so the browse
+  // price equals what PayPal actually charges in ILS at checkout (no 3% jump
+  // between the product card and the payment screen).
   if (currentLang === 'he') {
-    return '₪' + Math.round(usdPrice * USD_TO_ILS);
+    return '₪' + usdToIlsCharge(usdPrice);
   }
   return '$' + usdPrice;
 }
 function freeShippingThreshold() {
-  const ilsThreshold = Math.round(60 * USD_TO_ILS);
-  return currentLang === 'he' ? '₪' + ilsThreshold : '$60';
+  return currentLang === 'he' ? '₪' + usdToIlsCharge(60) : '$60';
 }
 // Helpers used by cart total + shipping rows so the whole cart stays in one currency.
 function formatPriceFloat(usdPrice) {
-  if (currentLang === 'he') return '₪' + Math.round(usdPrice * USD_TO_ILS);
+  if (currentLang === 'he') return '₪' + usdToIlsCharge(usdPrice);
   return '$' + Number(usdPrice).toFixed(2);
 }
 // Used inside hard-coded text to swap any "$N" or "$N.NN" into "₪M" when Hebrew.
 function localizeDollarsInText(text) {
   if (currentLang !== 'he' || !text) return text;
-  return String(text).replace(/\$(\d+(?:\.\d+)?)/g, (_, n) => '₪' + Math.round(Number(n) * USD_TO_ILS));
+  return String(text).replace(/\$(\d+(?:\.\d+)?)/g, (_, n) => '₪' + usdToIlsCharge(Number(n)));
 }
 
 // ===== COMPREHENSIVE TRANSLATIONS =====

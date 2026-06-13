@@ -108,7 +108,16 @@ function updateStateFieldForCountry(code) {
 }
 
 let paypalLoaded = false;
+let paypalLoadedCurrency = null; // which currency the loaded SDK was initialised with
 let appliedCoupon = null; // { code, discount_amount, final_total, name }
+
+// 2026-06-13: Hebrew shoppers are charged in ILS so the displayed ₪ equals
+// EXACTLY what PayPal charges (see usdToIlsCharge() in main.js). The SDK's
+// transaction currency is fixed at script-load time, so we pick it from the
+// active language and reload the SDK if the language changed between attempts.
+function paypalCheckoutCurrency() {
+    return (typeof currentLang !== 'undefined' && currentLang === 'he') ? 'ILS' : 'USD';
+}
 
 async function applyCoupon() {
     const code = (document.getElementById('coupon-input')?.value || '').trim().toUpperCase();
@@ -541,16 +550,20 @@ window.dubisCopyCheckoutLink = function(btn) {
 // ===== PHASE 2: SMART BUTTONS SDK =====
 function loadPayPalSDK() {
     return new Promise((resolve, reject) => {
-        if (paypalLoaded) { resolve(); return; }
-        if (document.getElementById('paypal-sdk')) {
-            if (typeof paypal !== 'undefined') { paypalLoaded = true; resolve(); return; }
-        }
+        const cur = paypalCheckoutCurrency();
+        // Already loaded in the right currency → reuse.
+        if (paypalLoaded && paypalLoadedCurrency === cur && typeof paypal !== 'undefined') { resolve(); return; }
+        // First load, OR the customer toggled language since the last load and we
+        // now need a different transaction currency. Drop the stale SDK so the
+        // re-added script re-initialises window.paypal with the correct currency.
+        const stale = document.getElementById('paypal-sdk');
+        if (stale) { try { stale.remove(); } catch (_) {} paypalLoaded = false; }
         const script    = document.createElement('script');
         script.id       = 'paypal-sdk';
         // enable-funding=card → renders separate "Debit or Credit Card" Guest Checkout button
         // components=buttons → explicit; disable-funding=credit removes "Pay Later" clutter
-        script.src      = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=USD&intent=capture&enable-funding=card&disable-funding=credit&components=buttons`;
-        script.onload   = () => { paypalLoaded = true; resolve(); };
+        script.src      = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=${cur}&intent=capture&enable-funding=card&disable-funding=credit&components=buttons`;
+        script.onload   = () => { paypalLoaded = true; paypalLoadedCurrency = cur; resolve(); };
         script.onerror  = () => reject(new Error('PayPal SDK unavailable'));
         document.head.appendChild(script);
     });
@@ -632,12 +645,52 @@ function renderPayPalButtons() {
         // Correct approach: keep items at original prices, keep item_total = sum of items,
         // and express the coupon as breakdown.discount.
         const discountAmt = appliedCoupon ? Math.max(0, itemTotal - appliedCoupon.final_total) : 0;
-        const breakdown = {
-            item_total: { currency_code: 'USD', value: itemTotal.toFixed(2) },
-            shipping:   { currency_code: 'USD', value: shipping.toFixed(2) }
-        };
-        if (discountAmt > 0) {
-            breakdown.discount = { currency_code: 'USD', value: discountAmt.toFixed(2) };
+
+        // 2026-06-13: charge currency. Hebrew shoppers → ILS (whole shekels,
+        // via buildIlsBreakdown so the figure equals what renderOrderSummary
+        // displays to the agora). English → USD path, unchanged. We keep the
+        // USD values in window.__dubisCheckout* (above) as the canonical amounts
+        // for save.js / analytics; the ILS amounts only drive the PayPal order
+        // and the customer-facing receipt.
+        const chargeIls = (typeof currentLang !== 'undefined' && currentLang === 'he')
+                          && typeof window.buildIlsBreakdown === 'function';
+        const curCode = chargeIls ? 'ILS' : 'USD';
+        let breakdown, itemsArr, amountValue;
+        if (chargeIls) {
+            const b = window.buildIlsBreakdown(cart, shipping, discountAmt);
+            window.__dubisChargeCurrency = 'ILS';
+            window.__dubisChargeTotal    = b.total;
+            breakdown = {
+                item_total: { currency_code: 'ILS', value: b.itemTotal.toFixed(2) },
+                shipping:   { currency_code: 'ILS', value: b.shipping.toFixed(2) },
+            };
+            if (b.discount > 0) {
+                breakdown.discount = { currency_code: 'ILS', value: b.discount.toFixed(2) };
+            }
+            itemsArr = cart.map((item, idx) => ({
+                name:        item.phrase.substring(0, 127),
+                unit_amount: { currency_code: 'ILS', value: b.lineItems[idx].toFixed(2) },
+                quantity:    '1',
+                description: `${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}`
+            }));
+            amountValue = b.total.toFixed(2);
+        } else {
+            window.__dubisChargeCurrency = 'USD';
+            window.__dubisChargeTotal    = total;
+            breakdown = {
+                item_total: { currency_code: 'USD', value: itemTotal.toFixed(2) },
+                shipping:   { currency_code: 'USD', value: shipping.toFixed(2) }
+            };
+            if (discountAmt > 0) {
+                breakdown.discount = { currency_code: 'USD', value: discountAmt.toFixed(2) };
+            }
+            itemsArr = cart.map(item => ({
+                name:        item.phrase.substring(0, 127),
+                unit_amount: { currency_code: 'USD', value: item.price.toFixed(2) },
+                quantity:    '1',
+                description: `${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}`
+            }));
+            amountValue = total.toFixed(2);
         }
         // Pass the customer-entered shipping address to PayPal so the buyer
         // sees their address (no surprise) and so we don't depend on PayPal's
@@ -646,16 +699,11 @@ function renderPayPalButtons() {
         const purchaseUnit = {
             description: 'DUBIS Clothing Order',
             amount: {
-                currency_code: 'USD',
-                value: total.toFixed(2),
+                currency_code: curCode,
+                value: amountValue,
                 breakdown: breakdown
             },
-            items: cart.map(item => ({
-                name:        item.phrase.substring(0, 127),
-                unit_amount: { currency_code: 'USD', value: item.price.toFixed(2) },
-                quantity:    '1',
-                description: `${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}`
-            }))
+            items: itemsArr
         };
         if (addr && addr.address_line_1) {
             purchaseUnit.shipping = {
@@ -944,6 +992,22 @@ function renderPayPalButtons() {
                 try {
                     const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
                     const itemsSubtotalEmail = cartSnapshot.reduce((s, i) => s + (Number(i.price) || 0), 0);
+                    // 2026-06-13: when we charged in ILS, the receipt must show the
+                    // exact ILS the customer paid (same whole-shekel breakdown the
+                    // checkout summary showed) — not the USD canonical figures.
+                    let charged = null;
+                    if (window.__dubisChargeCurrency === 'ILS' && typeof window.buildIlsBreakdown === 'function') {
+                        const b = window.buildIlsBreakdown(
+                            cartSnapshot,
+                            Number(window.__dubisCheckoutShipping) || 0,
+                            Number(window.__dubisCheckoutDiscount)  || 0,
+                        );
+                        charged = {
+                            currency: 'ILS', symbol: '₪',
+                            items: b.lineItems, itemsSubtotal: b.itemTotal,
+                            shipping: b.shipping, discount: b.discount, total: b.total,
+                        };
+                    }
                     await fetch('/api/email/confirm-order', {
                         method:  'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -959,6 +1023,9 @@ function renderPayPalButtons() {
                             discountAmount:  Number(window.__dubisCheckoutDiscount) || 0,
                             couponCode:      appliedCoupon?.code || null,
                             totalAmount:     Number(window.__dubisCheckoutTotal) || itemsSubtotalEmail,
+                            // Actual charged currency + amounts (ILS) when applicable; the
+                            // email renders these verbatim so the receipt matches the charge.
+                            charged:         charged,
                             // Shipping address — so the customer can see where it's going,
                             // and so they have written proof we captured it.
                             shippingAddress: shippingAddress,
@@ -1099,12 +1166,25 @@ function renderOrderSummary() {
     const shipping  = itemTotal >= FREE_SHIPPING_THRESHOLD ? 0 : shipFee;
     const couponDiscount = appliedCoupon ? (itemTotal - appliedCoupon.final_total) : 0;
     const grandTotal = itemTotal - couponDiscount + shipping;
-    // Lang-aware currency display in checkout. PayPal always charges USD —
-    // when customer browses in Hebrew with ILS shown, we explicitly disclose
-    // the USD charge so they aren't surprised at the PayPal handoff.
+    // Lang-aware currency display. 2026-06-13: Hebrew checkout is now CHARGED
+    // in ILS, so we show the EXACT whole-shekel breakdown PayPal will charge —
+    // built by the same buildIlsBreakdown() the PayPal order uses, so the rows
+    // here reconcile to the single charged total to the agora (no estimate).
     const isHe = (typeof currentLang !== 'undefined' && currentLang === 'he');
-    const ils = (usd) => '₪' + Math.round(usd * (typeof USD_TO_ILS !== 'undefined' ? USD_TO_ILS : 2.9));
-    const fmt = (usd) => isHe ? ils(usd) : '$' + Number(usd).toFixed(2);
+    const ilsB = (isHe && typeof window.buildIlsBreakdown === 'function')
+        ? window.buildIlsBreakdown(cart, shipping, couponDiscount)
+        : null;
+    const ilsLine = (usd) => '₪' + (typeof window.usdToIlsCharge === 'function'
+        ? window.usdToIlsCharge(usd)
+        : Math.round(usd * (typeof USD_TO_ILS !== 'undefined' ? USD_TO_ILS : 2.9)));
+    const fmt = (usd) => isHe ? ilsLine(usd) : '$' + Number(usd).toFixed(2);
+    // Total-row helpers pull from the reconciled breakdown in Hebrew so the
+    // displayed rows sum to exactly what PayPal charges.
+    const fmtItem = (idx, usd) => (isHe && ilsB) ? '₪' + ilsB.lineItems[idx] : fmt(usd);
+    const fmtSub  = () => (isHe && ilsB) ? '₪' + ilsB.itemTotal : fmt(itemTotal);
+    const fmtDisc = () => (isHe && ilsB) ? '₪' + ilsB.discount  : fmt(couponDiscount);
+    const fmtShip = () => (isHe && ilsB) ? '₪' + ilsB.shipping  : fmt(shipping);
+    const fmtTot  = () => (isHe && ilsB) ? '₪' + ilsB.total     : fmt(grandTotal);
     const fmtFree = isHe ? '<span style="color:var(--honey);font-weight:600">חינם 🎉</span>' : '<span style="color:var(--honey);font-weight:600">FREE 🎉</span>';
 
     const remaining = Math.max(0, FREE_SHIPPING_THRESHOLD - itemTotal);
@@ -1125,7 +1205,7 @@ function renderOrderSummary() {
 
         <!-- Items list -->
         <div class="order-items">
-            ${cart.map(item => {
+            ${cart.map((item, idx) => {
                 const colorFile = (item.selectedColor || '').replace(/\s+/g, '-');
                 const variantImg = colorFile ? `images/product-${item.id}-${colorFile}-front.jpg` : (item.image || '');
                 return `
@@ -1135,7 +1215,7 @@ function renderOrderSummary() {
                         <div class="order-item-name">"${item.phrase}"</div>
                         <div class="order-item-details">${item.typeLabel} · ${item.selectedSize} · ${item.selectedColor}</div>
                     </div>
-                    <div class="order-item-price">${fmt(item.price)}</div>
+                    <div class="order-item-price">${fmtItem(idx, item.price)}</div>
                 </div>`;
             }).join('')}
         </div>
@@ -1144,26 +1224,26 @@ function renderOrderSummary() {
         <div class="order-totals">
             <div class="order-total-row">
                 <span>${isHe ? 'סה"כ ביניים' : 'Subtotal'}</span>
-                <span>${fmt(itemTotal)}</span>
+                <span>${fmtSub()}</span>
             </div>
             ${couponDiscount > 0 ? `
             <div class="order-total-row discount">
                 <span>${isHe ? 'קופון' : 'Coupon'} (${appliedCoupon?.code})</span>
-                <span>−${fmt(couponDiscount)}</span>
+                <span>−${fmtDisc()}</span>
             </div>` : ''}
             <div class="order-total-row">
                 <span>${isHe ? 'משלוח' : 'Shipping'}</span>
-                <span>${shipping === 0 ? fmtFree : fmt(shipping)}</span>
+                <span>${shipping === 0 ? fmtFree : fmtShip()}</span>
             </div>
             <div class="order-total-row total">
                 <span>${isHe ? 'סה"כ' : 'Total'}</span>
-                <span>${fmt(grandTotal)}</span>
+                <span>${fmtTot()}</span>
             </div>
         </div>
         ${isHe ? `
-        <div style="margin-top:10px;padding:10px 12px;background:#fef9e7;border:1px solid #f1c40f33;border-radius:6px;font-size:12px;color:#5d4e1f;line-height:1.5">
-            💳 <strong>PayPal יחייב בדולרים:</strong> $${grandTotal.toFixed(2)}<br>
-            <span style="font-size:11px;opacity:0.8">המרה משוערת — הסכום הסופי בכרטיס יהיה לפי שער מסחרי של PayPal ביום החיוב.</span>
+        <div style="margin-top:10px;padding:10px 12px;background:#eafaf1;border:1px solid #27ae6033;border-radius:6px;font-size:12px;color:#1e6b43;line-height:1.5">
+            💳 <strong>החיוב יבוצע בשקלים — ${fmtTot()}.</strong><br>
+            <span style="font-size:11px;opacity:0.85">זהו הסכום הסופי המדויק שתחויב/י דרך PayPal. ללא המרת מט"ח נוספת או עמלות הפתעה.</span>
         </div>` : ''}
     `;
 }

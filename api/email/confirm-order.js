@@ -77,7 +77,19 @@ module.exports = async function handler(req, res) {
         // NEW (2026-05-01): real breakdown + shipping address so customer
         // sees where the order is going and what they paid for what.
         itemsSubtotal, shippingAmount, discountAmount, couponCode, shippingAddress,
+        // 2026-06-13: when the order was charged in ILS (Hebrew checkout), the
+        // client sends the exact whole-shekel breakdown that was charged so the
+        // receipt matches the charge. Shape: { currency, symbol, items:[],
+        // itemsSubtotal, shipping, discount, total }. Absent → USD receipt.
+        charged,
     } = req.body;
+
+    // Charged-currency view: render the receipt in the currency the customer
+    // was actually charged. Falls back to USD ($) when `charged` is absent.
+    const ch  = (charged && typeof charged === 'object' && Array.isArray(charged.items)) ? charged : null;
+    const sym = ch ? (ch.symbol || '₪') : '$';
+    const dec = (ch && ch.currency === 'ILS') ? 0 : 2; // ILS is whole-shekel
+    const money = (v) => `${sym}${Number(v || 0).toFixed(dec)}`;
 
     // HTML escape helper — prevents XSS in email body
     const esc = s => String(s || '')
@@ -89,7 +101,7 @@ module.exports = async function handler(req, res) {
     }
 
     // ── Build order items HTML ───────────────────────────────────
-    const itemsHtml = (items || []).map(item => `
+    const itemsHtml = (items || []).map((item, idx) => `
         <tr>
             <td style="padding:8px 0;border-bottom:1px solid #2a2a2a;color:#e8e0d5">
                 "${esc(item.phrase).substring(0, 40)}" — ${esc(item.typeLabel || item.type)}
@@ -98,7 +110,7 @@ module.exports = async function handler(req, res) {
                 ${esc(item.selectedSize)} / ${esc(item.selectedColor)}
             </td>
             <td style="padding:8px 0;border-bottom:1px solid #2a2a2a;color:#e8e0d5;text-align:right">
-                $${Number(item.price).toFixed(2)}
+                ${ch ? money(ch.items[idx]) : money(Number(item.price))}
             </td>
         </tr>`).join('');
 
@@ -136,15 +148,18 @@ module.exports = async function handler(req, res) {
 
     // ── Money breakdown ──────────────────────────────────────────
     // Real numbers — used to show "Calculated at checkout" which spooked customers.
-    const itemsSubNum = Number(itemsSubtotal != null ? itemsSubtotal : (items || []).reduce((s, i) => s + (Number(i.price) || 0), 0));
-    const shipNum     = Number(shippingAmount || 0);
-    const discNum     = Number(discountAmount || 0);
-    const totalNum    = Number(totalAmount != null ? totalAmount : Math.max(0, itemsSubNum + shipNum - discNum));
+    // Amounts in the charged currency when present, else USD canonical figures.
+    const itemsSubNum = ch ? Number(ch.itemsSubtotal || 0)
+                           : Number(itemsSubtotal != null ? itemsSubtotal : (items || []).reduce((s, i) => s + (Number(i.price) || 0), 0));
+    const shipNum     = ch ? Number(ch.shipping || 0) : Number(shippingAmount || 0);
+    const discNum     = ch ? Number(ch.discount || 0) : Number(discountAmount || 0);
+    const totalNum    = ch ? Number(ch.total || 0)
+                           : Number(totalAmount != null ? totalAmount : Math.max(0, itemsSubNum + shipNum - discNum));
 
     const moneyRow = (label, val, opts = {}) => `
                 <tr>
                   <td style="color:${opts.bold ? '#e8e0d5' : '#888'};font-size:${opts.bold ? '16px' : '14px'};${opts.bold ? 'font-weight:700;padding-top:10px' : ''}">${esc(label)}</td>
-                  <td style="color:${opts.bold ? '#c8a96e' : (opts.discount ? '#7fb069' : '#e8e0d5')};font-size:${opts.bold ? '16px' : '14px'};text-align:right;${opts.bold ? 'font-weight:700;padding-top:10px' : ''}">${opts.discount ? '−' : ''}$${Number(val).toFixed(2)}</td>
+                  <td style="color:${opts.bold ? '#c8a96e' : (opts.discount ? '#7fb069' : '#e8e0d5')};font-size:${opts.bold ? '16px' : '14px'};text-align:right;${opts.bold ? 'font-weight:700;padding-top:10px' : ''}">${opts.discount ? '−' : ''}${money(val)}</td>
                 </tr>`;
 
     // ── Email HTML ───────────────────────────────────────────────
