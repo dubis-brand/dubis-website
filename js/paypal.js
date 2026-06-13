@@ -1201,8 +1201,10 @@ function renderOrderSummary() {
         <div class="free-ship-progress">
             <div class="free-ship-progress-label ${shipping === 0 ? 'reached' : ''}">
                 ${shipping === 0
-                    ? '🎉 You\'ve got free shipping!'
-                    : `Add <strong>$${remaining.toFixed(2)}</strong> more for free shipping`}
+                    ? (isHe ? '🎉 יש לך משלוח חינם!' : '🎉 You\'ve got free shipping!')
+                    : (isHe
+                        ? `הוסף עוד <strong>₪${(typeof window.usdToIlsCharge === 'function' ? window.usdToIlsCharge(remaining) : Math.round(remaining * (typeof USD_TO_ILS !== 'undefined' ? USD_TO_ILS : 2.9)))}</strong> לקבלת משלוח חינם`
+                        : `Add <strong>$${remaining.toFixed(2)}</strong> more for free shipping`)}
             </div>
             <div class="free-ship-bar-track">
                 <div class="free-ship-bar-fill" style="width:${pct}%"></div>
