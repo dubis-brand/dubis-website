@@ -32,6 +32,33 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+// ── SELLABLE_TYPES — the ONE contract for "what DUBIS may create" ──────────
+// Single source of truth for BOTH product pools (admin "+ סלוגן חדש"
+// suggestions AND the weekly auto-creator). Before this contract there were two
+// pools that silently contradicted each other — one offered v-neck/tank-top that
+// the DB could not even insert, the other still rolled plain pullover hoodies —
+// which is how a forbidden hoodie reached the catalog (Oren, 2026-06-13).
+// A garment type appears here ONLY if it passes four gates:
+//   ① agreed  — Oren approved selling it
+//   ② brand   — a REAL Gelato brand+SKU (NEVER brand:null → Just-Hoods / Hila-K sizing)
+//   ③ schema  — allowed by the dubis_products.clothing_type CHECK constraint
+//   ④ mockup  — a clean mockup has rendered at least once  → only then autoEligible
+// autoEligible:true  → weekly cron may auto-PUBLISH (no human eyes) — proven types only.
+// autoEligible:false → admin may SUGGEST it (manual approve gate), never auto-publishes.
+// Plain pullover 'hoodie' is intentionally ABSENT — DUBIS sells zip-hoodies only
+// (brand:null Just Hoods JH001F sizing disaster, Hila order 2026-05-23).
+// v-neck (Gildan 64v00) + tank-top (Gildan 5200) are sourced & constraint-allowed;
+// they JOIN here once their gildan TEMPLATES reach prod + the first mockup verifies.
+const SELLABLE_TYPES: Array<{ type: string; gender: string; weight: number; autoEligible: boolean }> = [
+  { type: 'tshirt',     gender: 'unisex', weight: 4, autoEligible: true  },
+  { type: 'tshirt',     gender: 'women',  weight: 3, autoEligible: true  },
+  { type: 'ziphoodie',  gender: 'unisex', weight: 3, autoEligible: true  },
+  { type: 'longsleeve', gender: 'unisex', weight: 3, autoEligible: true  },
+  { type: 'longsleeve', gender: 'women',  weight: 2, autoEligible: true  },
+  { type: 'cap',        gender: 'unisex', weight: 2, autoEligible: false }, // AS Colour 1114 — verify mockup → enable
+  { type: 'capemb',     gender: 'unisex', weight: 1, autoEligible: false }, // Flexfit 6245 — verify mockup → enable
+];
+
 // ── Service-role key — rotation 2026-06 ──
 // Prefer the sb_secret 'dubissecretkey' key (Supabase injects it in SUPABASE_SECRET_KEYS as
 // JSON), fall back to the legacy service_role JWT during the transition. This is the
@@ -3590,22 +3617,11 @@ ${personaId ? `Persona: ${personaId}\n` : ''}${sloganMismatch ? '⚠️ NOTE: pr
     // hint in the prompt and kept returning tshirt/hoodie/longsleeve only. Now we
     // INJECT 3 specific (type, gender) targets into the prompt — Gemini must use
     // these as-is.
-    const TYPE_POOL: Array<{ type: string; gender: string; weight: number }> = [
-      // weight = how strongly to favor (higher = picked more often)
-      { type: 'tshirt',     gender: 'unisex', weight: 3 },
-      { type: 'tshirt',     gender: 'women',  weight: 2 },
-      { type: 'vneck',      gender: 'unisex', weight: 4 },   // NEW — under-represented
-      { type: 'vneck',      gender: 'women',  weight: 3 },   // NEW — under-represented
-      { type: 'tanktop',    gender: 'unisex', weight: 4 },   // NEW — under-represented
-      { type: 'tanktop',    gender: 'women',  weight: 2 },   // NEW — Black only
-      { type: 'hoodie',     gender: 'unisex', weight: 2 },
-      { type: 'hoodie',     gender: 'women',  weight: 2 },
-      { type: 'ziphoodie',  gender: 'unisex', weight: 2 },
-      { type: 'longsleeve', gender: 'unisex', weight: 2 },
-      { type: 'longsleeve', gender: 'women',  weight: 2 },
-      { type: 'cap',        gender: 'unisex', weight: 1 },   // small print area
-      { type: 'capemb',     gender: 'unisex', weight: 1 },
-    ];
+    // Admin "+ סלוגן חדש" suggestions draw from the SELLABLE_TYPES contract
+    // (module top) — every type here is constraint-insertable + brand-mapped, so
+    // an approved suggestion can never fail to insert (the old v-neck/tank-top 500)
+    // and a forbidden plain hoodie can never be offered (Hila zip-only rule).
+    const TYPE_POOL = SELLABLE_TYPES;
     // Count existing products per (type, gender) so we down-weight saturated combos.
     const existingCounts: Record<string, number> = {};
     for (const p of (existingProducts || []) as Array<Record<string, unknown>>) {
@@ -6248,20 +6264,13 @@ ${items.join('\n')}
       if (recent && recent.length) return json({ ok: true, skipped: 'already ran this week' });
     }
 
-    // NOTE: 'vneck'/'tanktop' are intentionally EXCLUDED — the dubis_products
-    // clothing_type CHECK constraint only allows t-shirt/hoodie/zip-hoodie/
-    // long-sleeve/cap/cap-emb, and the v-neck/tank-top Gelato TEMPLATES are
-    // brand:null aliases (unpredictable vendor sizing — the Hila-K risk).
-    // Auto-published products must use proven brand+SKU types only. To re-add
-    // them: (1) assign a real brand+SKU to vneck/tanktop in create-gelato-order.js
-    // TEMPLATES, (2) extend the clothing_type CHECK constraint, (3) re-add here.
-    const W_TYPE_POOL: Array<{ type: string; gender: string; weight: number }> = [
-      { type: 'tshirt', gender: 'unisex', weight: 4 }, { type: 'tshirt', gender: 'women', weight: 3 },
-      { type: 'hoodie', gender: 'unisex', weight: 3 }, { type: 'hoodie', gender: 'women', weight: 3 },
-      { type: 'ziphoodie', gender: 'unisex', weight: 3 }, { type: 'longsleeve', gender: 'unisex', weight: 3 },
-      { type: 'longsleeve', gender: 'women', weight: 2 }, { type: 'cap', gender: 'unisex', weight: 1 },
-      { type: 'capemb', gender: 'unisex', weight: 1 },
-    ];
+    // The weekly AUTO-creator may only auto-publish types that pass ALL FOUR gates
+    // of the SELLABLE_TYPES contract (module top), i.e. autoEligible:true. This is
+    // the gate that replaces a human review: a type cannot reach a customer
+    // unsupervised until it is agreed + real-brand + constraint-allowed + mockup-
+    // verified. Plain 'hoodie' is gone (zip-only). cap/capemb/v-neck/tank-top stay
+    // suggest-only (autoEligible:false) until each one's first mockup is verified.
+    const W_TYPE_POOL = SELLABLE_TYPES.filter(t => t.autoEligible);
     const W_CATALOG_COLORS: Record<string, string[]> = {
       't-shirt:unisex': ['Black', 'White', 'Cream', 'Navy', 'Charcoal', 'Red', 'Gray', 'Forest Green'],
       't-shirt:women': ['Black', 'White', 'Cream', 'Navy'],
