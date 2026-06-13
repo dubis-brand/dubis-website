@@ -77,10 +77,16 @@ const TEMPLATES = {
   // pattern as longsleeve-unisex and hoodie-women — Gelato resolves these to a
   // canonical default brand internally. Use clothing_type='v-neck' / 'tank-top'
   // in dubis_products (normType strips hyphens → 'vneck' / 'tanktop' keys).
-  'vneck-unisex':      { cat: 't-shirt', sub: 'v-neck',          cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
-  'vneck-women':       { cat: 't-shirt', sub: 'v-neck',          cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
-  'tanktop-unisex':    { cat: 't-shirt', sub: 'tank-top',        cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
-  'tanktop-women':     { cat: 't-shirt', sub: 'tank-top',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
+  // 2026-06-13: v-neck/tank-top moved off brand:null (Hila-K risk) onto a REAL
+  // brand — Gildan, the same IL-routable manufacturer as our tees (64000) and
+  // long-sleeves (2400). Verified live vs Gelato catalog: only the `mens` cut
+  // exists for both (no womens cut), gqa=classic, gpr=4-4 (front+back). IL cost
+  // v-neck $25.17 / tank $17.94. The women keys keep brand:null and are unused
+  // (SELLABLE_TYPES offers v-neck/tank-top as unisex only).
+  'vneck-unisex':      { cat: 't-shirt', sub: 'v-neck',          cut: 'mens',   qa: 'classic', gpr: '4-4',     brand: 'gildan',            sku: '64v00' },
+  'vneck-women':       { cat: 't-shirt', sub: 'v-neck',          cut: 'mens',   qa: 'classic', gpr: '4-4',     brand: 'gildan',            sku: '64v00' },
+  'tanktop-unisex':    { cat: 't-shirt', sub: 'tank-top',        cut: 'mens',   qa: 'classic', gpr: '4-4',     brand: 'gildan',            sku: '5200'  },
+  'tanktop-women':     { cat: 't-shirt', sub: 'tank-top',        cut: 'mens',   qa: 'classic', gpr: '4-4',     brand: 'gildan',            sku: '5200'  },
 };
 
 // ─────────────────────────────────────────────────────────────────
@@ -183,29 +189,34 @@ const COLOR_MAP = {
     'Cream':     'stone',       // closest natural-cotton tone
     'Charcoal':  'dark-grey',   // closest charcoal tone (Flexfit hex #2E2E2E)
   },
-  // 2026-05-19: V-neck unisex (prm/4-4 brand-less). Verified colors against
-  // /v3/products/...gco_{color}: black/white/navy/red return 200.
-  // charcoal/cream/forest-green return 404 — do NOT add them.
+  // 2026-06-13: Gildan 64v00 v-neck color slugs (verified live vs Gelato catalog).
+  // NOTE Gildan calls red "cherry-red" and gray "rs-sport-grey" on the v-neck —
+  // different from the tank below. Do not assume slugs are shared across SKUs.
   'vneck-unisex': {
-    'Black': 'black',
-    'White': 'white',
-    'Navy':  'navy',
-    'Red':   'red',
+    'Black':      'black',
+    'White':      'white',
+    'Navy':       'navy',
+    'Charcoal':   'charcoal',
+    'Red':        'cherry-red',
+    'Gray':       'rs-sport-grey',
+    'Royal Blue': 'royal-blue',
   },
-  // V-neck womens: verified colors black/white/navy only.
   'vneck-women': {
     'Black': 'black',
     'White': 'white',
     'Navy':  'navy',
   },
-  // Tank-top unisex: verified black/white/navy/red.
+  // 2026-06-13: Gildan 5200 tank color slugs (verified). Here red is plain "red"
+  // and gray is "sport-grey" (NOT the v-neck's slugs).
   'tanktop-unisex': {
-    'Black': 'black',
-    'White': 'white',
-    'Navy':  'navy',
-    'Red':   'red',
+    'Black':        'black',
+    'White':        'white',
+    'Navy':         'navy',
+    'Red':          'red',
+    'Forest Green': 'forest-green',
+    'Gray':         'sport-grey',
+    'Royal Blue':   'royal',
   },
-  // Tank-top womens: ONLY black in Gelato catalog as of 2026-05-19.
   'tanktop-women': {
     'Black': 'black',
   },
