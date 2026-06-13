@@ -158,11 +158,21 @@ module.exports = async function handler(req, res) {
         console.warn('Could not load product prices from Supabase:', err.message);
     }
 
+    // 2026-06-13 (Hila lost-order incident): this runs AFTER PayPal captured
+    // AND after the Gelato order was dispatched (see the onApprove sequence in
+    // js/paypal.js — Gelato first, then this save). By now the customer has paid
+    // and the print order is in flight. Refusing to persist does NOT prevent
+    // fraud (the money already moved and Gelato is already printing) — it only
+    // DROPS our only record, leaving a paid + printing order invisible to admin,
+    // tracking and email. That is exactly what swallowed Hila's order, and the
+    // chronic "restored from Gelato" backfills before it (every real-time save
+    // that hit a price-mismatch 400 was lost, then reconstructed from Gelato
+    // with a placeholder slogan + Gelato's cost as the price).
+    // Anti-fraud belongs PRE-capture (the stock-probe / order-create gate). Here
+    // we only DETECT + LOG anomalies and ALWAYS save the order.
+    const priceAnomalies = [];
     for (const item of cartItems) {
         const floor = PRICE_FLOOR[item.type];
-        if (floor === undefined) {
-            return res.status(400).json({ error: `Unknown product type: ${item.type}` });
-        }
         const sentPrice = Number(item.price) || 0;
         const itemId    = Number(item.id);
         const variantKey = itemId && item.selectedColor && item.selectedSize
@@ -171,36 +181,22 @@ module.exports = async function handler(req, res) {
         const variantPrice = variantKey ? variantPrices[variantKey] : null;
         const basePrice    = itemId ? basePrices[itemId] : null;
 
-        // Preferred check: against the variant-level sell_price_usd.
-        if (variantPrice != null) {
-            if (Math.abs(sentPrice - variantPrice) > 0.01) {
-                console.warn(`Variant price mismatch: id=${itemId} ${item.selectedColor}/${item.selectedSize} sent=${sentPrice} expected=${variantPrice}`);
-                return res.status(400).json({ error: 'Price mismatch — please refresh and try again' });
-            }
+        if (floor === undefined) {
+            priceAnomalies.push({ kind: 'unknown_type', type: item.type, id: itemId, sent: sentPrice });
+        } else if (variantPrice != null && Math.abs(sentPrice - variantPrice) > 0.01) {
+            priceAnomalies.push({ kind: 'variant_mismatch', id: itemId, color: item.selectedColor, size: item.selectedSize, sent: sentPrice, expected: variantPrice });
+        } else if (variantPrice == null && basePrice != null && sentPrice + 0.01 < basePrice) {
+            priceAnomalies.push({ kind: 'below_base', id: itemId, type: item.type, sent: sentPrice, base: basePrice });
+        } else if (floor !== undefined && sentPrice < floor) {
+            priceAnomalies.push({ kind: 'below_floor', type: item.type, sent: sentPrice, floor });
+        } else if (basePrice != null && sentPrice > basePrice * 2.5) {
+            priceAnomalies.push({ kind: 'above_ceiling', id: itemId, sent: sentPrice, base: basePrice });
         }
-        // Fallback: against the base selling_price WITH tolerance for variant upcharge.
-        // Variants are always ≥ base (upcharge), never less. So we allow sent ≥ base.
-        // If sent < base by more than $0.01 → fraud attempt or stale cart, reject.
-        else if (basePrice != null) {
-            if (sentPrice + 0.01 < basePrice) {
-                console.warn(`Below-base price: id=${itemId} type=${item.type} sent=${sentPrice} base=${basePrice}`);
-                return res.status(400).json({ error: 'Invalid price — please refresh and try again' });
-            }
-            // sent ≥ base → accept (we trust the variant upcharge wasn't fabricated;
-            // if it was, the upper-bound check is the +50% line below)
-        }
-
-        // Hard floor: catches both fraud ($0 attempts) AND wildly inflated prices
-        // (e.g. variant upcharge that's 3× base — likely a cart-data bug).
-        if (sentPrice < floor) {
-            console.warn(`Price below floor: type=${item.type} sent=${sentPrice} floor=${floor}`);
-            return res.status(400).json({ error: 'Invalid price — please refresh and try again' });
-        }
-        // Sanity upper bound: no variant should ever exceed 2.5× its base
-        if (basePrice != null && sentPrice > basePrice * 2.5) {
-            console.warn(`Implausible price ceiling: id=${itemId} sent=${sentPrice} base=${basePrice}`);
-            return res.status(400).json({ error: 'Invalid price — please refresh and try again' });
-        }
+    }
+    if (priceAnomalies.length) {
+        // Loud single-line marker for Vercel-log grep. We STILL save the order —
+        // this is a manual-review signal, never a reason to lose a paid order.
+        oerr('price-anomaly-saved-anyway', { paypalOrderId, anomalies: priceAnomalies });
     }
 
     // Items subtotal (what the customer paid before shipping & discount)
