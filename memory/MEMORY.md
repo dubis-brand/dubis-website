@@ -1,11 +1,11 @@
 # DUBIS Memory Index
-> Updated: 2026-04-09
+> Updated: 2026-06-13
 
 ## Project Status
 - Production: https://www.dubis.net — LIVE
 - Vercel: 12/12 functions (AT LIMIT)
 - Agents: 8 active, all operational
-- Last major change: Auto-content pipeline (2026-04-01)
+- Last major change: Hebrew checkout charged in ILS (שער יציג + transparent ~3% PayPal fee line) + order-save reliability fixes (2026-06-13)
 
 ## Known Issues
 | Issue | Status | Notes |
@@ -14,6 +14,8 @@
 | GMAIL_* env vars missing | ❌ OPEN | Email Monitor agent can't scan Gmail |
 | 42 product images need regeneration | ⚠️ BACKLOG | Low priority |
 | API keys in git history | ⚠️ ROTATE | Commit 18d0c2d removed them, but history exposed |
+| FBIA checkout still charges USD | ⚠️ FOLLOW-UP | ILS charging covers the SDK path only; the FB/IG in-app redirect flow (create-paypal-order) still USD. Touch the guarded money path carefully. |
+| Sweep past dropped orders | ⚠️ FOLLOW-UP | save.js drop (now fixed, 2026-06-13) may have lost earlier orders. Pull Vercel logs / compare Gelato vs `orders` to recover. Needs Vercel-log MCP approval. |
 
 ## Quick Glossary
 | Term | Meaning |
