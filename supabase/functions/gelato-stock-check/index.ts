@@ -52,11 +52,12 @@ const TEMPLATES: Record<string, Template> = {
   'longsleeve-unisex': { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'unisex', qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '2400'   },
   'longsleeve-women':  { cat: 't-shirt', sub: 'longsleeve-crew', cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: 'sols',             sku: '02075'  },
   'cap-unisex':        { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-dtf', brand: 'as-colour',        sku: '1114'   },
-  // 2026-05-19: V-neck + Tank-top (prm/4-4 brand-less). Verified via Gelato API.
-  'vneck-unisex':      { cat: 't-shirt', sub: 'v-neck',          cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
-  'vneck-women':       { cat: 't-shirt', sub: 'v-neck',          cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
-  'tanktop-unisex':    { cat: 't-shirt', sub: 'tank-top',        cut: 'unisex', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
-  'tanktop-women':     { cat: 't-shirt', sub: 'tank-top',        cut: 'womens', qa: 'prm',     gpr: '4-4',     brand: null,                sku: null    },
+  // 2026-06-13: V-neck Gildan 64v00 / Tank-top Gildan 5200 — real IL-routable brand
+  // (off brand:null Hila-K risk). Only the mens cut exists; gqa=classic, gpr=4-4.
+  'vneck-unisex':      { cat: 't-shirt', sub: 'v-neck',          cut: 'mens',   qa: 'classic', gpr: '4-4',     brand: 'gildan',            sku: '64v00' },
+  'vneck-women':       { cat: 't-shirt', sub: 'v-neck',          cut: 'mens',   qa: 'classic', gpr: '4-4',     brand: 'gildan',            sku: '64v00' },
+  'tanktop-unisex':    { cat: 't-shirt', sub: 'tank-top',        cut: 'mens',   qa: 'classic', gpr: '4-4',     brand: 'gildan',            sku: '5200'  },
+  'tanktop-women':     { cat: 't-shirt', sub: 'tank-top',        cut: 'mens',   qa: 'classic', gpr: '4-4',     brand: 'gildan',            sku: '5200'  },
 };
 
 const COLOR_MAP: Record<string, Record<string, ColorEntry>> = {
@@ -88,15 +89,19 @@ const COLOR_MAP: Record<string, Record<string, ColorEntry>> = {
   'cap-unisex': {
     'Black': 'black', 'White': 'white', 'Cream': 'ecru', 'Navy': 'navy',
   },
-  // 2026-05-19: V-neck + Tank-top — verified colors via /v3/products/...gco_{color}
+  // 2026-06-13: Gildan v-neck 64v00 / tank 5200 color slugs (verified live).
+  // Slugs differ per SKU — v-neck red="cherry-red"/gray="rs-sport-grey",
+  // tank red="red"/gray="sport-grey". Do not share slugs across the two.
   'vneck-unisex': {
-    'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Red': 'red',
+    'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Charcoal': 'charcoal',
+    'Red': 'cherry-red', 'Gray': 'rs-sport-grey', 'Royal Blue': 'royal-blue',
   },
   'vneck-women': {
     'Black': 'black', 'White': 'white', 'Navy': 'navy',
   },
   'tanktop-unisex': {
     'Black': 'black', 'White': 'white', 'Navy': 'navy', 'Red': 'red',
+    'Forest Green': 'forest-green', 'Gray': 'sport-grey', 'Royal Blue': 'royal',
   },
   'tanktop-women': {
     'Black': 'black',
