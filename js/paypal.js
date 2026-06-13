@@ -1450,6 +1450,37 @@ window.addEventListener('DOMContentLoaded', () => {
         window.history.replaceState({}, '', '/');
     }
 
+    // FBIA redirect-checkout return. The redirect flow lands back here via
+    // ?paypal_return=1 (success) or ?paypal_error=... (fail) and NEVER runs
+    // onApprove — so confirmation modal + cart clear + purchase tracking must
+    // happen here, or the customer sees nothing and the cart stays full.
+    // PayPal appends ?token={orderId}; use it to fire purchase exactly once.
+    if (params.get('paypal_return') === '1') {
+        const ppToken = params.get('token') || '';
+        const firedKey = 'dubis-purchase-fired-' + (ppToken || 'fbia');
+        try {
+            if (!sessionStorage.getItem(firedKey)) {
+                sessionStorage.setItem(firedKey, '1');
+                let val = 0;
+                try { val = (JSON.parse(localStorage.getItem('dubis-cart') || '[]') || [])
+                    .reduce((s, i) => s + (Number(i.price) || 0), 0); } catch (_) {}
+                if (window.dubisTrack) window.dubisTrack('purchase', { value: val, currency: 'USD', channel: 'fbia_redirect', transaction_id: ppToken });
+                if (typeof fbq !== 'undefined') { try { fbq('track', 'Purchase', { value: val, currency: 'USD' }); } catch (_) {} }
+                if (typeof gtag !== 'undefined') { try { gtag('event', 'purchase', { transaction_id: ppToken, value: val, currency: 'USD' }); } catch (_) {} }
+            }
+        } catch (_) {}
+        try { cart = []; saveCart(); updateCartCount(); } catch (_) {}
+        try { if (typeof renderCart === 'function') renderCart(); } catch (_) {}
+        try { showSuccessModal(); } catch (_) {}
+        window.history.replaceState({}, '', '/');
+    } else if (params.has('paypal_error')) {
+        const reason = params.get('paypal_error') || 'unknown';
+        window.history.replaceState({}, '', '/');
+        try {
+            showPaymentError('Payment could not be completed (' + reason + '). If you were charged, our team has been notified — email dubis.brand@gmail.com and we\'ll make it right.');
+        } catch (_) {}
+    }
+
     // Re-render the order summary when the customer picks a different country —
     // shipping is country-aware (US: $8.99, IL/intl: up to $14.99) so the total
     // must update on the fly. Without this, the customer sees a US price and

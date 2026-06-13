@@ -1648,20 +1648,75 @@ async function handleCapturePaypalOrder(req, res) {
       derr('fbia-fulfill-exception', { paypalOrderId, err: e.message });
     }
 
-    // Mark the pending task resolved regardless — the capture already happened
-    // and the fulfillment endpoint owns its own refund-on-failure logic.
+    // Resolve the Gelato order id across the response shapes the fulfillment
+    // endpoint can return (single-warehouse vs split vs draft summary).
+    const gid =
+      (fulfillBody && (fulfillBody.gelatoOrderId || fulfillBody.printfulOrderId ||
+        (fulfillBody.summary && fulfillBody.summary.gelatoOrderId) ||
+        (Array.isArray(fulfillBody.gelatoOrderIds) && fulfillBody.gelatoOrderIds[0]))) || null;
+    const wasSplit = !!(fulfillBody && (fulfillBody.split || fulfillBody.splitGroupId ||
+      (Array.isArray(fulfillBody.gelatoOrderIds) && fulfillBody.gelatoOrderIds.length > 1)));
+    const wasRefunded = !!(fulfillBody && fulfillBody.refunded);
+
+    // Write the `orders` row OURSELVES. The FBIA redirect flow never runs the
+    // frontend onApprove → /api/orders/save path, so a single-warehouse FBIA
+    // order would be captured + fulfilled but invisible to admin/Boss/tracking/
+    // confirmation email. The split path (api/_orderSplit) already inserts its
+    // own rows, so skip when wasSplit. Skip on refund (no sale to record).
+    let recordedOrderId = null;
+    if (fulfillOk && !wasSplit && !wasRefunded) {
+      try {
+        const itemsSubtotal = (cartItems || []).reduce((s, i) => s + (Number(i.price) || 0), 0);
+        const shipAmt = Number(cd.shipping_cost) || 0;
+        const discAmt = Number(cd.discount) || 0;
+        const grand = +(itemsSubtotal + shipAmt - discAmt).toFixed(2);
+        const { data: existing } = await sb.from('orders')
+          .select('id').eq('paypal_order_id', paypalOrderId).maybeSingle();
+        if (existing) {
+          recordedOrderId = existing.id;
+        } else {
+          const { data: ins, error: insErr } = await sb.from('orders').insert({
+            paypal_order_id:   paypalOrderId,
+            printful_order_id: gid,
+            buyer_email:       buyerEmail || '',
+            shipping_address:  shippingAddress,
+            items:             cartItems,
+            total_amount:      grand,
+            items_subtotal:    itemsSubtotal,
+            shipping_amount:   shipAmt,
+            discount_amount:   discAmt,
+            status:            'pending',
+            currency:          'USD',
+          }).select('id').single();
+          if (insErr) derr('fbia-orders-insert-failed', { paypalOrderId, err: insErr.message });
+          else recordedOrderId = ins.id;
+        }
+      } catch (dbErr) {
+        derr('fbia-orders-insert-exception', { paypalOrderId, message: dbErr.message });
+      }
+    }
+
+    // Mark the pending task resolved. proof_of_completion is REQUIRED by the
+    // PROOF_GUARD trigger to set status='done' on category=fbia_pending.
     await sb.from('agent_tasks').update({
       status: 'done',
+      proof_of_completion: {
+        gelato_order_id: gid,
+        order_id: recordedOrderId,
+        capture_id: cap.captureId || null,
+        api_response: fulfillOk ? 'fbia_captured_fulfilled' : 'fbia_captured_fulfill_failed',
+      },
       content_data: {
         ...cd,
         captured_at: new Date().toISOString(),
         capture_id: cap.captureId || null,
         fulfill_ok: fulfillOk,
+        recorded_order_id: recordedOrderId,
         fulfill_response: fulfillBody,
       },
     }).eq('id', task.id);
 
-    dlog('fbia-capture-ok', { paypalOrderId, fulfillOk });
+    dlog('fbia-capture-ok', { paypalOrderId, fulfillOk, recordedOrderId, gid });
     return res.redirect(302, `${base}/?paypal_return=1`);
   } catch (err) {
     derr('fbia-capture-exception', { paypalOrderId, err: err.message });
