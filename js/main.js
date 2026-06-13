@@ -1336,7 +1336,8 @@ function renderProducts(filter, gender) {
   if (_activeFilter !== 'all') {
     filtered = filtered.filter(p =>
       p.type === _activeFilter ||
-      (_activeFilter === 'cap' && p.type === 'capemb')
+      (_activeFilter === 'cap' && p.type === 'capemb') ||
+      (_activeFilter === 'hoodie' && p.type === 'ziphoodie')  // we sell zip-hoodies under the "Hoodies" label
     );
   }
   if (_activeGender !== 'all') {
