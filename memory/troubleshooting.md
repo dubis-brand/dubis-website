@@ -23,3 +23,21 @@
 **Symptom:** Claude getting conflicting information about Vercel function count.
 **Root cause:** Two separate status documents not kept in sync.
 **Fix:** Consolidated into single source of truth (CLAUDE.md + memory/MEMORY.md). Deleted PROJECT_STATUS.md.
+
+## 2026-06-13 — Stale USD→ILS rate: open.er-api.com blocked by CSP
+**Symptom:** Hebrew prices stuck — every shopper saw the stale 3.63 fallback; ₪ never tracked the live rate.
+**Root cause:** `js/main.js` fetched `https://open.er-api.com/...` but that host was NOT in the CSP `connect-src` (`vercel.json`) → browser silently blocked every fetch → fallback used forever. Same failure mode as the 2026-06-07 Clarity block.
+**Fix:** Whitelisted `https://open.er-api.com` in `connect-src`; fallback lowered 3.63→2.9 (the real June-2026 rate is ~2.92, NOT 3.6 — verify before assuming). Rate now re-fetched when checkout opens.
+**Prevention:** Rule already in `.claude/rules/security.md` — every external host MUST be in the CSP in the same change. `curl -sD- https://www.dubis.net/ | grep -i content-security` to confirm.
+
+## 2026-06-13 — Paid orders silently dropped from DB (Hila's order invisible)
+**Symptom:** Hila paid (PayPal ₪357) + Gelato printed, but the order was NOT in `orders` and didn't show in "My Orders". Confirmation email DID arrive.
+**Root cause (two layers):**
+  1. **Frontend:** cart lines persist in localStorage with the price captured when ADDED. Catalog price had moved $21→$26; 3 of her 6 lines still carried the old $21. Customer was UNDERCHARGED, and…
+  2. **Server:** `save.js` ran its price validation AFTER PayPal capture + Gelato dispatch. The $21 sent vs $26 in DB → variant-mismatch → it returned `400` and the order row was never written. The email fires after save, so it still went out. This is the mechanism behind the chronic "(restored from Gelato)" placeholder orders — every mismatch-dropped order was later reconstructed from Gelato with a fake (cost) price + lost slogan.
+**Diagnosis path:** DB query showed newest order was 2026-05-22 (a "restored" placeholder) → order missing entirely. A manual backfill INSERT succeeded → ruled out the insert/RLS path. Catalog query showed prices clean ($26=$26) → the drift was frontend-vs-DB, not within the DB. The confirmation email's mixed ₪61/₪75 lines (=$21 stale / $26 current) confirmed the stale-cart-price trigger.
+**Fix (two-layer, both live):**
+  - **PR #2 (server):** `save.js` price checks now DETECT + LOG (`price-anomaly-saved-anyway`) but NEVER reject — a captured+dispatched order is ALWAYS persisted. Anti-fraud belongs pre-capture (stock-probe), not here.
+  - **PR #3 (frontend):** `reconcileCartPrices()` re-prices every cart line from the live catalog (`getVariantPrice`) at init/renderCart/checkout/createOrder — kills both the undercharge and the mismatch at source.
+**Recovery:** Hila's order manually backfilled to `orders` (id `5f54b38f…`), matched to her `user_id` + the email breakdown (6 items, $141 sub, DUBIS15 −$21.15, $119.85 total).
+**Still open:** Could not pull Vercel runtime logs (MCP tool needs oren's approval) to scan for OTHER past orders dropped the same way. Worth a sweep.

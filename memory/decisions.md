@@ -1,5 +1,12 @@
 # Architecture Decisions Log — DUBIS
 
+## 2026-06-13 — A captured order is NEVER dropped; cart re-prices from live catalog
+**Why:** Hila's paid order (PayPal+Gelato OK) was missing from `orders` — `save.js` returned 400 on a price mismatch that ran AFTER capture+dispatch. Rejecting post-capture doesn't stop fraud (money already moved); it just loses the record. Root trigger: cart lines kept a stale localStorage price ($21) vs the current catalog ($26).
+**Decisions:**
+- **`api/orders/save.js`:** price validation is now DETECT + LOG only (`price-anomaly-saved-anyway`), never reject. A captured+dispatched order is ALWAYS persisted. Anti-fraud stays pre-capture (stock-probe / order-create gate). (PR #2)
+- **`js/main.js` + `js/paypal.js`:** `reconcileCartPrices()` re-prices every cart line from the live catalog (`getVariantPrice`) at init / renderCart / checkout / createOrder, so the charged amount and the price `save.js` validates always equal today's catalog price. Kills the stale-price undercharge AND the mismatch at source. (PR #3)
+**Lesson:** the chronic "(restored from Gelato)" placeholder orders were all victims of this drop — they were rebuilt from Gelato afterward with a fake cost-price + lost slogan. Full detail: `memory/troubleshooting.md` 2026-06-13.
+
 ## 2026-06-13 — Hebrew checkout charged in ILS (not USD) + live-rate CSP fix
 **Why:** (1) `open.er-api.com` was never in the CSP `connect-src`, so the live USD→ILS fetch in `js/main.js` was silently blocked and every Hebrew shopper saw the stale `3.63` fallback. (2) oren needs the ₪ we DISPLAY to equal EXACTLY what PayPal charges — impossible while charging USD, because the ILS conversion is done by PayPal-at-confirmation or the buyer's card issuer (+FX fee), neither readable in advance.
 **What:**
