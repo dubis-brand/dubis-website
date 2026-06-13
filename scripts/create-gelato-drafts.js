@@ -71,6 +71,9 @@ const TEMPLATES = {
   // 2026-05-16: Embroidered cap (Flexfit 6245cm). normType strips hyphen
   // from clothing_type='cap-emb' → 'capemb' → templateKey 'capemb-unisex'.
   'capemb-unisex':     { cat: 'hat',     sub: 'dad-hat',         cut: 'unisex', qa: 'classic', gpr: '4-0-emb', brand: 'flexfit',          sku: '6245cm' },
+  // 2026-06-13: V-neck Gildan 64v00 / Tank-top Gildan 5200 — real IL-routable brand (mens cut only).
+  'vneck-unisex':      { cat: 't-shirt', sub: 'v-neck',          cut: 'mens',   qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '64v00'  },
+  'tanktop-unisex':    { cat: 't-shirt', sub: 'tank-top',        cut: 'mens',   qa: 'classic', gpr: '4-4',     brand: 'gildan',           sku: '5200'   },
 };
 
 const SIZE_MAP = { S:'s', M:'m', L:'l', XL:'xl', '2XL':'2xl', '3XL':'3xl', 'One Size':'onesize' };
@@ -90,6 +93,9 @@ const COLOR_MAP = {
   'longsleeve-women':  { Black:'deep-black', White:'white', Navy:'french-navy' },
   'cap-unisex':        { Black:'black', White:'white', Cream:'ecru', Navy:'navy' },
   'capemb-unisex':     { Black:'black', White:'white', Navy:'navy', Cream:'stone', Charcoal:'dark-grey' },
+  // 2026-06-13: Gildan v-neck 64v00 / tank 5200 color slugs (verified; differ per SKU).
+  'vneck-unisex':      { Black:'black', White:'white', Navy:'navy', Charcoal:'charcoal', Red:'cherry-red', Gray:'rs-sport-grey', 'Royal Blue':'royal-blue' },
+  'tanktop-unisex':    { Black:'black', White:'white', Navy:'navy', Red:'red', 'Forest Green':'forest-green', Gray:'sport-grey', 'Royal Blue':'royal' },
 };
 
 const DARK = new Set(['Black','Charcoal','Navy','Forest Green','Royal Blue']);
