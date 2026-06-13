@@ -57,8 +57,11 @@ const SELLABLE_TYPES: Array<{ type: string; gender: string; weight: number; auto
   { type: 'longsleeve', gender: 'women',  weight: 2, autoEligible: true  },
   { type: 'cap',        gender: 'unisex', weight: 2, autoEligible: false }, // AS Colour 1114 — verify mockup → enable
   { type: 'capemb',     gender: 'unisex', weight: 1, autoEligible: false }, // Flexfit 6245 — verify mockup → enable
-  { type: 'vneck',      gender: 'unisex', weight: 4, autoEligible: true  }, // Gildan 64v00 — mockup verified at catalog parity 2026-06-13 (#37)
-  { type: 'tanktop',    gender: 'unisex', weight: 4, autoEligible: true  }, // Gildan 5200 — mockup verified at catalog parity 2026-06-13 (#38)
+  // v-neck (Gildan 64v00) is BLOCKED from the catalog: routing/order works, but Gelato
+  // renders NO garment mockup for 64v00 (the only v-neck on our plan) — drafts return a
+  // bare design-on-gray preview, not a worn garment (gate ④ caught it, product #37, 2026-06-13).
+  // Re-add here ONLY if a v-neck SKU with real Gelato mockups is sourced, or we generate our own.
+  { type: 'tanktop',    gender: 'unisex', weight: 4, autoEligible: true  }, // Gildan 5200 — mockup verified (real garment, catalog parity) 2026-06-13 (#38)
 ];
 
 // ── Service-role key — rotation 2026-06 ──
