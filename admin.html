@@ -2792,7 +2792,10 @@
 
 <script>
   const SUPABASE_URL  = 'https://ntzwvqtpdmvvavbhuyeb.supabase.co';
-  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50end2cXRwZG12dmF2Ymh1eWViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2ODk1ODAsImV4cCI6MjA4NzI2NTU4MH0.EpfZAg28aU6_sOblfkVpkAwp9nDvXMTRCCNz0UJWHEc';
+  // 2026-06: migrated legacy anon JWT → new publishable key (sb_publishable_…) so the
+  // legacy JWT keys can be disabled. Admin still logs in with a Supabase user JWT; this
+  // key is only the initial apikey for the client. RLS + dub_admins gate unchanged.
+  const SUPABASE_ANON = 'sb_publishable_i2WiAKATqNIjMWXLWD0RFQ_yIa4tXqh';
 
   let _sb        = null;
   let _allUsers  = [];

@@ -1,4 +1,8 @@
 // DUBIS — Shared Supabase configuration
-// Single source of truth for Supabase URL and anon key (public, safe for client)
+// Single source of truth for Supabase URL and publishable key (public, safe for client).
+// 2026-06: migrated from the legacy anon JWT to the new publishable key (sb_publishable_…)
+// so the legacy JWT-based keys can be disabled in the dashboard. RLS still enforced —
+// the publishable key is the browser-safe replacement for the anon key. The variable name
+// stays DUBIS_SUPABASE_ANON so all 7 consumers keep working without edits.
 window.DUBIS_SUPABASE_URL  = 'https://ntzwvqtpdmvvavbhuyeb.supabase.co';
-window.DUBIS_SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im50end2cXRwZG12dmF2Ymh1eWViIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2ODk1ODAsImV4cCI6MjA4NzI2NTU4MH0.EpfZAg28aU6_sOblfkVpkAwp9nDvXMTRCCNz0UJWHEc';
+window.DUBIS_SUPABASE_ANON = 'sb_publishable_i2WiAKATqNIjMWXLWD0RFQ_yIa4tXqh';
