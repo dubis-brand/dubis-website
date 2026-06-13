@@ -5,10 +5,18 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
+// Service-role key — rotation 2026-06: prefer the sb_secret 'dubissecretkey' key (Supabase
+// injects it in SUPABASE_SECRET_KEYS as JSON), fall back to the legacy service_role JWT
+// during the transition, so the legacy + exposed 'default' keys can be disabled with zero downtime.
+const SERVICE_ROLE = (() => {
+  try { const k = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') ?? '{}')['dubissecretkey']; if (k) return k as string; } catch { /* not migrated yet */ }
+  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+})();
+
 function sbAdmin() {
   return createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    SERVICE_ROLE,
   );
 }
 

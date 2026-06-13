@@ -17,7 +17,13 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 
 const PG_CRON_TOKEN = 'dubis-pg-cron-trigger-a554cd187bdfaf88a0a5dd8dcf571bea32658e1eb8ec217c';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
-const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+// Service-role key — rotation 2026-06: prefer the sb_secret 'dubissecretkey' key (Supabase
+// injects it in SUPABASE_SECRET_KEYS as JSON), fall back to the legacy service_role JWT
+// during the transition, so the legacy + exposed 'default' keys can be disabled with zero downtime.
+const SERVICE_ROLE = (() => {
+  try { const k = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') ?? '{}')['dubissecretkey']; if (k) return k as string; } catch { /* not migrated yet */ }
+  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+})();
 
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json' } });
 
