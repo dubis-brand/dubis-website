@@ -32,11 +32,23 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+// ── Service-role key — rotation 2026-06 ──
+// Prefer the sb_secret 'dubissecretkey' key (Supabase injects it in SUPABASE_SECRET_KEYS as
+// JSON), fall back to the legacy service_role JWT during the transition. This is the
+// single source for the DB client, all inbound auth-token comparisons (svcKey/svcK),
+// and outbound Bearer/x-agent-secret calls — so the legacy + exposed 'default' keys can
+// be disabled with zero downtime. (verify_jwt=false on every fn, so a non-JWT sb_secret
+// works on the Authorization header too — our code does the string comparison.)
+const SERVICE_ROLE = (() => {
+  try { const k = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') ?? '{}')['dubissecretkey']; if (k) return k as string; } catch { /* not migrated yet */ }
+  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+})();
+
 // ── Supabase client ──
 function sbAdmin() {
   return createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    SERVICE_ROLE,
   );
 }
 
@@ -795,7 +807,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
     const admin = await verifyAdmin(req);
     if (!admin && !isAgentSecret(req)) {
       const auth = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim();
-      const svcK = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+      const svcK = SERVICE_ROLE;
       const cronK = Deno.env.get('CRON_SECRET') ?? '';
       if (auth !== svcK && auth !== cronK) return json({ error: 'Unauthorized' }, 401);
     }
@@ -1355,7 +1367,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
 
   // ── GEMINI-MODELS ────────────────────────────────────────────────────
   if (type === 'gemini-models') {
-    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey = SERVICE_ROLE;
     const token = url.searchParams.get('token') || req.headers.get('x-agent-secret') || '';
     if (!svcKey || token !== svcKey) return json({ error: 'Unauthorized' }, 401);
     const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
@@ -1370,7 +1382,7 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
 
   // ── CONTENT-RUN ─────────────────────────────────────────────────────
   if (type === 'content-run') {
-    const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey      = SERVICE_ROLE;
     const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
     const token = url.searchParams.get('token') || req.headers.get('x-agent-secret') || (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim() || '';
@@ -1892,7 +1904,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
   if (type === 'backfill-permalinks') {
     // One-off: scan all done social_post tasks lacking ig_permalink/fb_permalink,
     // query Graph API for each, and fill content_data with public URLs.
-    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey = SERVICE_ROLE;
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
     const cronSecret = Deno.env.get('CRON_SECRET') ?? '';
     const authHeader = req.headers.get('authorization') ?? '';
@@ -1973,7 +1985,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
   }
 
   if (type === 'publish-ready') {
-    const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey      = SERVICE_ROLE;
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
     const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
     const authHeader  = req.headers.get('authorization') ?? '';
@@ -2662,7 +2674,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
   if (type === 'auto-content') {
     const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
-    const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey      = SERVICE_ROLE;
     const authHeader  = req.headers.get('authorization') ?? '';
     const token       = authHeader.replace('Bearer ', '').trim()
                      || req.headers.get('x-agent-secret') || '';
@@ -2844,7 +2856,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
   if (type === 'weekly-marketing-plan') {
     const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
-    const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey      = SERVICE_ROLE;
     const authHeader  = req.headers.get('authorization') ?? '';
     const token       = authHeader.replace('Bearer ', '').trim()
                      || req.headers.get('x-agent-secret') || '';
@@ -3119,7 +3131,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
   // ── QA-CONTENT ───────────────────────────────────────────────────────
   if (type === 'qa-content') {
     // Auth: admin JWT or service role key (same as content-run)
-    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey = SERVICE_ROLE;
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
     const cronSecret = Deno.env.get('CRON_SECRET') ?? '';
     const authHeader = req.headers.get('authorization') ?? '';
@@ -3352,7 +3364,7 @@ Score the total 0-30. Return ONLY valid JSON:
           await fetch(publishUrl, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''}`,
+              'Authorization': `Bearer ${SERVICE_ROLE}`,
               'Content-Type': 'application/json',
             },
           });
@@ -3402,7 +3414,7 @@ Score the total 0-30. Return ONLY valid JSON:
   // Body: { caption_he?, caption_en?, slogan, product_id, lang, persona_id? }
   // Returns: { score: 0-100, issues: string[], fix_suggestions: string[], breakdown: {...} }
   if (type === 'copy-qa') {
-    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey = SERVICE_ROLE;
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
     const cronSecret = Deno.env.get('CRON_SECRET') ?? '';
     const authHeader = req.headers.get('authorization') ?? '';
@@ -3559,7 +3571,7 @@ ${personaId ? `Persona: ${personaId}\n` : ''}${sloganMismatch ? '⚠️ NOTE: pr
   if (type === 'generate-slogan') {
     const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
-    const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey      = SERVICE_ROLE;
     const authHeader  = req.headers.get('authorization') ?? '';
     const token       = url.searchParams.get('token') || authHeader.replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
     const isAuthed = (cronSecret && token === cronSecret) || (agentSecret && token === agentSecret) || (svcKey && token === svcKey);
@@ -4748,7 +4760,7 @@ const CARE_CAP_HE = [
   if (type === 'security-scan') {
     const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
-    const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey      = SERVICE_ROLE;
     const authHeader  = req.headers.get('authorization') ?? '';
     const token       = url.searchParams.get('token') || authHeader.replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
     const isAuthed = (cronSecret && token === cronSecret) || (agentSecret && token === agentSecret) || (svcKey && token === svcKey);
@@ -4863,7 +4875,7 @@ const CARE_CAP_HE = [
 
   // ── Shared auth helper for video pipeline routes ──
   function checkVideoAuth(r: Request, u: URL): boolean {
-    const svcKey2      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey2      = SERVICE_ROLE;
     const cronSecret2  = Deno.env.get('CRON_SECRET') ?? '';
     const agentSecret3 = Deno.env.get('AGENT_SECRET') ?? '';
     const ah  = r.headers.get('authorization') ?? '';
@@ -6039,7 +6051,7 @@ ${items.join('\n')}
     const t0 = Date.now();
     const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
-    const svcKey      = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey      = SERVICE_ROLE;
     const authHeader  = req.headers.get('authorization') ?? '';
     const token       = url.searchParams.get('token') || authHeader.replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
     const isAuthed = (cronSecret && token === cronSecret) || (agentSecret && token === agentSecret) || (svcKey && token === svcKey);
@@ -6222,7 +6234,7 @@ ${items.join('\n')}
   if (type === 'weekly-slogan-product') {
     const cronSecret = Deno.env.get('CRON_SECRET') ?? '';
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
-    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey = SERVICE_ROLE;
     const wToken = url.searchParams.get('token') || (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
     const wAuthed = (cronSecret && wToken === cronSecret) || (agentSecret && wToken === agentSecret) || (svcKey && wToken === svcKey);
     if (!wAuthed && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);
@@ -6371,7 +6383,7 @@ ${items.join('\n')}
   if (type === 'review-slogan-submissions') {
     const cronSecret = Deno.env.get('CRON_SECRET') ?? '';
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
-    const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const svcKey = SERVICE_ROLE;
     const rToken = url.searchParams.get('token') || (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim() || req.headers.get('x-agent-secret') || '';
     const rAuthed = (cronSecret && rToken === cronSecret) || (agentSecret && rToken === agentSecret) || (svcKey && rToken === svcKey);
     if (!rAuthed && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);

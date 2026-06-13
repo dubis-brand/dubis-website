@@ -1,7 +1,13 @@
 // DUBIS TikTok content v5 - DIRECT Late.com API + RPC vault access + priority fix
 import { createClient } from 'npm:@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
-const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+// Service-role key — rotation 2026-06: prefer the sb_secret 'dubissecretkey' key (Supabase
+// injects it in SUPABASE_SECRET_KEYS as JSON), fall back to the legacy service_role JWT
+// during the transition, so the legacy + exposed 'default' keys can be disabled with zero downtime.
+const SERVICE_ROLE = (() => {
+  try { const k = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') ?? '{}')['dubissecretkey']; if (k) return k as string; } catch { /* not migrated yet */ }
+  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+})();
 const RESEND_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
 
 async function vaultGet(sb, name) {
