@@ -154,6 +154,11 @@ async function checkout() {
     closeCart()
     renderOrderSummary();
 
+    // Refresh the live USD→ILS rate at checkout time so the ₪ estimate reflects
+    // a representative rate for the moment of purchase (not whatever loaded when
+    // the page first opened). Non-blocking — it re-renders the summary on land.
+    if (typeof window.fetchUsdToIlsRate === 'function') { window.fetchUsdToIlsRate(); }
+
     document.getElementById('paypal-modal').classList.add('open');
     document.getElementById('paypal-modal-overlay').classList.add('open');
     document.body.style.overflow = 'hidden';
@@ -1098,7 +1103,7 @@ function renderOrderSummary() {
     // when customer browses in Hebrew with ILS shown, we explicitly disclose
     // the USD charge so they aren't surprised at the PayPal handoff.
     const isHe = (typeof currentLang !== 'undefined' && currentLang === 'he');
-    const ils = (usd) => '₪' + Math.round(usd * (typeof USD_TO_ILS !== 'undefined' ? USD_TO_ILS : 3.63));
+    const ils = (usd) => '₪' + Math.round(usd * (typeof USD_TO_ILS !== 'undefined' ? USD_TO_ILS : 2.9));
     const fmt = (usd) => isHe ? ils(usd) : '$' + Number(usd).toFixed(2);
     const fmtFree = isHe ? '<span style="color:var(--honey);font-weight:600">חינם 🎉</span>' : '<span style="color:var(--honey);font-weight:600">FREE 🎉</span>';
 

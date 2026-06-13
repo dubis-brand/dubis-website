@@ -14,7 +14,7 @@ function getStockNum(id) {
 }
 
 // ── Currency by language ──
-let USD_TO_ILS = 3.63; // fallback — updated daily from API
+let USD_TO_ILS = 2.9; // fallback ONLY — live rate from open.er-api.com overrides it
 (async function fetchRate() {
   try {
     const r = await fetch('https://open.er-api.com/v6/latest/USD');

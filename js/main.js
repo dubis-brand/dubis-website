@@ -549,20 +549,35 @@ function isColorAnyInStock(productId, color, sizes) {
 }
 
 // ── Currency by language ──
-let USD_TO_ILS = 3.63; // fallback — updated daily from API
-(async function fetchRate() {
+// 2026-06-13: fallback lowered 3.63 → 2.9 and demoted to a genuine LAST RESORT.
+// Root cause we fixed alongside this: open.er-api.com was NOT in the CSP
+// connect-src, so the browser silently blocked the live fetch and EVERY
+// customer saw the stale 3.63 fallback (same failure mode as the Clarity CSP
+// block, 2026-06-07). With the host now whitelisted the live published rate
+// loads on page load AND is re-fetched when checkout opens, so the ₪ shown is
+// a representative rate for the time of purchase — not a baked-in constant.
+let USD_TO_ILS = 2.9; // fallback ONLY — live rate from open.er-api.com overrides it
+window.USD_TO_ILS = USD_TO_ILS;
+async function fetchUsdToIlsRate() {
   try {
     const r = await fetch('https://open.er-api.com/v6/latest/USD');
     if (r.ok) {
       const d = await r.json();
       if (d.rates && d.rates.ILS) {
         USD_TO_ILS = d.rates.ILS;
-        // re-render if products already shown
+        window.USD_TO_ILS = USD_TO_ILS;
+        // re-render anything already priced on screen with the fresh rate
         if (document.querySelector('.product-card')) renderProducts();
+        if (document.querySelector('#paypal-modal.open') && typeof renderOrderSummary === 'function') {
+          try { renderOrderSummary(); } catch (e) { /* modal not ready */ }
+        }
       }
     }
   } catch(e) { /* keep fallback */ }
-})();
+  return USD_TO_ILS;
+}
+window.fetchUsdToIlsRate = fetchUsdToIlsRate;
+fetchUsdToIlsRate(); // initial fetch on load
 function formatPrice(usdPrice) {
   // 2026-05-02 (revised): Hebrew → ₪ everywhere, English → $ everywhere.
   // Earlier same-day fix forced everything to USD which over-corrected.
