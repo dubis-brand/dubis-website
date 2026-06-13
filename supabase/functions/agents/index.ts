@@ -57,8 +57,8 @@ const SELLABLE_TYPES: Array<{ type: string; gender: string; weight: number; auto
   { type: 'longsleeve', gender: 'women',  weight: 2, autoEligible: true  },
   { type: 'cap',        gender: 'unisex', weight: 2, autoEligible: false }, // AS Colour 1114 — verify mockup → enable
   { type: 'capemb',     gender: 'unisex', weight: 1, autoEligible: false }, // Flexfit 6245 — verify mockup → enable
-  { type: 'vneck',      gender: 'unisex', weight: 4, autoEligible: false }, // Gildan 64v00 (gildan TEMPLATES live 2026-06-13) — verify mockup → enable
-  { type: 'tanktop',    gender: 'unisex', weight: 4, autoEligible: false }, // Gildan 5200 (gildan TEMPLATES live 2026-06-13) — verify mockup → enable
+  { type: 'vneck',      gender: 'unisex', weight: 4, autoEligible: true  }, // Gildan 64v00 — mockup verified at catalog parity 2026-06-13 (#37)
+  { type: 'tanktop',    gender: 'unisex', weight: 4, autoEligible: true  }, // Gildan 5200 — mockup verified at catalog parity 2026-06-13 (#38)
 ];
 
 // ── Service-role key — rotation 2026-06 ──
