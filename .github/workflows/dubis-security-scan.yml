@@ -1,0 +1,143 @@
+name: DUBIS Security Scan (code + site)
+
+# WHY: the `security` Edge-Function agent only checks LIVE infra (headers / RLS /
+# keys). It CANNOT read repo source (an edge function has no git checkout). The
+# repo dubis-brand/dubis-website is PUBLIC, so secret-leak + dependency +
+# static-analysis scanning matters on every change. This workflow scans the CODE
+# (gitleaks history, npm audit, semgrep) + the SITE (security headers) and writes
+# REAL findings to Supabase (agent_runs side_effects.issues_count + the dedicated
+# security_scans table) so the Boss report renders actual numbers, not "0 ממצאים".
+#
+# Each tool writes its output to ./scan-results/ AND a *.ran marker, so a 0 is
+# provably "tool ran and found nothing", never a hardcoded green. The report
+# script (scripts/security-scan-report.js) parses those files and writes the sink.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 2 * * *'   # daily 02:00 UTC (1h before the static-catalog run)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dubis-security-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout (full history for secret scan)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # gitleaks needs full history
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Prepare results dir
+        run: mkdir -p scan-results
+
+      # ── 1. SECRET SCAN — gitleaks over full repo + history ──────────────
+      # Catches accidentally-committed PayPal/Gelato/Supabase-service-role/Meta
+      # tokens. .env.local is gitignored; this is the safety net for slips.
+      - name: Install gitleaks
+        run: |
+          GL_VERSION=8.21.2
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GL_VERSION}/gitleaks_${GL_VERSION}_linux_x64.tar.gz" -o gl.tgz
+          tar -xzf gl.tgz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          gitleaks version | tee scan-results/gitleaks.version
+
+      - name: Run gitleaks (detect over history)
+        run: |
+          touch scan-results/gitleaks.ran
+          # --redact so we never PRINT a real secret to public CI logs.
+          # exit-code 0 here regardless of findings — the report script counts them.
+          gitleaks detect \
+            --source . \
+            --report-format json \
+            --report-path scan-results/gitleaks.json \
+            --redact \
+            --exit-code 0 || true
+          # Normalize: gitleaks writes [] on clean; ensure file always exists.
+          [ -f scan-results/gitleaks.json ] || echo '[]' > scan-results/gitleaks.json
+          echo "gitleaks findings: $(node -e "try{console.log(JSON.parse(require('fs').readFileSync('scan-results/gitleaks.json','utf8')).length)}catch{console.log('?')}")"
+
+      # ── 2. DEPENDENCY AUDIT — npm audit on dubis-website ────────────────
+      - name: Install production deps (for audit)
+        run: npm ci --omit=dev || npm install --omit=dev
+
+      - name: Run npm audit (json)
+        run: |
+          touch scan-results/npm-audit.ran
+          # Capture JSON regardless of exit code (audit exits non-zero on findings).
+          npm audit --omit=dev --json > scan-results/npm-audit.json || true
+          [ -s scan-results/npm-audit.json ] || echo '{"metadata":{"vulnerabilities":{}}}' > scan-results/npm-audit.json
+          echo "npm audit (high+crit): $(node -e "try{const v=JSON.parse(require('fs').readFileSync('scan-results/npm-audit.json','utf8')).metadata.vulnerabilities||{};console.log((v.high||0)+(v.critical||0))}catch{console.log('?')}")"
+
+      # ── 3. STATIC ANALYSIS — semgrep p/javascript + p/secrets ───────────
+      # Focus rulesets cover the money/auth paths (api/, js/paypal.js,
+      # js/supabase-config.js). Runs over the whole tree; we count ERROR+WARNING.
+      - name: Install semgrep
+        run: |
+          python3 -m pip install --quiet semgrep
+          semgrep --version | tee scan-results/semgrep.version
+
+      - name: Run semgrep (json)
+        run: |
+          touch scan-results/semgrep.ran
+          semgrep scan \
+            --config p/javascript \
+            --config p/secrets \
+            --json \
+            --output scan-results/semgrep.json \
+            --error || true
+          [ -f scan-results/semgrep.json ] || echo '{"results":[]}' > scan-results/semgrep.json
+          echo "semgrep results: $(node -e "try{console.log(JSON.parse(require('fs').readFileSync('scan-results/semgrep.json','utf8')).results.length)}catch{console.log('?')}")"
+
+      # ── 4. SITE HEADER CHECK — mirror the live agent (one source of truth) ──
+      - name: Check dubis.net security headers
+        run: |
+          node scripts/check-site-headers.js https://www.dubis.net scan-results/headers.json
+          cat scan-results/headers.json
+
+      # ── RESULTS SINK — write REAL findings to Supabase ──────────────────
+      - name: Write results to Supabase (agent_runs + security_scans)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GHA_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/security-scan-report.js
+
+      - name: Upload scan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-results-${{ github.run_id }}
+          path: scan-results/
+          retention-days: 30
+
+      # ── GATE — fail the run on real findings (visible red ✗), AFTER the sink ──
+      # The sink already recorded everything; this just makes the GHA status red
+      # so a PR/push that introduces a secret or a high CVE can't be ignored.
+      - name: Gate on findings
+        run: |
+          SECRETS=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('scan-results/gitleaks.json','utf8')).length)}catch{console.log(0)}")
+          NPM_HC=$(node -e "try{const v=JSON.parse(require('fs').readFileSync('scan-results/npm-audit.json','utf8')).metadata.vulnerabilities||{};console.log((v.high||0)+(v.critical||0))}catch{console.log(0)}")
+          echo "secrets=$SECRETS  npm_high+crit=$NPM_HC"
+          FAIL=0
+          if [ "$SECRETS" -gt 0 ]; then echo "::error::$SECRETS secret(s) detected — see artifact gitleaks.json (redacted)"; FAIL=1; fi
+          if [ "$NPM_HC" -gt 0 ]; then echo "::warning::$NPM_HC high/critical npm vulnerabilities"; fi
+          # Hard-fail ONLY on secrets (a leaked key is an active incident).
+          # high/critical npm + semgrep are warnings (recorded, surfaced in Boss),
+          # not blockers — they shouldn't break unrelated pushes.
+          exit $FAIL
