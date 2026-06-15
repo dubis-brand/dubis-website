@@ -312,6 +312,47 @@ async function tryAutoHideFullyOosProducts(sb: SB): Promise<{
 }
 
 // =============================================================
+// B.14 — Auto-close stale slogan-approval product tasks (2026-06-15, oren ask).
+// Per the DUBIS open-list policy there is NO slogan-approval gate — every active
+// DB slogan is approved. Old `agent_id='product', status='pending_approval'`
+// tasks titled "סלוגן חדש: …" are dead manual gates that keep surfacing (e.g.
+// "Just trying to MAINTAIN." stuck 44 days). Anything older than 30 days is
+// closed (status='done' + audit note) so it stops nagging. Recent ones (a real
+// fresh visual-approval gate) are left alone. Each close is logged as an autofix.
+// =============================================================
+async function tryCloseStaleSloganTasks(sb: SB): Promise<{ closed: Array<{ id: string; title: string; days: number }>; attempted: boolean }> {
+  const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+  const { data: stale } = await sb.from('agent_tasks')
+    .select('id, title, created_at')
+    .eq('agent_id', 'product')
+    .eq('status', 'pending_approval')
+    .ilike('title', '%סלוגן חדש%')
+    .lt('created_at', cutoff)
+    .order('created_at', { ascending: true })
+    .limit(20);
+  const rows = (stale || []) as Array<Record<string, unknown>>;
+  if (rows.length === 0) return { closed: [], attempted: false };
+  const closed: Array<{ id: string; title: string; days: number }> = [];
+  for (const r of rows) {
+    const id = r.id as string;
+    const days = Math.floor(hoursSince(r.created_at as string) / 24);
+    // Use 'rejected' (a valid_status), NOT 'done' — the proof-guard trigger
+    // blocks status='done' on product tasks without proof_of_completion. Closing
+    // a stale slogan gate is a rejection, not a completion, so 'rejected' fits.
+    const { error } = await sb.from('agent_tasks')
+      .update({ status: 'rejected', updated_at: new Date().toISOString(), notes: `נסגר אוטומטית ${new Date().toISOString().slice(0,10)} — אין שער-אישור סלוגן (מדיניות open-list). היה תקוע ${days} ימים.` })
+      .eq('id', id);
+    if (!error) {
+      closed.push({ id, title: String(r.title || ''), days });
+      await recordAutoFix(sb, { action: 'close_stale_slogan_task', target: id, succeeded: true, side_effects: { title: r.title, days } });
+    } else {
+      await recordAutoFix(sb, { action: 'close_stale_slogan_task', target: id, succeeded: false, error: error.message });
+    }
+  }
+  return { closed, attempted: true };
+}
+
+// =============================================================
 // B.12 — Auto-retry failed product pipeline rows (oren 2026-05-23).
 // Re-dispatches `boss-approved-product` via GitHub Actions for queue rows
 // in `failed` state that have NOT been retried yet. Capped at 5 per run.
@@ -2006,7 +2047,15 @@ Deno.serve(async (req: Request) => {
   const ticketing = await autoTicketStuckOrders(sb);
   const oosHide = await tryAutoHideFullyOosProducts(sb);          // B.11
   const pipelineRetry = await tryAutoRetryFailedPipeline(sb);     // B.12
+  const staleSlogans = await tryCloseStaleSloganTasks(sb);        // B.14
   const autoFixes: AutoFix[] = [];
+  if (staleSlogans.closed.length > 0) {
+    autoFixes.push({
+      action: 'close_stale_slogan_task',
+      succeeded: true,
+      note: `סגרתי ${staleSlogans.closed.length} משימות סלוגן ישנות (אין שער-אישור): ${staleSlogans.closed.map(c => `"${c.title.replace(/^.*?:\s*/, '')}" (${c.days}י)`).join(', ')}`,
+    });
+  }
   if (gelatoStockHeal.attempted) autoFixes.push({ action: 'gelato_stock_retry', succeeded: gelatoStockHeal.healed, note: gelatoStockHeal.summary || gelatoStockHeal.error });
   for (const tid of ticketing.ticketIds) autoFixes.push({ action: 'gelato_auto_ticket', succeeded: true, target: tid });
   for (const err of ticketing.errors) autoFixes.push({ action: 'gelato_auto_ticket', succeeded: false, error: err });
