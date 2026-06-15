@@ -2517,6 +2517,12 @@ ${planSectionHtml}
 
   // preview=1 → return the report + computed truth-metrics WITHOUT sending email
   // or writing boss_reports/agent_runs. Safe verification path for agents.
+  // preview=1&html=1 → return the rendered HTML directly (so agents can grep the
+  // actual report, e.g. confirm zero v_pub_url / real #product-N links). Auth-gated
+  // (isAuthed already ran). Never sends email or writes DB.
+  if (isPreview && url.searchParams.get('html') === '1') {
+    return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  }
   if (isPreview) {
     return json({
       ok: true, preview: true, mode, version: 'v11-truth',
