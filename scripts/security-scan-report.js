@@ -47,11 +47,13 @@ function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
 
 // ── 1. gitleaks ──────────────────────────────────────────────
 // gitleaks --report-format json writes an ARRAY of leak objects (empty [] = clean).
-// We also accept a "ran" marker file so a 0 is provably "tool ran", not "tool absent".
+// gitleaks auto-honors .gitleaksignore, so this array = NEW (un-baselined) leaks.
+// We count the baseline separately for visibility (the known rotation backlog).
+// A "ran" marker file proves a 0 is "tool ran", not "tool absent".
 function parseGitleaks() {
   const ran = readText('gitleaks.ran') !== null;
   const report = readJSON('gitleaks.json');
-  let count = 0;
+  let count = 0;          // NEW (un-baselined) secrets — actionable
   let samples = [];
   if (Array.isArray(report)) {
     count = report.length;
@@ -62,7 +64,13 @@ function parseGitleaks() {
       commit: (r.Commit || '').slice(0, 8),
     }));
   }
-  return { ran, count, samples, version: (readText('gitleaks.version') || '').trim() || 'gitleaks' };
+  // Baseline = accepted historical leaks on the rotation backlog (status.md).
+  let backlog = 0;
+  try {
+    const lines = fs.readFileSync(path.join(process.cwd(), '.gitleaksignore'), 'utf8').split('\n');
+    backlog = lines.map(l => l.trim()).filter(l => l && !l.startsWith('#')).length;
+  } catch { /* no baseline yet */ }
+  return { ran, count, backlog, samples, version: (readText('gitleaks.version') || '').trim() || 'gitleaks' };
 }
 
 // ── 2. npm audit --json ──────────────────────────────────────
@@ -129,8 +137,12 @@ function parseHeaders() {
   const headers = parseHeaders();
 
   // ── Real finding rollup ──
-  // Secrets = P0 (any), npm high+critical, semgrep ERROR/WARNING, missing headers.
-  const secretsFound = gitleaks.count;
+  // Secrets = NEW leaks (P0, any), npm high+critical, semgrep ERROR/WARNING,
+  // missing headers. The KNOWN backlog (baselined historical leaks) is reported
+  // for visibility but does NOT inflate the actionable issues_count — it's
+  // tracked on the rotation backlog (status.md), not a per-run regression.
+  const secretsFound = gitleaks.count;          // NEW, actionable
+  const secretsBacklog = gitleaks.backlog;      // known historical, baselined
   const npmHighCrit = npm.high + npm.critical;
   const sastFindings = semgrep.count;
   const headersMissingCount = headers.ran ? headers.missing.length : 0;
@@ -157,7 +169,7 @@ function parseHeaders() {
       : null);
 
   const summaryParts = [
-    `secrets=${secretsFound}`,
+    `secrets_new=${secretsFound}${secretsBacklog ? ` (backlog=${secretsBacklog})` : ''}`,
     `npm(crit=${npm.critical},high=${npm.high},mod=${npm.moderate})`,
     `sast=${sastFindings}`,
     `headers_ok=${headers.ran ? headers.ok : 'n/a'}${headersMissingCount ? `(missing:${headers.missing.join(',')})` : ''}`,
@@ -167,7 +179,7 @@ function parseHeaders() {
 
   // Detail blob (also drives the dedicated table + Boss drill-down if wired).
   const details = {
-    gitleaks: { ran: gitleaks.ran, count: gitleaks.count, version: gitleaks.version, samples: gitleaks.samples },
+    gitleaks: { ran: gitleaks.ran, new: gitleaks.count, backlog_baselined: secretsBacklog, version: gitleaks.version, samples: gitleaks.samples },
     npm_audit: { ran: npm.ran, critical: npm.critical, high: npm.high, moderate: npm.moderate, low: npm.low, info: npm.info },
     semgrep: { ran: semgrep.ran, findings: semgrep.count, total_incl_info: semgrep.total, version: semgrep.version, samples: semgrep.samples },
     headers: { ran: headers.ran, ok: headers.ok, status: headers.status, missing: headers.missing },
@@ -177,8 +189,9 @@ function parseHeaders() {
   // ── side_effects — EXACT shape the Boss opinionSecurity() reads ──
   const sideEffects = {
     source: 'gha:dubis-security-scan',
-    issues_count: issuesCount,          // ← Boss reads this
-    secrets_found: secretsFound,
+    issues_count: issuesCount,          // ← Boss reads this (actionable: NEW secrets + npm h/c + sast + missing headers + tool gaps)
+    secrets_found: secretsFound,        // NEW (un-baselined) leaks
+    secrets_backlog: secretsBacklog,    // known historical leaks on the rotation backlog (visibility only)
     npm_critical: npm.critical,
     npm_high: npm.high,
     npm_moderate: npm.moderate,
@@ -192,13 +205,20 @@ function parseHeaders() {
     trigger: process.env.GITHUB_EVENT_NAME || null,
     details,
   };
-  // If secrets leaked, surface as `error` too so extractError() shows it as P0 context.
-  if (secretsFound > 0) sideEffects.error = `${secretsFound} secret(s) detected in repo/history — see GHA run`;
+  // If a NEW secret leaked, surface as `error` too so extractError() shows P0 context.
+  if (secretsFound > 0) sideEffects.error = `${secretsFound} NEW secret(s) introduced — rotate immediately, see GHA run`;
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
   // ── Sink 1: agent_runs (mandatory) ──
-  const runStatus = passed ? 'completed' : 'failed'; // findings → failed so Boss flags P0/P1
+  // status reflects whether the SCAN ran cleanly, NOT whether it found issues.
+  // Boss opinionSecurity() reads status==='failed' as "the agent is broken" (P0)
+  // and reads side_effects.issues_count>0 (with status ok) as "N findings" (P1).
+  // So we mark 'failed' ONLY when something is genuinely broken: a NEW leaked
+  // secret (active incident) or a tool that didn't run (blind spot). npm/sast/
+  // header/backlog findings are normal scan output → 'completed' + issues_count.
+  const scanBroken = secretsFound > 0 || toolGaps.length > 0;
+  const runStatus = scanBroken ? 'failed' : 'completed';
   const { data: runRow, error: runErr } = await sb.from('agent_runs').insert({
     agent_id: 'security',
     status: runStatus,
@@ -249,7 +269,7 @@ function parseHeaders() {
       '',
       '| Check | Result |',
       '|---|---|',
-      `| Secrets (gitleaks) | ${gitleaks.ran ? secretsFound : '❌ did not run'} |`,
+      `| Secrets (gitleaks) | new: ${gitleaks.ran ? secretsFound : '❌ did not run'}${secretsBacklog ? ` · backlog: ${secretsBacklog} (rotation)` : ''} |`,
       `| npm audit | crit ${npm.critical} · high ${npm.high} · mod ${npm.moderate} ${npm.ran ? '' : '(❌ did not run)'} |`,
       `| Static analysis (semgrep) | ${semgrep.ran ? sastFindings : '❌ did not run'} |`,
       `| Site headers | ${headers.ran ? (headers.ok ? '✅ ok' : `⚠️ missing: ${headers.missing.join(', ')}`) : '❌ did not run'} |`,

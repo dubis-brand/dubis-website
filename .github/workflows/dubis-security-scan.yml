@@ -62,15 +62,14 @@ jobs:
           touch scan-results/gitleaks.ran
           # --redact so we never PRINT a real secret to public CI logs.
           # exit-code 0 here regardless of findings — the report script counts them.
-          # --gitleaks-ignore-path to /dev/null so the SINK gets the FULL count
-          # (incl. the baselined backlog); the gate applies .gitleaksignore itself
-          # to decide what is NEW. Otherwise gitleaks auto-excludes baselined ones
-          # and the Boss report would under-count.
+          # gitleaks auto-honors .gitleaksignore (repo root), so gitleaks.json =
+          # NEW (un-baselined) secrets only. That is exactly what should drive the
+          # actionable count + the gate. The KNOWN backlog (baseline) is counted
+          # separately by the report script from .gitleaksignore for visibility.
           gitleaks detect \
             --source . \
             --report-format json \
             --report-path scan-results/gitleaks.json \
-            --gitleaks-ignore-path /dev/null \
             --redact \
             --exit-code 0 || true
           # Normalize: gitleaks writes [] on clean; ensure file always exists.
@@ -139,20 +138,15 @@ jobs:
       # unrelated change, but the report still counts them for the Boss section.
       - name: Gate on NEW findings
         run: |
-          NEW_SECRETS=$(node -e "
-            const fs=require('fs');
-            let all=[]; try{all=JSON.parse(fs.readFileSync('scan-results/gitleaks.json','utf8'))||[]}catch{}
-            let base=new Set();
-            try{fs.readFileSync('.gitleaksignore','utf8').split('\n').forEach(l=>{l=l.trim();if(l&&!l.startsWith('#'))base.add(l)})}catch{}
-            const news=all.filter(r=>!base.has(r.Fingerprint));
-            console.log(news.length);
-          ")
-          TOTAL_SECRETS=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('scan-results/gitleaks.json','utf8')).length)}catch{console.log(0)}")
+          # gitleaks already applied .gitleaksignore, so gitleaks.json = NEW
+          # (un-baselined) secrets only. Any entry here is a freshly-introduced leak.
+          NEW_SECRETS=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('scan-results/gitleaks.json','utf8')).length)}catch{console.log(0)}")
+          BACKLOG=$(node -e "try{console.log(require('fs').readFileSync('.gitleaksignore','utf8').split('\n').map(l=>l.trim()).filter(l=>l&&!l.startsWith('#')).length)}catch{console.log(0)}")
           NPM_HC=$(node -e "try{const v=JSON.parse(require('fs').readFileSync('scan-results/npm-audit.json','utf8')).metadata.vulnerabilities||{};console.log((v.high||0)+(v.critical||0))}catch{console.log(0)}")
-          echo "secrets total=$TOTAL_SECRETS  new(not baselined)=$NEW_SECRETS  npm_high+crit=$NPM_HC"
+          echo "new_secrets=$NEW_SECRETS  baselined_backlog=$BACKLOG  npm_high+crit=$NPM_HC"
           FAIL=0
           if [ "$NEW_SECRETS" -gt 0 ]; then echo "::error::$NEW_SECRETS NEW secret(s) introduced (not in .gitleaksignore baseline) — rotate the key, do NOT baseline it"; FAIL=1; fi
-          if [ "$TOTAL_SECRETS" -gt "$NEW_SECRETS" ]; then echo "::warning::$((TOTAL_SECRETS-NEW_SECRETS)) known historical secret(s) on the rotation backlog (baselined) — counted in the Boss report, not blocking"; fi
+          if [ "$BACKLOG" -gt 0 ]; then echo "::warning::$BACKLOG known historical secret(s) on the rotation backlog (baselined) — surfaced in the Boss report, not blocking"; fi
           if [ "$NPM_HC" -gt 0 ]; then echo "::warning::$NPM_HC high/critical npm vulnerabilities (recorded + surfaced in Boss, not blocking)"; fi
           # Hard-fail ONLY on a NEW leaked key (an active incident). Historical
           # backlog secrets + npm + semgrep are warnings: recorded in the sink and
