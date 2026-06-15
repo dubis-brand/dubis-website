@@ -62,10 +62,15 @@ jobs:
           touch scan-results/gitleaks.ran
           # --redact so we never PRINT a real secret to public CI logs.
           # exit-code 0 here regardless of findings — the report script counts them.
+          # --gitleaks-ignore-path to /dev/null so the SINK gets the FULL count
+          # (incl. the baselined backlog); the gate applies .gitleaksignore itself
+          # to decide what is NEW. Otherwise gitleaks auto-excludes baselined ones
+          # and the Boss report would under-count.
           gitleaks detect \
             --source . \
             --report-format json \
             --report-path scan-results/gitleaks.json \
+            --gitleaks-ignore-path /dev/null \
             --redact \
             --exit-code 0 || true
           # Normalize: gitleaks writes [] on clean; ensure file always exists.
@@ -126,18 +131,30 @@ jobs:
           path: scan-results/
           retention-days: 30
 
-      # ── GATE — fail the run on real findings (visible red ✗), AFTER the sink ──
-      # The sink already recorded everything; this just makes the GHA status red
-      # so a PR/push that introduces a secret or a high CVE can't be ignored.
-      - name: Gate on findings
+      # ── GATE — fail the run on NEW real findings (visible red ✗), AFTER the sink ──
+      # The sink already recorded the FULL counts (Boss shows the backlog). This
+      # gate hard-fails ONLY on secrets NOT in the .gitleaksignore baseline — i.e.
+      # a freshly-introduced leak in this push/PR. The 24 known historical leaks
+      # (rotation backlog, status.md) are baselined so they don't red-X every
+      # unrelated change, but the report still counts them for the Boss section.
+      - name: Gate on NEW findings
         run: |
-          SECRETS=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('scan-results/gitleaks.json','utf8')).length)}catch{console.log(0)}")
+          NEW_SECRETS=$(node -e "
+            const fs=require('fs');
+            let all=[]; try{all=JSON.parse(fs.readFileSync('scan-results/gitleaks.json','utf8'))||[]}catch{}
+            let base=new Set();
+            try{fs.readFileSync('.gitleaksignore','utf8').split('\n').forEach(l=>{l=l.trim();if(l&&!l.startsWith('#'))base.add(l)})}catch{}
+            const news=all.filter(r=>!base.has(r.Fingerprint));
+            console.log(news.length);
+          ")
+          TOTAL_SECRETS=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('scan-results/gitleaks.json','utf8')).length)}catch{console.log(0)}")
           NPM_HC=$(node -e "try{const v=JSON.parse(require('fs').readFileSync('scan-results/npm-audit.json','utf8')).metadata.vulnerabilities||{};console.log((v.high||0)+(v.critical||0))}catch{console.log(0)}")
-          echo "secrets=$SECRETS  npm_high+crit=$NPM_HC"
+          echo "secrets total=$TOTAL_SECRETS  new(not baselined)=$NEW_SECRETS  npm_high+crit=$NPM_HC"
           FAIL=0
-          if [ "$SECRETS" -gt 0 ]; then echo "::error::$SECRETS secret(s) detected — see artifact gitleaks.json (redacted)"; FAIL=1; fi
-          if [ "$NPM_HC" -gt 0 ]; then echo "::warning::$NPM_HC high/critical npm vulnerabilities"; fi
-          # Hard-fail ONLY on secrets (a leaked key is an active incident).
-          # high/critical npm + semgrep are warnings (recorded, surfaced in Boss),
-          # not blockers — they shouldn't break unrelated pushes.
+          if [ "$NEW_SECRETS" -gt 0 ]; then echo "::error::$NEW_SECRETS NEW secret(s) introduced (not in .gitleaksignore baseline) — rotate the key, do NOT baseline it"; FAIL=1; fi
+          if [ "$TOTAL_SECRETS" -gt "$NEW_SECRETS" ]; then echo "::warning::$((TOTAL_SECRETS-NEW_SECRETS)) known historical secret(s) on the rotation backlog (baselined) — counted in the Boss report, not blocking"; fi
+          if [ "$NPM_HC" -gt 0 ]; then echo "::warning::$NPM_HC high/critical npm vulnerabilities (recorded + surfaced in Boss, not blocking)"; fi
+          # Hard-fail ONLY on a NEW leaked key (an active incident). Historical
+          # backlog secrets + npm + semgrep are warnings: recorded in the sink and
+          # surfaced in the Boss report, but they don't break unrelated pushes.
           exit $FAIL
