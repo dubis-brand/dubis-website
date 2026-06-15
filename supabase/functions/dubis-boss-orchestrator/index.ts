@@ -312,6 +312,47 @@ async function tryAutoHideFullyOosProducts(sb: SB): Promise<{
 }
 
 // =============================================================
+// B.14 — Auto-close stale slogan-approval product tasks (2026-06-15, oren ask).
+// Per the DUBIS open-list policy there is NO slogan-approval gate — every active
+// DB slogan is approved. Old `agent_id='product', status='pending_approval'`
+// tasks titled "סלוגן חדש: …" are dead manual gates that keep surfacing (e.g.
+// "Just trying to MAINTAIN." stuck 44 days). Anything older than 30 days is
+// closed (status='done' + audit note) so it stops nagging. Recent ones (a real
+// fresh visual-approval gate) are left alone. Each close is logged as an autofix.
+// =============================================================
+async function tryCloseStaleSloganTasks(sb: SB): Promise<{ closed: Array<{ id: string; title: string; days: number }>; attempted: boolean }> {
+  const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+  const { data: stale } = await sb.from('agent_tasks')
+    .select('id, title, created_at')
+    .eq('agent_id', 'product')
+    .eq('status', 'pending_approval')
+    .ilike('title', '%סלוגן חדש%')
+    .lt('created_at', cutoff)
+    .order('created_at', { ascending: true })
+    .limit(20);
+  const rows = (stale || []) as Array<Record<string, unknown>>;
+  if (rows.length === 0) return { closed: [], attempted: false };
+  const closed: Array<{ id: string; title: string; days: number }> = [];
+  for (const r of rows) {
+    const id = r.id as string;
+    const days = Math.floor(hoursSince(r.created_at as string) / 24);
+    // Use 'rejected' (a valid_status), NOT 'done' — the proof-guard trigger
+    // blocks status='done' on product tasks without proof_of_completion. Closing
+    // a stale slogan gate is a rejection, not a completion, so 'rejected' fits.
+    const { error } = await sb.from('agent_tasks')
+      .update({ status: 'rejected', updated_at: new Date().toISOString(), notes: `נסגר אוטומטית ${new Date().toISOString().slice(0,10)} — אין שער-אישור סלוגן (מדיניות open-list). היה תקוע ${days} ימים.` })
+      .eq('id', id);
+    if (!error) {
+      closed.push({ id, title: String(r.title || ''), days });
+      await recordAutoFix(sb, { action: 'close_stale_slogan_task', target: id, succeeded: true, side_effects: { title: r.title, days } });
+    } else {
+      await recordAutoFix(sb, { action: 'close_stale_slogan_task', target: id, succeeded: false, error: error.message });
+    }
+  }
+  return { closed, attempted: true };
+}
+
+// =============================================================
 // B.12 — Auto-retry failed product pipeline rows (oren 2026-05-23).
 // Re-dispatches `boss-approved-product` via GitHub Actions for queue rows
 // in `failed` state that have NOT been retried yet. Capped at 5 per run.
@@ -1205,6 +1246,14 @@ async function getLateKey(sb: SB): Promise<string | null> {
   catch { _lateKeyCache = ''; }
   return _lateKeyCache || null;
 }
+// A real TikTok video id is a ~19-digit numeric snowflake. Late.com, before
+// the post finalizes, returns internal placeholders like `v_pub_url~v2-1.765...`
+// — saving those as a /video/{id} URL produces a 404 ("Page not available").
+// Guard: only treat all-digit ids of plausible length as real video ids.
+const TIKTOK_PROFILE_URL = 'https://www.tiktok.com/@dubis.brand';
+function isRealTiktokVideoId(id: string | null | undefined): boolean {
+  return !!id && /^\d{15,}$/.test(String(id).trim());
+}
 async function resolveTiktokUrl(lateId: string, key: string): Promise<string | null> {
   try {
     const r = await fetch(`https://getlate.dev/api/v1/posts/${lateId}`, { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
@@ -1215,7 +1264,12 @@ async function resolveTiktokUrl(lateId: string, key: string): Promise<string | n
     if (String(pf.status || '') !== 'published') return null;
     const vid = pf.platformPostId ? String(pf.platformPostId) : null;
     const user = ((pf.platformSpecificData as Record<string, unknown>)?.tiktokUsername as string) || 'dubis.brand';
-    return vid ? `https://www.tiktok.com/@${user}/video/${vid}` : null;
+    // Only persist a /video/{id} URL when {id} is a genuine numeric TikTok id.
+    // A placeholder (e.g. `v_pub_url~...`) means TikTok hasn't finalized yet —
+    // return null so the row stays empty and we retry next run, rather than
+    // saving a guaranteed-404 link.
+    if (!isRealTiktokVideoId(vid)) return null;
+    return `https://www.tiktok.com/@${user}/video/${vid}`;
   } catch { return null; }
 }
 async function backfillTiktokUrls(sb: SB): Promise<void> {
@@ -1234,12 +1288,22 @@ async function backfillTiktokUrls(sb: SB): Promise<void> {
   }
 }
 
+// Render-time guard: a stored tiktok_url may still be a Late.com placeholder
+// (e.g. .../video/v_pub_url~v2-1.765...) that 404s. Only return a /video/{id}
+// link when {id} is a real numeric TikTok id; otherwise fall back to the
+// public profile so oren never lands on "Page not available".
+function safeTiktokUrl(rawUrl: string): string {
+  const m = rawUrl.match(/\/video\/([^/?#]+)/i);
+  if (!m) return TIKTOK_PROFILE_URL; // not a /video/ shape → profile
+  return isRealTiktokVideoId(m[1]) ? rawUrl : TIKTOK_PROFILE_URL;
+}
+
 // Best published-post link from a content_data blob (POST itself, never the product page).
 function bestPostLink(cd: Record<string, unknown>): { url: string; channel: string } | null {
   if (cd.ig_permalink) return { url: String(cd.ig_permalink), channel: 'IG' };
   if (cd.fb_permalink) return { url: String(cd.fb_permalink), channel: 'FB' };
   const tk = cd.tiktok_url ? String(cd.tiktok_url) : '';
-  if (tk.startsWith('http')) return { url: tk, channel: 'TikTok' };
+  if (tk.startsWith('http')) return { url: safeTiktokUrl(tk), channel: 'TikTok' };
   return null;
 }
 const FMT_ICON: Record<string, string> = { feed_post: '🖼️', carousel: '🎠', reel: '🎬', tiktok: '🎵', story: '📖', unknown: '•' };
@@ -1490,9 +1554,11 @@ async function fetchMarketingToday(sb: SB): Promise<{
     .limit(6);
   const tiktokItems = (ttTasks || []).map(r => {
     const cd = ((r as Record<string, unknown>).content_data as Record<string, unknown>) || {};
+    const rawTt = (cd.tiktok_url as string) || '';
     return {
       caption: String(cd.caption || cd.product_slogan || cd.slogan || '').slice(0, 240),
-      url: (cd.tiktok_url as string) || null,
+      // Sanitize: bad/placeholder ids → public profile (never a 404 /video/ link).
+      url: rawTt.startsWith('http') ? safeTiktokUrl(rawTt) : null,
       product_url: (cd.product_url as string) || null,
       late_id: cd.tiktok_late_post_id ? String(cd.tiktok_late_post_id).slice(0, 16) : null,
       product_slug: cd.persona_id ? String(cd.persona_id) : null,
@@ -1514,6 +1580,22 @@ async function fetchMarketingToday(sb: SB): Promise<{
 const HIGHLIGHTED_ORDERS: Array<{ name_he: string; email?: string; gelato_prefix?: string }> = [
   { name_he: 'הילה טהרלב', email: 'hilateharlev@gmail.com', gelato_prefix: '0cf6a5f1' },
 ];
+
+// Shared human-readable order-status map (our statuses + raw Gelato statuses).
+// Module-level so both the "new orders" list and the tracking section use it.
+const ORDER_STATUS_HE: Record<string, string> = {
+  'pending': '⏳ בהמתנה', 'paid': '⏳ בהמתנה (שולם)', 'created': '⏳ בהמתנה', 'open': '⏳ בהמתנה',
+  'in_production': '🛠️ בייצור', 'in-production': '🛠️ בייצור', 'passed': '🛠️ בייצור',
+  'passed_to_production': '🛠️ בייצור', 'printed': '🛠️ בייצור (הודפס)',
+  'shipped': '📦 נשלח', 'in_transit': '📦 נשלח',
+  'delivered': '✅ נמסר', 'fulfilled': '✅ נמסר',
+  'canceled': '❌ בוטל', 'cancelled': '❌ בוטל', 'refunded': '❌ בוטל (זוכה)',
+  'unknown': '❓ לא ידוע',
+};
+function humanOrderStatus(raw: string | null | undefined): string {
+  const k = (raw || 'unknown').toLowerCase();
+  return ORDER_STATUS_HE[k] || `❓ ${raw}`;
+}
 
 interface TrackedOrderRow {
   id: string;
@@ -1599,12 +1681,160 @@ async function fetchActiveOrdersTracking(sb: SB): Promise<{
 }
 
 // =============================================================
+// NEW products that went live this week (2026-06-15, oren ask).
+// Replaces the "slogans awaiting approval" block — per DUBIS open-list policy
+// every active DB slogan IS approved (no slogan-approval gate). What oren
+// actually wants: which NEW products the system put live + a link to each.
+// Source of truth for go-live = dubis_products.launched_at (set first-launch
+// only by product-visual-approve / auto-product activation in agents/index.ts).
+// =============================================================
+async function fetchNewProductsThisWeek(sb: SB): Promise<Array<{
+  numeric: number; slogan: string; type: string; auto: boolean; launched_at: string; days_ago: number;
+}>> {
+  const since = new Date(Date.now() - 7 * 86400000).toISOString();
+  const { data } = await sb.from('dubis_products')
+    .select('product_id_numeric, slogan, clothing_type, auto_publish, launched_at')
+    .eq('active', true)
+    .gte('launched_at', since)
+    .order('launched_at', { ascending: false })
+    .limit(12);
+  return (data || []).map(r => {
+    const row = r as Record<string, unknown>;
+    const la = String(row.launched_at || '');
+    return {
+      numeric: Number(row.product_id_numeric || 0),
+      slogan: String(row.slogan || ''),
+      type: String(row.clothing_type || ''),
+      auto: row.auto_publish === true,
+      launched_at: la,
+      days_ago: la ? Math.floor(hoursSince(la) / 24) : 0,
+    };
+  }).filter(p => p.numeric > 0);
+}
+function buildNewProductsHtml(rows: Awaited<ReturnType<typeof fetchNewProductsThisWeek>>): string {
+  if (!rows.length) {
+    return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right;margin:0">לא עלו מוצרים חדשים לאוויר ב-7 הימים האחרונים.</p>';
+  }
+  const TYPE_HE: Record<string, string> = {
+    'tshirt':'חולצה', 't-shirt':'חולצה', 'hoodie':'קפוצון', 'zip-hoodie':'קפוצון רוכסן',
+    'long-sleeve':'שרוול ארוך', 'longsleeve':'שרוול ארוך', 'tank-top':'גופייה', 'tanktop':'גופייה',
+    'v-neck':'חולצת V', 'vneck':'חולצת V', 'cap':'כובע', 'cap-emb':'כובע רקום',
+  };
+  const items = rows.map(p => {
+    const typeHe = TYPE_HE[p.type] || p.type;
+    const autoBadge = p.auto ? '<span style="background:#f3eee2;border-radius:4px;padding:1px 5px;color:#7a6a4f;font-size:10px;font-weight:600;margin-right:4px">🤖 אוטומטי</span>' : '';
+    return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;margin:4px 0;border-radius:6px;text-align:right;font-size:12.5px;border-right:3px solid #c8a96e">
+      <div style="margin-bottom:3px">✨ ${autoBadge}<b style="color:#2c2c2c">#${p.numeric}</b> ${esc(typeHe)} <span style="color:#999;font-size:11px">· לפני ${p.days_ago === 0 ? 'פחות מיום' : p.days_ago + ' ימים'}</span></div>
+      <div style="color:#444;font-size:12px;margin-bottom:4px">"${esc(p.slogan)}"</div>
+      <a href="https://www.dubis.net/#product-${p.numeric}" style="color:#c8a96e;font-weight:600;text-decoration:none;font-size:12px">▶ לדף המוצר →</a>
+    </div>`;
+  }).join('');
+  return `<p dir="rtl" style="font-size:12.5px;color:#666;margin:0 0 8px;text-align:right">${rows.length} מוצרים חדשים עלו לאוויר השבוע (כל סלוגן פעיל = מאושר אוטומטית, אין שער-אישור):</p>${items}`;
+}
+
+// =============================================================
+// 📬 Email digest (2026-06-15, oren ask). Reads the last-24h Gmail insights
+// (agent_tasks category='gmail_insight', written by email_monitor / morning-report
+// runGmailScan) → Gemini-summarizes into a short Hebrew digest + concrete
+// recommended actions. HARD filters:
+//   (a) DUBIS's own daily/weekly reports (subject "DUBIS דוח" / "DUBIS פגישה")
+//       — the scanner self-ingests them; never echo them back.
+//   (b) obvious vendor marketing newsletters (Gelato/Meta "grow your business",
+//       "checklist", "newsletter", "unsubscribe"-only blasts).
+// Only emails that need attention (customer mail, platform alerts, payment/
+// fulfillment notices) reach the digest.
+// =============================================================
+const EMAIL_SELF_REPORT_RX = /(DUBIS\s*דוח|DUBIS\s*פגישה|דוח יומי|פגישה שבועית|daily report|weekly report|boss agent)/i;
+const EMAIL_MARKETING_RX = /(grow your business|run your business|growth tips|newsletter|checklist|webinar|new feature|product update|tips? (and|&) tricks|unsubscribe to stop|special offer|% off|black friday|cyber monday|holiday sale|marketing|promo code|discover (new|more)|get inspired|inspiration|trending now|best ?sellers?)/i;
+function emailNeedsAttention(subject: string, from: string): boolean {
+  const s = `${subject} ${from}`;
+  if (EMAIL_SELF_REPORT_RX.test(s)) return false;             // our own report bouncing back
+  if (from.toLowerCase().includes('orders@dubis.net')) return false; // our own sender
+  if (EMAIL_MARKETING_RX.test(subject)) return false;          // vendor marketing newsletter
+  return true;
+}
+async function fetchEmailDigest(sb: SB): Promise<{
+  scanned: number; kept: number; filtered: number;
+  digest: string | null; actions: string[];
+  emails: Array<{ subject: string; from: string }>;
+} | null> {
+  const since = new Date(Date.now() - 24 * 3600000).toISOString();
+  const { data: rows } = await sb.from('agent_tasks')
+    .select('title, description, created_at')
+    .eq('category', 'gmail_insight')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(30);
+  const all = (rows || []) as Array<Record<string, unknown>>;
+  const parsed = all.map(r => {
+    // title shape: "📧 {subject}" / "{emoji} {subject}"; description: "From: {from}\n{snippet}"
+    const subject = String(r.title || '').replace(/^[^\s]*\s/, '').trim();
+    const desc = String(r.description || '');
+    const fromMatch = desc.match(/^From:\s*(.+)$/m);
+    const from = fromMatch ? fromMatch[1].trim() : '';
+    const snippet = desc.replace(/^From:\s*.+$/m, '').trim().slice(0, 220);
+    return { subject, from, snippet, raw_title: String(r.title || '') };
+  });
+  const kept = parsed.filter(p => emailNeedsAttention(p.subject, p.from));
+  const filtered = parsed.length - kept.length;
+  if (kept.length === 0) {
+    return { scanned: parsed.length, kept: 0, filtered, digest: null, actions: [], emails: [] };
+  }
+  // Gemini summary + recommended actions (best-effort; falls back to raw list).
+  let digest: string | null = null;
+  let actions: string[] = [];
+  const geminiKey = Deno.env.get('GEMINI_API_KEY') || '';
+  if (geminiKey) {
+    try {
+      const emailBlock = kept.slice(0, 12).map((e, i) => `${i + 1}. נושא: ${e.subject}\n   מאת: ${e.from}\n   תקציר: ${e.snippet}`).join('\n');
+      const prompt = `אתה עוזר אישי של אורן, מפעיל יחיד של מותג אופנה (DUBIS). לפניך מיילים מ-24 השעות האחרונות שדורשים תשומת לב (כבר סוננו דיווחים עצמיים ושיווק של ספקים). סכם בקצרה בעברית מה קרה (2-4 משפטים) ותן רשימת פעולות מומלצות קונקרטיות. ענה אך ורק כ-JSON תקין בפורמט: {"summary":"...","actions":["...","..."]}. אם אין שום דבר שדורש פעולה, החזר actions ריק.\n\nמיילים:\n${emailBlock}`;
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.3, responseMimeType: 'application/json' },
+        }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (r.ok) {
+        const j = await r.json() as Record<string, unknown>;
+        const text = (((((j.candidates as unknown[]) || [])[0] as Record<string, unknown>)?.content as Record<string, unknown>)?.parts as Array<Record<string, unknown>>)?.[0]?.text as string || '';
+        const m = text.match(/\{[\s\S]*\}/);
+        if (m) {
+          const obj = JSON.parse(m[0]) as { summary?: string; actions?: string[] };
+          digest = obj.summary ? String(obj.summary).slice(0, 600) : null;
+          actions = Array.isArray(obj.actions) ? obj.actions.map(a => String(a).slice(0, 160)).slice(0, 6) : [];
+        }
+      }
+    } catch (_) { /* fall back to raw list */ }
+  }
+  return { scanned: parsed.length, kept: kept.length, filtered, digest, actions, emails: kept.slice(0, 8).map(e => ({ subject: e.subject.slice(0, 90), from: e.from.replace(/<[^>]+>/, '').trim().slice(0, 50) })) };
+}
+function buildEmailDigestHtml(d: Awaited<ReturnType<typeof fetchEmailDigest>>): string {
+  if (!d) return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right;margin:0">סורק המייל לא החזיר נתונים ב-24 שעות.</p>';
+  if (d.kept === 0) {
+    const note = d.filtered > 0 ? ` (${d.filtered} סוננו: דיווחים עצמיים + שיווק ספקים)` : '';
+    return `<p dir="rtl" style="font-size:13px;color:#27ae60;text-align:right;margin:0">✅ אין מיילים שדורשים טיפול ב-24 שעות${note}.</p>`;
+  }
+  const summaryHtml = d.digest
+    ? `<div dir="rtl" style="background:#f8f6f0;border-radius:6px;padding:10px 12px;margin:0 0 8px;font-size:12.5px;line-height:1.6;color:#2c2c2c;text-align:right">${esc(d.digest)}</div>`
+    : '';
+  const actionsHtml = d.actions.length
+    ? `<div dir="rtl" style="margin:0 0 8px;text-align:right"><b style="font-size:12.5px;color:#c8a96e">פעולות מומלצות:</b>${d.actions.map(a => `<div dir="rtl" style="padding:5px 10px;background:#fff;border-right:3px solid #c8a96e;margin:3px 0;border-radius:4px;font-size:12px;text-align:right">▸ ${esc(a)}</div>`).join('')}</div>`
+    : '';
+  const listHtml = d.emails.length
+    ? `<div dir="rtl" style="margin-top:6px;text-align:right"><div style="font-size:11px;color:#999;margin-bottom:3px">המיילים (${d.kept}, סוננו ${d.filtered}):</div>${d.emails.map(e => `<div dir="rtl" style="font-size:11.5px;color:#555;padding:2px 0;text-align:right">📧 <b>${esc(e.subject)}</b> <span style="color:#aaa">— ${esc(e.from)}</span></div>`).join('')}</div>`
+    : '';
+  return summaryHtml + actionsHtml + listHtml;
+}
+
+// =============================================================
 async function fetchPendingApprovals(sb: SB): Promise<{
   products: Array<{ id: string; title: string; slogan: string | null; age_days: number; pid: string | null }>;
   pipelineFailed: Array<{ id: string; pid: number | null; error: string; age_days: number }>;
   pipelineDispatched: Array<{ id: string; pid: number | null; age_hours: number }>;
   candidates: Array<{ id: string; uid: string; brand: string; score: number; age_days: number }>;
-  slogans: number;
 }> {
   const { data: pendingProductTasks } = await sb.from('agent_tasks')
     .select('id, title, content_data, created_at')
@@ -1656,8 +1886,11 @@ async function fetchPendingApprovals(sb: SB): Promise<{
     const row = r as Record<string, unknown>;
     return { id: row.id as string, uid: ((row.product_uid as string) || '').slice(0, 60), brand: (row.brand as string) || '?', score: num(row.score), age_days: Math.floor(hoursSince(row.recommended_at as string) / 24) };
   });
-  const { count: slogans } = await sb.from('slogan_candidates').select('id', { count: 'exact', head: true }).eq('status', 'pending');
-  return { products, pipelineFailed, pipelineDispatched, candidates, slogans: slogans || 0 };
+  // NOTE (2026-06-15): slogan_candidates count REMOVED from the report. Per the
+  // DUBIS open-list policy every active DB slogan is auto-approved — there is no
+  // slogan-approval gate, so surfacing "N slogans awaiting approval" was a lie.
+  // The audience-submitted slogan box is scored + routed by ?type=review-slogan-submissions.
+  return { products, pipelineFailed, pipelineDispatched, candidates };
 }
 
 // =============================================================
@@ -1753,6 +1986,33 @@ Deno.serve(async (req: Request) => {
     metaData.fetch_error = 'INSTAGRAM_ACCESS_TOKEN missing in env';
   }
 
+  // ---- Campaign status (2026-06-15): the funnel must respect a deliberate PAUSE.
+  // ad_campaigns is the source of truth for status (our Meta token is ads_read only,
+  // so live pause is oren's manual toggle — the DB row reflects intent). The Meta
+  // campaign id lives EMBEDDED in `notes` as "campaign_id: <digits>" (there is no
+  // reliable campaign_id column — see morning-report.js pause-campaign matcher).
+  // Prefer the row whose notes carry META_CAMPAIGN, else the most-recent row.
+  let campaignPaused = false; let campaignStatusKnown = false;
+  try {
+    const { data: campRows } = await sb.from('ad_campaigns')
+      .select('status, notes, created_at')
+      .order('created_at', { ascending: false }).limit(50);
+    const rows = (campRows || []) as Array<Record<string, unknown>>;
+    const idRx = new RegExp(`campaign_id:\\s*${String(META_CAMPAIGN)}\\b`, 'i');
+    const exact = rows.find(c => idRx.test(String(c.notes || '')));
+    if (exact) {
+      // Funnel reports on META_CAMPAIGN → its own row decides paused/active.
+      campaignStatusKnown = true;
+      campaignPaused = String(exact.status || '').toLowerCase() === 'paused';
+    } else if (rows.length > 0) {
+      // No row for META_CAMPAIGN. Use the fleet signal: if NO campaign is active,
+      // the funnel can't be delivering — treat as paused (don't invent a delay).
+      campaignStatusKnown = true;
+      const anyActive = rows.some(c => String(c.status || '').toLowerCase() === 'active');
+      campaignPaused = !anyActive;
+    }
+  } catch (_) { /* best-effort — fall back to generic copy */ }
+
   let igPosts7d = 0, dupes = 0;
   if (IG_TOKEN && IG_ACCOUNT) {
     try {
@@ -1787,7 +2047,15 @@ Deno.serve(async (req: Request) => {
   const ticketing = await autoTicketStuckOrders(sb);
   const oosHide = await tryAutoHideFullyOosProducts(sb);          // B.11
   const pipelineRetry = await tryAutoRetryFailedPipeline(sb);     // B.12
+  const staleSlogans = await tryCloseStaleSloganTasks(sb);        // B.14
   const autoFixes: AutoFix[] = [];
+  if (staleSlogans.closed.length > 0) {
+    autoFixes.push({
+      action: 'close_stale_slogan_task',
+      succeeded: true,
+      note: `סגרתי ${staleSlogans.closed.length} משימות סלוגן ישנות (אין שער-אישור): ${staleSlogans.closed.map(c => `"${c.title.replace(/^.*?:\s*/, '')}" (${c.days}י)`).join(', ')}`,
+    });
+  }
   if (gelatoStockHeal.attempted) autoFixes.push({ action: 'gelato_stock_retry', succeeded: gelatoStockHeal.healed, note: gelatoStockHeal.summary || gelatoStockHeal.error });
   for (const tid of ticketing.ticketIds) autoFixes.push({ action: 'gelato_auto_ticket', succeeded: true, target: tid });
   for (const err of ticketing.errors) autoFixes.push({ action: 'gelato_auto_ticket', succeeded: false, error: err });
@@ -1884,7 +2152,7 @@ Deno.serve(async (req: Request) => {
     : { updated: 0, errors: ['no-real-metrics'] };
   // Resolve real TikTok post URLs (Late.com finalizes async) so marketing links point at the live post.
   await backfillTiktokUrls(sb).catch(() => {});
-  const [marketingToday, pending, agentHealth, dailySnaps, orderTracking, planStatus, weeklyMktg, autoProductHealth] = await Promise.all([
+  const [marketingToday, pending, agentHealth, dailySnaps, orderTracking, planStatus, weeklyMktg, autoProductHealth, newProductsWeek, emailDigest] = await Promise.all([
     fetchMarketingToday(sb),
     fetchPendingApprovals(sb),
     fetchAgentHealth(sb),
@@ -1893,6 +2161,8 @@ Deno.serve(async (req: Request) => {
     fetchPlanStatus(sb).catch(() => null),
     fetchWeeklyMarketing(sb).catch(() => null),
     fetchAutoProductHealth(sb).catch(() => null),
+    fetchNewProductsThisWeek(sb).catch(() => []),
+    fetchEmailDigest(sb).catch(() => null),
   ]);
 
   let action_items_json: Opinion[] = synth.topActions.slice(0, isWeekly ? 5 : 3);
@@ -2004,11 +2274,21 @@ Deno.serve(async (req: Request) => {
   const drop1 = impY > 0 ? (1 - clicksY / impY) * 100 : 0;
   const drop2 = clicksY > 0 ? (1 - purchasesY / clicksY) * 100 : 100;
   const funnelHtml = (() => {
+    // Deliberate PAUSE takes precedence over everything: never invent a
+    // "delivery delay" explanation for a campaign oren paused on purpose.
+    if (campaignPaused) {
+      return '<div dir="rtl" style="padding:12px;background:#fff8ec;border-right:4px solid #e67e22;border-radius:4px;color:#9a5b1a;font-size:13px;text-align:right">🛑 <b>קמפיין מושהה</b> — אין הוצאה/חשיפות כי הקמפיין כבוי ביוזמת אורן (loss-leader · ממתין ל-FBIA re-test לפני הדלקה).</div>';
+    }
     if (!metaData.ok) {
       const err = String(metaData.fetch_error || 'unknown');
       return `<div dir="rtl" style="padding:12px;background:#fff5f5;border-right:4px solid #c0392b;border-radius:4px;color:#c0392b;font-size:13px">❌ Meta API נכשל: <code style="font-size:11px;direction:ltr;display:inline-block">${esc(err)}</code><br><span style="color:#666;font-size:11px;margin-top:4px;display:block">לבדוק INSTAGRAM_ACCESS_TOKEN ב-Vercel envs ו-app permissions ב-developers.facebook.com</span></div>`;
     }
-    if (impY === 0 && clicksY === 0) return '<p dir="rtl" style="color:#888;font-size:13px;margin:0">קמפיין פעיל אבל אין impressions ב-24 שעות אחרונות. (delivery delay או pause חלקי)</p>';
+    if (impY === 0 && clicksY === 0) {
+      // Status unknown → neutral; status known-active → it really is a delivery gap.
+      return campaignStatusKnown
+        ? '<p dir="rtl" style="color:#888;font-size:13px;margin:0">הקמפיין פעיל אבל אין חשיפות ב-24 שעות אחרונות (delivery delay או review).</p>'
+        : '<p dir="rtl" style="color:#888;font-size:13px;margin:0">אין חשיפות ב-24 שעות אחרונות.</p>';
+    }
     return `<table dir="rtl" width="100%" style="margin-bottom:10px"><tr>
         <td dir="rtl" align="center" style="width:20%;padding:6px"><div style="color:#3498db;font-size:16px;font-weight:700">${impY.toLocaleString()}</div><div style="color:#999;font-size:10px">חשיפות</div></td>
         <td dir="rtl" align="center" style="width:20%;padding:6px"><div style="color:#27ae60;font-size:16px;font-weight:700">${clicksY}</div><div style="color:#999;font-size:10px">קליקים</div></td>
@@ -2080,47 +2360,59 @@ Deno.serve(async (req: Request) => {
     ? ''
     : (marketingToday.items.slice(0, 6).map(renderPostItem).join('') + marketingToday.tiktok.items.slice(0, 4).map(renderTiktokItem).join(''));
 
-  // ✍️ Pending approvals (unchanged from v9)
-  const totalPending = pending.products.length + pending.pipelineFailed.length + pending.pipelineDispatched.length + pending.candidates.length + pending.slogans;
+  // ✍️ Pending approvals — slogan-approval framing REMOVED (2026-06-15).
+  // pending.products are real products parked at pending_visual_approval (a genuine
+  // gate), relabelled "מוצרים ממתינים לאישור ויזואלי". The slogan_candidates count
+  // is gone entirely — every active DB slogan is auto-approved (open-list policy).
+  const totalPending = pending.products.length + pending.pipelineFailed.length + pending.pipelineDispatched.length + pending.candidates.length;
   const pendingHtml = totalPending === 0
     ? '<p dir="rtl" style="color:#27ae60;font-size:13px;margin:0">✅ אין שום מוצר מחכה לאישור</p>'
     : [
-      pending.products.length === 0 ? '' : `<div dir="rtl" style="margin:8px 0;direction:rtl;text-align:right"><b style="color:#e67e22;font-size:13px">✍️ סלוגנים לאישור (${pending.products.length})</b>${pending.products.slice(0, 6).map(p => `<div dir="rtl" style="padding:6px 10px;background:#fafafa;margin:3px 0;border-radius:4px;text-align:right;font-size:12px">${esc(p.title)} <span style="color:${p.age_days > 7 ? '#c0392b' : '#888'};font-size:11px">· ${p.age_days} ימים</span></div>`).join('')}</div>`,
+      pending.products.length === 0 ? '' : `<div dir="rtl" style="margin:8px 0;direction:rtl;text-align:right"><b style="color:#e67e22;font-size:13px">👀 מוצרים ממתינים לאישור ויזואלי (${pending.products.length})</b>${pending.products.slice(0, 6).map(p => `<div dir="rtl" style="padding:6px 10px;background:#fafafa;margin:3px 0;border-radius:4px;text-align:right;font-size:12px">${esc(p.title)} <span style="color:${p.age_days > 7 ? '#c0392b' : '#888'};font-size:11px">· ${p.age_days} ימים</span></div>`).join('')}</div>`,
       pending.pipelineFailed.length === 0 ? '' : `<div dir="rtl" style="margin:8px 0;direction:rtl;text-align:right"><b style="color:#c0392b;font-size:13px">🔴 מוצרים שממתינים לטיפול ידני (${pending.pipelineFailed.length})</b><div dir="rtl" style="color:#888;font-size:10.5px;margin:2px 0 4px">כבר ניסינו אוטומטית פעם אחת — עדיין נכשל.</div>${pending.pipelineFailed.slice(0, 4).map(p => `<div dir="rtl" style="padding:6px 10px;background:#fafafa;margin:3px 0;border-radius:4px;text-align:right;font-size:12px">מוצר #${p.pid || '?'} · <span style="color:#888">${esc(p.error).slice(0, 80)}</span> · ${p.age_days} ימים</div>`).join('')}</div>`,
       pending.pipelineDispatched.length === 0 ? '' : `<div dir="rtl" style="margin:8px 0;direction:rtl;text-align:right"><b style="color:#e67e22;font-size:13px">⏳ צינור מוצר תקוע (${pending.pipelineDispatched.length})</b>${pending.pipelineDispatched.map(p => `<div dir="rtl" style="padding:6px 10px;background:#fafafa;margin:3px 0;border-radius:4px;text-align:right;font-size:12px">מוצר #${p.pid || '?'} · ממתין כבר ${p.age_hours} שעות</div>`).join('')}</div>`,
       pending.candidates.length === 0 ? '' : `<div dir="rtl" style="margin:8px 0;direction:rtl;text-align:right"><b style="color:#3498db;font-size:13px">📊 מומלצות מ-Gelato Discovery (${pending.candidates.length})</b>${pending.candidates.map(c => `<div dir="rtl" style="padding:6px 10px;background:#fafafa;margin:3px 0;border-radius:4px;text-align:right;font-size:12px">${esc(c.brand)} · score ${c.score.toFixed(1)} · <code style="font-size:10px;color:#888">${esc(c.uid)}</code></div>`).join('')}</div>`,
-      pending.slogans === 0 ? '' : `<div dir="rtl" style="margin:8px 0;direction:rtl;text-align:right;font-size:12px;color:#666">📝 ${pending.slogans} סלוגנים מומלצים מחכים בתור (slogan_candidates)</div>`,
     ].filter(Boolean).join('');
+
+  // ✨ NEW products that went live this week — replaces the slogan-approval block.
+  const newProductsHtml = buildNewProductsHtml(newProductsWeek);
+  // 📬 Email digest (24h) — summary + recommended actions, self-reports/marketing filtered out.
+  const emailDigestHtml = buildEmailDigestHtml(emailDigest);
 
   // Orders — new in window (last 24h or 7d)
   const todaysOrders = (realOrders || []).slice(0, 5);
   const ordersHtml = (realOrders || []).length === 0
     ? '<p dir="rtl" style="color:#888;font-size:13px;margin:0">אין הזמנות בחלון</p>'
-    : todaysOrders.map(o => `<div dir="rtl" style="padding:6px 10px;background:#fafafa;margin:3px 0;border-radius:4px;text-align:right;font-size:12px">📦 <code>${esc(String(o.id).slice(0, 8))}</code> · $${num(o.total_amount).toFixed(0)} · ${esc(o.status)}</div>`).join('');
+    : todaysOrders.map(o => `<div dir="rtl" style="padding:6px 10px;background:#fafafa;margin:3px 0;border-radius:4px;text-align:right;font-size:12px">📦 <code>${esc(String(o.id).slice(0, 8))}</code> · $${num(o.total_amount).toFixed(0)} · ${esc(humanOrderStatus(o.status as string))}</div>`).join('');
 
-  // B.10 — Per-order daily tracking (every active real order, last 90d)
-  const STATUS_HE: Record<string, string> = {
-    'pending': '⏳ ממתין ל-Gelato',
-    'in_production': '🛠️ בייצור',
-    'shipped': '📦 נשלח',
-    'delivered': '✅ נמסר',
-    'unknown': '❓ לא ידוע',
-  };
+  // B.10 — Per-order daily tracking. Status must be human-meaningful (2026-06-15).
+  // Labels come from the module-level humanOrderStatus() (our statuses + raw Gelato
+  // statuses). Colors stay local. Oren must know WHERE the order is — never a raw code.
   const STATUS_COLOR: Record<string, string> = {
-    'pending': '#e67e22', 'in_production': '#3498db', 'shipped': '#9b59b6',
-    'delivered': '#27ae60', 'unknown': '#999',
+    'pending': '#e67e22', 'paid': '#e67e22', 'created': '#e67e22', 'open': '#e67e22',
+    'in_production': '#3498db', 'in-production': '#3498db', 'passed': '#3498db', 'passed_to_production': '#3498db', 'printed': '#3498db',
+    'shipped': '#9b59b6', 'in_transit': '#9b59b6',
+    'delivered': '#27ae60', 'fulfilled': '#27ae60',
+    'canceled': '#c0392b', 'cancelled': '#c0392b', 'refunded': '#c0392b',
+    'unknown': '#999',
   };
   const renderOrderRow = (r: TrackedOrderRow, highlighted: boolean) => {
-    const statusLabel = STATUS_HE[r.status] || r.status;
-    const statusColor = STATUS_COLOR[r.status] || '#999';
+    const sk = (r.status || 'unknown').toLowerCase();
+    const statusLabel = humanOrderStatus(r.status);
+    const statusColor = STATUS_COLOR[sk] || '#999';
     const buyerShort = r.highlight_name || (r.buyer_email.length > 28 ? r.buyer_email.slice(0, 28) + '…' : r.buyer_email);
     const recentBadge = r.changed_in_24h ? '<span style="background:#27ae60;color:#fff;padding:2px 6px;border-radius:8px;font-size:9px;margin-right:4px">⚡ עודכן 24h</span>' : '';
     const handledBadge = r.handled_offline ? '<span style="background:#888;color:#fff;padding:2px 6px;border-radius:8px;font-size:9px;margin-right:4px">🤝 טופל ידנית</span>' : '';
     const highlightBadge = highlighted ? '<span style="background:#c8a96e;color:#fff;padding:2px 6px;border-radius:8px;font-size:9px;margin-right:4px">⭐ מעקב אישי</span>' : '';
     const stalenessColor = r.handled_offline ? '#888' : (r.days_in_status > 14 ? '#c0392b' : r.days_in_status > 7 ? '#e67e22' : '#666');
+    // Always give oren SOMEWHERE to look: carrier tracking link if shipped,
+    // else the Gelato dashboard order page (so "where is it?" always answerable).
+    const gelatoDashLink = r.gelato_ref ? `https://dashboard.gelato.com/orders/${encodeURIComponent(String(r.gelato_ref))}` : null;
     const trackingLink = r.tracking_url
       ? ` · <a href="${esc(r.tracking_url)}" style="color:#9b59b6;text-decoration:none;font-weight:600">📦 מעקב משלוח →</a>`
-      : (r.tracking_number ? ` · <code style="font-size:10px">${esc(r.tracking_number)}</code>` : '');
+      : (r.tracking_number
+          ? ` · <code style="font-size:10px">${esc(r.tracking_number)}</code>`
+          : (gelatoDashLink ? ` · <a href="${esc(gelatoDashLink)}" style="color:#9b59b6;text-decoration:none;font-weight:600">🔎 סטטוס ב-Gelato →</a>` : ''));
     const gelatoRef = r.gelato_ref ? `Gelato ID: <code style="font-size:10.5px;color:#666">${esc(String(r.gelato_ref).slice(0, 12))}</code>` : '';
     const bg = highlighted ? '#fff8ec' : (r.handled_offline ? '#f5f5f5' : (r.days_in_status > 14 ? '#fff5f5' : '#fafafa'));
     const borderColor = highlighted ? '#c8a96e' : statusColor;
@@ -2133,9 +2425,9 @@ Deno.serve(async (req: Request) => {
        <div style="color:#444;font-size:11.5px">
          📦 <b>${esc(buyerShort)}</b>
          <span style="color:#999"> · </span>
-         📅 ${esc(r.created_at.slice(0,10))} (${r.age_days}י)
+         📅 הוזמן ${esc(r.created_at.slice(0,10))} (לפני ${r.age_days} ימים)
          <span style="color:#999"> · </span>
-         <span style="color:${stalenessColor}">בסטטוס ${r.days_in_status}י</span>
+         <span style="color:${stalenessColor}">בסטטוס הזה כבר ${r.days_in_status} ימים</span>
          ${trackingLink}
        </div>
        ${gelatoRef ? `<div style="margin-top:3px;color:#888;font-size:10.5px">${gelatoRef} · <code style="font-size:10px;color:#bbb">${esc(r.id.slice(0,8))}</code></div>` : ''}
@@ -2251,7 +2543,9 @@ Deno.serve(async (req: Request) => {
 ${autoFixHtml}
 ${recurringHtml}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🚨 ממצאים חדשים (${opinions.length})</h2>${issuesHtml}</td></tr><tr><td style="height:14px"></td></tr>
+<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">✨ מוצרים חדשים שעלו השבוע (${newProductsWeek.length})</h2>${newProductsHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">✍️ מחכה לאישורך (${totalPending})</h2>${pendingHtml}</td></tr><tr><td style="height:14px"></td></tr>
+<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📬 מיילים 24ש׳ — תקציר + המלצות</h2>${emailDigestHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📅 תוכנית שיווק שבועית — תכנון מול ביצוע</h2>${weeklyMktgHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🐻 סדרת הסוכנים — מאחורי הקוד</h2>${personaHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🤖 קו המוצרים האוטומטי</h2>${autoProductHealthHtml}</td></tr><tr><td style="height:14px"></td></tr>
@@ -2272,6 +2566,12 @@ ${planSectionHtml}
 
   // preview=1 → return the report + computed truth-metrics WITHOUT sending email
   // or writing boss_reports/agent_runs. Safe verification path for agents.
+  // preview=1&html=1 → return the rendered HTML directly (so agents can grep the
+  // actual report, e.g. confirm zero v_pub_url / real #product-N links). Auth-gated
+  // (isAuthed already ran). Never sends email or writes DB.
+  if (isPreview && url.searchParams.get('html') === '1') {
+    return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  }
   if (isPreview) {
     return json({
       ok: true, preview: true, mode, version: 'v11-truth',
@@ -2285,6 +2585,11 @@ ${planSectionHtml}
       blocked_on_oren: (planStatus?.blocked_on_oren || []).map(b => ({ title: b.title, days_late: b.days_late })),
       plan_kpi_sync: planKpiSync,
       opinion_count: opinions.length,
+      // Pass-2 verification fields (2026-06-15)
+      new_products_week: newProductsWeek.map(p => ({ numeric: p.numeric, slogan: p.slogan, days_ago: p.days_ago })),
+      email_digest: emailDigest ? { scanned: emailDigest.scanned, kept: emailDigest.kept, filtered: emailDigest.filtered, has_summary: !!emailDigest.digest, actions: emailDigest.actions.length } : null,
+      campaign_paused: campaignPaused, campaign_status_known: campaignStatusKnown,
+      tiktok_placeholder_urls: (html.match(/v_pub_url/g) || []).length,
       html_bytes: html.length,
     });
   }
