@@ -1457,16 +1457,41 @@ window.addEventListener('DOMContentLoaded', () => {
     // PayPal appends ?token={orderId}; use it to fire purchase exactly once.
     if (params.get('paypal_return') === '1') {
         const ppToken = params.get('token') || '';
-        const firedKey = 'dubis-purchase-fired-' + (ppToken || 'fbia');
+        // 2026-06-15: dedupe on the PayPal order id. PayPal appends ?token={id};
+        // the server return also appends pv/pc/pids but NOT token, so fall back
+        // to a stable per-server key when token is absent so a refresh on the
+        // server-built return URL still fires Purchase exactly once.
+        const dedupeId = ppToken || (params.get('pv') ? 'srv-' + params.get('pv') + '-' + (params.get('pids') || '') : 'fbia');
+        const firedKey = 'dubis-purchase-fired-' + dedupeId;
         try {
             if (!sessionStorage.getItem(firedKey)) {
                 sessionStorage.setItem(firedKey, '1');
-                let val = 0;
-                try { val = (JSON.parse(localStorage.getItem('dubis-cart') || '[]') || [])
-                    .reduce((s, i) => s + (Number(i.price) || 0), 0); } catch (_) {}
-                if (window.dubisTrack) window.dubisTrack('purchase', { value: val, currency: 'USD', channel: 'fbia_redirect', transaction_id: ppToken });
-                if (typeof fbq !== 'undefined') { try { fbq('track', 'Purchase', { value: val, currency: 'USD' }); } catch (_) {} }
-                if (typeof gtag !== 'undefined') { try { gtag('event', 'purchase', { transaction_id: ppToken, value: val, currency: 'USD' }); } catch (_) {} }
+                // The server (capture-paypal-order) passes the AUTHORITATIVE money
+                // figures so FBIA Purchase events carry a real value + content_ids
+                // (localStorage is empty in FBIA + the cart was just cleared, so the
+                // old cart-sum path reported value=0 with no ids → Meta couldn't
+                // optimize a Sales campaign on it). Fall back to the cart only when
+                // the URL params are absent (non-FBIA ?paypal_return=1 arrivals).
+                let val = Number(params.get('pv'));
+                const cur = params.get('pc') || 'USD';
+                const ids = (params.get('pids') || '').split(',').map(s => s.trim()).filter(Boolean);
+                if (!Number.isFinite(val) || val <= 0) {
+                    try { val = (JSON.parse(localStorage.getItem('dubis-cart') || '[]') || [])
+                        .reduce((s, i) => s + (Number(i.price) || 0), 0); } catch (_) { val = 0; }
+                }
+                if (window.dubisTrack) window.dubisTrack('purchase', { value: val, currency: cur, channel: 'fbia_redirect', transaction_id: ppToken, content_ids: ids });
+                if (typeof fbq !== 'undefined') {
+                    try {
+                        const pp = { value: val, currency: cur, content_type: 'product' };
+                        if (ids.length) {
+                            pp.content_ids = ids;
+                            pp.num_items   = ids.length;
+                            pp.contents    = ids.map(id => ({ id: id, quantity: 1 }));
+                        }
+                        fbq('track', 'Purchase', pp);
+                    } catch (_) {}
+                }
+                if (typeof gtag !== 'undefined') { try { gtag('event', 'purchase', { transaction_id: ppToken, value: val, currency: cur }); } catch (_) {} }
             }
         } catch (_) {}
         try { cart = []; saveCart(); updateCartCount(); } catch (_) {}

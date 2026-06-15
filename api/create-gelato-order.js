@@ -1675,12 +1675,22 @@ async function handleCapturePaypalOrder(req, res) {
     // confirmation email. The split path (api/_orderSplit) already inserts its
     // own rows, so skip when wasSplit. Skip on refund (no sale to record).
     let recordedOrderId = null;
+    // 2026-06-15: authoritative money math hoisted to outer scope so it's
+    // available to (a) the orders insert, (b) the confirmation email, and
+    // (c) the Purchase-event redirect params below. The FBIA redirect path
+    // never runs the SDK onApprove side-effects (rule #17 — capture ≠ record),
+    // so the Purchase pixel event + confirmation email must be driven from here.
+    const fbiaItemsSubtotal = (cartItems || []).reduce((s, i) => s + (Number(i.price) || 0), 0);
+    const fbiaShipAmt = Number(cd.shipping_cost) || 0;
+    const fbiaDiscAmt = Number(cd.discount) || 0;
+    const fbiaGrand = +(fbiaItemsSubtotal + fbiaShipAmt - fbiaDiscAmt).toFixed(2);
+    const fbiaContentIds = (cartItems || []).map((i) => String(i.id)).filter(Boolean);
     if (fulfillOk && !wasSplit && !wasRefunded) {
       try {
-        const itemsSubtotal = (cartItems || []).reduce((s, i) => s + (Number(i.price) || 0), 0);
-        const shipAmt = Number(cd.shipping_cost) || 0;
-        const discAmt = Number(cd.discount) || 0;
-        const grand = +(itemsSubtotal + shipAmt - discAmt).toFixed(2);
+        const itemsSubtotal = fbiaItemsSubtotal;
+        const shipAmt = fbiaShipAmt;
+        const discAmt = fbiaDiscAmt;
+        const grand = fbiaGrand;
         const { data: existing } = await sb.from('orders')
           .select('id').eq('paypal_order_id', paypalOrderId).maybeSingle();
         if (existing) {
@@ -1707,6 +1717,37 @@ async function handleCapturePaypalOrder(req, res) {
       }
     }
 
+    // Send the order-confirmation email OURSELVES. The SDK onApprove path POSTs
+    // /api/email/confirm-order; the FBIA redirect never runs onApprove, so without
+    // this the customer gets fulfilled but never receives a receipt (rule #17 gap,
+    // open since 2026-06-13). Reuse the EXISTING confirm-order endpoint — no new
+    // email mechanism. Best-effort: a failed receipt must never break the return.
+    let emailSent = false;
+    if (fulfillOk && !wasRefunded) {
+      try {
+        const eRes = await fetch(`${base}/api/email/confirm-order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            buyerEmail:      buyerEmail || '',
+            buyerName:       (shippingAddress && (shippingAddress.name || shippingAddress.full_name)) || '',
+            orderId:         recordedOrderId,
+            paypalOrderId:   paypalOrderId,
+            items:           cartItems,
+            itemsSubtotal:   fbiaItemsSubtotal,
+            shippingAmount:  fbiaShipAmt,
+            discountAmount:  fbiaDiscAmt,
+            totalAmount:     fbiaGrand,
+            shippingAddress: shippingAddress,
+          }),
+        });
+        emailSent = eRes.ok;
+        if (!eRes.ok) derr('fbia-confirm-email-bad-status', { paypalOrderId, status: eRes.status });
+      } catch (mailErr) {
+        derr('fbia-confirm-email-exception', { paypalOrderId, err: mailErr.message });
+      }
+    }
+
     // Mark the pending task resolved. proof_of_completion is REQUIRED by the
     // PROOF_GUARD trigger to set status='done' on category=fbia_pending.
     await sb.from('agent_tasks').update({
@@ -1716,6 +1757,7 @@ async function handleCapturePaypalOrder(req, res) {
         order_id: recordedOrderId,
         capture_id: cap.captureId || null,
         api_response: fulfillOk ? 'fbia_captured_fulfilled' : 'fbia_captured_fulfill_failed',
+        email_sent: emailSent,
       },
       content_data: {
         ...cd,
@@ -1723,11 +1765,28 @@ async function handleCapturePaypalOrder(req, res) {
         capture_id: cap.captureId || null,
         fulfill_ok: fulfillOk,
         recorded_order_id: recordedOrderId,
+        email_sent: emailSent,
         fulfill_response: fulfillBody,
       },
     }).eq('id', task.id);
 
-    dlog('fbia-capture-ok', { paypalOrderId, fulfillOk, recordedOrderId, gid });
+    dlog('fbia-capture-ok', { paypalOrderId, fulfillOk, recordedOrderId, gid, emailSent });
+    // Pass the AUTHORITATIVE value/currency/content_ids back to the front-end so
+    // the ?paypal_return=1 handler fires a CORRECT Purchase pixel event. In FBIA
+    // localStorage is empty + the cart was cleared, so the old value-from-cart
+    // path reported value=0 with no content_ids → Meta couldn't optimize the
+    // Sales campaign on it (the conversion-blind ₪511/0-purchases risk). Only
+    // attach purchase params when there was a real recorded sale.
+    const recordSale = !!(fulfillOk && !wasRefunded && (recordedOrderId || wasSplit));
+    if (recordSale) {
+      const params = new URLSearchParams({
+        paypal_return: '1',
+        pv: fbiaGrand.toFixed(2),
+        pc: 'USD',
+      });
+      if (fbiaContentIds.length) params.set('pids', fbiaContentIds.join(','));
+      return res.redirect(302, `${base}/?${params.toString()}`);
+    }
     return res.redirect(302, `${base}/?paypal_return=1`);
   } catch (err) {
     derr('fbia-capture-exception', { paypalOrderId, err: err.message });
