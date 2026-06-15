@@ -829,6 +829,107 @@ async function fetchDailySnapshots(sb: SB) {
 }
 
 // =============================================================
+// Real business metrics — truth-driven (2026-06-15 fix).
+// Four lies the old report told oren:
+//  1. "Net Profit" = revenue - ad-spend (IGNORED Gelato COGS) → faked a green profit.
+//  2. Revenue counted Hila's internal checkout-validation orders (still 'pending').
+//  3. External pageviews = page_views_today * 7 (~40× wrong vs real 7d count).
+// This helper computes the honest figures once and feeds both the hero strip
+// and the $1k plan KPI sync. DUBIS is deliberately in a loss-leader phase
+// (negative IL margin on purpose — see decisions.md 2026-06-13), so a
+// negative/low margin is EXPECTED and must NEVER be dressed up as profit.
+// =============================================================
+
+// Internal/test buyers whose orders must NOT count as business revenue.
+// Sourced from the HIGHLIGHTED_ORDERS spotlight list (defined later) + any
+// obvious test markers. Kept lowercase for case-insensitive comparison.
+const INTERNAL_BUYER_EMAILS = ['hilateharlev@gmail.com', 'teharlev1976@gmail.com', 'dubis.brand@gmail.com'];
+function isInternalBuyer(email: string | null | undefined): boolean {
+  const e = (email || '').toLowerCase().trim();
+  if (!e) return false;
+  if (INTERNAL_BUYER_EMAILS.includes(e)) return true;
+  return /(\+test|test@|@example\.|dubis-test)/i.test(e);
+}
+
+interface RealMetrics {
+  realRevenue: number;       // external paid customer revenue in window
+  realOrderCount: number;
+  testRevenue: number;       // internal/test revenue (Hila etc.) — labelled, never headline
+  testOrderCount: number;
+  cogs: number | null;       // Gelato COGS for real orders, null if unknown
+  netProfit: number | null;  // realRevenue - cogs - adSpend, null if cogs unknown
+  cogsCoverage: number;      // 0..1 fraction of real-order items with a cost lookup
+  pageViews7d: number | null;// real external pageviews last 7d (RPC), null on failure
+}
+
+async function fetchRealMetrics(sb: SB, windowDays: number, adSpend: number): Promise<RealMetrics> {
+  const since = new Date(Date.now() - windowDays * 86400000).toISOString();
+  // Orders in window — pull buyer_email + items so we can split internal vs real
+  // AND price the COGS per variant.
+  const { data: orders } = await sb.from('orders')
+    .select('id, total_amount, status, buyer_email, items, is_test, created_at')
+    .eq('is_test', false)
+    .neq('status', 'cancelled')
+    .gte('created_at', since);
+
+  // Variant cost map: "id|color|size" → gelato_cost_usd (IL fulfillment cost).
+  const variantCost: Record<string, number> = {};
+  try {
+    const { data: pvs } = await sb.from('product_variant_stock')
+      .select('product_id_numeric, color, size, gelato_cost_usd')
+      .not('gelato_cost_usd', 'is', null);
+    for (const r of (pvs || [])) {
+      const row = r as Record<string, unknown>;
+      const c = Number(row.gelato_cost_usd);
+      if (c > 0) variantCost[`${row.product_id_numeric}|${row.color}|${row.size}`] = c;
+    }
+  } catch (_) { /* cost map best-effort */ }
+
+  let realRevenue = 0, realOrderCount = 0, testRevenue = 0, testOrderCount = 0;
+  let cogs = 0, itemsWithCost = 0, itemsTotal = 0;
+  for (const o of (orders || [])) {
+    const row = o as Record<string, unknown>;
+    const amt = Number(row.total_amount) || 0;
+    if (isInternalBuyer(row.buyer_email as string)) {
+      testRevenue += amt; testOrderCount++;
+      continue; // never price COGS for internal/test orders
+    }
+    realRevenue += amt; realOrderCount++;
+    const items = Array.isArray(row.items) ? (row.items as Array<Record<string, unknown>>) : [];
+    for (const it of items) {
+      itemsTotal++;
+      const qty = Number(it.quantity) || 1;
+      const key = `${Number(it.id)}|${it.selectedColor}|${it.selectedSize}`;
+      const c = variantCost[key];
+      if (c != null) { cogs += c * qty; itemsWithCost++; }
+    }
+  }
+
+  const cogsCoverage = itemsTotal > 0 ? itemsWithCost / itemsTotal : 0;
+  // Only report a net-profit number when we could price (almost) every item;
+  // otherwise null → the report shows "—" + a loss-leader note rather than a lie.
+  const cogsKnown = realOrderCount === 0 ? true : cogsCoverage >= 0.6;
+  const netProfit = cogsKnown ? (realRevenue - cogs - adSpend) : null;
+
+  // Real external pageviews last 7d via the RPC (excludes is_internal, bypasses
+  // the PostgREST 1000-row ceiling — decisions.md 2026-05-24).
+  let pageViews7d: number | null = null;
+  try {
+    const { data: pv } = await sb.rpc('admin_page_views_summary', { days_back: 30 });
+    const summary = (pv as Record<string, unknown>) || {};
+    const v = Number(summary.views_7d);
+    if (Number.isFinite(v)) pageViews7d = v;
+  } catch (_) { /* RPC best-effort */ }
+
+  return {
+    realRevenue, realOrderCount, testRevenue, testOrderCount,
+    cogs: cogsKnown ? cogs : null,
+    netProfit, cogsCoverage,
+    pageViews7d,
+  };
+}
+
+// =============================================================
 // $1,000 Plan tracker — added 2026-05-27.
 // Reads plan_milestones (plan_id = road_to_1000_2026-04-28) and produces
 // a daily snapshot: KPI rows with color coding, oren-blocked items,
@@ -873,13 +974,20 @@ function classifyKpi(title: string, currentStr: string): { color: 'green' | 'yel
   } else if (/subscri|מייל|מנוי|email|newsletter/i.test(lt)) {
     color = cur > 40 ? 'green' : cur >= 20 ? 'yellow' : 'red';
   } else if (/profit|רווח|net/i.test(lt)) {
-    color = cur > 0 ? 'green' : 'red';
+    // Loss-leader phase (decisions.md 2026-06-13): a negative/low margin is
+    // INTENTIONAL, not a failure. Never paint it green unless real profit is
+    // genuinely positive AND large enough to not be noise. The text marker
+    // "שלב הפסד-מכוון" (cur === null) is neutral, not a warning.
+    if (cur === null) { color = 'yellow'; }
+    else if (cur > 50) { color = 'green'; }
+    else if (cur >= 0) { color = 'yellow'; }
+    else { color = 'red'; }
   }
   const icon = color === 'green' ? '🟢' : color === 'yellow' ? '🟡' : '🔴';
   return { color, icon };
 }
 
-async function syncPlanKpisFromSnapshot(sb: SB): Promise<{ updated: number; errors: string[] }> {
+async function syncPlanKpisFromSnapshot(sb: SB, metrics: RealMetrics): Promise<{ updated: number; errors: string[] }> {
   const out = { updated: 0, errors: [] as string[] };
   try {
     const { data: snap } = await sb.from('daily_snapshots')
@@ -887,14 +995,19 @@ async function syncPlanKpisFromSnapshot(sb: SB): Promise<{ updated: number; erro
       .order('snapshot_date', { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (!snap) { out.errors.push('no daily snapshot'); return out; }
-    const s = snap as Record<string, unknown>;
-    const pageViewsWeekly = Math.round(num(s.page_views_today) * 7);
+    const s = (snap as Record<string, unknown>) || {};
+    // Pageviews: REAL trailing-7d external count from the RPC (excludes internal,
+    // bypasses 1000-row ceiling). Never page_views_today*7 — that was ~40× wrong.
+    const pageViewsWeekly = metrics.pageViews7d != null ? metrics.pageViews7d : null;
     const subs = Math.round(num(s.subscribers_total));
-    const ordersWeekly = Math.round(num(s.orders_today));
-    const adSpend = num(s.campaigns_spend_total);
-    const profit = Math.round(num(s.revenue_usd) - adSpend);
-    const profitStr = profit >= 0 ? `$${profit}` : `-$${Math.abs(profit)}`;
+    // Orders KPI = REAL external orders only (excludes Hila/internal).
+    const ordersWeekly = metrics.realOrderCount;
+    // Net profit = REAL revenue − Gelato COGS − ad spend. We are intentionally a
+    // loss-leader, so this is expected to be negative/low. If COGS is unknown
+    // (no cost lookup) we write the loss-leader marker instead of a fake number.
+    const profitStr = metrics.netProfit == null
+      ? 'שלב הפסד-מכוון'
+      : (metrics.netProfit >= 0 ? `$${Math.round(metrics.netProfit)}` : `-$${Math.abs(Math.round(metrics.netProfit))}`);
 
     const { data: kpiRows } = await sb.from('plan_milestones')
       .select('id, title')
@@ -904,7 +1017,7 @@ async function syncPlanKpisFromSnapshot(sb: SB): Promise<{ updated: number; erro
       const row = r as Record<string, unknown>;
       const title = String(row.title || '').toLowerCase();
       let newVal: string | null = null;
-      if (/pageview|page view|visit|כניס|תנוע/i.test(title)) newVal = String(pageViewsWeekly);
+      if (/pageview|page view|visit|כניס|תנוע/i.test(title)) newVal = pageViewsWeekly != null ? String(pageViewsWeekly) : null;
       else if (/sales|מכיר|order|הזמנ/i.test(title)) newVal = String(ordersWeekly);
       else if (/subscri|מייל|מנוי|email|newsletter/i.test(title)) newVal = String(subs);
       else if (/profit|רווח|net/i.test(title)) newVal = profitStr;
@@ -1607,6 +1720,9 @@ Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
   const mode = url.searchParams.get('mode') || 'daily';
   const isWeekly = mode === 'weekly';
+  // preview=1 → build the report + return it WITHOUT sending email or writing
+  // boss_reports/agent_runs. Lets agents verify the HTML safely (2026-06-15).
+  const isPreview = url.searchParams.get('preview') === '1';
 
   // ---- D.13: Meta API with explicit error capture ----
   let metaData: Record<string, unknown> = { ok: false };
@@ -1651,8 +1767,17 @@ Deno.serve(async (req: Request) => {
   }
 
   const sinceWindow = new Date(Date.now() - (isWeekly ? 7 : 1)*86400000).toISOString();
-  const { data: realOrders } = await sb.from('orders').select('id, total_amount, status, created_at, is_test').eq('is_test', false).neq('status', 'cancelled').gte('created_at', sinceWindow);
-  const totalRevenue = (realOrders || []).reduce((s, o) => s + Number(o.total_amount || 0), 0);
+  const { data: allWindowOrders } = await sb.from('orders').select('id, total_amount, status, created_at, is_test, buyer_email').eq('is_test', false).neq('status', 'cancelled').gte('created_at', sinceWindow);
+  // Headline revenue/orders = EXTERNAL customers only. Internal/test buyers
+  // (Hila's checkout-validation orders, oren's own email) are split out and
+  // labelled, never counted as business revenue (2026-06-15 fix).
+  const realOrders = (allWindowOrders || []).filter(o => !isInternalBuyer((o as Record<string, unknown>).buyer_email as string));
+  const internalOrders = (allWindowOrders || []).filter(o => isInternalBuyer((o as Record<string, unknown>).buyer_email as string));
+  const totalRevenue = realOrders.reduce((s, o) => s + Number((o as Record<string, unknown>).total_amount || 0), 0);
+  const internalRevenue = internalOrders.reduce((s, o) => s + Number((o as Record<string, unknown>).total_amount || 0), 0);
+  // COGS-aware net profit + real pageviews, computed once for hero + KPI sync.
+  const cwSpendForProfit = num(((isWeekly ? (metaData.last_7d as Record<string, unknown>) : (metaData.yesterday as Record<string, unknown>)) || {}).spend);
+  const realMetrics = await fetchRealMetrics(sb, isWeekly ? 7 : 1, cwSpendForProfit).catch(() => null);
   const dateStr = new Date().toLocaleDateString('he-IL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Jerusalem' });
   const cur = (metaData.currency as string) || 'ILS';
   const sym = cur === 'ILS' ? '₪' : '$';
@@ -1754,7 +1879,9 @@ Deno.serve(async (req: Request) => {
   // Sync KPI values from latest daily snapshot BEFORE reading the plan,
   // so the fetched kpi_current reflects today's numbers. Best-effort —
   // if either step fails we still build the rest of the report.
-  const planKpiSync = await syncPlanKpisFromSnapshot(sb).catch(() => ({ updated: 0, errors: ['sync-threw'] }));
+  const planKpiSync = realMetrics
+    ? await syncPlanKpisFromSnapshot(sb, realMetrics).catch(() => ({ updated: 0, errors: ['sync-threw'] }))
+    : { updated: 0, errors: ['no-real-metrics'] };
   // Resolve real TikTok post URLs (Late.com finalizes async) so marketing links point at the live post.
   await backfillTiktokUrls(sb).catch(() => {});
   const [marketingToday, pending, agentHealth, dailySnaps, orderTracking, planStatus, weeklyMktg, autoProductHealth] = await Promise.all([
@@ -1810,12 +1937,24 @@ Deno.serve(async (req: Request) => {
   const cw7 = (metaData.last_7d as Record<string, unknown>) || {};
   const cwY = (metaData.yesterday as Record<string, unknown>) || {};
   const spendDisplay = num(isWeekly ? cw7.spend : cwY.spend);
+  // Honest hero: external orders + external revenue + net profit (loss-leader
+  // aware) + Meta spend. Internal/test revenue (Hila) shown as a small footnote,
+  // never as headline. Net profit uses real COGS; if cost unknown → loss-leader
+  // marker; if intentionally negative → red number (expected this phase).
+  const profitDisplay = !realMetrics || realMetrics.netProfit == null
+    ? { txt: 'הפסד-מכוון', color: '#e67e22', sub: 'שלב בדיקת ביקוש' }
+    : realMetrics.netProfit >= 0
+      ? { txt: `$${Math.round(realMetrics.netProfit)}`, color: realMetrics.netProfit > 50 ? '#27ae60' : '#e67e22', sub: 'רווח נטו (אחרי COGS)' }
+      : { txt: `-$${Math.abs(Math.round(realMetrics.netProfit))}`, color: '#c0392b', sub: 'הפסד-מכוון (loss-leader)' };
+  const internalNote = (internalOrders.length > 0)
+    ? `<tr><td colspan="4" dir="rtl" align="center" style="padding:2px 8px 0;text-align:center"><span style="font-size:10.5px;color:#888">+ ${internalOrders.length} הזמנות פנימיות/בדיקה (הילה) על סך $${internalRevenue.toFixed(0)} — לא נספרות כהכנסה עסקית</span></td></tr>`
+    : '';
   const heroStats = `<table dir="rtl" width="100%"><tr>
-    <td dir="rtl" align="center" style="width:25%;padding:8px;text-align:center"><div style="color:#c8a96e;font-size:22px;font-weight:700">${(realOrders || []).length}</div><div style="font-size:11px;color:#aaa">הזמנות ${isWeekly?'7ימ':'24h'}</div></td>
-    <td dir="rtl" align="center" style="width:25%;padding:8px;text-align:center"><div style="color:#c8a96e;font-size:22px;font-weight:700">$${totalRevenue.toFixed(0)}</div><div style="font-size:11px;color:#aaa">הכנסה ${isWeekly?'7ימ':'24h'}</div></td>
-    <td dir="rtl" align="center" style="width:25%;padding:8px;text-align:center"><div style="color:#c8a96e;font-size:22px;font-weight:700">${igPosts7d}</div><div style="font-size:11px;color:#aaa">פוסטים 7ימ</div></td>
+    <td dir="rtl" align="center" style="width:25%;padding:8px;text-align:center"><div style="color:#c8a96e;font-size:22px;font-weight:700">${(realOrders || []).length}</div><div style="font-size:11px;color:#aaa">הזמנות לקוח ${isWeekly?'7ימ':'24h'}</div></td>
+    <td dir="rtl" align="center" style="width:25%;padding:8px;text-align:center"><div style="color:#c8a96e;font-size:22px;font-weight:700">$${totalRevenue.toFixed(0)}</div><div style="font-size:11px;color:#aaa">הכנסה אמיתית ${isWeekly?'7ימ':'24h'}</div></td>
+    <td dir="rtl" align="center" style="width:25%;padding:8px;text-align:center"><div style="color:${profitDisplay.color};font-size:22px;font-weight:700">${profitDisplay.txt}</div><div style="font-size:11px;color:#aaa">${profitDisplay.sub}</div></td>
     <td dir="rtl" align="center" style="width:25%;padding:8px;text-align:center"><div style="color:#c8a96e;font-size:22px;font-weight:700">${sym}${spendDisplay.toFixed(0)}</div><div style="font-size:11px;color:#aaa">Meta ${isWeekly?'7ימ':'אתמול'}</div></td>
-  </tr></table>`;
+  </tr>${internalNote}</table>`;
 
   // 🔧 Auto-fix summary card
   const autoFixHtml = autoFixes.length === 0
@@ -2015,7 +2154,49 @@ Deno.serve(async (req: Request) => {
 
   // A.3 — Rich agent status table: name | when | what it did | error
   const allAgentIds = ['boss','content','marketing','product','supply','design','site_audit','email_monitor','gelato_stock','cto','security','video','planner','tiktok'];
-  const agentHealthHtml = `<table dir="rtl" width="100%" style="border-collapse:collapse;font-size:12px">
+  // On-demand agents: idle is NORMAL, never counted as a problem (boss.md contract).
+  const ON_DEMAND_AGENTS = new Set(['cto','planner','video','product','design']);
+  // 2026-06-15 fix: real watchdog counts from agent_runs (was hardcoded 0,0,0,0
+  // in the boss_reports insert → the status engine was blind and could never
+  // surface a real failure). Compute ok/amber/red/idle from live last-run +
+  // recency, and collect the agents that actually failed.
+  const agentCounts = { ok_count: 0, amber_count: 0, red_count: 0, grey_count: 0 };
+  const failedAgents: Array<{ id: string; he: string; reason: string; hours: number }> = [];
+  for (const id of allAgentIds) {
+    const h = agentHealth[id];
+    if (!h) {
+      // No run found in the 30-day window. Idle on-demand agents are fine (grey/ok);
+      // a scheduled agent with zero runs is amber (worth a glance) — but since the
+      // health map already covers 30d, truly-never-ran is rare.
+      agentCounts.grey_count++;
+      continue;
+    }
+    const hs = hoursSince(h.last_run);
+    const isFailed = h.status === 'failed' || h.status === 'error';
+    if (isFailed) {
+      agentCounts.red_count++;
+      failedAgents.push({ id, he: AGENT_ID_TO_HE[id] || id, reason: translateErrorPhrase(h.error || h.summary || 'unknown'), hours: hs });
+    } else if ((h.status === 'completed' || h.status === 'ok') && hs < 26) {
+      agentCounts.ok_count++;
+    } else if (ON_DEMAND_AGENTS.has(id)) {
+      // ran sometime, on-demand → idle is normal, count as ok (not amber).
+      agentCounts.ok_count++;
+    } else if (hs < 72) {
+      agentCounts.amber_count++;
+    } else {
+      // scheduled agent that hasn't run in 3+ days → stale, flag amber-ish red.
+      agentCounts.amber_count++;
+    }
+  }
+  // Header summary line so the watchdog is visible at a glance + a red banner
+  // listing real failures (the thing this section exists to catch).
+  const agentSummaryLine = `<p dir="rtl" style="margin:0 0 10px;font-size:12px;color:#666;direction:rtl;text-align:right">✅ ${agentCounts.ok_count} תקינים · 🟡 ${agentCounts.amber_count} מתעכבים · 🔴 ${agentCounts.red_count} נכשלו · ⚪ ${agentCounts.grey_count} לא רצו</p>`;
+  const agentFailBanner = failedAgents.length === 0 ? '' :
+    `<div dir="rtl" style="background:#fff5f5;border:1px solid #ffcfcf;border-radius:6px;padding:8px 12px;margin:0 0 10px;direction:rtl;text-align:right">
+      <b style="color:#c0392b;font-size:12px">🔴 סוכנים שנכשלו:</b>
+      ${failedAgents.map(f => `<div style="font-size:11.5px;color:#333;margin-top:3px">• <b>${esc(f.he)}</b> — ${esc(f.reason)} <span style="color:#999">(לפני ${f.hours >= 24 ? Math.round(f.hours/24)+' ימים' : Math.round(f.hours)+' שעות'})</span></div>`).join('')}
+    </div>`;
+  const agentHealthHtml = agentSummaryLine + agentFailBanner + `<table dir="rtl" width="100%" style="border-collapse:collapse;font-size:12px">
     <tr style="background:#f0ebe0">
       <th dir="rtl" style="padding:6px 8px;text-align:right;font-size:11px;color:#666;font-weight:700;width:130px">סוכן</th>
       <th dir="rtl" style="padding:6px 8px;text-align:right;font-size:11px;color:#666;font-weight:700;width:70px">אחרון</th>
@@ -2082,12 +2263,32 @@ ${lastWeekSection}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📋 מעקב הזמנות פעילות (${orderTracking.total})</h2>${trackingHtml}</td></tr><tr><td style="height:14px"></td></tr>
 ${planSectionHtml}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🤖 מצב הסוכנים (24 שעות)</h2>${agentHealthHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" align="center" style="padding-top:18px;text-align:center"><p style="margin:0;color:#aaa;font-size:11px">${reportTypeLabel} v10 · ${autoFixes.length > 0 ? `🔧 ${autoFixes.filter(f=>f.succeeded).length}/${autoFixes.length} תיקונים אוטומטיים · ` : ''}<a href="https://www.dubis.net/admin" style="color:#c8a96e">פתח Admin</a></p></td></tr>
+<tr><td dir="rtl" align="center" style="padding-top:18px;text-align:center"><p style="margin:0;color:#aaa;font-size:11px">${reportTypeLabel} v11 · ${autoFixes.length > 0 ? `🔧 ${autoFixes.filter(f=>f.succeeded).length}/${autoFixes.length} תיקונים אוטומטיים · ` : ''}<a href="https://www.dubis.net/admin" style="color:#c8a96e">פתח Admin</a></p></td></tr>
 </table></td></tr></table></body></html>`;
 
-  if (!summary_he) summary_he = `${reportTypeLabel} v10: ${(realOrders || []).length} הזמנות, $${totalRevenue.toFixed(0)}, ${opinions.length} תצפיות חדשות, ${recurring.length} חוזרות, ${autoFixes.filter(f=>f.succeeded).length} תיקונים אוטומטיים, ${totalPending} לאישור, ${totalMarketing} פעילויות שיווק.`;
+  if (!summary_he) summary_he = `${reportTypeLabel} v11: ${(realOrders || []).length} הזמנות, $${totalRevenue.toFixed(0)}, ${opinions.length} תצפיות חדשות, ${recurring.length} חוזרות, ${autoFixes.filter(f=>f.succeeded).length} תיקונים אוטומטיים, ${totalPending} לאישור, ${totalMarketing} פעילויות שיווק.`;
 
   const reportDate = new Date().toISOString().slice(0, 10);
+
+  // preview=1 → return the report + computed truth-metrics WITHOUT sending email
+  // or writing boss_reports/agent_runs. Safe verification path for agents.
+  if (isPreview) {
+    return json({
+      ok: true, preview: true, mode, version: 'v11-truth',
+      agent_counts: agentCounts,
+      failed_agents: failedAgents.map(f => ({ id: f.id, reason: f.reason, hours: Math.round(f.hours) })),
+      real_orders: (realOrders || []).length, real_revenue: totalRevenue,
+      internal_orders: internalOrders.length, internal_revenue: internalRevenue,
+      net_profit: realMetrics?.netProfit ?? null, cogs: realMetrics?.cogs ?? null,
+      cogs_coverage: realMetrics?.cogsCoverage ?? null,
+      pageviews_7d: realMetrics?.pageViews7d ?? null,
+      blocked_on_oren: (planStatus?.blocked_on_oren || []).map(b => ({ title: b.title, days_late: b.days_late })),
+      plan_kpi_sync: planKpiSync,
+      opinion_count: opinions.length,
+      html_bytes: html.length,
+    });
+  }
+
   let resendId: string | null = null; let resendError: string | null = null;
   let useKey = RESEND_KEY;
   const useEmails = (Deno.env.get('OWNER_EMAILS') || 'dubis.brand@gmail.com').split(',').map(s => s.trim()).filter(Boolean);
@@ -2105,11 +2306,20 @@ ${planSectionHtml}
   } else { resendError = 'RESEND_API_KEY חסר'; }
 
   await sb.from('boss_reports').insert({
-    report_date: reportDate, ok_count:0, amber_count:0, red_count:0, grey_count:0, phantom_count:0, frozen_count:0,
+    report_date: reportDate,
+    ok_count: agentCounts.ok_count, amber_count: agentCounts.amber_count,
+    red_count: agentCounts.red_count, grey_count: agentCounts.grey_count,
+    phantom_count: 0, frozen_count: 0,
     today_orders:(realOrders || []).length, today_revenue:totalRevenue, meta_alive:!!metaData.ok,
     resend_id:resendId, resend_error:resendError, full_html:html,
     assessment:{
-      mode, version:'v10-self-healing', summary_he,
+      mode, version:'v11-truth', summary_he,
+      agent_counts: agentCounts,
+      failed_agents: failedAgents.map(f => ({ id: f.id, reason: f.reason, hours: Math.round(f.hours) })),
+      real_revenue: totalRevenue, internal_revenue: internalRevenue,
+      net_profit: realMetrics?.netProfit ?? null, cogs: realMetrics?.cogs ?? null,
+      cogs_coverage: realMetrics?.cogsCoverage ?? null,
+      pageviews_7d: realMetrics?.pageViews7d ?? null,
       action_items:action_items_json, opinion_count:opinions.length,
       recurring_count: recurring.length, recurring,
       auto_fix_count: autoFixes.filter(f=>f.succeeded).length, auto_fixes: autoFixes,
@@ -2122,9 +2332,9 @@ ${planSectionHtml}
   });
   await sb.from('agent_runs').insert({
     agent_id:'boss', run_date:reportDate, status:'completed',
-    summary:`${isWeekly ? 'weekly' : 'daily'} v10: ${opinions.length} new, ${recurring.length} recurring, ${autoFixes.filter(f=>f.succeeded).length} auto-fixed, ${totalPending} pending, ${totalMarketing} marketing`,
+    summary:`${isWeekly ? 'weekly' : 'daily'} v11: ${opinions.length} new, ${recurring.length} recurring, ${autoFixes.filter(f=>f.succeeded).length} auto-fixed, ${totalPending} pending, ${totalMarketing} marketing · agents ${agentCounts.ok_count}ok/${agentCounts.red_count}red`,
     tasks_created:createdTaskIds.length, tasks_completed_ids:[],
-    side_effects:{ mode, resend_id:resendId, resend_error:resendError, version:'v10', opinion_count:opinions.length, recurring_count: recurring.length, auto_fix_count: autoFixes.filter(f=>f.succeeded).length, pending_count:totalPending, marketing_total:totalMarketing, created_task_ids:createdTaskIds, meta_error: metaData.fetch_error || null, plan_status: planStatus },
+    side_effects:{ mode, resend_id:resendId, resend_error:resendError, version:'v11', opinion_count:opinions.length, recurring_count: recurring.length, auto_fix_count: autoFixes.filter(f=>f.succeeded).length, pending_count:totalPending, marketing_total:totalMarketing, created_task_ids:createdTaskIds, meta_error: metaData.fetch_error || null, plan_status: planStatus, agent_counts: agentCounts, net_profit: realMetrics?.netProfit ?? null, pageviews_7d: realMetrics?.pageViews7d ?? null },
   });
 
   // Best-effort: stash a plan_status snapshot into today's daily_snapshots.raw_data.
@@ -2145,11 +2355,13 @@ ${planSectionHtml}
   }
 
   return json({
-    ok:true, mode, version:'v10-self-healing', resend_id:resendId, resend_error:resendError,
+    ok:true, mode, version:'v11-truth', resend_id:resendId, resend_error:resendError,
     opinion_count:opinions.length, recurring_count: recurring.length,
     auto_fix_count: autoFixes.filter(f=>f.succeeded).length, auto_fixes: autoFixes,
     pending_count:totalPending, marketing_total:totalMarketing,
     meta_ok: !!metaData.ok, meta_error: metaData.fetch_error || null,
+    agent_counts: agentCounts, net_profit: realMetrics?.netProfit ?? null,
+    real_revenue: totalRevenue, pageviews_7d: realMetrics?.pageViews7d ?? null,
     summary_he,
   });
 });
