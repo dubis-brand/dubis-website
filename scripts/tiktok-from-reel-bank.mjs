@@ -5,9 +5,10 @@
 // Replaces dubis-website/video/scripts/render-and-publish.js (3-slide ffmpeg + Kevin MacLeod).
 //
 // Pipeline:
-//   1. Pull the reel of the day from Supabase Storage `video-assets/_pilot/{persona}-FINAL-{HE,EN}.mp4`
-//      using a deterministic rotation: index = dayOfYear mod BANK_SIZE.
-//   2. Build a per-language caption (slogan + product URL + brand line).
+//   1. Pull the reel of the day from Supabase Storage `video-assets/_pilot/{persona}-FINAL.mp4`
+//      using a deterministic rotation over POPULATED personas: pos = dayOfYear mod available.
+//      (HE/EN bank files are byte-identical, so each persona is ONE slot — see buildAvailableBank.)
+//   2. Build a caption whose LANGUAGE alternates per day (even→HE, odd→EN).
 //   3. POST to Late.com /v1/posts with the public mp4 URL.
 //   4. Insert an agent_tasks row with category='tiktok_post' for tracking.
 //
@@ -46,7 +47,6 @@ const BANK = [
     narration_en: "You're prettier when you're comfortable. Someone told me twenty years ago. I'm only starting to believe it now." },
 ];
 const LANGS = ['HE', 'EN'];
-const BANK_SIZE = BANK.length * LANGS.length; // 20
 
 function dayOfYearUTC() {
   const now = new Date();
@@ -55,24 +55,34 @@ function dayOfYearUTC() {
   return Math.floor((Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - start) / 86400000);
 }
 
-// Probe every one of the 20 bank slots and return only the reels that actually
-// exist in Supabase Storage, in stable bank order.
+// Probe each persona's reel and return only the ones that actually exist in
+// Supabase Storage, in stable bank order — ONE slot per persona.
 //
-// 2026-06-01 (oren complaint "בטיק טוק אותו פוסט עלה פעמיים" — the same post went
-// up twice): the bank has 20 slots (10 personas × 2 langs) but only ~8 are
-// populated. The old rotation did `idx = day % 20` then walked FORWARD to the
-// next existing reel when the slot was empty — so most days collapsed onto the
-// earliest populated slot (men-1/HE), publishing it again and again. Rotating
-// over ONLY the populated reels gives each one an equal, non-repeating turn.
+// 2026-06-01 (oren complaint "בטיק טוק אותו פוסט עלה פעמיים"): the old rotation
+// did `idx = day % 20` then walked FORWARD past empty slots, collapsing most days
+// onto men-1/HE. Fixed by rotating over only populated slots.
+//
+// 2026-06-16 (oren complaint "כל סרטון בטיק טוק יוצא כפול"): the deeper cause —
+// `{persona}-FINAL-HE.mp4` and `{persona}-FINAL-EN.mp4` are BYTE-IDENTICAL files
+// (verified via storage etag match; the reels are English Veo footage, only the
+// caption differs by language). Treating HE+EN as two slots published the SAME
+// video twice to the one @dubis.brand account. Fix: one rotation slot per persona;
+// the caption language alternates per day (see pickReelForToday). EN is the
+// canonical file, with HE as a fallback in case only that name was uploaded.
 async function buildAvailableBank() {
-  const slots = [];
-  for (let i = 0; i < BANK_SIZE; i++) {
-    const persona = BANK[Math.floor(i / 2)];
-    const lang    = LANGS[i % 2];
-    slots.push({ persona, lang, idx: i, url: bankUrl(persona, lang) });
-  }
-  const checks = await Promise.all(slots.map(s => checkReelExists(s.url)));
-  let avail = slots.filter((_, i) => checks[i]);
+  const slots = BANK.map((persona, i) => ({
+    persona, idx: i,
+    canonicalUrl: bankUrl(persona, 'EN'),
+    fallbackUrl:  bankUrl(persona, 'HE'),
+  }));
+  const resolved = await Promise.all(slots.map(async s => {
+    if (await checkReelExists(s.canonicalUrl)) return s.canonicalUrl;
+    if (await checkReelExists(s.fallbackUrl))  return s.fallbackUrl;
+    return null;
+  }));
+  let avail = slots
+    .map((s, i) => ({ persona: s.persona, idx: s.idx, url: resolved[i] }))
+    .filter(s => s.url);
   // 2026-06-07: only publish reels whose product is ACTIVE on the site. Old reels
   // (men-2→product 6, men-3→product 15) point at retired pullover-hoodie products
   // that no longer exist — the caption's product URL would 404. Filter them out so
@@ -91,22 +101,27 @@ async function buildAvailableBank() {
 function pickReelForToday(available) {
   const day = dayOfYearUTC();
 
-  // Manual override via workflow_dispatch inputs (forwarded as env vars by the workflow)
+  // Caption language alternates per day (oren 2026-06-16): even day-of-year → HE,
+  // odd → EN. The footage is identical across languages — only the caption text
+  // changes — so each unique video is published exactly once per rotation turn.
   const fPersona = (process.env.FORCE_PERSONA || '').trim();
   const fLang    = (process.env.FORCE_LANG    || '').trim().toUpperCase();
+  if (fLang && !LANGS.includes(fLang)) throw new Error(`FORCE_LANG "${fLang}" not HE or EN`);
+  const lang = fLang || (day % 2 === 0 ? 'HE' : 'EN');
+
+  // Manual persona override via workflow_dispatch inputs (forwarded as env vars)
   if (fPersona) {
-    if (fLang && !LANGS.includes(fLang)) throw new Error(`FORCE_LANG "${fLang}" not HE or EN`);
-    const match = available.find(s => s.persona.id === fPersona && (!fLang || s.lang === fLang));
-    if (!match) throw new Error(`FORCE_PERSONA "${fPersona}"${fLang ? '/' + fLang : ''} not in available bank`);
-    console.log(`Override: forced persona=${fPersona} lang=${match.lang} → bank idx=${match.idx}`);
-    return { persona: match.persona, lang: match.lang, day, idx: match.idx, pos: -1 };
+    const match = available.find(s => s.persona.id === fPersona);
+    if (!match) throw new Error(`FORCE_PERSONA "${fPersona}" not in available bank`);
+    console.log(`Override: forced persona=${fPersona} lang=${lang} → bank idx=${match.idx}`);
+    return { persona: match.persona, lang, day, idx: match.idx, pos: -1, url: match.url };
   }
 
-  // Rotate over ONLY the populated reels — consecutive days always advance to a
+  // Rotate over ONLY the populated personas — consecutive days always advance to a
   // different reel (no repeats until the whole available set is exhausted).
   const pos     = day % available.length;
   const chosen  = available[pos];
-  return { persona: chosen.persona, lang: chosen.lang, day, idx: chosen.idx, pos };
+  return { persona: chosen.persona, lang, day, idx: chosen.idx, pos, url: chosen.url };
 }
 
 function bankUrl(persona, lang) {
@@ -223,7 +238,7 @@ async function recordTask({ persona, lang, videoUrl, caption, lateResponse, rota
       product_slogan: persona.slogan,
       product_url: `https://www.dubis.net/?p=${persona.product_id}`,
       video_url: videoUrl,
-      bank_path: `video-assets/_pilot/${persona.id}-FINAL-${lang}.mp4`,
+      bank_path: videoUrl.replace(/^.*\/video-assets\//, 'video-assets/'),
       caption: caption,
       publisher: 'late-direct',
       renderer: 'reel-bank-rotation-v1',
@@ -308,13 +323,12 @@ async function main() {
   }
 
   const available = await buildAvailableBank();
-  console.log(`Bank probe: ${available.length}/${BANK_SIZE} reels populated → ${available.map(s => `${s.persona.id}/${s.lang}`).join(', ') || '(none)'}`);
+  console.log(`Bank probe: ${available.length}/${BANK.length} personas populated → ${available.map(s => s.persona.id).join(', ') || '(none)'}`);
   if (!available.length) throw new Error('No reel available in bank. Run batch-he-reels.mjs first.');
 
-  const { persona, lang, day, idx, pos } = pickReelForToday(available);
+  const { persona, lang, day, idx, pos, url: videoUrl } = pickReelForToday(available);
   console.log(`Day ${day} → rotation slot ${pos < 0 ? 'forced' : `${pos}/${available.length}`} → persona=${persona.id} lang=${lang} (bank idx ${idx})`);
 
-  const videoUrl = bankUrl(persona, lang);
   const caption = buildCaption(persona, lang);
   console.log('Caption preview:', caption.slice(0, 120));
   const late = await publishToLate({ videoUrl, caption, persona, lang });
