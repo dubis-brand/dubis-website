@@ -2962,36 +2962,42 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       category: 'social_post' | 'tiktok_post';
       lang: 'he' | 'en';
     };
+    // IL-FOCUS (oren directive 2026-06-19): ALL marketing language → Israel only.
+    // Every caption is Hebrew, rooted-local (NOT translated from EN). The English
+    // garment slogan stays English (that's the product, not the marketing copy),
+    // and reels remain English-spoken video with a Hebrew caption per the
+    // 2026-06-07 reel-voice policy. Reversible: flip 1-2 tiktok slots back to
+    // 'en' if we later test free TikTok algorithmic discovery to a foreign audience.
     const SLOT_TEMPLATES: SlotTemplate[] = [
       // ── Sunday ──
       { day_offset: 0, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
       // ── Monday ──
       { day_offset: 1, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'he' },
       { day_offset: 1, hour_utc: 10, channel: 'ig_fb_feed', format: 'feed_post', category: 'social_post', lang: 'he' },
-      { day_offset: 1, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'en' },
+      { day_offset: 1, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
       // ── Tuesday ──
       { day_offset: 2, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'he' },
       { day_offset: 2, hour_utc: 16, channel: 'ig_carousel',format: 'carousel',  category: 'social_post', lang: 'he' },
       { day_offset: 2, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
       // ── Wednesday ──
-      { day_offset: 3, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'en' },
+      { day_offset: 3, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'he' },
       { day_offset: 3, hour_utc: 10, channel: 'ig_fb_feed', format: 'feed_post', category: 'social_post', lang: 'he' },
-      { day_offset: 3, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'en' },
+      { day_offset: 3, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
       // ── Thursday ──
       { day_offset: 4, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'he' },
       { day_offset: 4, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
       // ── Friday ──
       { day_offset: 5, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'he' },
-      { day_offset: 5, hour_utc: 14, channel: 'ig_carousel',format: 'carousel',  category: 'social_post', lang: 'en' },
-      { day_offset: 5, hour_utc: 16, channel: 'ig_fb_feed', format: 'feed_post', category: 'social_post', lang: 'en' },
+      { day_offset: 5, hour_utc: 14, channel: 'ig_carousel',format: 'carousel',  category: 'social_post', lang: 'he' },
+      { day_offset: 5, hour_utc: 16, channel: 'ig_fb_feed', format: 'feed_post', category: 'social_post', lang: 'he' },
       { day_offset: 5, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
       // ── Saturday ──
       { day_offset: 6, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
     ];
-    // Sanity: 17 slots, 12 HE, 5 EN
+    // Sanity: 17 slots, 17 HE, 0 EN (IL-focus 2026-06-19)
     const heCount = SLOT_TEMPLATES.filter(s => s.lang === 'he').length;
     const enCount = SLOT_TEMPLATES.filter(s => s.lang === 'en').length;
-    if (SLOT_TEMPLATES.length !== 17 || heCount !== 12 || enCount !== 5) {
+    if (SLOT_TEMPLATES.length !== 17 || heCount !== 17 || enCount !== 0) {
       return json({ error: `slot template invariant broken: total=${SLOT_TEMPLATES.length}, he=${heCount}, en=${enCount}` }, 500);
     }
 
