@@ -650,6 +650,32 @@ async function opinionPlanner(sb: SB): Promise<Opinion | null> {
   return { agent:'planner', agent_he:'מתכנן האסטרטגיה', observation:`שבוע שעבר: ${done}/${total} (${completion}%).`, recommendation:'לסקור P0/P1 הפתוחים', priority:'P1', theme:'planner-execution' };
 }
 
+// 2026-06-20 — "🎯 3 החלטות להיום": the Boss-decides block oren asked for.
+// Derives up to 3 prioritized action items from the live P0/P1 opinions
+// (top by priority), each with a clear Hebrew owner. If there are zero real
+// P0/P1 items, says so honestly instead of inventing busywork.
+function buildTopDecisionsHtml(allOpinions: Opinion[]): string {
+  const urgent = allOpinions
+    .filter(o => o.priority === 'P0' || o.priority === 'P1')
+    .sort((a, b) => ({ P0: 0, P1: 1, P2: 2 }[a.priority] - { P0: 0, P1: 1, P2: 2 }[b.priority]))
+    .slice(0, 3);
+  if (urgent.length === 0) {
+    return '<p dir="rtl" style="color:#27ae60;font-size:13px;margin:0">✅ אין כרגע פעולה דחופה — המערכת יציבה.</p>';
+  }
+  const PRIO: Record<string, { label: string; color: string }> = {
+    'P0': { label: '🔴 דחוף', color: '#c0392b' },
+    'P1': { label: '🟠 חשוב', color: '#e67e22' },
+    'P2': { label: '🟡 כדאי', color: '#888' },
+  };
+  return urgent.map((o, i) => {
+    const p = PRIO[o.priority] || { label: o.priority, color: '#888' };
+    return `<div dir="rtl" style="padding:10px 14px;background:#fafafa;border-right:4px solid ${p.color};margin:6px 0;border-radius:6px;text-align:right">
+      <div style="font-size:13.5px;color:#2c2c2c"><b style="color:${p.color}">${i + 1}. ${p.label}</b> · ${esc(cleanRecommendationText(o.recommendation))}</div>
+      <div style="font-size:11.5px;color:#666;margin-top:4px">↳ ${esc(o.observation)} <span style="color:#999">· אחראי: ${esc(o.agent_he)}</span></div>
+    </div>`;
+  }).join('');
+}
+
 function synthesize(opinions: Opinion[]) {
   const sorted = [...opinions].sort((a, b) => ({ P0: 0, P1: 1, P2: 2 }[a.priority] - { P0: 0, P1: 1, P2: 2 }[b.priority]));
   const topActions = sorted.slice(0, 5);
@@ -1443,13 +1469,30 @@ function buildPersonaSeriesHtml(ps: Awaited<ReturnType<typeof fetchPersonaSeries
 // autonomous slogan→product flow. Reads agent_runs self-heal markers
 // (auto_product_retry / auto_product_failed) + the queue + the latest auto product
 // so oren has ONE daily line confirming the flow works even when runs hiccup.
+// 2026-06-20 — classify a pipeline/run error correctly.
+// A TECHNICAL failure (GHA / build / timeout / 5xx) is the only thing that goes in
+// the red "needs manual check" box. A `cancelled` row whose last_error is a human
+// visual reject (oren_visual_reject / mockup_visual_issue) is a CORRECT decision,
+// NOT a system failure — it must NEVER be reported as "GHA workflow failed".
+const VISUAL_REJECT_RX = /visual_reject|oren_|mockup_visual/i;
+const TECH_FAIL_RX = /workflow|gha|previews|timeout|500|502|503|504|error|exception|build failed/i;
+function isTechnicalPipelineFailure(status: string | null | undefined, lastError: string | null | undefined): boolean {
+  const st = String(status || '').toLowerCase();
+  const err = String(lastError || '');
+  if (VISUAL_REJECT_RX.test(err)) return false;          // human decision, not a tech fault
+  if (st === 'failed') return true;                       // explicit failed = technical
+  if (TECH_FAIL_RX.test(err)) return true;               // error text smells technical
+  return false;                                          // cancelled / other → not technical
+}
+
 async function fetchAutoProductHealth(sb: SB): Promise<{
   latest: { numeric: number; slogan: string; status: string; active: boolean } | null;
   retries7d: number;
-  failures: Array<{ numeric: number; summary: string; run_id: string | null }>;
-  queueFailed: number;
+  techFailures: Array<{ numeric: number; summary: string; run_id: string | null }>; // last 72h, technical only
+  visualRejects: Array<{ numeric: number; reason: string }>;                          // human rejects (informational)
 } | null> {
-  const since = new Date(Date.now() - 7 * 86400000).toISOString();
+  const since7d = new Date(Date.now() - 7 * 86400000).toISOString();
+  const since72h = Date.now() - 72 * 3600000;
   const { data: prod } = await sb.from('dubis_products')
     .select('product_id_numeric, slogan, publishing_status, active, created_at')
     .eq('auto_publish', true)
@@ -1462,24 +1505,48 @@ async function fetchAutoProductHealth(sb: SB): Promise<{
     active: p0.active === true,
   } : null;
 
+  // self-heal retry count from agent_runs (7d), plus technical failures (72h only).
   const { data: runs } = await sb.from('agent_runs')
     .select('summary, side_effects, created_at')
     .eq('agent_id', 'product')
-    .gte('created_at', since)
+    .gte('created_at', since7d)
     .order('created_at', { ascending: false }).limit(40);
   let retries7d = 0;
-  const failures: Array<{ numeric: number; summary: string; run_id: string | null }> = [];
+  const techFailures: Array<{ numeric: number; summary: string; run_id: string | null }> = [];
   for (const r of (runs || []) as Array<Record<string, unknown>>) {
     const se = (r.side_effects as Record<string, unknown>) || {};
     if (se.auto_product_retry === true) retries7d++;
     if (se.auto_product_failed === true) {
-      failures.push({ numeric: Number(se.product_id_numeric || 0), summary: String(r.summary || '').slice(0, 100), run_id: (se.workflow_run_id as string) || null });
+      const createdMs = new Date(r.created_at as string).getTime();
+      const summary = String(r.summary || '');
+      // Only surface technical failures from the last 72h (older → dropped).
+      if (createdMs >= since72h && isTechnicalPipelineFailure('failed', String(se.last_error || summary))) {
+        techFailures.push({ numeric: Number(se.product_id_numeric || 0), summary: summary.slice(0, 100), run_id: (se.workflow_run_id as string) || null });
+      }
     }
   }
 
+  // Pipeline-queue rows in the last 7d, classified.
   const { data: q } = await sb.from('product_pipeline_queue')
-    .select('status').eq('status', 'failed').gte('updated_at', since);
-  return { latest, retries7d, failures, queueFailed: (q || []).length };
+    .select('product_id_numeric, status, last_error, updated_at')
+    .in('status', ['failed', 'cancelled'])
+    .gte('updated_at', since7d);
+  const visualRejects: Array<{ numeric: number; reason: string }> = [];
+  for (const row of (q || []) as Array<Record<string, unknown>>) {
+    const st = String(row.status || '');
+    const err = String(row.last_error || '');
+    const numeric = Number(row.product_id_numeric || 0);
+    const updatedMs = new Date(row.updated_at as string).getTime();
+    if (VISUAL_REJECT_RX.test(err)) {
+      visualRejects.push({ numeric, reason: err.slice(0, 80) });
+      continue; // never a tech failure
+    }
+    // Technical failure only if it's genuinely technical AND fresh (≤72h).
+    if (isTechnicalPipelineFailure(st, err) && updatedMs >= since72h) {
+      techFailures.push({ numeric, summary: err.slice(0, 100) || `queue status=${st}`, run_id: null });
+    }
+  }
+  return { latest, retries7d, techFailures, visualRejects };
 }
 function buildAutoProductHealthHtml(h: Awaited<ReturnType<typeof fetchAutoProductHealth>>): string {
   if (!h) return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right">קו המוצרים האוטומטי — אין נתונים.</p>';
@@ -1492,15 +1559,19 @@ function buildAutoProductHealthHtml(h: Awaited<ReturnType<typeof fetchAutoProduc
   const latestHtml = h.latest
     ? `<p dir="rtl" style="font-size:12.5px;margin:0 0 6px;text-align:right">מוצר אוטומטי אחרון: <b>#${h.latest.numeric}</b> "${esc(h.latest.slogan)}" — ${badge(h.latest.status, h.latest.active)}${h.latest.active ? ` · <a href="https://www.dubis.net/#product-${h.latest.numeric}" style="color:#c8a96e;font-weight:600;text-decoration:none">▶ לדף המוצר</a>` : ''}</p>`
     : '<p dir="rtl" style="font-size:12px;color:#999;text-align:right">עדיין לא נוצר מוצר אוטומטי.</p>';
-  const stats = `<p dir="rtl" style="font-size:12.5px;margin:0 0 6px;text-align:right">🔁 ${h.retries7d} ריצות-תיקון אוטומטיות (self-heal) · ❌ ${h.failures.length} כשלים סופיים (7 ימים)</p>`;
+  const stats = `<p dir="rtl" style="font-size:12.5px;margin:0 0 6px;text-align:right">🔁 ${h.retries7d} ריצות-תיקון אוטומטיות (self-heal) · 🔧 ${h.techFailures.length} כשלים טכניים (72ש׳) · 👤 ${h.visualRejects.length} נדחו ידנית (ויזואלי)</p>`;
+  // Visual rejects = a CORRECT human decision, shown in a neutral grey note (never red).
+  const rejectsNote = h.visualRejects.length === 0 ? '' :
+    `<div dir="rtl" style="background:#f5f5f5;border-right:3px solid #999;padding:8px 12px;border-radius:6px;margin-top:6px;text-align:right;font-size:12px;color:#555">👤 נדחו ידנית (ויזואלי) — החלטה תקינה, לא תקלה: ${h.visualRejects.map(r => `#${r.numeric || '?'}`).join(', ')}</div>`;
+  // RED box only for genuine technical failures in the last 72h.
   let alert = '';
-  if (h.failures.length || h.queueFailed) {
-    const list = h.failures.map(f => `<li>#${f.numeric || '?'} — ${esc(f.summary)}${f.run_id ? ` · <a href="https://github.com/dubis-brand/dubis-website/actions/runs/${f.run_id}" style="color:#c8a96e">לוג</a>` : ''}</li>`).join('');
-    alert = `<div dir="rtl" style="background:#fdecea;border-right:3px solid #b91c1c;padding:8px 12px;border-radius:6px;margin-top:6px;text-align:right"><b style="color:#b91c1c">דורש בדיקה ידנית — נכשל גם אחרי retry:</b><ul style="margin:6px 0;padding-right:18px;font-size:12px">${list || `<li>${h.queueFailed} שורות תור במצב failed</li>`}</ul></div>`;
+  if (h.techFailures.length) {
+    const list = h.techFailures.map(f => `<li>#${f.numeric || '?'} — ${esc(f.summary)}${f.run_id ? ` · <a href="https://github.com/dubis-brand/dubis-website/actions/runs/${f.run_id}" style="color:#c8a96e">לוג</a>` : ''}</li>`).join('');
+    alert = `<div dir="rtl" style="background:#fdecea;border-right:3px solid #b91c1c;padding:8px 12px;border-radius:6px;margin-top:6px;text-align:right"><b style="color:#b91c1c">דורש בדיקה ידנית — כשל טכני (72 שעות):</b><ul style="margin:6px 0;padding-right:18px;font-size:12px">${list}</ul></div>`;
   } else {
-    alert = '<p dir="rtl" style="font-size:12px;color:#2d6a4f;text-align:right">✅ הצינור תקין — self-heal פעיל, אין כשלים פתוחים.</p>';
+    alert = '<p dir="rtl" style="font-size:12px;color:#2d6a4f;text-align:right">✅ הצינור תקין — אין כשלים טכניים פתוחים.</p>';
   }
-  return latestHtml + stats + alert;
+  return latestHtml + stats + alert + rejectsNote;
 }
 
 // Marketing-today (v9) — caption pulled from extensive field chain
@@ -1641,20 +1712,52 @@ function mapOrderRow(o: Record<string, unknown>): TrackedOrderRow {
   };
 }
 
+// 2026-06-20 — order-tracking now shows ONLY orders that need attention.
+// IN-PROGRESS = these statuses. delivered + cancelled + refunded are a count line,
+// never per-row (oren: weeks-old delivered/cancelled noise drowned the real set).
+const IN_PROGRESS_STATUSES = new Set([
+  'pending', 'paid', 'created', 'open',
+  'in_production', 'in-production', 'passed', 'passed_to_production',
+  'printing', 'printed',
+  'shipped', 'in_transit',
+]);
+// Internal / test / sandbox buyers must never appear in the attention list.
+// (isInternalBuyer covers hila/oren/dubis.brand; this adds sandbox + empty email.)
+function isNonRealTrackingBuyer(email: string | null | undefined): boolean {
+  const e = (email || '').toLowerCase().trim();
+  if (!e) return true;                              // empty buyer_email → not a real customer order
+  if (isInternalBuyer(e)) return true;             // hila / oren / dubis.brand / *test*
+  if (/hilateharlev/i.test(e)) return true;        // explicit per spec
+  if (/sandbox|@personal/i.test(e)) return true;   // PayPal sandbox / personal test accounts
+  return false;
+}
+
 async function fetchActiveOrdersTracking(sb: SB): Promise<{
-  total: number;
+  total: number;                 // count of attention rows (highlighted + rows)
   highlighted: TrackedOrderRow[];
-  rows: TrackedOrderRow[]; // last-30-day rows excluding highlighted
+  rows: TrackedOrderRow[];       // last-30-day IN-PROGRESS rows, real customers only
+  deliveredCount: number;        // closed orders in window — shown as one count line
+  cancelledCount: number;
 }> {
   // 30-day window for normal tracking (was 90d, oren 2026-05-23: cluttered).
   const since = new Date(Date.now() - 30*86400000).toISOString();
+  // Pull EVERYTHING in the window (incl. cancelled/refunded/delivered) so we can
+  // count the closed ones for the summary line, then filter rows down to the
+  // in-progress + real-customer set.
   const { data: orders } = await sb.from('orders')
     .select('id, buyer_email, created_at, updated_at, status, total_amount, tracking_number, tracking_url, printful_order_id, gelato_ticket_id, shipped_at')
     .eq('is_test', false)
-    .not('status', 'in', '(cancelled,refunded)')
     .gte('created_at', since)
     .order('created_at', { ascending: true });
-  const windowRows = (orders || []).map(o => mapOrderRow(o as Record<string, unknown>));
+  const allWindow = (orders || []) as Array<Record<string, unknown>>;
+  // Real-customer subset only (drop internal/test/sandbox/empty) for both counts + rows.
+  const realWindow = allWindow.filter(o => !isNonRealTrackingBuyer(o.buyer_email as string));
+  const norm = (s: unknown) => String(s || 'unknown').toLowerCase();
+  const deliveredCount = realWindow.filter(o => ['delivered', 'fulfilled'].includes(norm(o.status))).length;
+  const cancelledCount = realWindow.filter(o => ['cancelled', 'canceled', 'refunded'].includes(norm(o.status))).length;
+  const windowRows = realWindow
+    .filter(o => IN_PROGRESS_STATUSES.has(norm(o.status)))
+    .map(o => mapOrderRow(o));
 
   // Pull highlighted orders separately so they survive even if older than 30 days.
   const highlightFilters: string[] = [];
@@ -1677,7 +1780,7 @@ async function fetchActiveOrdersTracking(sb: SB): Promise<{
   // Dedupe: drop highlighted IDs from the main window list to avoid double display.
   const highlightIds = new Set(highlightedRows.map(r => r.id));
   const rows = windowRows.filter(r => !highlightIds.has(r.id));
-  return { total: rows.length + highlightedRows.length, highlighted: highlightedRows, rows };
+  return { total: rows.length + highlightedRows.length, highlighted: highlightedRows, rows, deliveredCount, cancelledCount };
 }
 
 // =============================================================
@@ -1753,34 +1856,63 @@ function emailNeedsAttention(subject: string, from: string): boolean {
   if (EMAIL_MARKETING_RX.test(subject)) return false;          // vendor marketing newsletter
   return true;
 }
+type EmailAnalysis = { idea?: string; relevance?: string; recommendation?: string; next_step?: string; agent?: string };
 async function fetchEmailDigest(sb: SB): Promise<{
   scanned: number; kept: number; filtered: number;
   digest: string | null; actions: string[];
-  emails: Array<{ subject: string; from: string }>;
+  emails: Array<{ subject: string; from: string; analysis: EmailAnalysis | null }>;
 } | null> {
   const since = new Date(Date.now() - 24 * 3600000).toISOString();
   const { data: rows } = await sb.from('agent_tasks')
-    .select('title, description, created_at')
+    .select('title, description, content_data, created_at')
     .eq('category', 'gmail_insight')
     .gte('created_at', since)
     .order('created_at', { ascending: false })
     .limit(30);
   const all = (rows || []) as Array<Record<string, unknown>>;
   const parsed = all.map(r => {
-    // title shape: "📧 {subject}" / "{emoji} {subject}"; description: "From: {from}\n{snippet}"
+    // title shape: "📧 {subject}"; description: "From: {from}\n…".
+    // 2026-06-20: the rewritten email_monitor also stores a structured per-email
+    // analysis in content_data.dubis_analysis — prefer it when present.
     const subject = String(r.title || '').replace(/^[^\s]*\s/, '').trim();
     const desc = String(r.description || '');
     const fromMatch = desc.match(/^From:\s*(.+)$/m);
-    const from = fromMatch ? fromMatch[1].trim() : '';
-    const snippet = desc.replace(/^From:\s*.+$/m, '').trim().slice(0, 220);
-    return { subject, from, snippet, raw_title: String(r.title || '') };
+    const cd = (r.content_data || {}) as Record<string, unknown>;
+    const from = String(cd.from || (fromMatch ? fromMatch[1].trim() : ''));
+    const snippet = desc.replace(/^From:\s*.+$/m, '').trim().slice(0, 400);
+    const analysis = (cd.dubis_analysis || null) as EmailAnalysis | null;
+    return { subject, from, snippet, analysis, raw_title: String(r.title || '') };
   });
   const kept = parsed.filter(p => emailNeedsAttention(p.subject, p.from));
   const filtered = parsed.length - kept.length;
   if (kept.length === 0) {
     return { scanned: parsed.length, kept: 0, filtered, digest: null, actions: [], emails: [] };
   }
-  // Gemini summary + recommended actions (best-effort; falls back to raw list).
+
+  // If the scanner already produced per-email DUBIS analyses, surface them
+  // directly — no second Gemini round-trip; the recommendations are concrete.
+  const withAnalysis = kept.filter(p => p.analysis && p.analysis.recommendation);
+  if (withAnalysis.length > 0) {
+    const digest = withAnalysis.length === 1
+      ? `מייל-רעיון אחד דורש תשומת לב: "${withAnalysis[0].subject}".`
+      : `${withAnalysis.length} מיילי-רעיון מאורן/הילה דורשים תשומת לב.`;
+    const actions = withAnalysis.slice(0, 6).map(p => {
+      const a = p.analysis!;
+      const who = a.agent ? ` [${a.agent}]` : '';
+      return `${p.subject}: ${a.recommendation}${a.next_step ? ` → ${a.next_step}` : ''}${who}`.slice(0, 200);
+    });
+    return {
+      scanned: parsed.length, kept: kept.length, filtered, digest, actions,
+      emails: kept.slice(0, 8).map(e => ({
+        subject: e.subject.slice(0, 90),
+        from: e.from.replace(/<[^>]+>/, '').trim().slice(0, 50),
+        analysis: e.analysis || null,
+      })),
+    };
+  }
+
+  // Fallback (no pre-computed analysis — e.g. Gemini was down during the scan):
+  // summarize the raw snippets here, as before.
   let digest: string | null = null;
   let actions: string[] = [];
   const geminiKey = Deno.env.get('GEMINI_API_KEY') || '';
@@ -1809,7 +1941,7 @@ async function fetchEmailDigest(sb: SB): Promise<{
       }
     } catch (_) { /* fall back to raw list */ }
   }
-  return { scanned: parsed.length, kept: kept.length, filtered, digest, actions, emails: kept.slice(0, 8).map(e => ({ subject: e.subject.slice(0, 90), from: e.from.replace(/<[^>]+>/, '').trim().slice(0, 50) })) };
+  return { scanned: parsed.length, kept: kept.length, filtered, digest, actions, emails: kept.slice(0, 8).map(e => ({ subject: e.subject.slice(0, 90), from: e.from.replace(/<[^>]+>/, '').trim().slice(0, 50), analysis: e.analysis || null })) };
 }
 function buildEmailDigestHtml(d: Awaited<ReturnType<typeof fetchEmailDigest>>): string {
   if (!d) return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right;margin:0">סורק המייל לא החזיר נתונים ב-24 שעות.</p>';
@@ -1824,7 +1956,14 @@ function buildEmailDigestHtml(d: Awaited<ReturnType<typeof fetchEmailDigest>>): 
     ? `<div dir="rtl" style="margin:0 0 8px;text-align:right"><b style="font-size:12.5px;color:#c8a96e">פעולות מומלצות:</b>${d.actions.map(a => `<div dir="rtl" style="padding:5px 10px;background:#fff;border-right:3px solid #c8a96e;margin:3px 0;border-radius:4px;font-size:12px;text-align:right">▸ ${esc(a)}</div>`).join('')}</div>`
     : '';
   const listHtml = d.emails.length
-    ? `<div dir="rtl" style="margin-top:6px;text-align:right"><div style="font-size:11px;color:#999;margin-bottom:3px">המיילים (${d.kept}, סוננו ${d.filtered}):</div>${d.emails.map(e => `<div dir="rtl" style="font-size:11.5px;color:#555;padding:2px 0;text-align:right">📧 <b>${esc(e.subject)}</b> <span style="color:#aaa">— ${esc(e.from)}</span></div>`).join('')}</div>`
+    ? `<div dir="rtl" style="margin-top:6px;text-align:right"><div style="font-size:11px;color:#999;margin-bottom:3px">המיילים (${d.kept}, סוננו ${d.filtered}):</div>${d.emails.map(e => {
+        const head = `<div dir="rtl" style="font-size:11.5px;color:#555;padding:2px 0;text-align:right">📧 <b>${esc(e.subject)}</b> <span style="color:#aaa">— ${esc(e.from)}</span></div>`;
+        const a = e.analysis;
+        if (!a || !a.recommendation) return head;
+        const row = (label: string, val?: string) => val ? `<div dir="rtl" style="font-size:11px;color:#666;padding:1px 0;text-align:right"><span style="color:#c8a96e">${label}</span> ${esc(val)}</div>` : '';
+        const block = `<div dir="rtl" style="background:#fcfbf7;border-right:2px solid #e7ddc8;border-radius:4px;padding:5px 9px;margin:2px 0 7px;text-align:right">${row('💡 הרעיון:', a.idea)}${row('🔗 ל-DUBIS:', a.relevance)}${row('✅ המלצה:', a.recommendation)}${row(`➡️ צעד${a.agent ? ` [${esc(a.agent)}]` : ''}:`, a.next_step)}</div>`;
+        return head + block;
+      }).join('')}</div>`
     : '';
   return summaryHtml + actionsHtml + listHtml;
 }
@@ -2438,11 +2577,16 @@ Deno.serve(async (req: Request) => {
        <div style="color:#c8a96e;font-size:11.5px;font-weight:700;margin-bottom:4px">⭐ מעקב אישי</div>
        ${orderTracking.highlighted.map(r => renderOrderRow(r, true)).join('')}
      </div>`;
+  // Closed orders → one summary count line, never per-row (oren 2026-06-20).
+  const closedLine = (orderTracking.deliveredCount > 0 || orderTracking.cancelledCount > 0)
+    ? `<p dir="rtl" style="color:#999;font-size:11px;margin:8px 0 0;text-align:right">${orderTracking.deliveredCount} נמסרו · ${orderTracking.cancelledCount} בוטלו — לא מוצגים (30 ימים).</p>`
+    : '';
   const trackingHtml = orderTracking.total === 0
-    ? '<p dir="rtl" style="color:#888;font-size:13px;margin:0">אין הזמנות פעילות ב-30 ימים אחרונים.</p>'
-    : `<p dir="rtl" style="color:#666;font-size:11px;margin:0 0 10px">${orderTracking.total} הזמנות פעילות ב-30 ימים אחרונים (לא cancelled/refunded). ${[...orderTracking.highlighted, ...orderTracking.rows].filter(r => r.changed_in_24h).length} שינו סטטוס ב-24 שעות אחרונות.</p>` +
+    ? `<p dir="rtl" style="color:#27ae60;font-size:13px;margin:0">✅ אין הזמנות פעילות שדורשות תשומת לב.</p>${closedLine}`
+    : `<p dir="rtl" style="color:#666;font-size:11px;margin:0 0 10px">${orderTracking.total} הזמנות בתהליך שדורשות תשומת לב (בהמתנה/בייצור/בהדפסה/נשלח). ${[...orderTracking.highlighted, ...orderTracking.rows].filter(r => r.changed_in_24h).length} שינו סטטוס ב-24 שעות אחרונות.</p>` +
        highlightedHtml +
-       orderTracking.rows.map(r => renderOrderRow(r, false)).join('');
+       orderTracking.rows.map(r => renderOrderRow(r, false)).join('') +
+       closedLine;
 
   // A.3 — Rich agent status table: name | when | what it did | error
   const allAgentIds = ['boss','content','marketing','product','supply','design','site_audit','email_monitor','gelato_stock','cto','security','video','planner','tiktok'];
@@ -2530,6 +2674,8 @@ Deno.serve(async (req: Request) => {
   const weeklyMktgHtml = buildWeeklyMarketingHtml(weeklyMktg);
   const personaHtml = buildPersonaSeriesHtml(await fetchPersonaSeries(sb).catch(() => null));
   const autoProductHealthHtml = buildAutoProductHealthHtml(autoProductHealth);
+  // 🎯 3 decisions — derived from the live P0/P1 opinions (full set, incl. recurring).
+  const topDecisionsHtml = buildTopDecisionsHtml(allOpinions);
 
   const lastWeekSection = isWeekly && lastWeekCheck.total > 0
     ? `<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📊 מהשבוע הקודם</h2><p dir="rtl" style="font-size:13px;margin:0 0 10px"><b>${lastWeekCheck.done}/${lastWeekCheck.total} הושלמו (${Math.round(lastWeekCheck.done/lastWeekCheck.total*100)}%).</b></p>${lastWeekCheck.details.slice(0,5).map(d => { const ic = d.status === 'done' ? '✅' : d.status === 'open' ? '⏳' : '❌'; return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;margin:4px 0;border-radius:4px;text-align:right;font-size:12px">${ic} <b>${esc(d.agent)}:</b> ${esc(d.rec.slice(0,100))}</div>`; }).join('')}</td></tr><tr><td style="height:14px"></td></tr>` : '';
@@ -2539,6 +2685,7 @@ Deno.serve(async (req: Request) => {
   const html = `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"></head><body dir="rtl" style="margin:0;padding:0;background:#f5f0e8;font-family:Arial,sans-serif;direction:rtl;text-align:right;color:#2c2c2c"><table dir="rtl" align="center" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:24px 16px"><tr><td align="center"><table dir="rtl" align="center" width="720" cellpadding="0" cellspacing="0" style="max-width:720px;width:100%">
 <tr><td dir="rtl" align="center" style="padding-bottom:18px"><span style="font-size:30px;font-weight:700;letter-spacing:4px;color:#c8a96e;font-family:Georgia,serif">DUBIS</span><p style="margin:6px 0 0;color:#666;font-size:15px;text-align:center">${reportTypeLabel}</p><p style="margin:6px 0 0;color:#999;font-size:13px;text-align:center">${dateStr}</p></td></tr>
 <tr><td dir="rtl" style="background:#2c2c2c;border-radius:12px;padding:18px 22px;color:#fff;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 10px;font-size:16px;color:#c8a96e;direction:rtl;text-align:right">שורה תחתונה</h2>${heroStats}</td></tr><tr><td style="height:14px"></td></tr>
+<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right;border:2px solid #c8a96e"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🎯 3 החלטות להיום</h2>${topDecisionsHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📈 הכנסות 14 הימים האחרונים</h2>${trendHtml}</td></tr><tr><td style="height:14px"></td></tr>
 ${autoFixHtml}
 ${recurringHtml}

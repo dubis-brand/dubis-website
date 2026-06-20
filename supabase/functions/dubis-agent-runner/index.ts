@@ -32,6 +32,7 @@ const GELATO_KEY   = Deno.env.get('GELATO_API_KEY') ?? '';
 const GMAIL_REFRESH= Deno.env.get('GMAIL_REFRESH_TOKEN') ?? '';
 const GMAIL_CID    = Deno.env.get('GMAIL_CLIENT_ID') ?? '';
 const GMAIL_CSEC   = Deno.env.get('GMAIL_CLIENT_SECRET') ?? '';
+const GEMINI_KEY   = Deno.env.get('GEMINI_API_KEY') ?? '';
 
 type SB = ReturnType<typeof createClient>;
 
@@ -113,6 +114,173 @@ async function runProduct(sb: SB): Promise<Record<string, unknown>> {
 }
 
 // ========== EMAIL MONITOR ==========
+// 2026-06-20 REWRITE (oren ask). The old monitor triaged the inbox for vendor
+// noise (receipts/invoices/gelato/paypal) and saved metadata-only tasks that
+// got auto-rejected — every row since 2026-05-17 was junk. Oren's real need:
+// he forwards/sends emails about ideas he sees in WhatsApp/Facebook groups and
+// expects the agent to READ them deeply and RECOMMEND what to do in DUBIS's
+// context. So this now:
+//   1. Prioritizes mail FROM oren/hila + mail addressed TO the brand inbox.
+//   2. Denylists vendor/transactional noise (Meta/GoDaddy/Vercel/Supabase/
+//      Gelato-automated/PayPal-receipts/newsletters/self-ingested DUBIS reports).
+//   3. Reads the FULL body, extracts URLs.
+//   4. Gemini-analyzes each signal email into a 4-part Hebrew recommendation:
+//      מה הרעיון → איך זה מתחבר ל-DUBIS → ההמלצה שלי → צעד מוצע.
+//   5. Writes agent_tasks (category='gmail_insight') in the shape the Boss
+//      daily-report fetchEmailDigest reads (title="📧 {subject}",
+//      description="From: …\n…"), PLUS the structured analysis in content_data
+//      so the digest can surface the recommendation verbatim.
+// Still writes the agent_runs row (in Deno.serve) so the Boss staleness check
+// stays green.
+
+// Signal senders — these are the people whose mail is the whole point.
+const EMAIL_SIGNAL_SENDERS = [
+  'teharlev1976@gmail.com',
+  'hilateharlev@gmail.com',
+  'steharlev@gmail.com',
+];
+// Vendor / transactional / self-ingest denylist. Matched against "From + Subject".
+const EMAIL_DENY_RX = /(noreply|no-reply|donotreply|do-not-reply|notifications?@|automated|mailer-daemon|postmaster)/i;
+const EMAIL_DENY_DOMAIN_RX = /@(facebookmail\.com|facebook\.com|meta\.com|business\.facebook|godaddy\.com|secureserver\.net|vercel\.com|supabase\.io|supabase\.com|gelato(apis)?\.com|paypal\.com|intuit\.com|mailchimp|sendgrid|substack\.com|resend\.(dev|com)|google\.com|accounts\.google)/i;
+const EMAIL_DENY_SUBJECT_RX = /(receipt|invoice|payment (received|sent|confirmation)|your order|renewal|auto-?renew|expire|billing|statement|unsubscribe|newsletter|webinar|grow your business|run your business|growth tips|% off|black friday|cyber monday|holiday sale|verify your|security alert|sign-?in|password|deploy(ed|ment)|build (failed|succeeded)|usage|quota)/i;
+// Self-ingest: our own daily/weekly reports bouncing back into the inbox.
+const EMAIL_SELF_RX = /(DUBIS\s*דוח|DUBIS\s*פגישה|דוח יומי|פגישה שבועית|daily report|weekly report|boss agent|orders@dubis\.net)/i;
+
+function isSignalEmail(from: string, subject: string): boolean {
+  const f = from.toLowerCase();
+  const s = `${from} ${subject}`;
+  // Self-ingested reports are always noise.
+  if (EMAIL_SELF_RX.test(s)) return false;
+  // Mail FROM oren/hila is always signal (overrides denylists — he forwards a
+  // vendor email on purpose to ask "what do we do with this").
+  if (EMAIL_SIGNAL_SENDERS.some(addr => f.includes(addr))) return true;
+  // Otherwise apply the vendor/transactional denylists.
+  if (EMAIL_DENY_RX.test(f)) return false;
+  if (EMAIL_DENY_DOMAIN_RX.test(f)) return false;
+  if (EMAIL_DENY_SUBJECT_RX.test(subject)) return false;
+  // Anything else addressed to the brand inbox by a human → treat as signal.
+  return true;
+}
+
+// Recursively pull text/plain (preferred) or text/html out of a Gmail payload.
+function extractBodyFromPayload(payload: Record<string, unknown> | undefined): string {
+  if (!payload) return '';
+  const decode = (data: string): string => {
+    try {
+      const b64 = data.replace(/-/g, '+').replace(/_/g, '/');
+      const bin = atob(b64);
+      const bytes = Uint8Array.from(bin, (c: string) => c.charCodeAt(0));
+      return new TextDecoder('utf-8').decode(bytes);
+    } catch { return ''; }
+  };
+  const stripHtml = (html: string): string =>
+    html.replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/\s+/g, ' ').trim();
+
+  let plain = '';
+  let html = '';
+  const walk = (p: Record<string, unknown> | undefined) => {
+    if (!p) return;
+    const mime = String(p.mimeType || '');
+    const body = p.body as Record<string, unknown> | undefined;
+    const data = body?.data as string | undefined;
+    if (mime === 'text/plain' && data) plain += decode(data) + '\n';
+    else if (mime === 'text/html' && data) html += decode(data) + '\n';
+    const parts = p.parts as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(parts)) for (const child of parts) walk(child);
+  };
+  walk(payload);
+  const text = (plain.trim() || stripHtml(html)).trim();
+  return text;
+}
+
+function extractUrls(text: string): string[] {
+  const rx = /https?:\/\/[^\s"'<>)\]]+/gi;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of text.matchAll(rx)) {
+    let u = m[0].replace(/[.,;)]+$/, '');
+    // Drop tracking / unsubscribe / vendor pixel links — they're not the idea.
+    if (/(unsubscribe|utm_|\/track|\/open|pixel|googleusercontent|fbcdn|mailchimp|list-manage|safelinks)/i.test(u)) continue;
+    if (seen.has(u)) continue;
+    seen.add(u);
+    out.push(u);
+    if (out.length >= 5) break;
+  }
+  return out;
+}
+
+// Best-effort fetch of a URL → page title + first meaningful paragraph.
+async function fetchUrlContext(url: string): Promise<string> {
+  try {
+    const r = await fetch(url, {
+      method: 'GET',
+      headers: { 'User-Agent': 'Mozilla/5.0 (DUBIS-EmailMonitor)', 'Accept': 'text/html' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return '';
+    const ct = r.headers.get('content-type') || '';
+    if (!/text\/html|text\/plain/i.test(ct)) return '';
+    const html = (await r.text()).slice(0, 200000);
+    const titleM = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const ogM = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
+            || html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
+    const title = titleM ? titleM[1].replace(/\s+/g, ' ').trim().slice(0, 140) : '';
+    const desc = ogM ? ogM[1].replace(/\s+/g, ' ').trim().slice(0, 280) : '';
+    const combined = [title, desc].filter(Boolean).join(' — ');
+    return combined.slice(0, 360);
+  } catch { return ''; }
+}
+
+// Gemini → 4-part Hebrew recommendation in DUBIS context.
+async function analyzeIdeaEmail(
+  subject: string, from: string, body: string, urlContexts: Array<{ url: string; ctx: string }>,
+): Promise<{ idea: string; relevance: string; recommendation: string; next_step: string; agent: string } | null> {
+  if (!GEMINI_KEY) return null;
+  const urlBlock = urlContexts.length
+    ? '\n\nקישורים שצורפו (כותרת + תקציר שנמשכו מהדף):\n' + urlContexts.map((u, i) => `${i + 1}. ${u.url}${u.ctx ? `\n   ${u.ctx}` : ' (לא נמשך תוכן)'}`).join('\n')
+    : '';
+  const prompt = `אתה היד הימנית של אורן — מפעיל יחיד של מותג אופנה D2C בשם DUBIS (חולצות/קפוצונים עם סלוגנים, קהל ישראלי + אמריקאי גילאי 35-55, גוף אמיתי; הומור יבש, זירו-התנצלות; ייצור Print-on-Demand דרך Gelato; אתר dubis.net; שיווק באינסטגרם/פייסבוק/טיקטוק + קמפיינים ב-Meta; צוות סוכני AI אוטונומיים: תוכן, שיווק, מוצר, עיצוב, וידאו, אספקה).
+
+אורן שולח/מעביר לך מיילים עם רעיונות שהוא רואה בקבוצות וואטסאפ/פייסבוק ודברים שמעניינים אותו — הוא מצפה שתקרא לעומק ותמליץ מה לעשות עם זה בהקשר של DUBIS.
+
+קרא את המייל הבא והחזר ניתוח קצר ומעשי בעברית. ענה אך ורק כ-JSON תקין:
+{"idea":"מה הרעיון, 1-2 משפטים","relevance":"איך זה מתחבר ל-DUBIS — למה זה רלוונטי או למה לא, משפט-שניים","recommendation":"ההמלצה שלי — לעשות / לא לעשות / לבדוק, וברור למה","next_step":"צעד מוצע קונקרטי אחד","agent":"איזה סוכן/אדם הכי מתאים לבצע (content/marketing/product/design/video/supply/cto/oren)"}
+
+נושא: ${subject}
+מאת: ${from}
+גוף ההודעה:
+${body.slice(0, 6000)}${urlBlock}`;
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.4, responseMimeType: 'application/json' },
+      }),
+      signal: AbortSignal.timeout(25000),
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const text = j.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    const o = JSON.parse(m[0]) as Record<string, string>;
+    return {
+      idea: String(o.idea || '').slice(0, 400),
+      relevance: String(o.relevance || '').slice(0, 400),
+      recommendation: String(o.recommendation || '').slice(0, 400),
+      next_step: String(o.next_step || '').slice(0, 300),
+      agent: String(o.agent || 'oren').toLowerCase().slice(0, 20),
+    };
+  } catch { return null; }
+}
+
 async function runEmailMonitor(sb: SB): Promise<Record<string, unknown>> {
   if (!GMAIL_REFRESH || !GMAIL_CID || !GMAIL_CSEC) return { ok: false, error: 'GMAIL env missing' };
   try {
@@ -124,35 +292,87 @@ async function runEmailMonitor(sb: SB): Promise<Record<string, unknown>> {
     const tokenData = await tokenRes.json();
     if (!tokenRes.ok) return { ok: false, error: tokenData.error_description || tokenData.error || 'token failed' };
     const accessToken = tokenData.access_token;
-    const since = Math.floor((Date.now() - 24 * 3600000) / 1000);
-    const q = encodeURIComponent(`after:${since} (receipt OR invoice OR shipment OR renew OR expire OR billing OR gelato OR paypal)`);
+
+    // Signal-first query: mail FROM oren/hila OR addressed TO the brand inbox,
+    // last 2 days, excluding vendor categories Gmail already classifies.
+    const q = encodeURIComponent(
+      'newer_than:2d (from:(teharlev1976@gmail.com OR hilateharlev@gmail.com OR steharlev@gmail.com) ' +
+      'OR to:(dubis.brand@gmail.com)) ' +
+      '-from:(orders@dubis.net) -category:promotions -category:social',
+    );
     const listRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=20`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!listRes.ok) return { ok: false, error: `Gmail list HTTP ${listRes.status}` };
     const list = await listRes.json();
     const ids = (list.messages || []).map((m: { id: string }) => m.id);
-    let saved = 0;
+
+    let scanned = 0, saved = 0, filtered = 0, analyzed = 0;
     const insightDetails: unknown[] = [];
-    for (const id of ids.slice(0, 10)) {
-      const mRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`, { headers: { Authorization: `Bearer ${accessToken}` } });
+
+    for (const id of ids.slice(0, 12)) {
+      // Full message so we can read the body + extract URLs.
+      const mRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!mRes.ok) continue;
       const m = await mRes.json();
-      const subject = m.payload?.headers?.find((h: { name: string; value: string }) => h.name === 'Subject')?.value || '(no subject)';
-      const from = m.payload?.headers?.find((h: { name: string; value: string }) => h.name === 'From')?.value || '';
-      const snippet = m.snippet || '';
+      scanned++;
+      const headers = (m.payload?.headers || []) as Array<{ name: string; value: string }>;
+      const subject = headers.find(h => h.name === 'Subject')?.value || '(no subject)';
+      const from = headers.find(h => h.name === 'From')?.value || '';
+
+      if (!isSignalEmail(from, subject)) { filtered++; continue; }
+
       const title = `📧 ${subject}`.slice(0, 200);
-      // Dedup
+      // Dedup by title within 48h.
       const { data: dup } = await sb.from('agent_tasks').select('id').eq('title', title).gte('created_at', new Date(Date.now() - 48 * 3600000).toISOString()).limit(1);
       if (dup && dup.length > 0) continue;
+
+      const body = extractBodyFromPayload(m.payload) || (m.snippet || '');
+      const urls = extractUrls(body);
+      const urlContexts: Array<{ url: string; ctx: string }> = [];
+      for (const u of urls.slice(0, 3)) {
+        urlContexts.push({ url: u, ctx: await fetchUrlContext(u) });
+      }
+
+      const analysis = await analyzeIdeaEmail(subject, from, body, urlContexts);
+      if (analysis) analyzed++;
+
+      // Human-readable description in the shape Boss fetchEmailDigest parses:
+      //   "From: {from}\n{rest}". We pack the 4-part recommendation into {rest}.
+      const descParts = [`From: ${from}`];
+      if (analysis) {
+        descParts.push(
+          `💡 מה הרעיון: ${analysis.idea}`,
+          `🔗 איך זה מתחבר ל-DUBIS: ${analysis.relevance}`,
+          `✅ ההמלצה שלי: ${analysis.recommendation}`,
+          `➡️ צעד מוצע (${analysis.agent}): ${analysis.next_step}`,
+        );
+      } else {
+        descParts.push(body.slice(0, 400));
+      }
+      if (urls.length) descParts.push(`קישורים: ${urls.join(' · ')}`);
+      const description = descParts.join('\n').slice(0, 2000);
+
       await sb.from('agent_tasks').insert({
         agent_id: 'cto',
         title,
-        description: `From: ${from}\n${snippet.slice(0, 300)}`,
+        description,
         category: 'gmail_insight',
         status: 'pending',
-        priority: 'medium',
+        priority: analysis ? 'high' : 'medium',
+        content_data: {
+          source: 'email_monitor',
+          subject,
+          from,
+          urls,
+          url_contexts: urlContexts,
+          body_excerpt: body.slice(0, 800),
+          dubis_analysis: analysis,  // null when Gemini unavailable
+        },
       });
       saved++;
-      insightDetails.push({ subject, from });
+      insightDetails.push({ subject, from, has_analysis: !!analysis, urls: urls.length });
     }
-    return { ok: true, scanned: ids.length, saved, details: insightDetails };
+
+    return { ok: true, scanned, saved, filtered, analyzed, details: insightDetails };
   } catch (e) { return { ok: false, error: (e as Error).message }; }
 }
 
