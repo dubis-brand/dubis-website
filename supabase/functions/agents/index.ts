@@ -3493,7 +3493,9 @@ Score the total 0-30. Return ONLY valid JSON:
     const productUrlAlt = `dubis.net/?p=${productId}`;
     const urlPresent = caption.includes(productUrl) || caption.includes(productUrlAlt) || caption.includes(`#product-${productId}`);
 
-    // Copy Playbook system_instruction (matches memory/copy-playbook.md verbatim)
+    // Copy Playbook system_instruction (mirrors C-core/copy-playbook.md + voice-dna.md;
+    // synced 2026-06-20 with the make-human-lite final-pass rules from the brain Copywriter —
+    // when voice rules change here, mirror-edit C-core/copy-playbook.md and vice-versa.)
     const systemInstruction = lang === 'he' ? `אתה QA reviewer של מותג DUBIS לפי Copy Playbook.
 
 כללי הפסילה (כל אחד = ציון נמוך משמעותי):
@@ -3503,10 +3505,11 @@ Score the total 0-30. Return ONLY valid JSON:
 4. **Self-deprecating של חולשה** — "אני שמן/שמנה ויודע/ת זאת". הומור מותר רק מתוך עוצמה.
 5. **חסר Product URL** — חייב להופיע dubis.net/#product-{id} או דומה גלוי בקפשן
 6. **חסר 3-beat structure** — Hook ציני → Agitation אמיתית → DUBIS Drop. צריך לראות את שלושת השלבים.
+7. **נשמע כמו AI ולא כמו בן-אדם** (make-human-lite) — נרטיב מלוטש-מדי, אפס היסוס, מבנה מאוזן-מדי, ביטויי-AI ("בעולם המהיר של היום", "חשוב לציין", leverage/seamless/optimize), העדר מילות-חיבור. DUBIS נשמעת כמו ישראלי סרקסטי שמדבר, לא כמו עמוד נחיתה: מילות-חיבור (ו/כי/אבל/בעצם), רגיסטר דיבורי, דעה אמיתית. הקול נשאר בטוח (zero-apology) — לא נחלש. הערה: מקף ארוך (—) בעברית = תקין בקול של אורן, אל תפסול עליו; פסילת המקף היא לאנגלית בלבד.
 
 נקד 0-100:
 - מבנה 3-beat: 30 נקודות (10 לכל beat)
-- שפה מקורית עברית (אנטי-תרגום): 20
+- שפה מקורית עברית + נשמע אנושי לא-AI (אנטי-תרגום + make-human-lite): 20
 - אין מילות blacklist: 20 (-10 לכל מילה)
 - CTA זהותי לא טרנזקציוני: 15
 - Product URL נוכח: 10
@@ -3525,6 +3528,7 @@ Required:
 3. **Product URL visible** — dubis.net/#product-{id} or similar literal text in caption
 4. **No self-deprecating-of-weakness humor** — humor from strength only
 5. **Slogan integration** — the product's actual slogan should be present or paraphrased
+6. **Sounds human, not AI** (make-human-lite) — NO em dashes (—, the #1 AI tell), no "dive in / game-changer / it's important to note / leverage / seamless / optimize", no over-polished balanced narration. Sound like a real sardonic person talking: connective words (and/but/so), a real opinion, conversational register. Keep the voice confident (zero-apology), don't go timid. This feeds voice_match.
 
 Score 0-100:
 - 3-beat structure: 30 points (10 per beat)
@@ -3532,7 +3536,7 @@ Score 0-100:
 - Identity CTA (not transactional): 15
 - Product URL present: 10
 - Slogan integration correct: 5
-- Voice match (anti-stunning, self-aware sardonic): 20
+- Voice match (sardonic + sounds human not AI, no em dashes): 20
 
 Return JSON only:
 {"score": <0-100>, "issues": ["<issue 1>", ...], "fix_suggestions": ["<fix 1>", ...], "breakdown": {"three_beat": <0-30>, "no_blacklist": <0-20>, "identity_cta": <0-15>, "product_url": <0-10>, "slogan_match": <0-5>, "voice_match": <0-20>}}`;
