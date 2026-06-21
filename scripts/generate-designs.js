@@ -89,9 +89,9 @@ const PRODUCTS = [
   { id: 16, phrase: "My goal: minimal EXISTENCE.",       layout: 'top-bottom',
     small: "My goal: minimal",     big: "EXISTENCE.",  after: ""                },
   { id: 17, phrase: "Experienced in EXHAUSTION.",        layout: 'top-bottom',
-    small: "Experienced in",       big: "EXHAUSTION",  after: "."                },
+    small: "Experienced in",       big: "EXHAUSTION.", after: ""                 },
   { id: 18, phrase: "Unfashionably COMFORTABLE.",        layout: 'top-bottom',
-    small: "Unfashionably",        big: "COMFORTABLE", after: "."                },
+    small: "Unfashionably",        big: "COMFORTABLE.", after: ""                },
 ];
 
 // ---------------------------------------------------------------------------
