@@ -351,12 +351,15 @@ async function runEmailMonitor(sb: SB): Promise<Record<string, unknown>> {
       if (urls.length) descParts.push(`קישורים: ${urls.join(' · ')}`);
       const description = descParts.join('\n').slice(0, 2000);
 
-      await sb.from('agent_tasks').insert({
-        agent_id: 'cto',
+      // valid_status CHECK = backlog|in_progress|pending_approval|approved|publishing|done|rejected.
+      // 'pending' is INVALID → every insert silently failed (supabase-js returns {error}, no throw),
+      // yet saved++ ran anyway and falsely reported saved>0. Use 'backlog' + CHECK the error.
+      const { error: insErr } = await sb.from('agent_tasks').insert({
+        agent_id: 'email_monitor',
         title,
         description,
         category: 'gmail_insight',
-        status: 'pending',
+        status: 'backlog',
         priority: analysis ? 'high' : 'medium',
         content_data: {
           source: 'email_monitor',
@@ -368,6 +371,7 @@ async function runEmailMonitor(sb: SB): Promise<Record<string, unknown>> {
           dubis_analysis: analysis,  // null when Gemini unavailable
         },
       });
+      if (insErr) { insightDetails.push({ subject, from, insert_error: insErr.message }); continue; }
       saved++;
       insightDetails.push({ subject, from, has_analysis: !!analysis, urls: urls.length });
     }

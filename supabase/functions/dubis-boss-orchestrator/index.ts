@@ -479,8 +479,9 @@ async function opinionProduct(sb: SB): Promise<Opinion | null> {
   return { agent:'product', agent_he:'מנהל המוצרים', observation:`${total} מוצרים פעילים, ${productIdsPosted.size} קיבלו פוסט השבוע, ${notPosted} לא.`, recommendation:'לתקן rotation ב-auto-content', priority: notPosted > 8 ? 'P1' : 'P2', theme:'catalog-coverage' };
 }
 async function opinionSupply(sb: SB, ticketsOpened: number): Promise<Opinion | null> {
-  const { data: openOrders } = await sb.from('orders').select('id, status, created_at, gelato_ticket_opened_at').in('status', ['pending', 'in_production', 'shipped']);
-  const oldestPending = (openOrders || []).filter(o => o.status === 'pending' && !o.gelato_ticket_opened_at).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
+  // Only REAL customer orders — Hila/oren/test orders must never trigger a "stuck pending" flag.
+  const { data: openOrders } = await sb.from('orders').select('id, status, created_at, gelato_ticket_opened_at, buyer_email').in('status', ['pending', 'in_production', 'shipped']);
+  const oldestPending = (openOrders || []).filter(o => o.status === 'pending' && !o.gelato_ticket_opened_at && !isInternalBuyer(o.buyer_email as string)).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
   const days = oldestPending ? Math.floor((Date.now() - new Date(oldestPending.created_at).getTime()) / 86400000) : 0;
   if (days <= 3) return null;
   if (days > 14 && ticketsOpened > 0) {
@@ -1198,9 +1199,9 @@ function buildPlanSectionHtml(p: PlanStatus): string {
   return `<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right">
     <h2 dir="rtl" style="margin:0 0 4px;font-size:17px;direction:rtl;text-align:right">📊 תוכנית $1,000 — מצב היום</h2>
     <p dir="rtl" style="margin:0 0 16px;color:#666;font-size:12.5px">
-      ⏰ נותרו <b style="color:${daysColor}">${p.days_to_w7} ימים</b> ליעד שבוע 7 (15 ביוני)
+      🎯 אסטרטגיה נוכחית: loss-leader → מדידה → אורגני → ממומן. היעד עכשיו: ביקוש אמיתי, לא $1k בלו"ז קשיח.
       <span style="color:#ccc"> · </span>
-      פאזה נוכחית: <b style="color:#c8a96e">${p.current_phase}${phaseLabel ? ' — ' + esc(phaseLabel) : ''}</b>
+      פאזה: <b style="color:#c8a96e">${p.current_phase}${phaseLabel ? ' — ' + esc(phaseLabel) : ''}</b>
     </p>
 
     <div dir="rtl" style="margin:0 0 14px">
@@ -1648,9 +1649,11 @@ async function fetchMarketingToday(sb: SB): Promise<{
 // Highlighted-order tracking — Hila's order (manual ask 2026-05-23). Always
 // surfaced separately even if older than the 30-day window. Add more rows here
 // when oren wants another order in the spotlight.
-const HIGHLIGHTED_ORDERS: Array<{ name_he: string; email?: string; gelato_prefix?: string }> = [
-  { name_he: 'הילה טהרלב', email: 'hilateharlev@gmail.com', gelato_prefix: '0cf6a5f1' },
-];
+// 2026-06-21 (oren): emptied. Hila is the internal/test + loss-leader account; her
+// delivered/cancelled orders dominated the tracking section as weeks-old noise.
+// Internal buyers are excluded everywhere now (isInternalBuyer). To spotlight a REAL
+// customer order, add them here.
+const HIGHLIGHTED_ORDERS: Array<{ name_he: string; email?: string; gelato_prefix?: string }> = [];
 
 // Shared human-readable order-status map (our statuses + raw Gelato statuses).
 // Module-level so both the "new orders" list and the tracking section use it.
@@ -2076,7 +2079,7 @@ function buildSparkline(snaps: Array<{ snapshot_date: string; revenue_usd: numbe
     ${yLabels}${yLabelsRight}${xLabels}
     <text x="${padL}" y="${H-3}" font-size="10" fill="#c8a96e" font-family="Arial" font-weight="700">● הכנסה</text>
     <text x="${padL+90}" y="${H-3}" font-size="10" fill="#3498db" font-family="Arial" font-weight="700">▮ הזמנות</text>
-    <text x="${W-padR}" y="${padT+10}" font-size="11" fill="#333" font-family="Arial" font-weight="700" text-anchor="end">היום: $${lastRev.toFixed(0)} · ${lastOrd} הזמנות</text>
+    <text x="${W-padR}" y="${padT+10}" font-size="11" fill="#333" font-family="Arial" font-weight="700" text-anchor="end">היום: ${lastOrd} הזמנות${lastOrd > 0 ? ` · $${lastRev.toFixed(0)}` : ''}</text>
   </svg>`;
 }
 
@@ -2699,7 +2702,7 @@ ${recurringHtml}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📣 שיווק היום (${totalMarketing})</h2>${marketingStatsHtml}${marketingItemsHtml}</td></tr><tr><td style="height:14px"></td></tr>
 ${lastWeekSection}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📊 Meta Funnel — אתמול</h2>${funnelHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🎯 ${isWeekly?'5':'3'} פעולות מומלצות</h2>${actionsHtml}<div dir="rtl" style="background:#2c2c2c;color:#fff;padding:12px 16px;margin-top:14px;border-radius:6px;direction:rtl;text-align:right"><h3 dir="rtl" style="margin:0 0 6px;color:#c8a96e;font-size:13px">דעת המנהל</h3><p dir="rtl" style="margin:0;font-size:12.5px;line-height:1.7">${esc(synth.managerView)}</p></div></td></tr><tr><td style="height:14px"></td></tr>
+<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><div dir="rtl" style="background:#2c2c2c;color:#fff;padding:12px 16px;border-radius:6px;direction:rtl;text-align:right"><h3 dir="rtl" style="margin:0 0 6px;color:#c8a96e;font-size:13px">דעת המנהל</h3><p dir="rtl" style="margin:0;font-size:12.5px;line-height:1.7">${esc(synth.managerView)}</p></div></td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🛒 הזמנות חדשות ב-${isWeekly?'7 ימים':'24 שעות'} (${(realOrders || []).length})</h2>${ordersHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📋 מעקב הזמנות פעילות (${orderTracking.total})</h2>${trackingHtml}</td></tr><tr><td style="height:14px"></td></tr>
 ${planSectionHtml}
