@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>DUBIS — מוצרים מתוקנים (ללא נקודות)</title>
+<style>
+  :root{ --charcoal:#2C2C2C; --honey:#C17E3A; --cream:#F5F0E8; }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; font-family:'Segoe UI',Arial,sans-serif; background:#1a1a1a;
+    color:var(--cream); direction:rtl; text-align:right; line-height:1.5;
+  }
+  header{
+    padding:32px 24px 20px; background:linear-gradient(180deg,#222,#1a1a1a);
+    border-bottom:3px solid var(--honey);
+  }
+  header h1{ margin:0 0 8px; font-size:26px; }
+  header p{ margin:4px 0; color:#bbb; font-size:15px; }
+  .ver{ color:var(--honey); font-weight:bold; }
+  .legend{
+    max-width:1100px; margin:18px auto 0; padding:0 24px; color:#ccc; font-size:14px;
+  }
+  .grid{
+    max-width:1100px; margin:24px auto 60px; padding:0 24px;
+    display:grid; grid-template-columns:1fr; gap:28px;
+  }
+  .card{
+    background:#262626; border:1px solid #3a3a3a; border-radius:14px; overflow:hidden;
+  }
+  .card .meta{ padding:16px 20px; border-bottom:1px solid #3a3a3a; }
+  .card .meta .id{ color:var(--honey); font-weight:bold; font-size:13px; letter-spacing:.5px; }
+  .card .meta .slogan{ font-size:19px; font-weight:600; margin-top:4px; }
+  .card .meta .type{ color:#999; font-size:13px; margin-top:4px; }
+  .swatches{ display:grid; grid-template-columns:1fr 1fr; gap:0; }
+  .sw{ position:relative; aspect-ratio:5/6; display:flex; align-items:center; justify-content:center; }
+  .sw.light{ background:var(--cream); }
+  .sw.dark{ background:var(--charcoal); }
+  .sw img{ width:92%; height:92%; object-fit:contain; }
+  .sw .tag{
+    position:absolute; bottom:8px; inset-inline-start:10px; font-size:11px;
+    padding:3px 8px; border-radius:20px; background:rgba(0,0,0,.35); color:#fff;
+  }
+  .sw.light .tag{ background:rgba(0,0,0,.55); }
+  @media (max-width:560px){ .swatches{ grid-template-columns:1fr; } }
+  footer{ max-width:1100px; margin:0 auto 50px; padding:0 24px; color:#888; font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>✅ מוצרים מתוקנים — ללא נקודות על החולצה</h1>
+  <p>כל הנקודות הוסרו מהדפסות הגב. מקור הבעיה: הנקודה רונדרה כשורה נפרדת וצפה מתחת לטקסט.</p>
+  <p>גרסת עיצוב: <span class="ver">2026062101</span> · 10 מוצרים · כל צבע (כהה + בהיר)</p>
+</header>
+
+<div class="legend">
+  כל מוצר מוצג בשני רקעים: <b>בהיר</b> (קרם — טקסט כהה) ו־<b>כהה</b> (פחם — טקסט לבן),
+  בדיוק כפי שיודפס על הבד. אלה קבצי ההדפסה האמיתיים (<code>designs/back_design_*.png</code>).
+</div>
+
+<div class="grid" id="grid"></div>
+
+<footer>
+  הערה: זהו תצוגת קבצי ההדפסה המתוקנים. תמונות הקטלוג באתר (מוקאפים אמיתיים מגלאטו)
+  מתרעננות בנפרד דרך ה-pipeline לאחר מיזוג ל-main.
+</footer>
+
+<script>
+  const V = '2026062101';
+  const products = [
+    { id:1,  slogan:"I'm not fat, I'm a LIMITED edition", type:"חולצה" },
+    { id:4,  slogan:"I survived — That's enough",         type:"חולצה" },
+    { id:8,  slogan:"Born to NAP, forced to work",        type:"חולצה" },
+    { id:11, slogan:"She believed she could, so she took a NAP", type:"חולצה" },
+    { id:18, slogan:"Unfashionably COMFORTABLE",          type:"חולצה" },
+    { id:30, slogan:"Still here, somehow CONGRATS",        type:"ארוכת שרוול" },
+    { id:31, slogan:"You're prettier when you're COMFORTABLE", type:"חולצה (אשתך הזמינה)" },
+    { id:32, slogan:"Activewear for the INACTIVE",         type:"חולצה" },
+    { id:34, slogan:"Still waiting for my BREAK",          type:"ארוכת שרוול" },
+    { id:38, slogan:"Sleeves were OPTIONAL",              type:"גופייה" },
+  ];
+  const grid = document.getElementById('grid');
+  for (const p of products) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="meta">
+        <div class="id">מוצר #${p.id}</div>
+        <div class="slogan">${p.slogan}</div>
+        <div class="type">${p.type}</div>
+      </div>
+      <div class="swatches">
+        <div class="sw light">
+          <img loading="lazy" src="/designs/back_design_${p.id}_dark.png?v=${V}" alt="הדפסה כהה על בד בהיר">
+          <span class="tag">בד בהיר · טקסט כהה</span>
+        </div>
+        <div class="sw dark">
+          <img loading="lazy" src="/designs/back_design_${p.id}_white.png?v=${V}" alt="הדפסה לבנה על בד כהה">
+          <span class="tag">בד כהה · טקסט לבן</span>
+        </div>
+      </div>`;
+    grid.appendChild(card);
+  }
+</script>
+</body>
+</html>

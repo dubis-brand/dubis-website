@@ -29,7 +29,7 @@ if (GELATO_DRAFT_MODE) {
 // Gelato CDN caches by full URL; same URL = same cached file. Without this
 // param, re-uploading a fixed PNG has no effect — Gelato keeps serving the
 // broken cached version. Set via env or hardcode to a date tag.
-const DESIGN_VERSION = process.env.DESIGN_VERSION || '2026052301';
+const DESIGN_VERSION = process.env.DESIGN_VERSION || '2026062101';
 
 // ─────────────────────────────────────────────────────────────────
 // GELATO TEMPLATES — type+cut → Gelato catalog config
