@@ -6357,11 +6357,18 @@ ${items.join('\n')}
       ? `You are DUBIS's copywriter. We will print this customer-submitted slogan on a ${dbType} (${genderKey}): "${presetSlogan}". Break it into typography. Return ONLY JSON: {"slogan":"${presetSlogan}","power_word":"THE ONE BIG WORD","text_before":"words before","text_after":"words after","layout":"top-bottom","description_en":"2 sentences","description_he":"2 משפטים עברית טבעית"}`
       : `You are DUBIS's head copywriter — CYNICAL humor, body-positive, anti-fashion, for ages 35+. Generate ONE original slogan (2-7 words, English, one POWER WORD) for a ${dbType} (${genderKey}). Not offensive/political. Do NOT repeat: ${dupList}. Return ONLY JSON: {"slogan":"...","power_word":"BIG WORD","text_before":"...","text_after":"...","layout":"top-bottom","description_en":"2 sentences","description_he":"2 משפטים עברית טבעית"}`;
     let g: Record<string, string> = {};
-    try {
-      const gr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: wPrompt }] }] }), signal: AbortSignal.timeout(30000) });
-      const raw = (await gr.json()).candidates?.[0]?.content?.parts?.[0]?.text || '';
-      g = JSON.parse(raw.replace(/```json|```/g, '').trim());
-    } catch (e) { return json({ error: 'gemini_failed', detail: (e as Error).message }, 500); }
+    let gemErr = '';
+    // Reliability (2026-06-21): retry Gemini up to 3× — a single transient failure
+    // must NOT skip the whole week's product (the 2026-06-16 miss was a transient).
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const gr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: wPrompt }] }] }), signal: AbortSignal.timeout(30000) });
+        const raw = (await gr.json()).candidates?.[0]?.content?.parts?.[0]?.text || '';
+        g = JSON.parse(raw.replace(/```json|```/g, '').trim());
+        if (g && (g.slogan || g.power_word)) break;
+      } catch (e) { gemErr = (e as Error).message; }
+    }
+    if (!presetSlogan && !g.slogan) return json({ error: 'gemini_failed_after_retries', detail: gemErr }, 500);
     const finalSlogan = presetSlogan || g.slogan;
     if (!finalSlogan) return json({ error: 'no_slogan_produced' }, 500);
 
