@@ -32,6 +32,19 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+// ── No periods on the shirt (oren 2026-06-21) ──────────────────────────────
+// DUBIS back prints never carry a period. Strip dots from any AI-generated
+// typography before it lands in dubis_products so the stored data matches the
+// period-free print. (The print file itself is independently guaranteed
+// period-free by stripPeriods() in scripts/generate-designs.js — this keeps the
+// DB clean too, e.g. for the admin "edit slogan" view.) Commas, ?, ! are kept.
+function stripSloganDots(s: unknown): string {
+  return String(s || '')
+    .replace(/\./g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
 // ── SELLABLE_TYPES — the ONE contract for "what DUBIS may create" ──────────
 // Single source of truth for BOTH product pools (admin "+ סלוגן חדש"
 // suggestions AND the weekly auto-creator). Before this contract there were two
@@ -3859,9 +3872,12 @@ Generate 3 slogan proposals. Return ONLY valid JSON array. The "colors" field MU
           description_en: s.description_en || '',
           description_he: s.description_he || '',
           colors: chosenColors,
-          typography_small: s.text_before || '',
-          typography_big: s.power_word || '',
-          typography_after: s.text_after || '',
+          // DUBIS shirts never carry a period on the print (oren 2026-06-21).
+          // Strip dots here so DB data matches the period-free render; the print
+          // itself is also guaranteed period-free by scripts/generate-designs.js.
+          typography_small: stripSloganDots(s.text_before),
+          typography_big: stripSloganDots(s.power_word),
+          typography_after: stripSloganDots(s.text_after),
           typography_layout: s.layout || 'top-bottom',
           source: 'ai-generated',
           active: false,
@@ -6353,7 +6369,7 @@ ${items.join('\n')}
     const { data: product, error: insErr } = await sb.from('dubis_products').insert({
       slogan: finalSlogan, clothing_type: dbType, category: genderKey, gender: slot.gender,
       price_usd: W_PRICE_MAP[dbType] || 28, description_en: g.description_en || '', description_he: g.description_he || '',
-      colors: slotColors, typography_small: g.text_before || '', typography_big: g.power_word || '', typography_after: g.text_after || '',
+      colors: slotColors, typography_small: stripSloganDots(g.text_before), typography_big: stripSloganDots(g.power_word), typography_after: stripSloganDots(g.text_after),
       typography_layout: g.layout || 'top-bottom', source: 'ai-generated', active: false, auto_publish: true,
     }).select('id').single();
     if (insErr || !product) return json({ error: 'insert_failed', detail: insErr?.message }, 500);

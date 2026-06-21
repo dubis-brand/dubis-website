@@ -103,6 +103,24 @@ function setFont(ctx, size) {
 }
 
 /**
+ * Strip ALL periods from printed slogan text (oren directive 2026-06-21).
+ * DUBIS shirts never carry a period on the back print. This is enforced at the
+ * render chokepoint so it holds for EVERY product — hardcoded, DB-fetched, or a
+ * future AI-generated slogan — regardless of what the source data contains.
+ * The original "stray floating dot" bug (lone "." in typography_after rendered
+ * as its own centered line) is also impossible once periods never reach canvas.
+ * Keeps newlines; collapses any whitespace a removed period leaves behind.
+ */
+function stripPeriods(s) {
+  return (s || '')
+    .replace(/\./g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ +\n/g, '\n')
+    .replace(/\n +/g, '\n')
+    .trim();
+}
+
+/**
  * Add imperceptibly subtle noise across the canvas.
  * This defeats PNG deflate compression and pushes files above 200 KB
  * without any visible effect on the design.
@@ -255,6 +273,15 @@ const GAP       = 180;  // px of clear space between adjacent cap-blocks
                         // breathe like 3-line layouts.
 
 function generateBack(product, color, outPath) {
+  // No periods on the printed shirt — sanitize every text block up front so the
+  // rest of the layout math operates on period-free strings (oren 2026-06-21).
+  product = {
+    ...product,
+    small: stripPeriods(product.small),
+    big:   stripPeriods(product.big),
+    after: stripPeriods(product.after),
+  };
+
   const canvas = createCanvas(BACK_W, BACK_H);
   const ctx    = canvas.getContext('2d');
 
