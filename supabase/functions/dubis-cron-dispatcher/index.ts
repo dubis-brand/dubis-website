@@ -51,6 +51,10 @@ const JOBS: Record<string, Job> = {
   // Edge Function), bypassing dubis-agent-runner which returned UNAUTHORIZED_NO_AUTH_HEADER.
   // The function accepts ?token=<SERVICE_ROLE> (see gelato-stock-check/index.ts authorized()).
   'gelato-stock':     { name: 'gelato-stock', url: `${FNS_BASE}/gelato-stock-check`, method: 'POST', auth: 'token-query' },
+  // 2026-06-26: content performance loop. content-metrics snapshots IG/FB engagement
+  // daily into post_metrics; content-analyze rolls it up weekly into content_learnings.
+  'content-metrics':  { name: 'content-metrics', url: `${FNS_BASE}/agents?type=collect-content-metrics`, method: 'POST' },
+  'content-analyze':  { name: 'content-analyze', url: `${FNS_BASE}/agents?type=analyze-content`, method: 'POST' },
   // Boss runs LAST in the day
   'boss':             { name: 'boss', url: `${FNS_BASE}/dubis-boss-orchestrator`, method: 'POST' },
 };

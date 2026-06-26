@@ -1838,6 +1838,54 @@ function buildNewProductsHtml(rows: Awaited<ReturnType<typeof fetchNewProductsTh
   return `<p dir="rtl" style="font-size:12.5px;color:#666;margin:0 0 8px;text-align:right">${rows.length} מוצרים חדשים עלו לאוויר השבוע (כל סלוגן פעיל = מאושר אוטומטית, אין שער-אישור):</p>${items}`;
 }
 
+// ── 📈 Content performance (2026-06-26) — closes the "publish into the dark" gap.
+// Reads the daily post_metrics snapshots (written by agents ?type=collect-content-metrics)
+// + the latest content_learnings (the weekly read), surfaces top posts + the diagnosis.
+async function fetchContentPerf(sb: SB): Promise<{
+  learning: { summary: string; sample_size: number; created_at: string } | null;
+  posts: Array<{ eng: number; reach: number; format: string | null; product_id: number | null; permalink: string | null }>;
+  reachAvailable: boolean; totalEng: number;
+} | null> {
+  const since = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  const { data: metrics } = await sb.from('post_metrics')
+    .select('task_id, platform, captured_date, reach, views, likes, comments, shares, saves, format, product_id, permalink')
+    .gte('captured_date', since).order('captured_date', { ascending: false }).limit(1000);
+  const seen = new Set<string>();
+  const byTask = new Map<string, { eng: number; reach: number; format: string | null; product_id: number | null; permalink: string | null }>();
+  for (const r of (metrics || [])) {
+    const row = r as Record<string, unknown>;
+    const k = `${row.task_id}|${row.platform}`; if (seen.has(k)) continue; seen.add(k);
+    const id = String(row.task_id);
+    const a = byTask.get(id) || { eng: 0, reach: 0, format: (row.format as string) ?? null, product_id: (row.product_id as number) ?? null, permalink: (row.permalink as string) ?? null };
+    a.eng += Number(row.likes || 0) + Number(row.comments || 0) + Number(row.shares || 0) + Number(row.saves || 0);
+    a.reach += Number(row.reach || row.views || 0);
+    if (!a.permalink && row.permalink) a.permalink = row.permalink as string;
+    byTask.set(id, a);
+  }
+  const posts = [...byTask.values()].sort((a, b) => b.eng - a.eng);
+  const reachAvailable = posts.filter(p => p.reach > 0).length >= 2;
+  const totalEng = posts.reduce((s, p) => s + p.eng, 0);
+  const { data: lrnRows } = await sb.from('content_learnings')
+    .select('summary, sample_size, created_at').order('created_at', { ascending: false }).limit(1);
+  const learning = (lrnRows && lrnRows[0]) ? (lrnRows[0] as { summary: string; sample_size: number; created_at: string }) : null;
+  return { learning, posts: posts.slice(0, 6), reachAvailable, totalEng };
+}
+function buildContentPerfHtml(p: Awaited<ReturnType<typeof fetchContentPerf>>): string {
+  if (!p) return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right;margin:0">אין עדיין נתוני ביצועים — מנוע האיסוף ירוץ בקרון הלילה.</p>';
+  const head = p.learning
+    ? `<div dir="rtl" style="background:#2c2c2c;color:#fff;padding:12px 16px;border-radius:6px;margin-bottom:10px;text-align:right;font-size:12.5px;line-height:1.7">🧠 <b style="color:#c8a96e">קריאת התוכן:</b> ${esc(p.learning.summary)}</div>`
+    : '';
+  const metricNote = p.reachAvailable ? '' : '<p dir="rtl" style="font-size:11px;color:#c0392b;margin:0 0 8px;text-align:right">⚠️ חשיפה (reach) חסומה — ה-token חסר הרשאת <code>instagram_manage_insights</code>. כרגע מודדים לייקים+תגובות בלבד. שדרוג ה-token (פעולה חד-פעמית) יפתח reach + נתוני FB.</p>';
+  if (!p.posts.length) return head + metricNote + '<p dir="rtl" style="font-size:13px;color:#888;text-align:right;margin:0">לא נמדדו פוסטים ב-7 הימים האחרונים.</p>';
+  const rows = p.posts.map(it => {
+    const link = it.permalink ? `<a href="${esc(it.permalink)}" style="color:#c8a96e;font-weight:600;text-decoration:none">▶ לפוסט →</a>` : '';
+    return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;margin:4px 0;border-radius:6px;text-align:right;font-size:12.5px;border-right:3px solid #c8a96e">
+      <b style="color:#2c2c2c">${esc(it.format || 'פוסט')}</b> · מוצר #${it.product_id ?? '?'} <span style="color:#999">· ${it.eng} מעורבות${p.reachAvailable ? ` · ${it.reach} חשיפה` : ''}</span> &nbsp; ${link}
+    </div>`;
+  }).join('');
+  return `${head}${metricNote}<p dir="rtl" style="font-size:12px;color:#666;margin:0 0 8px;text-align:right">${p.posts.length} הפוסטים החזקים (7 ימים · ${p.totalEng} מעורבות סה"כ):</p>${rows}`;
+}
+
 // =============================================================
 // 📬 Email digest (2026-06-15, oren ask). Reads the last-24h Gmail insights
 // (agent_tasks category='gmail_insight', written by email_monitor / morning-report
@@ -2294,7 +2342,7 @@ Deno.serve(async (req: Request) => {
     : { updated: 0, errors: ['no-real-metrics'] };
   // Resolve real TikTok post URLs (Late.com finalizes async) so marketing links point at the live post.
   await backfillTiktokUrls(sb).catch(() => {});
-  const [marketingToday, pending, agentHealth, dailySnaps, orderTracking, planStatus, weeklyMktg, autoProductHealth, newProductsWeek, emailDigest] = await Promise.all([
+  const [marketingToday, pending, agentHealth, dailySnaps, orderTracking, planStatus, weeklyMktg, autoProductHealth, newProductsWeek, emailDigest, contentPerf] = await Promise.all([
     fetchMarketingToday(sb),
     fetchPendingApprovals(sb),
     fetchAgentHealth(sb),
@@ -2305,6 +2353,7 @@ Deno.serve(async (req: Request) => {
     fetchAutoProductHealth(sb).catch(() => null),
     fetchNewProductsThisWeek(sb).catch(() => []),
     fetchEmailDigest(sb).catch(() => null),
+    fetchContentPerf(sb).catch(() => null),
   ]);
 
   let action_items_json: Opinion[] = synth.topActions.slice(0, isWeekly ? 5 : 3);
@@ -2677,6 +2726,7 @@ Deno.serve(async (req: Request) => {
   const weeklyMktgHtml = buildWeeklyMarketingHtml(weeklyMktg);
   const personaHtml = buildPersonaSeriesHtml(await fetchPersonaSeries(sb).catch(() => null));
   const autoProductHealthHtml = buildAutoProductHealthHtml(autoProductHealth);
+  const contentPerfHtml = buildContentPerfHtml(contentPerf);
   // 🎯 3 decisions — derived from the live P0/P1 opinions (full set, incl. recurring).
   const topDecisionsHtml = buildTopDecisionsHtml(allOpinions);
 
@@ -2700,6 +2750,7 @@ ${recurringHtml}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🐻 סדרת הסוכנים — מאחורי הקוד</h2>${personaHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🤖 קו המוצרים האוטומטי</h2>${autoProductHealthHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📣 שיווק היום (${totalMarketing})</h2>${marketingStatsHtml}${marketingItemsHtml}</td></tr><tr><td style="height:14px"></td></tr>
+<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📈 ביצועי תוכן אורגני</h2>${contentPerfHtml}</td></tr><tr><td style="height:14px"></td></tr>
 ${lastWeekSection}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📊 Meta Funnel — אתמול</h2>${funnelHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><div dir="rtl" style="background:#2c2c2c;color:#fff;padding:12px 16px;border-radius:6px;direction:rtl;text-align:right"><h3 dir="rtl" style="margin:0 0 6px;color:#c8a96e;font-size:13px">דעת המנהל</h3><p dir="rtl" style="margin:0;font-size:12.5px;line-height:1.7">${esc(synth.managerView)}</p></div></td></tr><tr><td style="height:14px"></td></tr>

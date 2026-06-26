@@ -2898,6 +2898,189 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
   // + Boss approval email are the NEXT batch — slots are created with
   // status='backlog' and needs_copy=true so the system knows they're
   // not yet ready to publish.
+  // ── CONTENT PERFORMANCE LOOP (2026-06-26) ────────────────────────────────
+  // Closes the "publish into the dark" gap. collect-content-metrics pulls
+  // engagement back from IG/FB Graph API and snapshots it DAILY into post_metrics
+  // (one row per post per platform per day → trajectory, not just a final number).
+  // analyze-content rolls the snapshots up weekly into content_learnings, which
+  // the weekly-marketing-plan reads to bias the NEXT week (the apply step).
+  // IG + FB only — TikTok has no usable metrics path (Late exposes none and we
+  // don't persist a post id). See status.md "content performance loop".
+  if (type === 'collect-content-metrics') {
+    const svcKey = SERVICE_ROLE;
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const token = url.searchParams.get('token') || req.headers.get('x-agent-secret') || authHeader.replace('Bearer ', '').trim() || '';
+    const isAuthed = (svcKey && token === svcKey) || (agentSecret && token === agentSecret) || (cronSecret && token === cronSecret);
+    if (!isAuthed && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);
+
+    const igToken = Deno.env.get('INSTAGRAM_ACCESS_TOKEN') ?? '';
+    const fbToken = Deno.env.get('FACEBOOK_PAGE_TOKEN') ?? igToken;
+    if (!igToken) return json({ error: 'INSTAGRAM_ACCESS_TOKEN missing' }, 503);
+    const api = 'https://graph.facebook.com/v22.0';
+    const windowDays = Math.min(60, Math.max(1, parseInt(url.searchParams.get('days') || '14', 10)));
+    const sinceIso = new Date(Date.now() - windowDays * 86400000).toISOString();
+    const today = new Date().toISOString().slice(0, 10);
+    const num = (v: unknown): number | null => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+
+    const { data: posts, error: pErr } = await sb
+      .from('agent_tasks').select('id, content_data, updated_at')
+      .eq('status', 'done').in('category', ['social_post', 'tiktok_post'])
+      .gte('updated_at', sinceIso).order('updated_at', { ascending: false }).limit(200);
+    if (pErr) return json({ error: pErr.message }, 500);
+
+    let igOk = 0, fbOk = 0, errors = 0, skippedTiktok = 0;
+    const rows: Record<string, unknown>[] = [];
+
+    for (const t of (posts || [])) {
+      const cd = (t.content_data as Record<string, unknown>) || {};
+      const dims = {
+        product_id: num(cd.product_id),
+        format: (cd.format as string) || null,
+        lang: ((cd.lang as string) || (cd.language as string) || null),
+        hour_utc: num(cd.hour_utc),
+      };
+      const igId = cd.instagram_post_id ? String(cd.instagram_post_id) : '';
+      const fbId = cd.facebook_post_id ? String(cd.facebook_post_id) : '';
+
+      if (igId) {
+        try {
+          let likes: number | null = null, comments: number | null = null, reach: number | null = null;
+          let views: number | null = null, saved: number | null = null, shares: number | null = null, ti: number | null = null;
+          const raw: Record<string, unknown> = {};
+          const fRes = await fetch(`${api}/${igId}?fields=like_count,comments_count,permalink&access_token=${igToken}`);
+          const fJson = await fRes.json(); raw.fields = fJson;
+          if (fRes.ok) { likes = num(fJson.like_count); comments = num(fJson.comments_count); }
+          // IG media insights 400 on the whole request if any metric is invalid for the
+          // media type → request a broad set, fall back to the universal `reach`.
+          const tryInsights = async (metrics: string) => { const r = await fetch(`${api}/${igId}/insights?metric=${metrics}&access_token=${igToken}`); return { ok: r.ok, j: await r.json() }; };
+          let ins = await tryInsights('reach,views,total_interactions,saved,shares');
+          if (!ins.ok) ins = await tryInsights('reach');
+          raw.insights = ins.j;
+          if (ins.ok && Array.isArray(ins.j.data)) {
+            for (const m of ins.j.data) {
+              const v = num(m?.values?.[0]?.value);
+              if (m.name === 'reach') reach = v; else if (m.name === 'views') views = v;
+              else if (m.name === 'total_interactions') ti = v; else if (m.name === 'saved') saved = v;
+              else if (m.name === 'shares') shares = v;
+            }
+          }
+          rows.push({ task_id: t.id, platform: 'instagram', media_id: igId, permalink: (cd.ig_permalink as string) || (fJson.permalink as string) || null, captured_date: today, reach, views, likes, comments, shares, saves: saved, total_interactions: ti, ...dims, raw });
+          igOk++;
+        } catch (e) { errors++; rows.push({ task_id: t.id, platform: 'instagram', media_id: igId, captured_date: today, fetch_error: String(e), ...dims }); }
+      }
+
+      if (fbId) {
+        try {
+          let likes: number | null = null, comments: number | null = null, shares: number | null = null;
+          let reach: number | null = null, impressions: number | null = null;
+          const raw: Record<string, unknown> = {};
+          const fRes = await fetch(`${api}/${fbId}?fields=likes.summary(true),comments.summary(true),shares&access_token=${fbToken}`);
+          const fJson = await fRes.json(); raw.fields = fJson;
+          if (fRes.ok) { likes = num(fJson?.likes?.summary?.total_count); comments = num(fJson?.comments?.summary?.total_count); shares = num(fJson?.shares?.count); }
+          const iRes = await fetch(`${api}/${fbId}/insights?metric=post_impressions,post_impressions_unique&access_token=${fbToken}`);
+          const iJson = await iRes.json(); raw.insights = iJson;
+          if (iRes.ok && Array.isArray(iJson.data)) {
+            for (const m of iJson.data) { const v = num(m?.values?.[0]?.value); if (m.name === 'post_impressions') impressions = v; else if (m.name === 'post_impressions_unique') reach = v; }
+          }
+          rows.push({ task_id: t.id, platform: 'facebook', media_id: fbId, permalink: (cd.fb_permalink as string) || null, captured_date: today, reach, impressions, likes, comments, shares, ...dims, raw });
+          fbOk++;
+        } catch (e) { errors++; rows.push({ task_id: t.id, platform: 'facebook', media_id: fbId, captured_date: today, fetch_error: String(e), ...dims }); }
+      }
+      if (!igId && !fbId) skippedTiktok++;
+    }
+
+    let upserted = 0;
+    if (rows.length) {
+      const { error: upErr } = await sb.from('post_metrics').upsert(rows, { onConflict: 'task_id,platform,captured_date' });
+      if (upErr) return json({ error: 'upsert failed', detail: upErr.message, sample: rows[0] }, 500);
+      upserted = rows.length;
+    }
+    await sb.from('agent_runs').insert({ agent_id: 'marketing', status: 'completed', summary: `[content-metrics] snapshotted ${upserted} rows · IG ${igOk} · FB ${fbOk} · TikTok skipped ${skippedTiktok} · errors ${errors} (${windowDays}d)`, side_effects: { ig: igOk, fb: fbOk, skipped_tiktok: skippedTiktok, errors, window_days: windowDays } }).then(() => {}).catch(() => {});
+    return json({ ok: true, window_days: windowDays, posts_scanned: (posts || []).length, ig_collected: igOk, fb_collected: fbOk, skipped_tiktok: skippedTiktok, errors, rows_upserted: upserted });
+  }
+
+  if (type === 'analyze-content') {
+    const svcKey = SERVICE_ROLE;
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const token = url.searchParams.get('token') || req.headers.get('x-agent-secret') || authHeader.replace('Bearer ', '').trim() || '';
+    const isAuthed = (svcKey && token === svcKey) || (agentSecret && token === agentSecret) || (cronSecret && token === cronSecret);
+    if (!isAuthed && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);
+
+    const windowDays = Math.min(60, Math.max(7, parseInt(url.searchParams.get('days') || '21', 10)));
+    const sinceDate = new Date(Date.now() - windowDays * 86400000).toISOString().slice(0, 10);
+    const { data: metrics, error: mErr } = await sb
+      .from('post_metrics')
+      .select('task_id, platform, captured_date, reach, views, likes, comments, shares, saves, total_interactions, product_id, format, lang, hour_utc, permalink')
+      .gte('captured_date', sinceDate).order('captured_date', { ascending: false }).limit(2000);
+    if (mErr) return json({ error: mErr.message }, 500);
+
+    // newest snapshot per (task,platform), then merge platforms per post
+    const seen = new Set<string>();
+    type Agg = { task_id: string; reach: number; eng: number; product_id: number | null; format: string | null; hour_utc: number | null; permalink: string | null };
+    const byTask = new Map<string, Agg>();
+    for (const r of (metrics || [])) {
+      const k = `${r.task_id}|${r.platform}`; if (seen.has(k)) continue; seen.add(k);
+      const id = String(r.task_id);
+      const a = byTask.get(id) || { task_id: id, reach: 0, eng: 0, product_id: (r.product_id as number) ?? null, format: (r.format as string) ?? null, hour_utc: (r.hour_utc as number) ?? null, permalink: (r.permalink as string) ?? null };
+      a.reach += Number(r.reach || r.views || 0);
+      a.eng   += Number(r.likes || 0) + Number(r.comments || 0) + Number(r.shares || 0) + Number(r.saves || 0);
+      if (!a.permalink && r.permalink) a.permalink = r.permalink as string;
+      byTask.set(id, a);
+    }
+    const items = [...byTask.values()].map(a => ({ ...a, eng_rate: a.reach > 0 ? a.eng / a.reach : 0 }));
+    const N = items.length;
+    const groupAvg = (keyFn: (a: typeof items[0]) => string | number | null) => {
+      const g = new Map<string, { n: number; reach: number; eng: number; rate: number }>();
+      for (const it of items) { const k = keyFn(it); if (k === null || k === undefined) continue; const e = g.get(String(k)) || { n: 0, reach: 0, eng: 0, rate: 0 }; e.n++; e.reach += it.reach; e.eng += it.eng; e.rate += it.eng_rate; g.set(String(k), e); }
+      return [...g.entries()].map(([k, e]) => ({ key: k, n: e.n, avg_reach: e.reach / e.n, avg_eng: e.eng / e.n, avg_rate: e.rate / e.n }));
+    };
+    const byFormat = groupAvg(it => it.format).sort((a, b) => b.avg_rate - a.avg_rate);
+    const byProduct = groupAvg(it => it.product_id).sort((a, b) => b.avg_eng - a.avg_eng);
+    const byHour = groupAvg(it => it.hour_utc).sort((a, b) => b.avg_reach - a.avg_reach);
+    const topPosts = [...items].sort((a, b) => b.eng - a.eng).slice(0, 3);
+    const bottomPosts = [...items].sort((a, b) => a.eng_rate - b.eng_rate).slice(0, 3);
+    // Reach requires the instagram_manage_insights scope. If the token lacks it
+    // (current state), reach is null/0 across the board — DON'T misread that as a
+    // real "distribution" bottleneck. Fall back to engagement-only ranking and say so.
+    const reachKnown = items.filter(i => i.reach > 0).length;
+    const reachAvailable = reachKnown >= Math.max(2, Math.ceil(N * 0.2));
+    const totalEng = items.reduce((s, i) => s + i.eng, 0);
+    const avgEng   = N ? totalEng / N : 0;
+    const avgReach = reachAvailable ? items.filter(i => i.reach > 0).reduce((s, i) => s + i.reach, 0) / reachKnown : 0;
+    const avgRate  = reachAvailable ? items.filter(i => i.reach > 0).reduce((s, i) => s + i.eng_rate, 0) / reachKnown : 0;
+    // Rank formats by eng-rate when reach is known, else by absolute engagement.
+    const fmtSorted = [...byFormat].sort((a, b) => reachAvailable ? b.avg_rate - a.avg_rate : b.avg_eng - a.avg_eng);
+    const diagnosis = !reachAvailable ? 'reach_unavailable'
+      : avgReach < 80 ? 'distribution'
+      : avgRate < 0.04 ? 'creative' : 'healthy';
+    const directives = {
+      boost_formats: fmtSorted.filter(f => f.n >= 2 && (reachAvailable ? f.avg_rate >= avgRate : f.avg_eng >= avgEng)).map(f => f.key),
+      cut_formats:   fmtSorted.filter(f => f.n >= 2 && (reachAvailable ? f.avg_rate < avgRate * 0.5 : f.avg_eng < avgEng * 0.5)).map(f => f.key),
+      boost_products: byProduct.slice(0, 3).map(p => Number(p.key)).filter(Number.isFinite),
+      best_hours:    reachAvailable ? byHour.filter(h => h.avg_reach >= avgReach).slice(0, 3).map(h => Number(h.key)) : [],
+      diagnosis,
+      reach_available: reachAvailable,
+    };
+    const smallN = N < 6;
+    const diagText = diagnosis === 'reach_unavailable'
+      ? `מצב מעורבות-בלבד: ${totalEng} לייקים+תגובות סה"כ, אך אין נתוני חשיפה — ה-token חסר הרשאת instagram_manage_insights. שדרוג ה-token יפתח reach ואבחון הפצה-מול-קריאייטיב.`
+      : diagnosis === 'distribution'
+      ? `החסם הוא הפצה — חשיפה ממוצעת ${Math.round(avgReach)} בלבד. צריך טקטיקת חשיפה (שיתופים/האשטגים/שעות), לא לשנות קופי.`
+      : diagnosis === 'creative'
+      ? `החשיפה סבירה (${Math.round(avgReach)}) אבל שיעור המעורבות נמוך (${(avgRate * 100).toFixed(1)}%) — זה הקריאייטיב.`
+      : `חשיפה ${Math.round(avgReach)} · מעורבות ${(avgRate * 100).toFixed(1)}% — תקין יחסית.`;
+    const topMetric = reachAvailable ? `${(fmtSorted[0]?.avg_rate * 100).toFixed(1)}% מעורבות` : `${fmtSorted[0]?.avg_eng.toFixed(1)} מעורבות/פוסט`;
+    const summary = `${N} פוסטים נבדקו (${windowDays} ימים)${smallN ? ' — מדגם קטן, קריאה כיוונית בלבד' : ''}. ${diagText}` + (fmtSorted.length ? ` פורמט מוביל: ${fmtSorted[0]?.key} (${topMetric}).` : '');
+    const { data: learning, error: lErr } = await sb.from('content_learnings').insert({ window_days: windowDays, sample_size: N, summary, directives, top_posts: topPosts, bottom_posts: bottomPosts }).select('id').single();
+    if (lErr) return json({ error: 'learning insert failed', detail: lErr.message }, 500);
+    await sb.from('agent_runs').insert({ agent_id: 'marketing', status: 'completed', summary: `[content-analysis] ${N} posts · diagnosis=${directives.diagnosis} · avgReach=${Math.round(avgReach)} · avgRate=${(avgRate * 100).toFixed(1)}%`, side_effects: { learning_id: learning?.id, sample_size: N, directives } }).then(() => {}).catch(() => {});
+    return json({ ok: true, sample_size: N, avg_reach: Math.round(avgReach), avg_eng_rate: Number((avgRate * 100).toFixed(2)), directives, summary, by_format: byFormat, by_product: byProduct, top_posts: topPosts });
+  }
+
   if (type === 'weekly-marketing-plan') {
     const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
@@ -3041,6 +3224,26 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     // Use fresh first, fall back to full list when exhausted
     const productPool = freshProducts.length >= 6 ? freshProducts : products;
 
+    // ── 5b. APPLY THE LOOP — bias the pool toward last week's winners ──
+    // Read the latest content_learnings (written by ?type=analyze-content) and
+    // float its boost_products to the front of the pool so high-engagement
+    // products get featured again. Non-fatal — plan still generates if absent.
+    let learningsNote = '';
+    try {
+      const { data: lrn } = await sb.from('content_learnings')
+        .select('id, directives, summary').order('created_at', { ascending: false }).limit(1).maybeSingle();
+      const boost = ((lrn?.directives as Record<string, unknown>)?.boost_products as number[]) || [];
+      if (Array.isArray(boost) && boost.length) {
+        const boosted = productPool.filter((p: Record<string, unknown>) => boost.includes(p.product_id_numeric as number));
+        if (boosted.length) {
+          const rest = productPool.filter((p: Record<string, unknown>) => !boost.includes(p.product_id_numeric as number));
+          (productPool as unknown[]).length = 0; (productPool as unknown[]).push(...boosted, ...rest);
+        }
+        learningsNote = ` | יישום למידה: ${String((lrn?.summary as string) || '').slice(0, 130)}`;
+        if (lrn?.id) await sb.from('content_learnings').update({ applied_to_plan_week: weekStartDate }).eq('id', lrn.id).then(() => {}).catch(() => {});
+      }
+    } catch { /* non-fatal — no learnings yet */ }
+
     // ── 6. Build slot details + create placeholder agent_tasks ────────
     const planDayLabels = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
     const taskIds: string[] = [];
@@ -3136,7 +3339,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       prior_week_metrics: priorWeekMetrics,
       plan_summary: {
         slots: slotDetails,
-        strategy_notes: `IL-focused HE-first cadence (${heCount} HE / ${enCount} EN). Prior week: ${postsCount ?? 0} posts, ${tiktoksCount ?? 0} TikToks, ${ordersCount ?? 0} orders. Phase 0 (IL personas) still blocking Reels production — slots created as placeholders.`,
+        strategy_notes: `IL-focused HE-first cadence (${heCount} HE / ${enCount} EN). Prior week: ${postsCount ?? 0} posts, ${tiktoksCount ?? 0} TikToks, ${ordersCount ?? 0} orders.${learningsNote}`,
         failures,
       },
       notes: failures.length > 0 ? `${failures.length} slot inserts failed — see plan_summary.failures` : null,
