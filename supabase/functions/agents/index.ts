@@ -3064,7 +3064,17 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       best_hours:    reachAvailable ? byHour.filter(h => h.avg_reach >= avgReach).slice(0, 3).map(h => Number(h.key)) : [],
       diagnosis,
       reach_available: reachAvailable,
-    };
+    } as Record<string, unknown>;
+    // ── Real site clicks from social — OUR funnel data, no Meta token needed.
+    // Clicked products are a HIGHER signal than likes → float them to the front of
+    // boost_products so the weekly plan re-features what actually drove a site visit.
+    const { data: clickData } = await sb.rpc('content_social_clicks', { days_back: windowDays });
+    const clicks = (clickData as { total_sessions?: number; product_sessions?: number; by_product?: Array<{ pid: number; sessions: number }> }) || {};
+    const clickedProducts = (clicks.by_product || []).filter(c => c.sessions > 0).map(c => c.pid);
+    directives.boost_products = [...new Set([...clickedProducts, ...(directives.boost_products as number[])])].slice(0, 4);
+    directives.clicked_products = clickedProducts;
+    directives.site_sessions = clicks.total_sessions ?? 0;
+    directives.product_click_sessions = clicks.product_sessions ?? 0;
     const smallN = N < 6;
     const diagText = diagnosis === 'reach_unavailable'
       ? `מצב מעורבות-בלבד: ${totalEng} לייקים+תגובות סה"כ, אך אין נתוני חשיפה — ה-token חסר הרשאת instagram_manage_insights. שדרוג ה-token יפתח reach ואבחון הפצה-מול-קריאייטיב.`
@@ -3074,7 +3084,8 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       ? `החשיפה סבירה (${Math.round(avgReach)}) אבל שיעור המעורבות נמוך (${(avgRate * 100).toFixed(1)}%) — זה הקריאייטיב.`
       : `חשיפה ${Math.round(avgReach)} · מעורבות ${(avgRate * 100).toFixed(1)}% — תקין יחסית.`;
     const topMetric = reachAvailable ? `${(fmtSorted[0]?.avg_rate * 100).toFixed(1)}% מעורבות` : `${fmtSorted[0]?.avg_eng.toFixed(1)} מעורבות/פוסט`;
-    const summary = `${N} פוסטים נבדקו (${windowDays} ימים)${smallN ? ' — מדגם קטן, קריאה כיוונית בלבד' : ''}. ${diagText}` + (fmtSorted.length ? ` פורמט מוביל: ${fmtSorted[0]?.key} (${topMetric}).` : '');
+    const clicksText = ` כניסות אמיתיות לאתר: ${clicks.total_sessions ?? 0} (${clicks.product_sessions ?? 0} לעמודי מוצר${clickedProducts.length ? `, מוביל #${clickedProducts[0]}` : ''}).`;
+    const summary = `${N} פוסטים נבדקו (${windowDays} ימים)${smallN ? ' — מדגם קטן, קריאה כיוונית בלבד' : ''}. ${diagText}` + (fmtSorted.length ? ` פורמט מוביל: ${fmtSorted[0]?.key} (${topMetric}).` : '') + clicksText;
     const { data: learning, error: lErr } = await sb.from('content_learnings').insert({ window_days: windowDays, sample_size: N, summary, directives, top_posts: topPosts, bottom_posts: bottomPosts }).select('id').single();
     if (lErr) return json({ error: 'learning insert failed', detail: lErr.message }, 500);
     await sb.from('agent_runs').insert({ agent_id: 'marketing', status: 'completed', summary: `[content-analysis] ${N} posts · diagnosis=${directives.diagnosis} · avgReach=${Math.round(avgReach)} · avgRate=${(avgRate * 100).toFixed(1)}%`, side_effects: { learning_id: learning?.id, sample_size: N, directives } }).then(() => {}).catch(() => {});

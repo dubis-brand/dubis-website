@@ -1845,6 +1845,7 @@ async function fetchContentPerf(sb: SB): Promise<{
   learning: { summary: string; sample_size: number; created_at: string } | null;
   posts: Array<{ eng: number; reach: number; format: string | null; product_id: number | null; permalink: string | null }>;
   reachAvailable: boolean; totalEng: number;
+  siteClicks: { total: number; products: number; byProduct: Array<{ pid: number; sessions: number }> };
 } | null> {
   const since = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
   const { data: metrics } = await sb.from('post_metrics')
@@ -1868,22 +1869,29 @@ async function fetchContentPerf(sb: SB): Promise<{
   const { data: lrnRows } = await sb.from('content_learnings')
     .select('summary, sample_size, created_at').order('created_at', { ascending: false }).limit(1);
   const learning = (lrnRows && lrnRows[0]) ? (lrnRows[0] as { summary: string; sample_size: number; created_at: string }) : null;
-  return { learning, posts: posts.slice(0, 6), reachAvailable, totalEng };
+  // Real site clicks from social (our own funnel data — no Meta token). 30-day window for signal.
+  const { data: clickData } = await sb.rpc('content_social_clicks', { days_back: 30 });
+  const c = (clickData as { total_sessions?: number; product_sessions?: number; by_product?: Array<{ pid: number; sessions: number }> }) || {};
+  const siteClicks = { total: c.total_sessions ?? 0, products: c.product_sessions ?? 0, byProduct: (c.by_product || []).filter(b => b.sessions > 0).slice(0, 4) };
+  return { learning, posts: posts.slice(0, 6), reachAvailable, totalEng, siteClicks };
 }
 function buildContentPerfHtml(p: Awaited<ReturnType<typeof fetchContentPerf>>): string {
   if (!p) return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right;margin:0">אין עדיין נתוני ביצועים — מנוע האיסוף ירוץ בקרון הלילה.</p>';
   const head = p.learning
     ? `<div dir="rtl" style="background:#2c2c2c;color:#fff;padding:12px 16px;border-radius:6px;margin-bottom:10px;text-align:right;font-size:12.5px;line-height:1.7">🧠 <b style="color:#c8a96e">קריאת התוכן:</b> ${esc(p.learning.summary)}</div>`
     : '';
-  const metricNote = p.reachAvailable ? '' : '<p dir="rtl" style="font-size:11px;color:#c0392b;margin:0 0 8px;text-align:right">⚠️ חשיפה (reach) חסומה — ה-token חסר הרשאת <code>instagram_manage_insights</code>. כרגע מודדים לייקים+תגובות בלבד. שדרוג ה-token (פעולה חד-פעמית) יפתח reach + נתוני FB.</p>';
-  if (!p.posts.length) return head + metricNote + '<p dir="rtl" style="font-size:13px;color:#888;text-align:right;margin:0">לא נמדדו פוסטים ב-7 הימים האחרונים.</p>';
+  const sc = p.siteClicks;
+  const clicksTop = sc.byProduct.length ? ' · מובילים: ' + sc.byProduct.map(b => `#${b.pid} (${b.sessions})`).join(', ') : '';
+  const clicksLine = `<div dir="rtl" style="background:#f3eee2;border-radius:6px;padding:10px 14px;margin-bottom:10px;text-align:right;font-size:12.5px;color:#5a4a2f">🌐 <b>כניסות אמיתיות לאתר (30 ימים):</b> ${sc.total} · מתוכן ${sc.products} לעמודי מוצר${clicksTop}<div style="font-size:11px;color:#999;margin-top:3px">קליק = כוונה אמיתית (מנוכה בוטים/פנימי) — האות החזק יותר מ-reach, ונמדד מהנתונים שלנו בלי תלות ב-token.</div></div>`;
+  const metricNote = p.reachAvailable ? '' : '<p dir="rtl" style="font-size:11px;color:#c0392b;margin:0 0 8px;text-align:right">⚠️ חשיפה (reach) מ-Meta חסומה — ה-token חסר הרשאת <code>instagram_manage_insights</code>. מודדים לייקים+תגובות + כניסות-לאתר. שדרוג ה-token (פעולה חד-פעמית) יוסיף reach + נתוני FB.</p>';
+  if (!p.posts.length) return head + clicksLine + metricNote + '<p dir="rtl" style="font-size:13px;color:#888;text-align:right;margin:0">לא נמדדו פוסטים ב-7 הימים האחרונים.</p>';
   const rows = p.posts.map(it => {
     const link = it.permalink ? `<a href="${esc(it.permalink)}" style="color:#c8a96e;font-weight:600;text-decoration:none">▶ לפוסט →</a>` : '';
     return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;margin:4px 0;border-radius:6px;text-align:right;font-size:12.5px;border-right:3px solid #c8a96e">
       <b style="color:#2c2c2c">${esc(it.format || 'פוסט')}</b> · מוצר #${it.product_id ?? '?'} <span style="color:#999">· ${it.eng} מעורבות${p.reachAvailable ? ` · ${it.reach} חשיפה` : ''}</span> &nbsp; ${link}
     </div>`;
   }).join('');
-  return `${head}${metricNote}<p dir="rtl" style="font-size:12px;color:#666;margin:0 0 8px;text-align:right">${p.posts.length} הפוסטים החזקים (7 ימים · ${p.totalEng} מעורבות סה"כ):</p>${rows}`;
+  return `${head}${clicksLine}${metricNote}<p dir="rtl" style="font-size:12px;color:#666;margin:0 0 8px;text-align:right">${p.posts.length} הפוסטים החזקים (7 ימים · ${p.totalEng} מעורבות סה"כ):</p>${rows}`;
 }
 
 // =============================================================
