@@ -3021,6 +3021,32 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     });
   }
 
+  // ── PAUSE a Meta campaign (protective — stops spend) ─────────────────────
+  if (type === 'meta-pause') {
+    const svcKey = SERVICE_ROLE;
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const tok = url.searchParams.get('token') || req.headers.get('x-agent-secret') || authHeader.replace('Bearer ', '').trim() || '';
+    const isAuthed = (svcKey && tok === svcKey) || (agentSecret && tok === agentSecret) || (cronSecret && tok === cronSecret);
+    if (!isAuthed && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);
+    const cid = url.searchParams.get('cid') || '';
+    if (!/^\d+$/.test(cid)) return json({ error: 'cid (numeric Meta campaign id) required' }, 400);
+    const G = 'https://graph.facebook.com/v21.0';
+    const cand = [Deno.env.get('META_ACCESS_TOKEN') ?? '', Deno.env.get('INSTAGRAM_ACCESS_TOKEN') ?? ''].filter(Boolean);
+    let FB = '';
+    for (const tk of cand) {
+      const p = await fetch(`${G}/me/permissions?access_token=${tk}`).then(r => r.json()).catch(() => ({}));
+      if (Array.isArray(p.data) && p.data.some((x: Record<string, string>) => x.permission === 'ads_management' && x.status === 'granted')) { FB = tk; break; }
+    }
+    if (!FB) return json({ ok: false, error: 'no token with ads_management' }, 200);
+    const before = await fetch(`${G}/${cid}?fields=name,status,effective_status&access_token=${FB}`).then(r => r.json());
+    const r = await fetch(`${G}/${cid}`, { method: 'POST', body: new URLSearchParams({ status: 'PAUSED', access_token: FB }) });
+    const j = await r.json();
+    if (r.ok) { await sb.from('ad_campaigns').update({ status: 'paused' }).ilike('notes', `%${cid}%`).then(() => {}).catch(() => {}); }
+    return json({ ok: r.ok, cid, before, result: j });
+  }
+
   // ── CONTENT PERFORMANCE LOOP (2026-06-26) ────────────────────────────────
   // Closes the "publish into the dark" gap. collect-content-metrics pulls
   // engagement back from IG/FB Graph API and snapshots it DAILY into post_metrics
