@@ -1,19 +1,34 @@
 #!/usr/bin/env node
-// tiktok-from-reel-bank.mjs — daily TikTok publisher from the bilingual persona reel bank.
+// tiktok-from-reel-bank.mjs — daily TikTok publisher from the PRODUCT-keyed reel bank.
 //
 // Locked 2026-05-23 per oren ("boring slideshows + bad music must die").
-// Replaces dubis-website/video/scripts/render-and-publish.js (3-slide ffmpeg + Kevin MacLeod).
+// Rewritten 2026-06-28 per oren ("חוזרים כל הזמן על אותם רילים + כפילות לכל ריל — מתכון לאסון").
 //
-// Pipeline:
-//   1. Pull the reel of the day from Supabase Storage `video-assets/_pilot/{persona}-FINAL-{HE,EN}.mp4`
-//      using a deterministic rotation: index = dayOfYear mod BANK_SIZE.
-//   2. Build a per-language caption (slogan + product URL + brand line).
-//   3. POST to Late.com /v1/posts with the public mp4 URL.
-//   4. Insert an agent_tasks row with category='tiktok_post' for tracking.
+// ─── Why the rewrite (root cause, proven against DB + Storage) ───────────────
+//  The OLD bank was persona-keyed with TWO slots per persona: {persona}-FINAL-HE
+//  and {persona}-FINAL-EN. But since 2026-06-07 reels are ENGLISH-VIDEO-ONLY — the
+//  HE file is the SAME video as the EN file, only the caption differs. So the
+//  rotation landed on the same video twice (men-1/HE then men-1/EN) and TikTok got
+//  two IDENTICAL videos = the duplicate pairs in the feed. On top of that, after the
+//  active-product filter the persona bank held only ~4 unique videos, so the same
+//  handful cycled forever. agent_tasks showed 10 consecutive HE→EN identical-video
+//  pairs (2026-06-09 → 06-28).
+//
+// ─── The fix ─────────────────────────────────────────────────────────────────
+//   1. Rotate over UNIQUE VIDEOS — one per active product — from the product-keyed
+//      bank `video-assets/_pilot/product-{pid}-FINAL-EN.mp4` (16 products live).
+//      No HE/EN split → a video can never be posted twice.
+//   2. Pick LEAST-RECENTLY-POSTED first (read agent_tasks history), not day%N — the
+//      whole pool cycles before anything repeats.
+//   3. Caption is HEBREW ONLY (IL-only marketing, locked 2026-06-19). The video is
+//      English-spoken; the Hebrew story/slogan lives in the caption.
 //
 // Env (Vercel/GHA secrets):
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 //   (Late.com creds are pulled from vault, not env)
+//   FORCE_PRODUCT (optional, workflow_dispatch) — force a specific product id.
+//   FORCE_PERSONA is still read for backward-compat and mapped to its product id.
+//   DRY_RUN=1 — resolve + log the pick and caption, do NOT publish or write rows.
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -22,113 +37,99 @@ const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!SERVICE_ROLE) throw new Error('SUPABASE_SERVICE_ROLE_KEY missing');
 
 const sb = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+const DRY_RUN = ['1', 'true', 'yes'].includes((process.env.DRY_RUN || '').toLowerCase());
 
-// Bank — 10 personas × 2 langs = 20 reels, walked deterministically.
-// Each persona has product_default which we use to build the caption + URL.
-const BANK = [
-  { id: 'men-1',   gender: 'men',   product_id: 3,  slogan: 'Napping is my cardio',
-    narration_he: 'כולם רצים בשש בבוקר לאסיק. אני? אני מאסטר ב-Power Nap. זה הקרדיו האמיתי. קפוצון לכל השאר.',
-    narration_en: "Everyone's at the 6 AM CrossFit. I'm a master of the power nap. That's the real cardio. A hoodie for the rest of us." },
-  { id: 'men-2',   gender: 'men',   product_id: 6,  slogan: 'Not a model. Never wanted to be.' },
-  { id: 'men-3',   gender: 'men',   product_id: 15, slogan: 'Low maintenance, high value.' },
-  { id: 'men-4',   gender: 'men',   product_id: 9,  slogan: 'Certified overthinker.' },
-  { id: 'men-5',   gender: 'men',   product_id: 8,  slogan: 'Born to nap, forced to work.',
-    narration_he: 'נולדתי לישון. אילצו אותי לעבוד. את שני המסרים האלה לובש על הגב. בכבוד.',
-    narration_en: 'Born to nap, forced to work. Both messages, on my back. With respect.' },
-  { id: 'women-1', gender: 'women', product_id: 11, slogan: 'She believed she could, so she took a nap.',
-    narration_he: 'האמינו בי שאוכל. אז לקחתי שלוף קצר. מסתבר שזה היה הדבר הכי חכם של היום.',
-    narration_en: 'They believed she could. So she took a nap. Turns out that was the smartest move of the day.' },
-  { id: 'women-2', gender: 'women', product_id: 13, slogan: 'Zero Motivation Club.' },
-  { id: 'women-3', gender: 'women', product_id: 16, slogan: 'Minimal existence.' },
-  { id: 'women-4', gender: 'women', product_id: 17, slogan: 'Experienced in exhaustion.' },
-  { id: 'women-5', gender: 'women', product_id: 31, slogan: "You're prettier when you're comfortable.",
-    narration_he: 'את יפה יותר כשנוח לך. הם אמרו לי לפני עשרים שנה. רק עכשיו אני מתחילה להאמין.',
-    narration_en: "You're prettier when you're comfortable. Someone told me twenty years ago. I'm only starting to believe it now." },
-];
-const LANGS = ['HE', 'EN'];
-const BANK_SIZE = BANK.length * LANGS.length; // 20
+// Optional rooted-Hebrew narration overrides for products that already have good
+// copy from the May persona bank. Any product NOT listed falls back to its DB slogan.
+// Per-product caption polish is a Dana → Copywriter → Gatekeeper follow-up, not this
+// script's job — here we only stop the duplication + repetition.
+const HE_NARRATION = {
+  3:  'כולם רצים בשש בבוקר לאסיק. אני? אני מאסטר ב-Power Nap. זה הקרדיו האמיתי. קפוצון לכל השאר.',
+  8:  'נולדתי לישון. אילצו אותי לעבוד. את שני המסרים האלה אני לובש על הגב. בכבוד.',
+  11: 'האמינו בי שאוכל. אז לקחתי שלוף קצר. מסתבר שזה היה הדבר הכי חכם של היום.',
+  31: 'את יפה יותר כשנוח לך. אמרו לי את זה לפני עשרים שנה. רק עכשיו אני מתחילה להאמין.',
+};
 
-function dayOfYearUTC() {
-  const now = new Date();
-  // Day-of-year in UTC — TikTok cron fires at 15:00 UTC = 18:00 IL (IDT)
-  const start = Date.UTC(now.getUTCFullYear(), 0, 0);
-  return Math.floor((Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - start) / 86400000);
-}
+// Backward-compat: map the old FORCE_PERSONA ids to product ids.
+const PERSONA_TO_PRODUCT = {
+  'men-1': 3, 'men-2': 6, 'men-3': 15, 'men-4': 9, 'men-5': 8,
+  'women-1': 11, 'women-2': 13, 'women-3': 16, 'women-4': 17, 'women-5': 31,
+};
 
-// Probe every one of the 20 bank slots and return only the reels that actually
-// exist in Supabase Storage, in stable bank order.
-//
-// 2026-06-01 (oren complaint "בטיק טוק אותו פוסט עלה פעמיים" — the same post went
-// up twice): the bank has 20 slots (10 personas × 2 langs) but only ~8 are
-// populated. The old rotation did `idx = day % 20` then walked FORWARD to the
-// next existing reel when the slot was empty — so most days collapsed onto the
-// earliest populated slot (men-1/HE), publishing it again and again. Rotating
-// over ONLY the populated reels gives each one an equal, non-repeating turn.
-async function buildAvailableBank() {
-  const slots = [];
-  for (let i = 0; i < BANK_SIZE; i++) {
-    const persona = BANK[Math.floor(i / 2)];
-    const lang    = LANGS[i % 2];
-    slots.push({ persona, lang, idx: i, url: bankUrl(persona, lang) });
-  }
-  const checks = await Promise.all(slots.map(s => checkReelExists(s.url)));
-  let avail = slots.filter((_, i) => checks[i]);
-  // 2026-06-07: only publish reels whose product is ACTIVE on the site. Old reels
-  // (men-2→product 6, men-3→product 15) point at retired pullover-hoodie products
-  // that no longer exist — the caption's product URL would 404. Filter them out so
-  // we never market a dead product. A fresh reel for an active product rejoins the
-  // rotation automatically once it lands in the bank.
-  try {
-    const { data: actives } = await sb.from('dubis_products').select('product_id_numeric').eq('active', true);
-    const activeIds = new Set((actives || []).map(r => Number(r.product_id_numeric)));
-    const before = avail.length;
-    avail = avail.filter(s => activeIds.has(Number(s.persona.product_id)));
-    if (avail.length < before) console.log(`Skipped ${before - avail.length} reel(s) whose product is inactive (dead-product link guard)`);
-  } catch (e) { console.warn('active-product filter skipped:', e.message); }
-  return avail;
-}
-
-function pickReelForToday(available) {
-  const day = dayOfYearUTC();
-
-  // Manual override via workflow_dispatch inputs (forwarded as env vars by the workflow)
-  const fPersona = (process.env.FORCE_PERSONA || '').trim();
-  const fLang    = (process.env.FORCE_LANG    || '').trim().toUpperCase();
-  if (fPersona) {
-    if (fLang && !LANGS.includes(fLang)) throw new Error(`FORCE_LANG "${fLang}" not HE or EN`);
-    const match = available.find(s => s.persona.id === fPersona && (!fLang || s.lang === fLang));
-    if (!match) throw new Error(`FORCE_PERSONA "${fPersona}"${fLang ? '/' + fLang : ''} not in available bank`);
-    console.log(`Override: forced persona=${fPersona} lang=${match.lang} → bank idx=${match.idx}`);
-    return { persona: match.persona, lang: match.lang, day, idx: match.idx, pos: -1 };
-  }
-
-  // Rotate over ONLY the populated reels — consecutive days always advance to a
-  // different reel (no repeats until the whole available set is exhausted).
-  const pos     = day % available.length;
-  const chosen  = available[pos];
-  return { persona: chosen.persona, lang: chosen.lang, day, idx: chosen.idx, pos };
-}
-
-function bankUrl(persona, lang) {
-  return `${SUPABASE_URL}/storage/v1/object/public/video-assets/_pilot/${persona.id}-FINAL-${lang}.mp4`;
+function bankUrl(productId) {
+  return `${SUPABASE_URL}/storage/v1/object/public/video-assets/_pilot/product-${productId}-FINAL-EN.mp4`;
 }
 
 async function checkReelExists(url) {
-  const r = await fetch(url, { method: 'HEAD' });
-  return r.ok;
+  try {
+    const r = await fetch(url, { method: 'HEAD' });
+    return r.ok;
+  } catch { return false; }
 }
 
-function buildCaption(persona, lang) {
-  const url = `https://www.dubis.net/?p=${persona.product_id}`;
-  // 2026-06-07 (oren): all reels are English (Veo native). The STORY goes in the caption,
-  // per language — the Hebrew caption tells the Hebrew story; the English caption the English
-  // one. No on-screen subtitles. narration_* falls back to the slogan if absent.
-  if (lang === 'HE') {
-    const story = persona.narration_he || persona.slogan;
-    return `${story}\n\nDUBIS — בשביל כולנו.\n\n👉 ${url}\n\n#DUBIS #גוףאמיתי #קפוצון #פוראופנה`;
+// Build the available bank: every ACTIVE product that has a product-keyed reel in
+// Storage. One slot per product = one unique video. No language split.
+async function buildAvailableBank() {
+  const { data: actives, error } = await sb
+    .from('dubis_products')
+    .select('product_id_numeric, slogan')
+    .eq('active', true)
+    .order('product_id_numeric', { ascending: true });
+  if (error) throw new Error(`active-products query failed: ${error.message}`);
+
+  const candidates = (actives || [])
+    .map(r => ({ product_id: Number(r.product_id_numeric), slogan: r.slogan, url: bankUrl(Number(r.product_id_numeric)) }))
+    .filter(c => Number.isFinite(c.product_id));
+
+  const checks = await Promise.all(candidates.map(c => checkReelExists(c.url)));
+  const avail = candidates.filter((_, i) => checks[i]);
+  const missing = candidates.filter((_, i) => !checks[i]).map(c => c.product_id);
+  if (missing.length) console.log(`Active products without a reel yet (need ensure-reel-bank.mjs + hf): ${missing.join(', ')}`);
+  return avail;
+}
+
+// Pick the available product whose video was posted LONGEST ago (never-posted first).
+// This walks the entire pool before repeating anything.
+async function pickProductForToday(available) {
+  // Manual override (workflow_dispatch)
+  const fProductRaw = (process.env.FORCE_PRODUCT || '').trim();
+  const fPersona    = (process.env.FORCE_PERSONA || '').trim();
+  const forcedId = fProductRaw ? Number(fProductRaw) : (fPersona ? PERSONA_TO_PRODUCT[fPersona] : null);
+  if (forcedId) {
+    const match = available.find(s => s.product_id === forcedId);
+    if (!match) throw new Error(`Forced product ${forcedId} not in available bank (${available.map(s => s.product_id).join(',')})`);
+    console.log(`Override: forced product ${forcedId}`);
+    return { ...match, forced: true };
   }
-  const story = persona.narration_en || persona.slogan;
-  return `${story}\n\nDUBIS — for the rest of us.\n\n👉 ${url}\n\n#DUBIS #realbodies #hoodieseason #fortherestofus`;
+
+  // Last-posted timestamp per product from history.
+  const { data: hist } = await sb
+    .from('agent_tasks')
+    .select('content_data, created_at')
+    .eq('agent_id', 'tiktok')
+    .eq('category', 'tiktok_post')
+    .order('created_at', { ascending: false })
+    .limit(200);
+  const lastPosted = new Map();
+  for (const row of (hist || [])) {
+    const pid = Number(row?.content_data?.product_id);
+    if (Number.isFinite(pid) && !lastPosted.has(pid)) lastPosted.set(pid, new Date(row.created_at).getTime());
+  }
+
+  let best = null, bestTs = Infinity;
+  for (const s of available) {
+    const ts = lastPosted.has(s.product_id) ? lastPosted.get(s.product_id) : 0; // never posted = 0 = oldest
+    if (ts < bestTs) { bestTs = ts; best = s; }
+  }
+  const ageDays = bestTs === 0 ? 'never' : Math.round((Date.now() - bestTs) / 86400000) + 'd ago';
+  console.log(`Least-recently-posted pick: product ${best.product_id} (last posted: ${ageDays})`);
+  return { ...best, forced: false };
+}
+
+function buildCaption(product) {
+  const url = `https://www.dubis.net/?p=${product.product_id}`;
+  const story = HE_NARRATION[product.product_id] || product.slogan || 'בגדים שנבנו לגוף שאתה גר בו.';
+  return `${story}\n\nDUBIS — בשביל כולנו.\n\n👉 ${url}\n\n#DUBIS #גוףאמיתי #קפוצון #פוראופנה`;
 }
 
 async function vaultGet(name) {
@@ -137,7 +138,7 @@ async function vaultGet(name) {
   return (data || '').toString();
 }
 
-async function publishToLate({ videoUrl, caption, persona, lang }) {
+async function publishToLate({ videoUrl, caption }) {
   let apiKey  = process.env.DUBIS_LATE_API_KEY        || '';
   let account = process.env.DUBIS_LATE_TIKTOK_ACCOUNT || '';
   if (!apiKey)  apiKey  = await vaultGet('dubis_late_api_key');
@@ -207,28 +208,25 @@ async function resolveTiktokUrl(latePostId, tries = 5, delayMs = 15000) {
   return null;
 }
 
-async function recordTask({ persona, lang, videoUrl, caption, lateResponse, rotationDay, rotationIdx, tiktokUrl }) {
+async function recordTask({ product, videoUrl, caption, lateResponse, tiktokUrl }) {
   const latePostId = extractLatePostId(lateResponse);
   const row = {
     agent_id: 'tiktok',
     category: 'tiktok_post',
     status: 'done',
-    title: `TikTok ${persona.id} / ${lang} / day ${rotationDay} idx ${rotationIdx}`,
+    title: `TikTok product ${product.product_id} (least-recently-posted rotation)`,
     content_data: {
       format: 'reel',
       platform: 'tiktok',
-      lang: lang.toLowerCase(),
-      persona_id: persona.id,
-      product_id: persona.product_id,
-      product_slogan: persona.slogan,
-      product_url: `https://www.dubis.net/?p=${persona.product_id}`,
+      lang: 'he',
+      product_id: product.product_id,
+      product_slogan: product.slogan,
+      product_url: `https://www.dubis.net/?p=${product.product_id}`,
       video_url: videoUrl,
-      bank_path: `video-assets/_pilot/${persona.id}-FINAL-${lang}.mp4`,
+      bank_path: `video-assets/_pilot/product-${product.product_id}-FINAL-EN.mp4`,
       caption: caption,
       publisher: 'late-direct',
-      renderer: 'reel-bank-rotation-v1',
-      rotation_day: rotationDay,
-      rotation_idx: rotationIdx,
+      renderer: 'reel-bank-product-rotation-v2',
       late_response: lateResponse,
       tiktok_late_post_id: latePostId,
       tiktok_url: tiktokUrl || null,
@@ -247,35 +245,26 @@ async function recordTask({ persona, lang, videoUrl, caption, lateResponse, rota
 }
 
 // The Boss daily-report staleness check reads `agent_runs`, NOT `agent_tasks`.
-// Without this row, the Boss falsely flags TikTok as "N days idle" even though we
-// publish daily (false-alarm diagnosed 2026-06-01: agent_runs last tiktok = 2026-05-22,
-// while agent_tasks shows 05-29/05-30/05-31). The old render-and-publish.js wrote
-// agent_runs; this reel-bank rewrite forgot to. This closes the tracking gap so the
-// Boss correctly shows tiktok GREEN.
-async function recordRun({ persona, lang, taskId, latePostId, rotationDay, rotationIdx, startedAt, tiktokUrl }) {
+async function recordRun({ product, taskId, latePostId, startedAt, tiktokUrl }) {
   const row = {
     agent_id: 'tiktok',
     status: 'completed',
-    summary: `TikTok published ${persona.id}/${lang} (day ${rotationDay} idx ${rotationIdx})`
+    summary: `TikTok published product ${product.product_id} (product-rotation)`
            + (latePostId ? ` → late:${latePostId}` : ''),
     tasks_created: 1,
     tasks_completed_ids: taskId ? [taskId] : [],
     duration_ms: startedAt ? (Date.now() - startedAt) : null,
     side_effects: {
       publisher: 'late-direct',
-      renderer: 'reel-bank-rotation-v1',
-      persona_id: persona.id,
-      lang: lang.toLowerCase(),
-      product_id: persona.product_id,
+      renderer: 'reel-bank-product-rotation-v2',
+      product_id: product.product_id,
+      lang: 'he',
       tiktok_late_post_id: latePostId || null,
       tiktok_url: tiktokUrl || null,
-      rotation_day: rotationDay,
-      rotation_idx: rotationIdx,
     },
   };
   const { data, error } = await sb.from('agent_runs').insert(row).select('id').single();
   if (error) {
-    // Non-fatal: the post already published; don't fail the run over bookkeeping.
     console.error('agent_runs insert failed (non-fatal):', error.message);
     return null;
   }
@@ -283,48 +272,31 @@ async function recordRun({ persona, lang, taskId, latePostId, rotationDay, rotat
   return data.id;
 }
 
-// IL campaign reels are manually scheduled in Late.com for this window
-// (men-3, women-3, men-4, women-4, women-5 — see scripts/publish-il-campaign-to-late.mjs).
-// The daily cron must NOT post on those days or it will duplicate.
-// Resumes deterministic rotation from 2026-05-28 onward.
-const MANUAL_SKIP_FROM = Date.UTC(2026, 4, 23); // 2026-05-23
-const MANUAL_SKIP_TO   = Date.UTC(2026, 4, 27); // 2026-05-27
-
-function todayInManualWindow() {
-  const now = new Date();
-  const utcMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  return utcMidnight >= MANUAL_SKIP_FROM && utcMidnight <= MANUAL_SKIP_TO;
-}
-
 async function main() {
   const startedAt = Date.now();
-  console.log('=== DUBIS TikTok Daily (reel-bank rotation) ===', new Date().toISOString());
+  console.log('=== DUBIS TikTok Daily (product-keyed rotation v2) ===', new Date().toISOString());
 
-  if (todayInManualWindow() && !process.env.FORCE_PERSONA) {
-    console.log('Today falls inside the manual IL-campaign window (2026-05-23 → 2026-05-27).');
-    console.log('Reels for this window were scheduled in Late.com via publish-il-campaign-to-late.mjs.');
-    console.log('Skipping daily rotation to avoid duplicate posts. (Pass FORCE_PERSONA via workflow_dispatch to override.)');
+  const available = await buildAvailableBank();
+  console.log(`Bank: ${available.length} unique product reels available → ${available.map(s => s.product_id).join(', ') || '(none)'}`);
+  if (!available.length) throw new Error('No product reel available in bank. Run ensure-reel-bank.mjs first.');
+
+  const product = await pickProductForToday(available);
+  const videoUrl = bankUrl(product.product_id);
+  const caption = buildCaption(product);
+  console.log(`Pick → product ${product.product_id} | video ${videoUrl}`);
+  console.log('Caption preview:', caption.replace(/\n/g, ' ⏎ ').slice(0, 160));
+
+  if (DRY_RUN) {
+    console.log('DRY_RUN=1 → not publishing, not writing rows. Done.');
     return;
   }
 
-  const available = await buildAvailableBank();
-  console.log(`Bank probe: ${available.length}/${BANK_SIZE} reels populated → ${available.map(s => `${s.persona.id}/${s.lang}`).join(', ') || '(none)'}`);
-  if (!available.length) throw new Error('No reel available in bank. Run batch-he-reels.mjs first.');
-
-  const { persona, lang, day, idx, pos } = pickReelForToday(available);
-  console.log(`Day ${day} → rotation slot ${pos < 0 ? 'forced' : `${pos}/${available.length}`} → persona=${persona.id} lang=${lang} (bank idx ${idx})`);
-
-  const videoUrl = bankUrl(persona, lang);
-  const caption = buildCaption(persona, lang);
-  console.log('Caption preview:', caption.slice(0, 120));
-  const late = await publishToLate({ videoUrl, caption, persona, lang });
+  const late = await publishToLate({ videoUrl, caption });
   const latePostId = extractLatePostId(late);
-  // Best-effort: wait for TikTok to finalize so we can store the real post URL now.
-  // If it isn't ready within ~75s, the Boss report's backfillTiktokUrls fills it later.
   let tiktokUrl = null;
   if (latePostId) { tiktokUrl = await resolveTiktokUrl(latePostId); console.log('TikTok URL:', tiktokUrl || '(pending finalize — Boss will backfill)'); }
-  const taskId = await recordTask({ persona, lang, videoUrl, caption, lateResponse: late, rotationDay: day, rotationIdx: idx, tiktokUrl });
-  await recordRun({ persona, lang, taskId, latePostId, rotationDay: day, rotationIdx: idx, startedAt, tiktokUrl });
+  const taskId = await recordTask({ product, videoUrl, caption, lateResponse: late, tiktokUrl });
+  await recordRun({ product, taskId, latePostId, startedAt, tiktokUrl });
   console.log('=== DONE ===');
 }
 
