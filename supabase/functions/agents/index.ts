@@ -2898,6 +2898,129 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
   // + Boss approval email are the NEXT batch — slots are created with
   // status='backlog' and needs_copy=true so the system knows they're
   // not yet ready to publish.
+  // ── CREATE IL SUMMER CAMPAIGN (2026-06-28) — Marketing API, leaves PAUSED ──
+  // Browser automation of Ads Manager froze the CDP bridge repeatedly, so we
+  // build the campaign via the Marketing API (the original proven path) using
+  // the full System User token in INSTAGRAM_ACCESS_TOKEN. Campaign is created
+  // PAUSED (adset+ads ACTIVE) → zero spend until Oren flips the campaign ON.
+  if (type === 'create-il-campaign') {
+    const svcKey = SERVICE_ROLE;
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const tok = url.searchParams.get('token') || req.headers.get('x-agent-secret') || authHeader.replace('Bearer ', '').trim() || '';
+    const isAuthed = (svcKey && tok === svcKey) || (agentSecret && tok === agentSecret) || (cronSecret && tok === cronSecret);
+    if (!isAuthed && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);
+
+    const ACT = 'act_26201135546175057';
+    const PAGE = '947252321814810';
+    const IG  = '17841442639622598';
+    const PIX = '1000453189108953';
+    const G = 'https://graph.facebook.com/v21.0';
+    // Pick a token that actually holds ads_management — campaign-create needs write,
+    // and the current INSTAGRAM_ACCESS_TOKEN reads the account but can't write.
+    const cand: Record<string, string> = {
+      META_ACCESS_TOKEN: Deno.env.get('META_ACCESS_TOKEN') ?? '',
+      ADS_ACCESS_TOKEN: Deno.env.get('ADS_ACCESS_TOKEN') ?? '',
+      INSTAGRAM_ACCESS_TOKEN: Deno.env.get('INSTAGRAM_ACCESS_TOKEN') ?? '',
+      FACEBOOK_PAGE_TOKEN: Deno.env.get('FACEBOOK_PAGE_TOKEN') ?? '',
+    };
+    let FB = ''; const tokenDiag: Record<string, unknown> = {};
+    for (const [nm, tk] of Object.entries(cand)) {
+      if (!tk) { tokenDiag[nm] = 'missing'; continue; }
+      const perms = await fetch(`${G}/me/permissions?access_token=${tk}`).then(r => r.json()).catch(e => ({ error: String(e) }));
+      const granted = Array.isArray(perms.data) ? perms.data.filter((p: Record<string, string>) => p.status === 'granted').map((p: Record<string, string>) => p.permission) : [];
+      tokenDiag[nm] = { hasAds: granted.includes('ads_management'), granted, err: perms.error };
+      if (granted.includes('ads_management') && !FB) FB = tk;
+    }
+    if (!FB) return json({ ok: false, step: 'token-select', msg: 'No env token has ads_management — campaign create needs it', tokenDiag }, 200);
+    const post = async (path: string, params: Record<string, string>) => {
+      const body = new URLSearchParams({ ...params, access_token: FB });
+      const r = await fetch(`${G}/${path}`, { method: 'POST', body });
+      return { ok: r.ok, j: await r.json() };
+    };
+    const acct = await fetch(`${G}/${ACT}?fields=name,currency,account_status&access_token=${FB}`).then(r => r.json());
+    if (acct.error) return json({ ok: false, step: 'acct-check', error: acct.error, tokenDiag }, 200);
+
+    // 0c. idempotent cleanup — delete any prior campaign with the same name (e.g. an
+    // orphan from a half-failed earlier run) so re-runs don't accumulate duplicates.
+    const existingCamps = await fetch(`${G}/${ACT}/campaigns?fields=id,name&limit=100&access_token=${FB}`).then(r => r.json()).catch(() => ({}));
+    const dupes = Array.isArray(existingCamps.data) ? existingCamps.data.filter((c: Record<string, string>) => c.name === 'DUBIS IL Summer — 2026-06-28') : [];
+    for (const d of dupes) { await fetch(`${G}/${d.id}?access_token=${FB}`, { method: 'DELETE' }).catch(() => {}); }
+
+    // 1. campaign — PAUSED. is_adset_budget_sharing_enabled is required by Meta when
+    // budget lives at the ad-set level (not CBO).
+    const camp = await post(`${ACT}/campaigns`, { name: 'DUBIS IL Summer — 2026-06-28', objective: 'OUTCOME_SALES', status: 'PAUSED', special_ad_categories: '[]', is_adset_budget_sharing_enabled: 'false' });
+    if (!camp.ok) return json({ ok: false, step: 'campaign', error: camp.j, account: acct.name }, 200);
+    const campaign_id = camp.j.id as string;
+
+    // 2. ad set — ACTIVE under the PAUSED campaign (zero delivery until campaign flips on)
+    const startSec = Math.floor(Date.now() / 1000) + 3600;
+    const endSec   = startSec + 14 * 86400;
+    const targeting = { geo_locations: { countries: ['IL'] }, age_min: 35, age_max: 55, targeting_automation: { advantage_audience: 0 } };
+    const adset = await post(`${ACT}/adsets`, {
+      name: 'IL 35-55 — קיץ', campaign_id, status: 'ACTIVE',
+      daily_budget: '7000', billing_event: 'IMPRESSIONS', optimization_goal: 'OFFSITE_CONVERSIONS',
+      bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+      promoted_object: JSON.stringify({ pixel_id: PIX, custom_event_type: 'ADD_TO_CART' }),
+      targeting: JSON.stringify(targeting),
+      start_time: new Date(startSec * 1000).toISOString(), end_time: new Date(endSec * 1000).toISOString(),
+    });
+    if (!adset.ok) return json({ ok: false, step: 'adset', error: adset.j, campaign_id }, 200);
+    const adset_id = adset.j.id as string;
+
+    // 3. ads — ACTIVE; image via link_data.picture (URL), fallback to adimages hash
+    // FRESH creative — Dana persona reels: DISTINCT ICP face per product, the EXACT
+    // current garment (front in the reel, back in the Ken-Burns reveal). VIDEO ads from
+    // the reels + IMAGE ads from the try-on hero stills (same person, same product).
+    // Hosted at campaign-0628/. Faces: #38=face-3, #31=face-1, #23=face-6, #32=face-2.
+    const REELBASE = 'https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/video-assets/campaign-0628';
+    const ADS = [
+      { pid: 38, name: 'גופייה — DUBIS', video: true, image: true,  msg: '38 מעלות, והשכן עדיין שואל אם לא קר לי בלי שרוולים. לא קר לי — פשוט הפסקתי להתלבש לפי דעות של אחרים.\nגופייה נוחה לקיץ. נשלח לישראל. ₪28. להזמנה 👇' },
+      { pid: 31, name: 'נוחות — DUBIS',  video: true, image: false, msg: 'חדר מדידה, מראה, ואני מכניסה את הבטן כאילו מישהו נותן לי ציון. אז הפסקתי.\nחולצת קיץ נוחה, לגוף אמיתי. נשלח לישראל. ₪27. להזמנה 👇' },
+      { pid: 23, name: 'בקרים — DUBIS',  video: true, image: true,  msg: 'כל אדם מצליח קם בחמש בבוקר, נכון? אז אני אבוד. הזריחה עדיין מרגישה כמו עלבון אישי.\nחולצת קיץ נוחה. נשלח לישראל. ₪26. להזמנה 👇' },
+      { pid: 32, name: 'קולקציית קיץ — DUBIS', video: true, image: false, msg: 'קוראים לזה ספורט-וור. הפעילות הכי אקטיבית שלי היא לסחוב קפה למרפסת.\nחולצת קיץ נוחה. נשלח לישראל. ₪26. להזמנה 👇' },
+    ];
+    const created: Record<string, unknown>[] = [];
+    const mkLink = (pid: number) => `https://www.dubis.net/?p=${pid}&utm_source=meta&utm_medium=paid&utm_campaign=il_summer_jun28&utm_content=p${pid}`;
+    // Phase 1 — upload every reel (Meta fetches from the public Supabase URL, processes async)
+    const ups: { a: typeof ADS[0]; video_id: string | null; err?: unknown }[] = [];
+    for (const a of ADS.filter((x) => x.video)) {
+      const vid = await post(`${ACT}/advideos`, { file_url: `${REELBASE}/reel-${a.pid}.mp4`, name: `reel-${a.pid}` });
+      ups.push({ a, video_id: (vid.ok && vid.j.id) ? vid.j.id as string : null, err: vid.ok ? undefined : vid.j });
+    }
+    await new Promise((r) => setTimeout(r, 25000));
+    // Phase 2a — video ads
+    for (const u of ups) {
+      const a = u.a; const link = mkLink(a.pid);
+      if (!u.video_id) { created.push({ ad: `vid#${a.pid}`, step: 'video', error: u.err }); continue; }
+      const spec = { page_id: PAGE, video_data: { video_id: u.video_id, message: a.msg, image_url: `${REELBASE}/hero-${a.pid}.jpg`, link_description: a.name, call_to_action: { type: 'SHOP_NOW', value: { link } } } };
+      const cr = await post(`${ACT}/adcreatives`, { name: `cr-vid-${a.pid}`, object_story_spec: JSON.stringify(spec) });
+      if (!cr.ok) { created.push({ ad: `vid#${a.pid}`, step: 'creative', video_id: u.video_id, error: cr.j }); continue; }
+      const ad = await post(`${ACT}/ads`, { name: `Reel #${a.pid}`, adset_id, creative: JSON.stringify({ creative_id: cr.j.id }), status: 'ACTIVE' });
+      created.push({ ad: `vid#${a.pid}`, video_id: u.video_id, ad_id: ad.ok ? ad.j.id : undefined, error: ad.ok ? undefined : ad.j });
+    }
+    // Phase 2b — image ads (try-on hero stills: same person wearing the exact product)
+    for (const a of ADS.filter((x) => x.image)) {
+      const link = mkLink(a.pid); const pic = `${REELBASE}/hero-${a.pid}.jpg`;
+      let image_hash = '';
+      const imgUp = await post(`${ACT}/adimages`, { url: pic });
+      if (imgUp.ok && imgUp.j.images) { const k = Object.keys(imgUp.j.images)[0]; image_hash = imgUp.j.images[k]?.hash || ''; }
+      const link_data: Record<string, unknown> = { message: a.msg, link, name: a.name, call_to_action: { type: 'SHOP_NOW', value: { link } } };
+      if (image_hash) link_data.image_hash = image_hash; else link_data.picture = pic;
+      const spec = { page_id: PAGE, link_data };
+      const cr = await post(`${ACT}/adcreatives`, { name: `cr-img-${a.pid}`, object_story_spec: JSON.stringify(spec) });
+      if (!cr.ok) { created.push({ ad: `img#${a.pid}`, step: 'creative', error: cr.j }); continue; }
+      const ad = await post(`${ACT}/ads`, { name: `Image #${a.pid}`, adset_id, creative: JSON.stringify({ creative_id: cr.j.id }), status: 'ACTIVE' });
+      created.push({ ad: `img#${a.pid}`, image_hash: !!image_hash, ad_id: ad.ok ? ad.j.id : undefined, error: ad.ok ? undefined : ad.j });
+    }
+    return json({
+      ok: true, account: acct.name, currency: acct.currency, campaign_id, adset_id,
+      ads: created, ads_ok: created.filter(c => c.ad_id).length,
+      edit_url: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=26201135546175057&selected_campaign_ids=${campaign_id}`,
+    });
+  }
+
   // ── CONTENT PERFORMANCE LOOP (2026-06-26) ────────────────────────────────
   // Closes the "publish into the dark" gap. collect-content-metrics pulls
   // engagement back from IG/FB Graph API and snapshots it DAILY into post_metrics

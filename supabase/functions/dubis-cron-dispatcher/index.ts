@@ -55,6 +55,7 @@ const JOBS: Record<string, Job> = {
   // daily into post_metrics; content-analyze rolls it up weekly into content_learnings.
   'content-metrics':  { name: 'content-metrics', url: `${FNS_BASE}/agents?type=collect-content-metrics`, method: 'POST' },
   'content-analyze':  { name: 'content-analyze', url: `${FNS_BASE}/agents?type=analyze-content`, method: 'POST' },
+  'create-il-campaign': { name: 'create-il-campaign', url: `${FNS_BASE}/agents?type=create-il-campaign`, method: 'POST' },
   // Boss runs LAST in the day
   'boss':             { name: 'boss', url: `${FNS_BASE}/dubis-boss-orchestrator`, method: 'POST' },
 };
