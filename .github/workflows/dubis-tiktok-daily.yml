@@ -1,8 +1,9 @@
 name: DUBIS TikTok Daily
 
 # Replaces the static slideshow flow (render-and-publish.js) — 2026-05-23 per oren feedback.
-# Picks one reel from the bilingual persona bank (Supabase Storage video-assets/_pilot/*.mp4)
-# by deterministic day-of-year rotation, posts to TikTok via Late.com.
+# Rewritten 2026-06-28: picks ONE unique product reel from the product-keyed bank
+# (Supabase Storage video-assets/_pilot/product-{pid}-FINAL-EN.mp4) by least-recently-posted
+# rotation, Hebrew caption (IL-only), posts to TikTok via Late.com. No HE/EN duplication.
 # See memory/tiktok-strategy.md for the rotation rule + bank structure.
 
 on:
@@ -11,12 +12,12 @@ on:
     - cron: '0 15 * * *'
   workflow_dispatch:
     inputs:
-      force_persona:
-        description: 'Force a specific persona id (e.g. men-1) — leave blank for rotation pick'
+      force_product:
+        description: 'Force a specific product id (e.g. 34) — leave blank for least-recently-posted pick'
         required: false
         default: ''
-      force_lang:
-        description: 'Force HE or EN — leave blank for rotation pick'
+      dry_run:
+        description: 'Set to 1 to resolve + log the pick without publishing'
         required: false
         default: ''
 
@@ -47,6 +48,6 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DUBIS_LATE_API_KEY: ${{ secrets.DUBIS_LATE_API_KEY }}
           DUBIS_LATE_TIKTOK_ACCOUNT: ${{ secrets.DUBIS_LATE_TIKTOK_ACCOUNT }}
-          FORCE_PERSONA: ${{ github.event.inputs.force_persona }}
-          FORCE_LANG: ${{ github.event.inputs.force_lang }}
+          FORCE_PRODUCT: ${{ github.event.inputs.force_product }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
         run: node scripts/tiktok-from-reel-bank.mjs
