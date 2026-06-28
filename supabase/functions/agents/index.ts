@@ -6651,11 +6651,20 @@ ${items.join('\n')}
     const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
     if (!geminiKey) return json({ error: 'GEMINI_API_KEY not configured' }, 503);
 
-    // Idempotency: one auto product per ISO week (unless ?force=1)
+    // Idempotency: one auto product per ISO week (unless ?force=1).
+    // (2026-06-28) FIX: gate on the WEEKLY ROUTE's OWN prior run, not on any
+    // auto_publish product. Before, the check matched ANY `dubis_products.auto_publish=true`
+    // in 6 days — but manual product creations made by hand in sessions (#35/#37/#38/#40)
+    // ALSO set auto_publish=true, so each one reset the 6-day window and SUPPRESSED the
+    // Tuesday cron → it produced 0 products on its own (only the 2 force=1 runs did).
+    // The route's own runs (cron OR force) write agent_tasks{category:'new_product',
+    // content_data.auto_weekly:true} — gate on THAT so only a prior weekly run blocks it.
     if (url.searchParams.get('force') !== '1') {
       const sixDaysAgo = new Date(Date.now() - 6 * 86400000).toISOString();
-      const { data: recent } = await sb.from('dubis_products').select('id').eq('auto_publish', true).gte('created_at', sixDaysAgo).limit(1);
-      if (recent && recent.length) return json({ ok: true, skipped: 'already ran this week' });
+      const { data: recent } = await sb.from('agent_tasks').select('id')
+        .eq('category', 'new_product').eq('content_data->>auto_weekly', 'true')
+        .gte('created_at', sixDaysAgo).limit(1);
+      if (recent && recent.length) return json({ ok: true, skipped: 'weekly route already ran this week' });
     }
 
     // The weekly AUTO-creator may only auto-publish types that pass ALL FOUR gates

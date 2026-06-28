@@ -1486,6 +1486,29 @@ function isTechnicalPipelineFailure(status: string | null | undefined, lastError
   return false;                                          // cancelled / other → not technical
 }
 
+// Asset-gate (2026-06-28): surface ACTIVE products that have NO reel in the bank, so a
+// product without a usable reel never goes invisible again. The TikTok rotation + the
+// weekly plan's reel slots both need product-{pid}-FINAL-EN.mp4; missing ones silently
+// degrade to feed posts. Reels are generated on-demand via the Higgsfield MCP (runbook).
+async function fetchReelBankGaps(sb: SB): Promise<{ total: number; withReel: number; missing: number[] } | null> {
+  const { data: prods } = await sb.from('dubis_products')
+    .select('product_id_numeric').eq('active', true).order('product_id_numeric', { ascending: true });
+  const ids = (prods || []).map((p: Record<string, unknown>) => Number(p.product_id_numeric)).filter(Boolean);
+  if (!ids.length) return null;
+  const base = 'https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/video-assets/_pilot';
+  const checks = await Promise.all(ids.map(async (id) => {
+    try { const r = await fetch(`${base}/product-${id}-FINAL-EN.mp4`, { method: 'HEAD' }); return r.ok; }
+    catch { return false; }
+  }));
+  const missing = ids.filter((_, i) => !checks[i]);
+  return { total: ids.length, withReel: ids.length - missing.length, missing };
+}
+function buildReelBankGapsHtml(g: { total: number; withReel: number; missing: number[] } | null): string {
+  if (!g || !g.total) return '';
+  if (!g.missing.length) return `<p dir="rtl" style="font-size:13px;color:#2e7d32;text-align:right;margin:10px 0 0">🎬 בנק הרילים מלא — ${g.withReel}/${g.total} מוצרים פעילים עם ריל.</p>`;
+  return `<p dir="rtl" style="font-size:13px;color:#b26a00;text-align:right;margin:10px 0 0">🎬 בנק הרילים: ${g.withReel}/${g.total} מכוסים. <b>חסר ריל ל-${g.missing.length}:</b> ${g.missing.map((n) => '#' + n).join(', ')} — לייצר על-דרישה דרך ה-Higgsfield MCP (runbook).</p>`;
+}
+
 async function fetchAutoProductHealth(sb: SB): Promise<{
   latest: { numeric: number; slogan: string; status: string; active: boolean } | null;
   retries7d: number;
@@ -2734,6 +2757,7 @@ Deno.serve(async (req: Request) => {
   const weeklyMktgHtml = buildWeeklyMarketingHtml(weeklyMktg);
   const personaHtml = buildPersonaSeriesHtml(await fetchPersonaSeries(sb).catch(() => null));
   const autoProductHealthHtml = buildAutoProductHealthHtml(autoProductHealth);
+  const reelBankGapsHtml = buildReelBankGapsHtml(await fetchReelBankGaps(sb).catch(() => null));
   const contentPerfHtml = buildContentPerfHtml(contentPerf);
   // 🎯 3 decisions — derived from the live P0/P1 opinions (full set, incl. recurring).
   const topDecisionsHtml = buildTopDecisionsHtml(allOpinions);
@@ -2756,7 +2780,7 @@ ${recurringHtml}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📬 מיילים 24ש׳ — תקציר + המלצות</h2>${emailDigestHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📅 תוכנית שיווק שבועית — תכנון מול ביצוע</h2>${weeklyMktgHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🐻 סדרת הסוכנים — מאחורי הקוד</h2>${personaHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🤖 קו המוצרים האוטומטי</h2>${autoProductHealthHtml}</td></tr><tr><td style="height:14px"></td></tr>
+<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🤖 קו המוצרים האוטומטי</h2>${autoProductHealthHtml}${reelBankGapsHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📣 שיווק היום (${totalMarketing})</h2>${marketingStatsHtml}${marketingItemsHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📈 ביצועי תוכן אורגני</h2>${contentPerfHtml}</td></tr><tr><td style="height:14px"></td></tr>
 ${lastWeekSection}
