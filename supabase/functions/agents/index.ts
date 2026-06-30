@@ -2976,10 +2976,10 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     // Hosted at campaign-0628/. Faces: #38=face-3, #31=face-1, #23=face-6, #32=face-2.
     const REELBASE = 'https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/video-assets/campaign-0628';
     const ADS = [
-      { pid: 38, name: 'גופייה — DUBIS', video: true, image: true,  msg: '38 מעלות, והשכן עדיין שואל אם לא קר לי בלי שרוולים. לא קר לי — פשוט הפסקתי להתלבש לפי דעות של אחרים.\nגופייה נוחה לקיץ. נשלח לישראל. ₪28. להזמנה 👇' },
-      { pid: 31, name: 'נוחות — DUBIS',  video: true, image: false, msg: 'חדר מדידה, מראה, ואני מכניסה את הבטן כאילו מישהו נותן לי ציון. אז הפסקתי.\nחולצת קיץ נוחה, לגוף אמיתי. נשלח לישראל. ₪27. להזמנה 👇' },
-      { pid: 23, name: 'בקרים — DUBIS',  video: true, image: true,  msg: 'כל אדם מצליח קם בחמש בבוקר, נכון? אז אני אבוד. הזריחה עדיין מרגישה כמו עלבון אישי.\nחולצת קיץ נוחה. נשלח לישראל. ₪26. להזמנה 👇' },
-      { pid: 32, name: 'קולקציית קיץ — DUBIS', video: true, image: false, msg: 'קוראים לזה ספורט-וור. הפעילות הכי אקטיבית שלי היא לסחוב קפה למרפסת.\nחולצת קיץ נוחה. נשלח לישראל. ₪26. להזמנה 👇' },
+      { pid: 38, name: 'גופייה — DUBIS', video: true, image: true,  msg: '38 מעלות, והשכן עדיין שואל אם לא קר לי בלי שרוולים. לא קר לי — פשוט הפסקתי להתלבש לפי דעות של אחרים.\nגופייה נוחה לקיץ. נשלח לישראל. ₪84. להזמנה 👇' },
+      { pid: 31, name: 'נוחות — DUBIS',  video: true, image: false, msg: 'חדר מדידה, מראה, ואני מכניסה את הבטן כאילו מישהו נותן לי ציון. אז הפסקתי.\nחולצת קיץ נוחה, לגוף אמיתי. נשלח לישראל. ₪81. להזמנה 👇' },
+      { pid: 23, name: 'בקרים — DUBIS',  video: true, image: true,  msg: 'כל אדם מצליח קם בחמש בבוקר, נכון? אז אני אבוד. הזריחה עדיין מרגישה כמו עלבון אישי.\nחולצת קיץ נוחה. נשלח לישראל. ₪79. להזמנה 👇' },
+      { pid: 32, name: 'קולקציית קיץ — DUBIS', video: true, image: false, msg: 'קוראים לזה ספורט-וור. הפעילות הכי אקטיבית שלי היא לסחוב קפה למרפסת.\nחולצת קיץ נוחה. נשלח לישראל. ₪79. להזמנה 👇' },
     ];
     const created: Record<string, unknown>[] = [];
     const mkLink = (pid: number) => `https://www.dubis.net/?p=${pid}&utm_source=meta&utm_medium=paid&utm_campaign=il_summer_jun28&utm_content=p${pid}`;
@@ -3019,6 +3019,62 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       ads: created, ads_ok: created.filter(c => c.ad_id).length,
       edit_url: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=26201135546175057&selected_campaign_ids=${campaign_id}`,
     });
+  }
+
+  // ── FIX campaign ad copy IN PLACE (correct ₪ prices) — keeps the campaign ON ──
+  // Bug: ad copy showed the USD number with a ₪ sign (e.g. "₪28" for a $28 product).
+  // Correct = USD × live rate (~2.99): $28→₪84, $27→₪81, $26→₪79. Rebuild each ad's
+  // creative with the fixed message (reusing the existing video_id/image_hash) and
+  // repoint the ad — no re-upload, no re-toggle, campaign stays live.
+  if (type === 'fix-campaign-copy') {
+    const svcKey = SERVICE_ROLE;
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const tok = url.searchParams.get('token') || req.headers.get('x-agent-secret') || authHeader.replace('Bearer ', '').trim() || '';
+    if (!((svcKey && tok === svcKey) || (agentSecret && tok === agentSecret) || (cronSecret && tok === cronSecret)) && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);
+    const ACT = 'act_26201135546175057';
+    const G = 'https://graph.facebook.com/v21.0';
+    const cand = [Deno.env.get('META_ACCESS_TOKEN') ?? '', Deno.env.get('INSTAGRAM_ACCESS_TOKEN') ?? ''].filter(Boolean);
+    let FB = '';
+    for (const tk of cand) { const p = await fetch(`${G}/me/permissions?access_token=${tk}`).then(r => r.json()).catch(() => ({})); if (Array.isArray(p.data) && p.data.some((x: Record<string, string>) => x.permission === 'ads_management' && x.status === 'granted')) { FB = tk; break; } }
+    if (!FB) return json({ ok: false, error: 'no ads_management token' }, 200);
+    const post = async (path: string, params: Record<string, string>) => { const r = await fetch(`${G}/${path}`, { method: 'POST', body: new URLSearchParams({ ...params, access_token: FB }) }); return { ok: r.ok, j: await r.json() }; };
+    // corrected Hebrew copy per product (₪ = USD × live rate, rounded up safe)
+    const MSG: Record<number, string> = {
+      38: '38 מעלות, והשכן עדיין שואל אם לא קר לי בלי שרוולים. לא קר לי — פשוט הפסקתי להתלבש לפי דעות של אחרים.\nגופייה נוחה לקיץ. נשלח לישראל. ₪84. להזמנה 👇',
+      31: 'חדר מדידה, מראה, ואני מכניסה את הבטן כאילו מישהו נותן לי ציון. אז הפסקתי.\nחולצת קיץ נוחה, לגוף אמיתי. נשלח לישראל. ₪81. להזמנה 👇',
+      23: 'כל אדם מצליח קם בחמש בבוקר, נכון? אז אני אבוד. הזריחה עדיין מרגישה כמו עלבון אישי.\nחולצת קיץ נוחה. נשלח לישראל. ₪79. להזמנה 👇',
+      32: 'קוראים לזה ספורט-וור. הפעילות הכי אקטיבית שלי היא לסחוב קפה למרפסת.\nחולצת קיץ נוחה. נשלח לישראל. ₪79. להזמנה 👇',
+    };
+    const camps = await fetch(`${G}/${ACT}/campaigns?fields=id,name&limit=100&access_token=${FB}`).then(r => r.json());
+    const camp = Array.isArray(camps.data) ? camps.data.find((c: Record<string, string>) => c.name === 'DUBIS IL Summer — 2026-06-28') : null;
+    if (!camp) return json({ ok: false, error: 'campaign not found' }, 200);
+    const ads = await fetch(`${G}/${camp.id}/ads?fields=id,name,creative{id,object_story_spec}&limit=50&access_token=${FB}`).then(r => r.json());
+    const out: Record<string, unknown>[] = [];
+    for (const ad of (ads.data || [])) {
+      const pid = Number((String(ad.name).match(/#(\d+)/) || [])[1]);
+      const msg = MSG[pid];
+      const oss = ad.creative?.object_story_spec;
+      if (!msg || !oss) { out.push({ ad: ad.name, skipped: !msg ? 'no-msg' : 'no-spec' }); continue; }
+      let spec: Record<string, unknown>;
+      if (oss.video_data) {
+        const v = oss.video_data;
+        const vd: Record<string, unknown> = { video_id: v.video_id, message: msg, link_description: v.link_description, call_to_action: v.call_to_action };
+        if (v.image_hash) vd.image_hash = v.image_hash; else if (v.image_url) vd.image_url = v.image_url; // exactly ONE
+        spec = { page_id: oss.page_id, video_data: vd };
+      } else {
+        const l = oss.link_data;
+        const ld: Record<string, unknown> = { link: l.link, name: l.name, message: msg, call_to_action: l.call_to_action };
+        if (l.image_hash) ld.image_hash = l.image_hash; else if (l.picture) ld.picture = l.picture; // exactly ONE
+        spec = { page_id: oss.page_id, link_data: ld };
+      }
+      const cr = await post(`${ACT}/adcreatives`, { name: `cr-fix-${ad.name}`, object_story_spec: JSON.stringify(spec) });
+      if (!cr.ok) { out.push({ ad: ad.name, step: 'creative', error: cr.j }); continue; }
+      const upd = await post(`${ad.id}`, { creative: JSON.stringify({ creative_id: cr.j.id }) });
+      out.push({ ad: ad.name, pid, new_creative: cr.j.id, updated: upd.ok, error: upd.ok ? undefined : upd.j });
+    }
+    return json({ ok: true, campaign: camp.id, fixed: out.filter(o => o.updated).length, ads: out });
   }
 
   // ── PAUSE a Meta campaign (protective — stops spend) ─────────────────────

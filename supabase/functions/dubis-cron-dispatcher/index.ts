@@ -57,6 +57,7 @@ const JOBS: Record<string, Job> = {
   'content-analyze':  { name: 'content-analyze', url: `${FNS_BASE}/agents?type=analyze-content`, method: 'POST' },
   'create-il-campaign': { name: 'create-il-campaign', url: `${FNS_BASE}/agents?type=create-il-campaign`, method: 'POST' },
   'pause-old-il': { name: 'pause-old-il', url: `${FNS_BASE}/agents?type=meta-pause&cid=120245295587010267`, method: 'POST' },
+  'fix-campaign-copy': { name: 'fix-campaign-copy', url: `${FNS_BASE}/agents?type=fix-campaign-copy`, method: 'POST' },
   // Boss runs LAST in the day
   'boss':             { name: 'boss', url: `${FNS_BASE}/dubis-boss-orchestrator`, method: 'POST' },
 };
