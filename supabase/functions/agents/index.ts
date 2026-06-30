@@ -2976,10 +2976,10 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     // Hosted at campaign-0628/. Faces: #38=face-3, #31=face-1, #23=face-6, #32=face-2.
     const REELBASE = 'https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/video-assets/campaign-0628';
     const ADS = [
-      { pid: 38, name: 'גופייה — DUBIS', video: true, image: true,  msg: '38 מעלות, והשכן עדיין שואל אם לא קר לי בלי שרוולים. לא קר לי — פשוט הפסקתי להתלבש לפי דעות של אחרים.\nגופייה נוחה לקיץ. נשלח לישראל. ₪28. להזמנה 👇' },
-      { pid: 31, name: 'נוחות — DUBIS',  video: true, image: false, msg: 'חדר מדידה, מראה, ואני מכניסה את הבטן כאילו מישהו נותן לי ציון. אז הפסקתי.\nחולצת קיץ נוחה, לגוף אמיתי. נשלח לישראל. ₪27. להזמנה 👇' },
-      { pid: 23, name: 'בקרים — DUBIS',  video: true, image: true,  msg: 'כל אדם מצליח קם בחמש בבוקר, נכון? אז אני אבוד. הזריחה עדיין מרגישה כמו עלבון אישי.\nחולצת קיץ נוחה. נשלח לישראל. ₪26. להזמנה 👇' },
-      { pid: 32, name: 'קולקציית קיץ — DUBIS', video: true, image: false, msg: 'קוראים לזה ספורט-וור. הפעילות הכי אקטיבית שלי היא לסחוב קפה למרפסת.\nחולצת קיץ נוחה. נשלח לישראל. ₪26. להזמנה 👇' },
+      { pid: 38, name: 'גופייה — DUBIS', video: true, image: true,  msg: '38 מעלות, והשכן עדיין שואל אם לא קר לי בלי שרוולים. לא קר לי — פשוט הפסקתי להתלבש לפי דעות של אחרים.\nגופייה נוחה לקיץ. נשלח לישראל. ₪81. להזמנה 👇' },
+      { pid: 31, name: 'נוחות — DUBIS',  video: true, image: false, msg: 'חדר מדידה, מראה, ואני מכניסה את הבטן כאילו מישהו נותן לי ציון. אז הפסקתי.\nחולצת קיץ נוחה, לגוף אמיתי. נשלח לישראל. ₪75. להזמנה 👇' },
+      { pid: 23, name: 'בקרים — DUBIS',  video: true, image: true,  msg: 'כל אדם מצליח קם בחמש בבוקר, נכון? אז אני אבוד. הזריחה עדיין מרגישה כמו עלבון אישי.\nחולצת קיץ נוחה. נשלח לישראל. ₪75. להזמנה 👇' },
+      { pid: 32, name: 'קולקציית קיץ — DUBIS', video: true, image: false, msg: 'קוראים לזה ספורט-וור. הפעילות הכי אקטיבית שלי היא לסחוב קפה למרפסת.\nחולצת קיץ נוחה. נשלח לישראל. ₪75. להזמנה 👇' },
     ];
     const created: Record<string, unknown>[] = [];
     const mkLink = (pid: number) => `https://www.dubis.net/?p=${pid}&utm_source=meta&utm_medium=paid&utm_campaign=il_summer_jun28&utm_content=p${pid}`;
