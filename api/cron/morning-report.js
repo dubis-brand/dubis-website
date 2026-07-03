@@ -156,6 +156,144 @@ async function runContentPipeline(supabase, res) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Abandoned-cart recovery (2026-07-03) — one reminder email per saved cart.
+// Sources: `abandoned_carts` (cart-modal / checkout-form / newsletter captures)
+// + `fbia_pending` backlog rows that carry a buyer_email (checkout abandoners).
+// Window: cart age 3h-48h. Guards: never email twice, never email a buyer who
+// purchased after saving, dedupe multiple carts per email (newest wins).
+// Invoked via ?type=cart-recovery and inline from the auto-run/content crons.
+
+async function fetchUsdIlsRate() {
+    try {
+        const r = await fetch('https://open.er-api.com/v6/latest/USD');
+        const j = await r.json();
+        const rate = j && j.rates && Number(j.rates.ILS);
+        if (rate && rate > 2 && rate < 6) return rate;
+    } catch {}
+    return 3.7; // conservative fallback — never under-promise the ₪ price
+}
+
+function cartRecoveryEmailHtml(row, ilsRate) {
+    const he = row.lang === 'he';
+    const items = Array.isArray(row.cart_items) ? row.cart_items : [];
+    const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+    const priceStr = usd => he ? `₪${Math.ceil(Number(usd || 0) * ilsRate)}` : `$${Number(usd || 0).toFixed(2)}`;
+    const total = items.reduce((s, i) => s + (Number(i.price) || 0) * (i.quantity || 1), 0);
+    const link = `https://www.dubis.net/?cart=${row.restore_token}&utm_source=recovery&utm_medium=email&utm_campaign=cart_recovery`;
+    const rowsHtml = items.map(i => `
+      <tr>
+        <td style="padding:8px 10px;border-bottom:1px solid #eee7d8;color:#2C2C2C;">${esc(i.name)}${i.color ? ' · ' + esc(i.color) : ''}${i.size ? ' · ' + esc(i.size) : ''}${(i.quantity || 1) > 1 ? ' × ' + (i.quantity || 1) : ''}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #eee7d8;color:#2C2C2C;white-space:nowrap;">${priceStr(i.price)}</td>
+      </tr>`).join('');
+    const title   = he ? 'הסל שלך שמור אצלנו' : 'Your cart is saved';
+    const opener  = he ? 'עצרת באמצע. קורה. שמרנו לך את הסל — הוא מחכה כשתחזור.'
+                       : 'You stopped mid-way. It happens. We saved your cart, and it will be here when you come back.';
+    const btn     = he ? 'חזרה לסל שלי' : 'Back to my cart';
+    const totalLbl = he ? 'סה"כ' : 'Total';
+    const footer  = he ? 'זה המייל היחיד שנשלח על הסל הזה — בלי ספאם, בלי מבצעים שאסור לפספס.'
+                       : 'This is the only email we will send about this cart. No spam, no pressure.';
+    return `<!DOCTYPE html><html lang="${he ? 'he' : 'en'}" dir="${he ? 'rtl' : 'ltr'}"><body style="font-family:'Segoe UI',Arial,sans-serif;background:#F5F0E8;padding:24px;margin:0;">
+<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:26px;box-shadow:0 2px 8px rgba(44,44,44,.08);">
+  <h2 style="color:#2C2C2C;margin:0 0 6px;">${title}</h2>
+  <p style="color:#555;line-height:1.7;margin:0 0 16px;">${opener}</p>
+  <table style="width:100%;border-collapse:collapse;margin:0 0 8px;">${rowsHtml}</table>
+  <div style="text-align:${he ? 'left' : 'right'};color:#2C2C2C;font-weight:700;margin:0 0 18px;">${totalLbl}: ${priceStr(total)}</div>
+  <div style="text-align:center;margin:0 0 18px;">
+    <a href="${link}" style="display:inline-block;background:#C17E3A;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;">${btn}</a>
+  </div>
+  <p style="color:#999;font-size:.8rem;line-height:1.6;margin:0;">${footer}</p>
+  <p style="color:#bbb;font-size:.75rem;margin:14px 0 0;font-style:italic;">DUBIS — Built for the body you actually live in.</p>
+</div></body></html>`;
+}
+
+async function runCartRecovery(supabase) {
+    const out = { fbia_imported: 0, candidates: 0, sent: 0, skipped_purchased: 0, superseded: 0, errors: [] };
+    if (!process.env.RESEND_API_KEY) { out.errors.push('RESEND_API_KEY missing'); return out; }
+    const nowMs  = Date.now();
+    const minAge = new Date(nowMs - 3 * 3600e3).toISOString();   // ready ≥3h after save
+    const maxAge = new Date(nowMs - 48 * 3600e3).toISOString();  // stale >48h = skip
+
+    // 0. Import FBIA checkout abandoners (email + cart already server-side) as carts
+    try {
+        const { data: fbia } = await supabase.from('agent_tasks')
+            .select('id, content_data, created_at')
+            .eq('category', 'fbia_pending').eq('status', 'backlog')
+            .gte('created_at', maxAge).lte('created_at', minAge).limit(20);
+        for (const t of (fbia || [])) {
+            const cd = t.content_data || {};
+            if (!cd.buyer_email || cd.recovery_cart_id) continue;
+            const items = (cd.cart_items || []).map(i => ({
+                id: i.id, name: i.name || '', color: i.color || '', size: i.size || '',
+                quantity: i.quantity || 1, price: Number(i.price) || 0,
+            }));
+            if (!items.length) continue;
+            const { data: ins, error: insErr } = await supabase.from('abandoned_carts').insert({
+                email: String(cd.buyer_email).trim().toLowerCase(),
+                cart_items: items,
+                cart_total: items.reduce((s, i) => s + i.price * i.quantity, 0),
+                lang: 'he', source: 'fbia_checkout', created_at: t.created_at,
+            }).select('id').single();
+            if (insErr) { out.errors.push('fbia_insert: ' + insErr.message); continue; }
+            out.fbia_imported++;
+            await supabase.from('agent_tasks').update({ content_data: { ...cd, recovery_cart_id: ins.id } }).eq('id', t.id);
+        }
+    } catch (e) { out.errors.push('fbia_import: ' + e.message); }
+
+    // 1. Candidate carts: 3-48h old, never emailed, not opted out
+    const { data: rows, error: selErr } = await supabase.from('abandoned_carts')
+        .select('*')
+        .is('emailed_at', null).eq('opted_out', false)
+        .gte('created_at', maxAge).lte('created_at', minAge)
+        .order('created_at', { ascending: false }).limit(50);
+    if (selErr) { out.errors.push('select: ' + selErr.message); return out; }
+    if (!rows || !rows.length) return out;
+
+    // 2. Dedupe per email — newest cart wins, older siblings marked superseded
+    const byEmail = new Map();
+    for (const r of rows) {
+        if (!byEmail.has(r.email)) { byEmail.set(r.email, r); continue; }
+        const { error: upErr } = await supabase.from('abandoned_carts')
+            .update({ emailed_at: new Date().toISOString(), email_id: 'superseded' }).eq('id', r.id);
+        if (!upErr) out.superseded++;
+    }
+    out.candidates = byEmail.size;
+    const ilsRate = await fetchUsdIlsRate();
+
+    for (const r of byEmail.values()) {
+        // Skip anyone who purchased after saving the cart
+        const { count } = await supabase.from('orders')
+            .select('id', { count: 'exact', head: true })
+            .ilike('buyer_email', r.email).gte('created_at', r.created_at);
+        if (count > 0) {
+            out.skipped_purchased++;
+            await supabase.from('abandoned_carts').update({ emailed_at: new Date().toISOString(), email_id: 'purchased' }).eq('id', r.id);
+            continue;
+        }
+        try {
+            const resp = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from: 'DUBIS <orders@dubis.net>',
+                    to: [r.email],
+                    subject: r.lang === 'he' ? 'הסל שלך ב-DUBIS שמור. בלי לחץ.' : 'Your DUBIS cart is saved. No rush.',
+                    html: cartRecoveryEmailHtml(r, ilsRate),
+                }),
+            });
+            const data = await resp.json();
+            await supabase.from('abandoned_carts').update({
+                emailed_at: new Date().toISOString(),
+                email_id: resp.ok ? (data.id || 'sent') : ('error:' + JSON.stringify(data).slice(0, 120)),
+            }).eq('id', r.id);
+            if (resp.ok) out.sent++;
+            else out.errors.push('resend: ' + JSON.stringify(data).slice(0, 160));
+            await new Promise(s => setTimeout(s, 600));
+        } catch (e) { out.errors.push('send: ' + e.message); }
+    }
+    return out;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 
 module.exports = async function handler(req, res) {
     if (req.method !== 'GET' && req.method !== 'POST') {
@@ -756,6 +894,15 @@ ${[
         }
     }
 
+    // ── Route: ?type=cart-recovery — abandoned-cart reminder emails (2026-07-03) ──
+    // One email per saved cart, 3-48h after capture. Also runs inline from the
+    // auto-run (06:00/12:00 UTC) + content (10:00/16:00 UTC) crons — this route
+    // exists for manual triggering and testing.
+    if (urlType === 'cart-recovery') {
+        const out = await runCartRecovery(supabase);
+        return res.status(out.errors.length && !out.sent ? 500 : 200).json({ success: true, ...out });
+    }
+
     // ── Route: ?type=auto-run — Phase 2 autonomy: auto-execute all non-budget tasks ──
     // Called by Vercel cron at 06:00 + 12:00 UTC (08:00 + 14:00 Israel)
     // Delegates to dubis-run-all (the cloud dispatcher that threads task_ids into
@@ -783,7 +930,10 @@ ${[
                 });
                 sloganReview = await rr.json();
             } catch (e) { sloganReview = { error: e.message }; }
-            return res.status(dispatchRes.ok ? 200 : 500).json({ ok: dispatchRes.ok, delegated: true, result: dispatchData, slogan_review: sloganReview });
+            // 2026-07-03: abandoned-cart recovery rides the same cron slot (twice daily).
+            let cartRecovery = null;
+            try { cartRecovery = await runCartRecovery(supabase); } catch (e) { cartRecovery = { error: e.message }; }
+            return res.status(dispatchRes.ok ? 200 : 500).json({ ok: dispatchRes.ok, delegated: true, result: dispatchData, slogan_review: sloganReview, cart_recovery: cartRecovery });
         } catch (e) {
             return res.status(500).json({ success: false, error: e.message });
         }
@@ -819,6 +969,9 @@ ${[
     // ── Route: ?type=content — standalone content generation ────────────
     // Called by Vercel cron at 10:00 UTC (12:00 Israel) separately from morning report
     if (urlType === 'content') {
+        // 2026-07-03: abandoned-cart recovery rides this cron too (10:00 + 16:00 UTC
+        // windows on top of auto-run's 06:00 + 12:00 — carts get a shot within ~4-6h).
+        try { await runCartRecovery(supabase); } catch {}
         return runContentPipeline(supabase, res);
     }
 
