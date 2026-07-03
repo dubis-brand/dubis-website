@@ -2051,6 +2051,169 @@ function buildEmailDigestHtml(d: Awaited<ReturnType<typeof fetchEmailDigest>>): 
 }
 
 // =============================================================
+// 🧭 MANAGEMENT DECISION BOARD (2026-07-03, oren directive)
+// "לא מספיק שהסוכן נותן תובנות ברמת המלצה — אתה והבוס תחליטו האם מאמצים".
+// Every agent recommendation (email_monitor first; other sources next) becomes
+// a row in management_decisions; the embedded-Adam judgment pass below decides
+// ADOPT (→ creates an owned agent_task) / REJECT (with a reason) / ESCALATE
+// (genuinely needs oren). The daily report renders the board.
+// NOTE: this doctrine block is a MIRROR of the brain's decision principles
+// (A-agents/adam-agent.md + M-memory/snapshot.md) — the cloud cannot read the
+// repo. When the brain's principles change, regenerate this string (same rule
+// as the copy-qa voice block).
+
+const ADAM_DOCTRINE = `אתה אדם — ה-COO של DUBIS, מותג אופנה D2C המנוהל ע"י מפעיל יחיד (אורן) + צוות סוכני AI. אתה מכריע על המלצות שהסוכנים העלו. עקרונות ההחלטה שלך:
+1. שלב העסק: מבחן-ביקוש במרווח-שלילי מכוון (loss-leader) — הצוואר הוא הפצה/ביקוש, לא רווחיות. קמפיין ממומן ראשון רץ בישראל עם שערי-עצירה. שיווק בעברית לישראל בלבד; מוצרים מותאמי-עונה; קול המותג: ציני-חם, זירו-התנצלות, בלי קלישאות.
+2. כלכלת מפעיל-יחיד: אמץ רק מה שערכו הצפוי מצדיק את המאמץ, והעדף לרכוב על תשתית קיימת. משימה מאומצת חייבת בעלים ברור וצעד ראשון קונקרטי.
+3. גבולות קשיחים — לעולם אל תאמץ בעצמך: הוצאה כספית חדשה / תקציב מודעות / כלי בתשלום / הזנת סיסמאות-טוקנים / שינוי אסטרטגי מהותי / עניין אישי או משפטי → אלה תמיד escalate לאורן, עם המלצה מנומקת.
+4. דחייה היא החלטה לגיטימית ושכיחה: רעיון גנרי, לא-רלוונטי לשלב, כפול למשימה קיימת, או "נחמד אבל לא עכשיו" → reject עם סיבה במשפט אחד. עדיף לדחות מלהציף את המערכת.
+5. אימוץ = משימה: כותרת ברורה, בעלים מבין הסוכנים (content/marketing/product/design/video/supply/cto) או manual כשזה אנושי, וצעד ראשון. שינוי בקוד הפונה-ללקוח מקבל הערת branch+preview.`;
+
+type MgmtDecisionRow = {
+  id: string; source_agent: string; recommendation: string;
+  decision: string | null; rationale: string | null; owner_agent: string | null;
+  created_task_id: string | null; status: string; decided_at: string | null; created_at: string;
+  context: Record<string, unknown> | null;
+};
+
+// Harvest recommendations from gmail_insight tasks (48h) into management_decisions.
+async function harvestRecommendations(sb: SB): Promise<{ harvested: number }> {
+  const since = new Date(Date.now() - 48 * 3600000).toISOString();
+  const { data: rows } = await sb.from('agent_tasks')
+    .select('id, title, content_data, created_at')
+    .eq('category', 'gmail_insight').gte('created_at', since)
+    .order('created_at', { ascending: false }).limit(20);
+  let harvested = 0;
+  for (const r of (rows || []) as Array<Record<string, unknown>>) {
+    const cd = (r.content_data || {}) as Record<string, unknown>;
+    const a = (cd.dubis_analysis || null) as { idea?: string; relevance?: string; recommendation?: string; next_step?: string; agent?: string } | null;
+    if (!a || !a.recommendation) continue;
+    // idx_mgmt_decisions_source_task makes this idempotent — dup insert errors are expected+ignored.
+    const { error } = await sb.from('management_decisions').insert({
+      source_agent: 'email_monitor',
+      source_task_id: r.id as string,
+      recommendation: `${a.idea ? a.idea + ' | ' : ''}${a.recommendation}${a.next_step ? ' | צעד מוצע: ' + a.next_step : ''}`.slice(0, 900),
+      context: { subject: cd.subject, suggested_agent: a.agent, relevance: a.relevance },
+    });
+    if (!error) harvested++;
+  }
+  return { harvested };
+}
+
+const MGMT_VALID_OWNERS = new Set(['boss','cto','marketing','content','design','supply','email_monitor','site_audit','manual','product','security','tiktok','video','planner']);
+
+// The embedded-Adam judgment pass: decide all pending recommendations in ONE Gemini call.
+async function adamDecide(sb: SB): Promise<{ decided: number; adopted: number; rejected: number; escalated: number; errors: string[] }> {
+  const out = { decided: 0, adopted: 0, rejected: 0, escalated: 0, errors: [] as string[] };
+  const geminiKey = Deno.env.get('GEMINI_API_KEY') || '';
+  if (!geminiKey) { out.errors.push('GEMINI_API_KEY missing'); return out; }
+  const { data: pend } = await sb.from('management_decisions')
+    .select('id, recommendation, context, source_agent')
+    .eq('status', 'pending').order('created_at', { ascending: true }).limit(8);
+  if (!pend || pend.length === 0) return out;
+  const items = pend.map((p, i) => `${i + 1}. [${p.id}] (מקור: ${p.source_agent}) ${p.recommendation}`).join('\n');
+  const prompt = `${ADAM_DOCTRINE}
+
+לפניך המלצות פתוחות מהסוכנים. הכרע על כל אחת. ענה אך ורק כ-JSON תקין — מערך שבו איבר לכל המלצה:
+[{"id":"<ה-uuid מהסוגריים>","decision":"adopt|reject|escalate","rationale":"ההנמקה שלך במשפט-שניים, בעברית","owner_agent":"content|marketing|product|design|video|supply|cto|manual (רק אם adopt)","task_title":"כותרת משימה קצרה בעברית (רק אם adopt)","task_step":"הצעד הראשון הקונקרטי (רק אם adopt)"}]
+
+ההמלצות:
+${items}`;
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3, responseMimeType: 'application/json' },
+      }),
+      signal: AbortSignal.timeout(25000),
+    });
+    if (!r.ok) { out.errors.push(`gemini HTTP ${r.status}`); return out; }
+    const j = await r.json() as Record<string, unknown>;
+    const text = (((((j.candidates as unknown[]) || [])[0] as Record<string, unknown>)?.content as Record<string, unknown>)?.parts as Array<Record<string, unknown>>)?.[0]?.text as string || '';
+    const m = text.match(/\[[\s\S]*\]/);
+    if (!m) { out.errors.push('no JSON array in Gemini response'); return out; }
+    const decisions = JSON.parse(m[0]) as Array<Record<string, string>>;
+    const validIds = new Set(pend.map(p => p.id as string));
+    for (const d of decisions) {
+      const id = String(d.id || '');
+      const decision = String(d.decision || '').toLowerCase();
+      if (!validIds.has(id) || !['adopt', 'reject', 'escalate'].includes(decision)) continue;
+      let createdTaskId: string | null = null;
+      if (decision === 'adopt') {
+        const owner = MGMT_VALID_OWNERS.has(String(d.owner_agent || '').toLowerCase()) ? String(d.owner_agent).toLowerCase() : 'manual';
+        const { data: task, error: tErr } = await sb.from('agent_tasks').insert({
+          agent_id: owner,
+          title: `🧭 ${String(d.task_title || 'משימת הנהלה').slice(0, 160)}`,
+          description: `${String(d.rationale || '')}\nצעד ראשון: ${String(d.task_step || '')}`.slice(0, 1200),
+          category: 'management_directive',
+          status: 'backlog',
+          priority: 'high',
+          content_data: { management_decision_id: id, decided_by: 'adam_embedded' },
+        }).select('id').single();
+        if (tErr) { out.errors.push(`task insert: ${tErr.message}`); }
+        else createdTaskId = (task as { id: string }).id;
+      }
+      const { error: upErr } = await sb.from('management_decisions').update({
+        decision, rationale: String(d.rationale || '').slice(0, 600),
+        owner_agent: decision === 'adopt' ? (MGMT_VALID_OWNERS.has(String(d.owner_agent || '').toLowerCase()) ? String(d.owner_agent).toLowerCase() : 'manual') : null,
+        created_task_id: createdTaskId,
+        status: 'decided', decided_at: new Date().toISOString(),
+      }).eq('id', id).eq('status', 'pending');
+      if (upErr) { out.errors.push(`update: ${upErr.message}`); continue; }
+      out.decided++;
+      if (decision === 'adopt') out.adopted++;
+      else if (decision === 'reject') out.rejected++;
+      else out.escalated++;
+    }
+  } catch (e) { out.errors.push((e as Error).message); }
+  return out;
+}
+
+async function fetchManagementBoard(sb: SB): Promise<{ recent: MgmtDecisionRow[]; pending: number; taskStatus: Record<string, string> } | null> {
+  const since = new Date(Date.now() - 7 * 86400000).toISOString();
+  const { data: recent } = await sb.from('management_decisions')
+    .select('id, source_agent, recommendation, decision, rationale, owner_agent, created_task_id, status, decided_at, created_at, context')
+    .gte('created_at', since).order('created_at', { ascending: false }).limit(12);
+  const rows = (recent || []) as MgmtDecisionRow[];
+  const { count: pending } = await sb.from('management_decisions')
+    .select('id', { count: 'exact', head: true }).eq('status', 'pending');
+  const taskIds = rows.map(r => r.created_task_id).filter(Boolean) as string[];
+  const taskStatus: Record<string, string> = {};
+  if (taskIds.length) {
+    const { data: tasks } = await sb.from('agent_tasks').select('id, status').in('id', taskIds);
+    for (const t of (tasks || []) as Array<{ id: string; status: string }>) taskStatus[t.id] = t.status;
+  }
+  return { recent: rows, pending: pending || 0, taskStatus };
+}
+
+function buildManagementBoardHtml(b: Awaited<ReturnType<typeof fetchManagementBoard>>): string {
+  if (!b || (b.recent.length === 0 && b.pending === 0)) {
+    return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right;margin:0">אין המלצות פתוחות על השולחן — הסוכנים לא העלו נושא להכרעה בשבוע האחרון.</p>';
+  }
+  const badge = (r: MgmtDecisionRow) => {
+    if (r.status === 'pending') return '<span style="background:#fdf3d7;color:#8a6d00;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">⏳ ממתין להכרעה</span>';
+    if (r.decision === 'adopt') {
+      const ts = r.created_task_id ? (b.taskStatus[r.created_task_id] || 'backlog') : 'backlog';
+      const done = ts === 'done';
+      return `<span style="background:${done ? '#e6f4e6' : '#eaf3fb'};color:${done ? '#1e6b1e' : '#1f618d'};border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">${done ? '✅ אומץ ובוצע' : `✅ אומץ → ${esc(r.owner_agent || 'manual')} (${esc(ts)})`}</span>`;
+    }
+    if (r.decision === 'reject') return '<span style="background:#f4f4f4;color:#777;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">❌ נדחה</span>';
+    return '<span style="background:#fdeaea;color:#a12020;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">⬆️ להחלטת אורן</span>';
+  };
+  const rowsHtml = b.recent.map(r => {
+    const subj = r.context && (r.context as Record<string, unknown>).subject ? ` <span style="color:#aaa">(${esc(String((r.context as Record<string, unknown>).subject).slice(0, 60))})</span>` : '';
+    return `<div dir="rtl" style="background:#fcfbf7;border-right:3px solid ${r.decision === 'escalate' ? '#c0392b' : '#c8a96e'};border-radius:4px;padding:7px 10px;margin:4px 0;text-align:right">
+      <div dir="rtl" style="font-size:12px;color:#2c2c2c;text-align:right">${esc(r.recommendation.slice(0, 220))}${subj}</div>
+      <div dir="rtl" style="margin-top:3px;text-align:right">${badge(r)}${r.rationale ? ` <span style="font-size:11px;color:#666">— ${esc(r.rationale.slice(0, 160))}</span>` : ''}</div>
+    </div>`;
+  }).join('');
+  const pendingNote = b.pending > 0 ? `<div dir="rtl" style="font-size:11px;color:#8a6d00;margin:4px 0;text-align:right">⏳ ${b.pending} המלצות עדיין ממתינות להכרעה (יוכרעו בריצה הבאה).</div>` : '';
+  return `<div dir="rtl" style="font-size:11px;color:#999;margin:0 0 6px;text-align:right">כל המלצת-סוכן מוכרעת ע"י שיקול-הדעת של אדם (COO) בתוך ריצת הבוס: אומץ → משימה עם בעלים · נדחה → סיבה · הוצאה כספית/אסטרטגיה → עולה לאורן.</div>${pendingNote}${rowsHtml}`;
+}
+
+// =============================================================
 async function fetchPendingApprovals(sb: SB): Promise<{
   products: Array<{ id: string; title: string; slogan: string | null; age_days: number; pid: string | null }>;
   pipelineFailed: Array<{ id: string; pid: number | null; error: string; age_days: number }>;
@@ -2263,6 +2426,15 @@ Deno.serve(async (req: Request) => {
   const cur = (metaData.currency as string) || 'ILS';
   const sym = cur === 'ILS' ? '₪' : '$';
 
+  // ---- 🧭 Management board (2026-07-03): harvest agent recommendations →
+  // embedded-Adam decides adopt/reject/escalate BEFORE the report renders,
+  // so the report shows DECISIONS, not open-ended recommendations. ----
+  let mgmtDecide = { decided: 0, adopted: 0, rejected: 0, escalated: 0, errors: [] as string[] };
+  try {
+    await harvestRecommendations(sb);
+    mgmtDecide = await adamDecide(sb);
+  } catch (e) { mgmtDecide.errors.push((e as Error).message); }
+
   // ---- B.7 + B.9 + B.11 + B.12: Self-healing — runs BEFORE opinions so they reflect fixes ----
   const gelatoStockHeal = await tryAutoHealGelatoStock(sb);
   const ticketing = await autoTicketStuckOrders(sb);
@@ -2386,6 +2558,7 @@ Deno.serve(async (req: Request) => {
     fetchEmailDigest(sb).catch(() => null),
     fetchContentPerf(sb).catch(() => null),
   ]);
+  const managementBoard = await fetchManagementBoard(sb).catch(() => null);
 
   let action_items_json: Opinion[] = synth.topActions.slice(0, isWeekly ? 5 : 3);
   let createdTaskIds: string[] = [];
@@ -2600,6 +2773,8 @@ Deno.serve(async (req: Request) => {
   const newProductsHtml = buildNewProductsHtml(newProductsWeek);
   // 📬 Email digest (24h) — summary + recommended actions, self-reports/marketing filtered out.
   const emailDigestHtml = buildEmailDigestHtml(emailDigest);
+  // 🧭 Management decision board — recommendations DECIDED by the embedded-Adam pass.
+  const managementHtml = buildManagementBoardHtml(managementBoard);
 
   // Orders — new in window (last 24h or 7d)
   const todaysOrders = (realOrders || []).slice(0, 5);
@@ -2777,6 +2952,7 @@ ${recurringHtml}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🚨 ממצאים חדשים (${opinions.length})</h2>${issuesHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">✨ מוצרים חדשים שעלו השבוע (${newProductsWeek.length})</h2>${newProductsHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">✍️ מחכה לאישורך (${totalPending})</h2>${pendingHtml}</td></tr><tr><td style="height:14px"></td></tr>
+<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🧭 שולחן ההנהלה — אדם והבוס הכריעו</h2>${managementHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📬 מיילים 24ש׳ — תקציר + המלצות</h2>${emailDigestHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📅 תוכנית שיווק שבועית — תכנון מול ביצוע</h2>${weeklyMktgHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🐻 סדרת הסוכנים — מאחורי הקוד</h2>${personaHtml}</td></tr><tr><td style="height:14px"></td></tr>
@@ -2821,6 +2997,8 @@ ${planSectionHtml}
       // Pass-2 verification fields (2026-06-15)
       new_products_week: newProductsWeek.map(p => ({ numeric: p.numeric, slogan: p.slogan, days_ago: p.days_ago })),
       email_digest: emailDigest ? { scanned: emailDigest.scanned, kept: emailDigest.kept, filtered: emailDigest.filtered, has_summary: !!emailDigest.digest, actions: emailDigest.actions.length } : null,
+      // 🧭 Management board verification (2026-07-03)
+      management: { ...mgmtDecide, board_recent: managementBoard?.recent.length ?? 0, board_pending: managementBoard?.pending ?? 0 },
       campaign_paused: campaignPaused, campaign_status_known: campaignStatusKnown,
       tiktok_placeholder_urls: (html.match(/v_pub_url/g) || []).length,
       html_bytes: html.length,
