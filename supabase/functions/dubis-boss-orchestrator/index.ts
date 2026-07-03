@@ -2076,27 +2076,86 @@ type MgmtDecisionRow = {
   context: Record<string, unknown> | null;
 };
 
-// Harvest recommendations from gmail_insight tasks (48h) into management_decisions.
+// Harvest recommendations from ALL business sources into management_decisions.
+// (oren 2026-07-03 evening: "תתייחסו לכל מה שקורה בעסק, לא רק מה שסוכן המייל העלה — תחבר את הכל".)
+// Sources: 1) email_monitor idea analyses · 2) content-perf loop weekly learnings ·
+// 3) site-audit findings · 4) product-pipeline failures awaiting manual handling.
+// Dedup via idx_mgmt_decisions_source_task (unique on source_task_id) — dup insert
+// errors are expected + ignored, so re-running every day is safe.
 async function harvestRecommendations(sb: SB): Promise<{ harvested: number }> {
   const since = new Date(Date.now() - 48 * 3600000).toISOString();
-  const { data: rows } = await sb.from('agent_tasks')
+  let harvested = 0;
+  const tryInsert = async (row: Record<string, unknown>) => {
+    const { error } = await sb.from('management_decisions').insert(row);
+    if (!error) harvested++;
+  };
+
+  // 1) Email-monitor idea analyses (48h)
+  const { data: mails } = await sb.from('agent_tasks')
     .select('id, title, content_data, created_at')
     .eq('category', 'gmail_insight').gte('created_at', since)
     .order('created_at', { ascending: false }).limit(20);
-  let harvested = 0;
-  for (const r of (rows || []) as Array<Record<string, unknown>>) {
+  for (const r of (mails || []) as Array<Record<string, unknown>>) {
     const cd = (r.content_data || {}) as Record<string, unknown>;
     const a = (cd.dubis_analysis || null) as { idea?: string; relevance?: string; recommendation?: string; next_step?: string; agent?: string } | null;
     if (!a || !a.recommendation) continue;
-    // idx_mgmt_decisions_source_task makes this idempotent — dup insert errors are expected+ignored.
-    const { error } = await sb.from('management_decisions').insert({
+    await tryInsert({
       source_agent: 'email_monitor',
       source_task_id: r.id as string,
       recommendation: `${a.idea ? a.idea + ' | ' : ''}${a.recommendation}${a.next_step ? ' | צעד מוצע: ' + a.next_step : ''}`.slice(0, 900),
       context: { subject: cd.subject, suggested_agent: a.agent, relevance: a.relevance },
     });
-    if (!error) harvested++;
   }
+
+  // 2) Content-perf loop — the latest weekly learning's directives become ONE
+  //    recommendation (source_task_id = the content_learnings row id → dedup).
+  const { data: learn } = await sb.from('content_learnings')
+    .select('id, summary, directives, created_at')
+    .order('created_at', { ascending: false }).limit(1);
+  const L = (learn || [])[0] as Record<string, unknown> | undefined;
+  if (L && L.summary) {
+    const d = (L.directives || {}) as Record<string, unknown>;
+    const bits: string[] = [];
+    if (Array.isArray(d.boost_products) && d.boost_products.length) bits.push(`להקדים מוצרים ${(d.boost_products as unknown[]).slice(0, 4).join(', ')}`);
+    if (Array.isArray(d.boost_formats) && d.boost_formats.length) bits.push(`להגביר פורמט ${(d.boost_formats as unknown[]).join(', ')}`);
+    if (Array.isArray(d.cut_formats) && d.cut_formats.length) bits.push(`לצמצם ${(d.cut_formats as unknown[]).join(', ')}`);
+    await tryInsert({
+      source_agent: 'content_loop',
+      source_task_id: L.id as string,
+      recommendation: `ניתוח התוכן השבועי: ${String(L.summary).slice(0, 400)}${bits.length ? ' | הנחיות: ' + bits.join(' · ') : ''}`.slice(0, 900),
+      context: { directives: d, learned_at: L.created_at },
+    });
+  }
+
+  // 3) Site-audit findings (open, 48h) — each finding is a recommendation to fix.
+  const { data: audits } = await sb.from('agent_tasks')
+    .select('id, title, description, created_at')
+    .eq('agent_id', 'site_audit').in('status', ['backlog', 'pending_approval'])
+    .gte('created_at', since).limit(6);
+  for (const r of (audits || []) as Array<Record<string, unknown>>) {
+    await tryInsert({
+      source_agent: 'site_audit',
+      source_task_id: r.id as string,
+      recommendation: `ממצא ביקורת-אתר: ${String(r.title || '').slice(0, 200)} — ${String(r.description || '').slice(0, 400)}`.slice(0, 900),
+      context: { kind: 'site_audit_finding' },
+    });
+  }
+
+  // 4) Product-pipeline failures that already burned their auto-retry — a decision
+  //    is due (retry again manually / retire the product / change type).
+  const { data: fails } = await sb.from('product_pipeline_queue')
+    .select('id, product_id_numeric, last_error, created_at')
+    .eq('status', 'failed')
+    .gte('created_at', new Date(Date.now() - 7 * 86400000).toISOString()).limit(4);
+  for (const r of (fails || []) as Array<Record<string, unknown>>) {
+    await tryInsert({
+      source_agent: 'product',
+      source_task_id: r.id as string,
+      recommendation: `מוצר #${r.product_id_numeric ?? '?'} תקוע בצינור אחרי ניסיון-חוזר (${String(r.last_error || '').slice(0, 160)}) — להחליט: ניסיון ידני / פסילה / החלפת סוג`.slice(0, 900),
+      context: { kind: 'pipeline_failure' },
+    });
+  }
+
   return { harvested };
 }
 
