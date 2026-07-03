@@ -407,3 +407,204 @@
   }
 
 })();
+
+// ═══════════════════════════════════════════════════════════════
+// 4. ABANDONED-CART EMAIL CAPTURE + RESTORE  (2026-07-03)
+//    Problem: cart lives in localStorage, email only appears at
+//    checkout — abandoners are unreachable. This captures an email
+//    at three touchpoints (cart modal / checkout form / newsletter)
+//    into `abandoned_carts`, and restores a cart from the recovery
+//    email's ?cart={token} link via the get_abandoned_cart RPC.
+//    Recovery email itself is sent server-side (?type=cart-recovery).
+// ═══════════════════════════════════════════════════════════════
+(function() {
+  'use strict';
+
+  const SUPABASE_URL  = window.DUBIS_SUPABASE_URL;
+  const SUPABASE_ANON = window.DUBIS_SUPABASE_ANON;
+  const SAVED_KEY = 'dubis_cart_email_saved';
+
+  function isHe() { return (typeof currentLang !== 'undefined' && currentLang === 'he'); }
+  function validEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || ''); }
+
+  function cartSnapshot() {
+    if (typeof cart === 'undefined' || !Array.isArray(cart) || !cart.length) return null;
+    return cart.map(i => ({
+      id: i.id, name: i.name || '', color: i.color || '', size: i.size || '',
+      quantity: i.quantity || i.qty || 1, price: Number(i.price) || 0,
+    }));
+  }
+  function cartTotal(items) {
+    try { return items.reduce((s, i) => s + i.price * i.quantity, 0); } catch { return null; }
+  }
+  function utmAttr() {
+    try { return JSON.parse(localStorage.getItem('dubis-attr') || 'null'); } catch { return null; }
+  }
+
+  let inFlight = false;
+  async function saveAbandonedCart(email, source) {
+    const items = cartSnapshot();
+    email = (email || '').trim().toLowerCase();
+    if (!items || !validEmail(email) || inFlight) return false;
+    const dedupeKey = email + '|' + items.length;
+    try { if (localStorage.getItem(SAVED_KEY) === dedupeKey) return true; } catch {}
+    inFlight = true;
+    try {
+      const res = await fetch(SUPABASE_URL + '/rest/v1/abandoned_carts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON,
+          'Authorization': 'Bearer ' + SUPABASE_ANON,
+          'Prefer': 'return=minimal',
+        },
+        body: JSON.stringify({
+          email: email,
+          cart_items: items,
+          cart_total: cartTotal(items),
+          currency: 'USD',
+          lang: isHe() ? 'he' : 'en',
+          source: source,
+          session_id: (function() { try { return sessionStorage.getItem('dubis-session') || null; } catch { return null; } })(),
+          utm: utmAttr(),
+        }),
+      });
+      if (res.ok) {
+        try { localStorage.setItem(SAVED_KEY, dedupeKey); } catch {}
+        if (typeof dubisTrack === 'function') dubisTrack('cart_email_saved', { source: source });
+        return true;
+      }
+    } catch {}
+    finally { inFlight = false; }
+    return false;
+  }
+
+  // ── 4a. Cart-modal capture strip (shows only when cart has items + no email saved yet) ──
+  function injectCartSaver() {
+    const footer = document.querySelector('#cart-modal .cart-footer');
+    if (!footer || document.getElementById('dubis-cart-saver')) { refreshCartSaver(); return; }
+    const wrap = document.createElement('div');
+    wrap.id = 'dubis-cart-saver';
+    wrap.style.cssText = 'display:none;margin:0 0 10px;padding:9px 11px;background:#F5F0E8;border:1px solid #e5ded2;border-radius:8px;font-size:.85rem;';
+    wrap.innerHTML =
+      '<div id="dubis-cart-saver-row" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">' +
+        '<span id="dubis-cart-saver-label" style="flex:1 1 100%;color:#2C2C2C;"></span>' +
+        '<input type="email" id="dubis-cart-saver-email" autocomplete="email" inputmode="email" dir="ltr" ' +
+          'style="flex:1 1 150px;min-width:0;padding:8px 10px;border:1px solid #cbbfa8;border-radius:6px;font-size:.85rem;" />' +
+        '<button id="dubis-cart-saver-btn" type="button" ' +
+          'style="padding:8px 16px;background:#C17E3A;color:#fff;border:0;border-radius:6px;font-weight:700;cursor:pointer;"></button>' +
+      '</div>';
+    footer.insertBefore(wrap, footer.firstChild);
+    document.getElementById('dubis-cart-saver-btn').addEventListener('click', async function() {
+      const inp = document.getElementById('dubis-cart-saver-email');
+      const email = (inp.value || '').trim();
+      if (!validEmail(email)) { inp.style.borderColor = '#e74c3c'; inp.focus(); return; }
+      this.disabled = true; this.textContent = '…';
+      const ok = await saveAbandonedCart(email, 'cart_modal');
+      const row = document.getElementById('dubis-cart-saver-row');
+      if (row) row.innerHTML = '<span style="color:' + (ok ? '#1e6b1e' : '#a12020') + ';font-weight:600;">' +
+        (ok
+          ? (isHe() ? '✓ הסל שמור. אם לא תסיים — נזכיר לך במייל.' : "✓ Saved. If you don't finish, we'll send one reminder.")
+          : (isHe() ? 'משהו נתקע — נסה שוב עוד רגע.' : 'Something failed, try again in a moment.')) +
+        '</span>';
+    });
+    refreshCartSaver();
+  }
+
+  function refreshCartSaver() {
+    const wrap = document.getElementById('dubis-cart-saver');
+    if (!wrap) return;
+    let alreadySaved = false;
+    try { alreadySaved = !!localStorage.getItem(SAVED_KEY); } catch {}
+    const hasItems = (typeof cart !== 'undefined' && Array.isArray(cart) && cart.length > 0);
+    wrap.style.display = (hasItems && !alreadySaved) ? 'block' : 'none';
+    const label = document.getElementById('dubis-cart-saver-label');
+    const input = document.getElementById('dubis-cart-saver-email');
+    const btn   = document.getElementById('dubis-cart-saver-btn');
+    if (label) label.textContent = isHe()
+      ? '📧 שנשמור לך את הסל? השאר מייל ונזכיר לך אם לא תסיים.'
+      : "📧 Save your cart? Leave an email and we'll remind you.";
+    if (input) input.placeholder = isHe() ? 'המייל שלך' : 'you@email.com';
+    if (btn && !btn.disabled) btn.textContent = isHe() ? 'שמור' : 'Save';
+  }
+
+  function hookOpenCart() {
+    const orig = window.openCart;
+    if (typeof orig === 'function') {
+      window.openCart = function() {
+        orig.apply(this, arguments);
+        try { injectCartSaver(); } catch {}
+      };
+    }
+  }
+
+  // ── 4b. Checkout-form email hook — capture on blur, before PayPal ever opens ──
+  function hookCheckoutEmail() {
+    document.addEventListener('blur', function(e) {
+      const t = e.target;
+      if (!t || t.id !== 'checkout-email') return;
+      const email = (t.value || '').trim();
+      if (validEmail(email)) saveAbandonedCart(email, 'checkout_form');
+    }, true);
+  }
+
+  // ── 4c. Newsletter popup hook — subscriber with a non-empty cart is a capture too ──
+  function hookNewsletter() {
+    document.addEventListener('click', function(e) {
+      if (!e.target || e.target.id !== 'dubis-popup-submit') return;
+      const inp = document.getElementById('dubis-popup-email');
+      const email = inp && (inp.value || '').trim();
+      if (validEmail(email)) setTimeout(function() { saveAbandonedCart(email, 'newsletter'); }, 1500);
+    }, true);
+  }
+
+  // ── 4d. Restore a cart from the recovery email's ?cart={token} link ──
+  async function restoreFromToken() {
+    let token = null;
+    try { token = new URLSearchParams(location.search).get('cart'); } catch {}
+    if (!token || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token)) return;
+    try {
+      const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/get_abandoned_cart', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON,
+          'Authorization': 'Bearer ' + SUPABASE_ANON,
+        },
+        body: JSON.stringify({ p_token: token }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const items = data && data.cart_items;
+      if (!Array.isArray(items) || !items.length) return;
+      if (typeof cart === 'undefined' || !Array.isArray(cart)) return;
+      // Only items that still exist in the live catalog
+      const valid = items.filter(function(i) {
+        return typeof products !== 'undefined' && products.find(function(p) { return p.id === i.id; });
+      });
+      if (!valid.length) return;
+      cart.length = 0;
+      valid.forEach(function(i) { cart.push(i); });
+      if (typeof saveCart === 'function') saveCart();
+      if (typeof updateCartCount === 'function') updateCartCount();
+      if (typeof dubisTrack === 'function') dubisTrack('cart_restore', { items: valid.length });
+      setTimeout(function() { if (typeof openCart === 'function') openCart(); }, 800);
+    } catch {}
+  }
+
+  function initCartCapture() {
+    setTimeout(function() {
+      hookOpenCart();
+      hookCheckoutEmail();
+      hookNewsletter();
+      restoreFromToken();
+    }, 700);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCartCapture);
+  } else {
+    initCartCapture();
+  }
+
+})();
