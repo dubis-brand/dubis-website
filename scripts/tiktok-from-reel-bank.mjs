@@ -58,10 +58,14 @@ const PERSONA_TO_PRODUCT = {
 
 // 2026-07-06: scene-format reels (oren-approved rebuild, batch 1) — hosted on dubis.net.
 // When a product has an override here, it is used INSTEAD of the old bank URL.
+// v2 (same evening, oren QA): #38 trimmed — the AI clip flipped the garment at
+// ~7.5s and showed the chest logo on the wrong side instead of the real back
+// slogan; cut at 7.0s. All 3 got a music bed (Kevin MacLeod "Wallpaper", CC-BY)
+// mixed 45/55 with the original ambient.
 const REEL_OVERRIDES = {
-  38: 'https://www.dubis.net/preview/reels/format-38-unboxing.mp4',
-  23: 'https://www.dubis.net/preview/reels/format-23-delivery.mp4',
-  40: 'https://www.dubis.net/preview/reels/format-40-mirror.mp4',
+  38: 'https://www.dubis.net/preview/reels/format-38-unboxing-v2.mp4',
+  23: 'https://www.dubis.net/preview/reels/format-23-delivery-v2.mp4',
+  40: 'https://www.dubis.net/preview/reels/format-40-mirror-v2.mp4',
 };
 
 function bankUrl(productId) {
