@@ -58,10 +58,11 @@ const PERSONA_TO_PRODUCT = {
 
 // 2026-07-06: scene-format reels (oren-approved rebuild, batch 1) — hosted on dubis.net.
 // When a product has an override here, it is used INSTEAD of the old bank URL.
-// v2 (same evening, oren QA): #38 trimmed — the AI clip flipped the garment at
-// ~7.5s and showed the chest logo on the wrong side instead of the real back
-// slogan; cut at 7.0s. All 3 got a music bed (Kevin MacLeod "Wallpaper", CC-BY)
-// mixed 45/55 with the original ambient.
+// All 3 carry a music bed (Kevin MacLeod "Wallpaper", CC-BY) mixed 45/55 with the
+// original ambient. #38 is v3: the AI clip flipped the garment at ~6.3s and painted
+// the chest logo on the flipped side instead of the real back slogan (oren caught it
+// twice — the first trim at 7.0s was too late); v3 cuts at 6.3s so only the verified
+// front face appears, then the real back-mockup slogan reveal.
 const REEL_OVERRIDES = {
   38: 'https://www.dubis.net/preview/reels/format-38-unboxing-v3.mp4',
   23: 'https://www.dubis.net/preview/reels/format-23-delivery-v2.mp4',
