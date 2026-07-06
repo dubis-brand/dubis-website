@@ -5315,15 +5315,27 @@ const CARE_CAP_HE = [
 
     // Log to agent_runs so the boss daily email (morning-report.js) can find it.
     // Without this, lastSecurityRun is always null and the email shows "never ran".
+    // 2026-07-06 HONESTY FIX (oren: "שלא יחרטט כל יום שהוא סורק והכל בסדר"):
+    // the summary now enumerates exactly WHAT was checked and what was NOT.
+    // The old line claimed "RLS תקין" but the RLS loop above is a no-op (the
+    // check_rls_enabled RPC doesn't exist) — never claim a check that didn't run.
     try {
+      const checkedLine = `בדק בפועל: 6 security headers באתר · HTTPS redirect · 5 תבניות מפתחות-חשופים ב-main.js · PayPal production-mode. לא נבדק בריצה זו: RLS (אין RPC), תלויות npm, היסטוריית git`;
       const runSummary = findings.length === 0
-        ? `סריקה יומית הסתיימה — 0 ממצאים. כל ה-headers, RLS, ומפתחות תקינים.`
-        : `סריקה יומית — ${findings.length} ממצאים (${scanResult.critical} critical, ${scanResult.high} high, ${scanResult.medium} medium, ${scanResult.low} low).\n` +
+        ? `סריקה יומית — 0 ממצאים. ${checkedLine}.`
+        : `סריקה יומית — ${findings.length} ממצאים (${scanResult.critical} critical, ${scanResult.high} high, ${scanResult.medium} medium, ${scanResult.low} low). ${checkedLine}.\n` +
           findings.slice(0, 8).map(f => `[${f.severity}] ${f.category}: ${f.detail}`).join('\n');
       await sb.from('agent_runs').insert({
         agent_id: 'security',
         status: scanResult.critical > 0 ? 'completed_with_errors' : 'completed',
         summary: runSummary,
+        side_effects: {
+          checks_performed: ['security_headers_6', 'https_redirect', 'exposed_keys_mainjs_5_patterns', 'paypal_mode'],
+          checks_skipped: ['rls_rpc_missing', 'npm_audit', 'git_history'],
+          issues_count: findings.length,
+          critical: scanResult.critical, high: scanResult.high, medium: scanResult.medium, low: scanResult.low,
+          findings: findings.slice(0, 10),
+        },
         tasks_created: 1,
         duration_ms: Date.now() - scanStartedMs,
         proof_verified: true,

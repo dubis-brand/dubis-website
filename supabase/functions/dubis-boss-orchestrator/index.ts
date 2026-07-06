@@ -816,12 +816,28 @@ function humanizeAgentSummary(
       return cleaned.split(/\n|\.\s/)[0]?.slice(0, 120) || 'בדק את האתר';
     }
     case 'email_monitor': {
-      const processed = n('processed') || n('found') || n('messages');
-      return processed > 0 ? `סרק מיילים — ${processed} חדשים` : 'סרק מיילים — אין חדשים';
+      // The cloud runner's summary JSON is {scanned, saved, filtered, analyzed} —
+      // the old keys (processed/found/messages) never existed, so this line
+      // falsely read "didn't scan" every day (oren caught it 2026-07-06).
+      const scanned = n('scanned') || n('processed') || n('found') || n('messages');
+      const savedN = n('saved');
+      const filteredN = n('filtered');
+      if (scanned > 0) {
+        const parts = [`סרק ${scanned} מיילים`];
+        if (filteredN > 0) parts.push(`${filteredN} סוננו (ספקים/דיווחים-עצמיים)`);
+        parts.push(savedN > 0 ? `${savedN} רעיונות נותחו ונשמרו` : 'אפס רעיונות חדשים');
+        return parts.join(' · ');
+      }
+      return 'רץ — 0 מיילים בתיבה בחלון הסריקה';
     }
     case 'security': {
+      // 2026-07-06: surface WHAT was actually checked (from side_effects.checks_performed,
+      // written by the honesty-fixed security-scan) — never a bare "everything's fine".
       const issues = n('issues_count') || n('issues');
-      return issues > 0 ? `סקירת אבטחה — ${issues} ממצאים` : 'סקירת אבטחה — נקי ✅';
+      const perf = Array.isArray(jsonData.checks_performed) ? (jsonData.checks_performed as unknown[]).length : 0;
+      const skip = Array.isArray(jsonData.checks_skipped) ? (jsonData.checks_skipped as unknown[]).length : 0;
+      const detail = perf > 0 ? ` · בוצעו ${perf} בדיקות (headers/HTTPS/מפתחות/PayPal)${skip > 0 ? `, ${skip} לא זמינות (RLS-RPC, npm, git)` : ''}` : '';
+      return issues > 0 ? `סקירת אבטחה — ${issues} ממצאים${detail}` : `סקירת אבטחה — 0 ממצאים${detail}`;
     }
     case 'product': {
       const created = n('created') || n('queued');
@@ -1840,25 +1856,35 @@ async function fetchNewProductsThisWeek(sb: SB): Promise<Array<{
     };
   }).filter(p => p.numeric > 0);
 }
+// 2026-07-06 (oren): a new product is shown ONLY on the day it went live —
+// never re-announced day after day. Older launches collapse to one status line.
 function buildNewProductsHtml(rows: Awaited<ReturnType<typeof fetchNewProductsThisWeek>>): string {
-  if (!rows.length) {
-    return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right;margin:0">לא עלו מוצרים חדשים לאוויר ב-7 הימים האחרונים.</p>';
-  }
   const TYPE_HE: Record<string, string> = {
     'tshirt':'חולצה', 't-shirt':'חולצה', 'hoodie':'קפוצון', 'zip-hoodie':'קפוצון רוכסן',
     'long-sleeve':'שרוול ארוך', 'longsleeve':'שרוול ארוך', 'tank-top':'גופייה', 'tanktop':'גופייה',
     'v-neck':'חולצת V', 'vneck':'חולצת V', 'cap':'כובע', 'cap-emb':'כובע רקום',
   };
-  const items = rows.map(p => {
+  const fresh = rows.filter(p => p.days_ago === 0);
+  if (!fresh.length) {
+    const last = rows[0];
+    const lastLine = last
+      ? `האחרון: <b>#${last.numeric}</b> "${esc(last.slogan)}" (${esc(TYPE_HE[last.type] || last.type)}) — לפני ${last.days_ago} ימים. `
+      : '';
+    const cadence = last && last.days_ago > 7
+      ? '<span style="color:#a12020;font-weight:600">⚠️ עברו יותר מ-7 ימים — הקצב השבועי (שלישי 09:00 UTC) דורש בדיקה.</span>'
+      : 'המוצר השבועי הבא: שלישי 09:00 UTC (קרון אוטומטי).';
+    return `<p dir="rtl" style="font-size:13px;color:#666;text-align:right;margin:0">אין מוצר חדש היום. ${lastLine}${cadence}</p>`;
+  }
+  const items = fresh.map(p => {
     const typeHe = TYPE_HE[p.type] || p.type;
     const autoBadge = p.auto ? '<span style="background:#f3eee2;border-radius:4px;padding:1px 5px;color:#7a6a4f;font-size:10px;font-weight:600;margin-right:4px">🤖 אוטומטי</span>' : '';
     return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;margin:4px 0;border-radius:6px;text-align:right;font-size:12.5px;border-right:3px solid #c8a96e">
-      <div style="margin-bottom:3px">✨ ${autoBadge}<b style="color:#2c2c2c">#${p.numeric}</b> ${esc(typeHe)} <span style="color:#999;font-size:11px">· לפני ${p.days_ago === 0 ? 'פחות מיום' : p.days_ago + ' ימים'}</span></div>
+      <div style="margin-bottom:3px">✨ ${autoBadge}<b style="color:#2c2c2c">#${p.numeric}</b> ${esc(typeHe)} <span style="color:#999;font-size:11px">· עלה היום</span></div>
       <div style="color:#444;font-size:12px;margin-bottom:4px">"${esc(p.slogan)}"</div>
       <a href="https://www.dubis.net/#product-${p.numeric}" style="color:#c8a96e;font-weight:600;text-decoration:none;font-size:12px">▶ לדף המוצר →</a>
     </div>`;
   }).join('');
-  return `<p dir="rtl" style="font-size:12.5px;color:#666;margin:0 0 8px;text-align:right">${rows.length} מוצרים חדשים עלו לאוויר השבוע (כל סלוגן פעיל = מאושר אוטומטית, אין שער-אישור):</p>${items}`;
+  return items;
 }
 
 // ── 📈 Content performance (2026-06-26) — closes the "publish into the dark" gap.
@@ -2073,7 +2099,7 @@ type MgmtDecisionRow = {
   id: string; source_agent: string; recommendation: string;
   decision: string | null; rationale: string | null; owner_agent: string | null;
   created_task_id: string | null; status: string; decided_at: string | null; created_at: string;
-  context: Record<string, unknown> | null;
+  context: Record<string, unknown> | null; outcome: string | null;
 };
 
 // Harvest recommendations from ALL business sources into management_decisions.
@@ -2109,8 +2135,13 @@ async function harvestRecommendations(sb: SB): Promise<{ harvested: number }> {
 
   // 2) Content-perf loop — the latest weekly learning's directives become ONE
   //    recommendation (source_task_id = the content_learnings row id → dedup).
+  //    2026-07-06: FRESHNESS FILTER added — without it, a 6-day-old learning
+  //    (pre-token-fix "אין נתוני חשיפה") got harvested + escalated on 07-04
+  //    even though a newer learning had superseded it. Only harvest learnings
+  //    from the last 48h; older ones are history, not a decision input.
   const { data: learn } = await sb.from('content_learnings')
     .select('id, summary, directives, created_at')
+    .gte('created_at', since)
     .order('created_at', { ascending: false }).limit(1);
   const L = (learn || [])[0] as Record<string, unknown> | undefined;
   if (L && L.summary) {
@@ -2233,7 +2264,7 @@ ${items}`;
 async function fetchManagementBoard(sb: SB): Promise<{ recent: MgmtDecisionRow[]; pending: number; taskStatus: Record<string, string> } | null> {
   const since = new Date(Date.now() - 7 * 86400000).toISOString();
   const { data: recent } = await sb.from('management_decisions')
-    .select('id, source_agent, recommendation, decision, rationale, owner_agent, created_task_id, status, decided_at, created_at, context')
+    .select('id, source_agent, recommendation, decision, rationale, owner_agent, created_task_id, status, decided_at, created_at, context, outcome')
     .gte('created_at', since).order('created_at', { ascending: false }).limit(12);
   const rows = (recent || []) as MgmtDecisionRow[];
   const { count: pending } = await sb.from('management_decisions')
@@ -2247,29 +2278,53 @@ async function fetchManagementBoard(sb: SB): Promise<{ recent: MgmtDecisionRow[]
   return { recent: rows, pending: pending || 0, taskStatus };
 }
 
+// 2026-07-06 REWRITE (oren: "לא צריך לחזור כל יום על דברים שכבר כתבתם"):
+// full cards ONLY for decisions from the last 24h; anything older shows up
+// only if it's still OPEN — an escalation awaiting oren, or an adopted task
+// that hasn't been executed yet (stuck >48h gets a red flag). Executed items
+// show their outcome once (on the day it happened) and then disappear.
 function buildManagementBoardHtml(b: Awaited<ReturnType<typeof fetchManagementBoard>>): string {
   if (!b || (b.recent.length === 0 && b.pending === 0)) {
     return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right;margin:0">אין המלצות פתוחות על השולחן — הסוכנים לא העלו נושא להכרעה בשבוע האחרון.</p>';
   }
+  const H24 = Date.now() - 24 * 3600000;
+  const isFresh = (r: MgmtDecisionRow) => r.status === 'pending' || (r.decided_at ? new Date(r.decided_at).getTime() > H24 : new Date(r.created_at).getTime() > H24) || Boolean(r.outcome && r.outcome.includes(new Date().toISOString().slice(0, 10)));
+  const taskOf = (r: MgmtDecisionRow) => r.created_task_id ? (b.taskStatus[r.created_task_id] || 'backlog') : 'backlog';
+  const isOpen = (r: MgmtDecisionRow) =>
+    (r.decision === 'escalate' && !r.outcome) ||
+    (r.decision === 'adopt' && taskOf(r) !== 'done');
   const badge = (r: MgmtDecisionRow) => {
     if (r.status === 'pending') return '<span style="background:#fdf3d7;color:#8a6d00;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">⏳ ממתין להכרעה</span>';
     if (r.decision === 'adopt') {
-      const ts = r.created_task_id ? (b.taskStatus[r.created_task_id] || 'backlog') : 'backlog';
+      const ts = taskOf(r);
       const done = ts === 'done';
-      return `<span style="background:${done ? '#e6f4e6' : '#eaf3fb'};color:${done ? '#1e6b1e' : '#1f618d'};border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">${done ? '✅ אומץ ובוצע' : `✅ אומץ → ${esc(r.owner_agent || 'manual')} (${esc(ts)})`}</span>`;
+      const stuck = !done && (Date.now() - new Date(r.decided_at || r.created_at).getTime()) > 48 * 3600000;
+      if (done) return '<span style="background:#e6f4e6;color:#1e6b1e;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">✅ אומץ ובוצע</span>';
+      if (stuck) return `<span style="background:#fdeaea;color:#a12020;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">🔴 אומץ אבל תקוע → ${esc(r.owner_agent || 'manual')} — יטופל בסשן /adam הקרוב</span>`;
+      return `<span style="background:#eaf3fb;color:#1f618d;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">✅ אומץ → ${esc(r.owner_agent || 'manual')} (${esc(ts)})</span>`;
     }
     if (r.decision === 'reject') return '<span style="background:#f4f4f4;color:#777;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">❌ נדחה</span>';
     return '<span style="background:#fdeaea;color:#a12020;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">⬆️ להחלטת אורן</span>';
   };
-  const rowsHtml = b.recent.map(r => {
+  const card = (r: MgmtDecisionRow) => {
     const subj = r.context && (r.context as Record<string, unknown>).subject ? ` <span style="color:#aaa">(${esc(String((r.context as Record<string, unknown>).subject).slice(0, 60))})</span>` : '';
+    const outcomeLine = r.outcome ? `<div dir="rtl" style="font-size:11px;color:#1e6b1e;margin-top:2px;text-align:right">📌 ${esc(r.outcome.slice(0, 180))}</div>` : '';
     return `<div dir="rtl" style="background:#fcfbf7;border-right:3px solid ${r.decision === 'escalate' ? '#c0392b' : '#c8a96e'};border-radius:4px;padding:7px 10px;margin:4px 0;text-align:right">
       <div dir="rtl" style="font-size:12px;color:#2c2c2c;text-align:right">${esc(r.recommendation.slice(0, 220))}${subj}</div>
-      <div dir="rtl" style="margin-top:3px;text-align:right">${badge(r)}${r.rationale ? ` <span style="font-size:11px;color:#666">— ${esc(r.rationale.slice(0, 160))}</span>` : ''}</div>
+      <div dir="rtl" style="margin-top:3px;text-align:right">${badge(r)}${r.rationale ? ` <span style="font-size:11px;color:#666">— ${esc(r.rationale.slice(0, 160))}</span>` : ''}</div>${outcomeLine}
     </div>`;
-  }).join('');
+  };
+  const fresh = b.recent.filter(isFresh);
+  const olderOpen = b.recent.filter(r => !isFresh(r) && isOpen(r));
+  const freshHtml = fresh.length ? fresh.map(card).join('') : '<p dir="rtl" style="font-size:12px;color:#888;text-align:right;margin:4px 0">אין הכרעות חדשות ב-24 השעות האחרונות.</p>';
+  const olderHtml = olderOpen.length
+    ? `<div dir="rtl" style="font-size:11.5px;color:#8a6d00;margin:8px 0 2px;text-align:right;font-weight:700">📌 עדיין פתוח מהימים הקודמים:</div>` + olderOpen.map(r => {
+        const age = Math.floor((Date.now() - new Date(r.decided_at || r.created_at).getTime()) / 86400000);
+        return `<div dir="rtl" style="font-size:11.5px;color:#555;padding:3px 8px;background:#fcfbf7;border-radius:4px;margin:2px 0;text-align:right">${badge(r)} ${esc(r.recommendation.slice(0, 110))}… <span style="color:#999">(${age} ימים)</span></div>`;
+      }).join('')
+    : '';
   const pendingNote = b.pending > 0 ? `<div dir="rtl" style="font-size:11px;color:#8a6d00;margin:4px 0;text-align:right">⏳ ${b.pending} המלצות עדיין ממתינות להכרעה (יוכרעו בריצה הבאה).</div>` : '';
-  return `<div dir="rtl" style="font-size:11px;color:#999;margin:0 0 6px;text-align:right">כל המלצת-סוכן מוכרעת ע"י שיקול-הדעת של אדם (COO) בתוך ריצת הבוס: אומץ → משימה עם בעלים · נדחה → סיבה · הוצאה כספית/אסטרטגיה → עולה לאורן.</div>${pendingNote}${rowsHtml}`;
+  return `<div dir="rtl" style="font-size:11px;color:#999;margin:0 0 6px;text-align:right">הכרעות חדשות בלבד; פריט חוזר רק אם הוא עדיין פתוח. אומץ → משימה עם בעלים · נדחה → סיבה · כסף/אסטרטגיה → אורן.</div>${pendingNote}${freshHtml}${olderHtml}`;
 }
 
 // =============================================================
@@ -2339,49 +2394,37 @@ async function fetchPendingApprovals(sb: SB): Promise<{
 // =============================================================
 // A.4 — SVG sparkline (orders bars + revenue line)
 // =============================================================
+// 2026-07-06 REWRITE (oren: "לא ברור מה כתוב שם"): Gmail STRIPS <svg> from email
+// HTML, so the old SVG chart rendered as its raw <text> nodes concatenated into
+// an unreadable date-soup ("0407-0207-3007…"). Email-safe version: an explicit
+// from–to period line + totals, and a plain table of the days that had activity.
 function buildSparkline(snaps: Array<{ snapshot_date: string; revenue_usd: number; orders_today: number }>): string {
-  if (snaps.length < 2) return '<p dir="rtl" style="color:#888;font-size:13px;margin:0">צריך לפחות 2 ימים של daily_snapshots לגרף.</p>';
-  const W = 640, H = 140, padL = 38, padR = 38, padT = 14, padB = 26;
-  const innerW = W - padL - padR, innerH = H - padT - padB;
-  const maxRev = Math.max(20, ...snaps.map(s => s.revenue_usd));
-  const maxOrd = Math.max(1, ...snaps.map(s => s.orders_today));
-  const xAt = (i: number) => padL + (snaps.length === 1 ? innerW/2 : (i/(snaps.length-1)) * innerW);
-  const yRev = (v: number) => padT + innerH - (v / maxRev) * innerH;
-  const revPath = snaps.map((s, i) => `${i === 0 ? 'M' : 'L'}${xAt(i).toFixed(1)},${yRev(s.revenue_usd).toFixed(1)}`).join(' ');
-  // Orders bars (lighter, behind line)
-  const barW = Math.max(4, Math.floor(innerW / snaps.length) - 2);
-  const bars = snaps.map((s, i) => {
-    const x = xAt(i) - barW/2;
-    const barH = (s.orders_today / maxOrd) * innerH;
-    const y = padT + innerH - barH;
-    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW}" height="${barH.toFixed(1)}" fill="#3498db" opacity="0.18" rx="2"/>`;
+  if (snaps.length < 2) return '<p dir="rtl" style="color:#888;font-size:13px;margin:0">צריך לפחות 2 ימים של daily_snapshots לסיכום.</p>';
+  const fmt = (d: string) => { const p = d.slice(0, 10).split('-'); return `${p[2]}.${p[1]}`; };
+  const from = fmt(snaps[0].snapshot_date);
+  const to = fmt(snaps[snaps.length - 1].snapshot_date);
+  const totalOrders = snaps.reduce((a, s) => a + (s.orders_today || 0), 0);
+  // daily_snapshots.revenue_usd is a CUMULATIVE lifetime figure — the period's
+  // revenue is last-minus-first, never a sum (summing showed a fake $4,843).
+  const periodRev = Math.max(0, (snaps[snaps.length - 1].revenue_usd || 0) - (snaps[0].revenue_usd || 0));
+  const header = `<p dir="rtl" style="margin:0 0 8px;font-size:13.5px;color:#2c2c2c;text-align:right"><b>תקופה: ${from} – ${to}</b> (${snaps.length} ימים) · סה"כ <b>${totalOrders} הזמנות</b> · <b>$${periodRev.toFixed(0)}</b> הכנסות בתקופה</p>`;
+  const activeDays = snaps.filter(s => (s.orders_today || 0) > 0);
+  if (activeDays.length === 0) {
+    return header + `<p dir="rtl" style="margin:0;font-size:12.5px;color:#888;text-align:right">אפס הזמנות בתקופה זו — אין ימים להצגה.</p>`;
+  }
+  const rows = activeDays.map((s) => {
+    const idx = snaps.indexOf(s);
+    const dayRev = idx > 0 ? Math.max(0, (s.revenue_usd || 0) - (snaps[idx - 1].revenue_usd || 0)) : 0;
+    return `<tr>
+    <td dir="rtl" style="padding:4px 10px;border-bottom:1px solid #f0ebe0;font-size:12px;text-align:right">${fmt(s.snapshot_date)}</td>
+    <td dir="rtl" style="padding:4px 10px;border-bottom:1px solid #f0ebe0;font-size:12px;text-align:right"><b>${s.orders_today}</b> הזמנות</td>
+    <td dir="rtl" style="padding:4px 10px;border-bottom:1px solid #f0ebe0;font-size:12px;text-align:right;color:#c8a96e"><b>$${dayRev.toFixed(0)}</b></td>
+  </tr>`;
   }).join('');
-  // X-axis date labels — only every nth so we don't overlap
-  const step = snaps.length > 7 ? 2 : 1;
-  const xLabels = snaps.map((s, i) => i % step === 0 || i === snaps.length-1 ? `<text x="${xAt(i).toFixed(1)}" y="${H-8}" font-size="9" fill="#999" text-anchor="middle" font-family="Arial">${s.snapshot_date.slice(5)}</text>` : '').join('');
-  // Revenue points
-  const revPoints = snaps.map((s, i) => `<circle cx="${xAt(i).toFixed(1)}" cy="${yRev(s.revenue_usd).toFixed(1)}" r="3" fill="#c8a96e"/>`).join('');
-  // Y-axis labels (revenue)
-  const yLabels = [0, 0.5, 1].map(t => {
-    const v = maxRev * t;
-    const y = padT + innerH * (1 - t);
-    return `<text x="${padL-6}" y="${(y+3).toFixed(1)}" font-size="9" fill="#999" text-anchor="end" font-family="Arial">$${v.toFixed(0)}</text>`;
-  }).join('');
-  const yLabelsRight = [0, maxOrd].map(v => {
-    const y = padT + innerH * (1 - v/maxOrd);
-    return `<text x="${W-padR+6}" y="${(y+3).toFixed(1)}" font-size="9" fill="#3498db" text-anchor="start" font-family="Arial">${v}</text>`;
-  }).join('');
-  const lastRev = snaps[snaps.length-1].revenue_usd;
-  const lastOrd = snaps[snaps.length-1].orders_today;
-  return `<svg width="100%" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="background:#fafafa;border-radius:6px;display:block;max-width:${W}px">
-    ${bars}
-    <path d="${revPath}" fill="none" stroke="#c8a96e" stroke-width="2"/>
-    ${revPoints}
-    ${yLabels}${yLabelsRight}${xLabels}
-    <text x="${padL}" y="${H-3}" font-size="10" fill="#c8a96e" font-family="Arial" font-weight="700">● הכנסה</text>
-    <text x="${padL+90}" y="${H-3}" font-size="10" fill="#3498db" font-family="Arial" font-weight="700">▮ הזמנות</text>
-    <text x="${W-padR}" y="${padT+10}" font-size="11" fill="#333" font-family="Arial" font-weight="700" text-anchor="end">היום: ${lastOrd} הזמנות${lastOrd > 0 ? ` · $${lastRev.toFixed(0)}` : ''}</text>
-  </svg>`;
+  return header + `<table dir="rtl" width="100%" cellpadding="0" cellspacing="0" style="background:#fafafa;border-radius:6px;direction:rtl">
+    <tr><td dir="rtl" style="padding:4px 10px;font-size:11px;color:#999;text-align:right">יום</td><td dir="rtl" style="padding:4px 10px;font-size:11px;color:#999;text-align:right">הזמנות</td><td dir="rtl" style="padding:4px 10px;font-size:11px;color:#999;text-align:right">הכנסה</td></tr>
+    ${rows}
+  </table>`;
 }
 
 // =============================================================
@@ -3009,7 +3052,7 @@ Deno.serve(async (req: Request) => {
 ${autoFixHtml}
 ${recurringHtml}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🚨 ממצאים חדשים (${opinions.length})</h2>${issuesHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">✨ מוצרים חדשים שעלו השבוע (${newProductsWeek.length})</h2>${newProductsHtml}</td></tr><tr><td style="height:14px"></td></tr>
+<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">✨ מוצר חדש היום</h2>${newProductsHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">✍️ מחכה לאישורך (${totalPending})</h2>${pendingHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🧭 שולחן ההנהלה — אדם והבוס הכריעו</h2>${managementHtml}</td></tr><tr><td style="height:14px"></td></tr>
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📬 מיילים 24ש׳ — תקציר + המלצות</h2>${emailDigestHtml}</td></tr><tr><td style="height:14px"></td></tr>
