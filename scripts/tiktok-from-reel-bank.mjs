@@ -56,7 +56,16 @@ const PERSONA_TO_PRODUCT = {
   'women-1': 11, 'women-2': 13, 'women-3': 16, 'women-4': 17, 'women-5': 31,
 };
 
+// 2026-07-06: scene-format reels (oren-approved rebuild, batch 1) — hosted on dubis.net.
+// When a product has an override here, it is used INSTEAD of the old bank URL.
+const REEL_OVERRIDES = {
+  38: 'https://www.dubis.net/preview/reels/format-38-unboxing.mp4',
+  23: 'https://www.dubis.net/preview/reels/format-23-delivery.mp4',
+  40: 'https://www.dubis.net/preview/reels/format-40-mirror.mp4',
+};
+
 function bankUrl(productId) {
+  if (REEL_OVERRIDES[productId]) return REEL_OVERRIDES[productId];
   return `${SUPABASE_URL}/storage/v1/object/public/video-assets/_pilot/product-${productId}-FINAL-EN.mp4`;
 }
 
