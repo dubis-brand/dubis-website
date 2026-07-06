@@ -59,10 +59,13 @@ const PERSONA_TO_PRODUCT = {
 // 2026-07-06: scene-format reels (oren-approved rebuild, batch 1) — hosted on dubis.net.
 // When a product has an override here, it is used INSTEAD of the old bank URL.
 // All 3 carry a music bed (Kevin MacLeod "Wallpaper", CC-BY) mixed 45/55 with the
-// original ambient. #38 is v3: the AI clip flipped the garment at ~6.3s and painted
-// the chest logo on the flipped side instead of the real back slogan (oren caught it
-// twice — the first trim at 7.0s was too late); v3 cuts at 6.3s so only the verified
-// front face appears, then the real back-mockup slogan reveal.
+// original ambient. #38 is v4: the AI clip kept painting the chest logo on the
+// garment's flipped side instead of the real back slogan (oren caught it twice),
+// so the in-scene turn is now a seedance start_image+end_image anchored clip —
+// front frame from the verified footage, end frame = nano_banana still of the SAME
+// scene holding the REAL back print (verified letter-for-letter). The turn lands
+// on the true "Sleeves were OPTIONAL" back inside the scene. See
+// .claude/skills/higgsfield-reels/SKILL.md → "The CANONICAL flip fix".
 const REEL_OVERRIDES = {
   38: 'https://www.dubis.net/preview/reels/format-38-unboxing-v4.mp4',
   23: 'https://www.dubis.net/preview/reels/format-23-delivery-v2.mp4',
