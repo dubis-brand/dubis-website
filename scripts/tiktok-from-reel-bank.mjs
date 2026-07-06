@@ -63,7 +63,7 @@ const PERSONA_TO_PRODUCT = {
 // slogan; cut at 7.0s. All 3 got a music bed (Kevin MacLeod "Wallpaper", CC-BY)
 // mixed 45/55 with the original ambient.
 const REEL_OVERRIDES = {
-  38: 'https://www.dubis.net/preview/reels/format-38-unboxing-v2.mp4',
+  38: 'https://www.dubis.net/preview/reels/format-38-unboxing-v3.mp4',
   23: 'https://www.dubis.net/preview/reels/format-23-delivery-v2.mp4',
   40: 'https://www.dubis.net/preview/reels/format-40-mirror-v2.mp4',
 };
