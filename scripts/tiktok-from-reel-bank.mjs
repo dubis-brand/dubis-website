@@ -64,7 +64,7 @@ const PERSONA_TO_PRODUCT = {
 // twice — the first trim at 7.0s was too late); v3 cuts at 6.3s so only the verified
 // front face appears, then the real back-mockup slogan reveal.
 const REEL_OVERRIDES = {
-  38: 'https://www.dubis.net/preview/reels/format-38-unboxing-v3.mp4',
+  38: 'https://www.dubis.net/preview/reels/format-38-unboxing-v4.mp4',
   23: 'https://www.dubis.net/preview/reels/format-23-delivery-v2.mp4',
   40: 'https://www.dubis.net/preview/reels/format-40-mirror-v2.mp4',
 };
