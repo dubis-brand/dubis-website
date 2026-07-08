@@ -652,27 +652,173 @@ async function opinionPlanner(sb: SB): Promise<Opinion | null> {
 }
 
 // 2026-06-20 — "🎯 3 החלטות להיום": the Boss-decides block oren asked for.
-// Derives up to 3 prioritized action items from the live P0/P1 opinions
-// (top by priority), each with a clear Hebrew owner. If there are zero real
-// P0/P1 items, says so honestly instead of inventing busywork.
-function buildTopDecisionsHtml(allOpinions: Opinion[]): string {
+// 2026-07-08 MANAGER-CONTRACT UPGRADE (oren-approved 2026-07-08, specced 2026-07-03):
+// decisions are COMPUTED from the live business state, not just agent opinions.
+// Sources in priority order:
+//   1. Paid-campaign KILL-SWITCH gates — ₪300/0-carts = desire · ₪600/0-purchases =
+//      checkout/trust · purchases → CAC — read from ad_campaigns (spend synced daily)
+//      + EXTERNAL page_views funnel events since campaign start.
+//   2. Open board escalations awaiting oren (management_decisions escalate w/o outcome).
+//   3. Oren-blockers older than 30 days (execute-or-delete — blockers must not age silently).
+//   4. Live P0/P1 agent opinions (the original source).
+// Every decision carries its cost-of-inaction. Max 3. Honest empty state.
+// The card opens with the TWO-ENGINES strip: one morning question — what did we
+// learn yesterday (paid funnel vs gates + organic learning) and what changes today.
+
+type KillSwitchRead = {
+  active: boolean; spend: number; sym: string; budgetTotal: number | null;
+  remaining: number | null; clicks: number; carts: number; checkouts: number;
+  purchases: number; gate: 'desire' | 'checkout' | 'cac' | 'none'; gateLine: string;
+  endDate: string | null; dailyBudget: number;
+};
+
+async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
+  try {
+    const { data: rows } = await sb.from('ad_campaigns')
+      .select('status, budget, budget_currency, spend_to_date, clicks, start_date, end_date, duration_days, notes, created_at')
+      .order('created_at', { ascending: false }).limit(10);
+    const camp = (rows || []).find(r => /campaign_id:\s*\d+/i.test(String((r as Record<string, unknown>).notes || '')));
+    if (!camp) return null;
+    const c = camp as Record<string, unknown>;
+    const active = String(c.status || '').toLowerCase() === 'active';
+    const spend = Number(c.spend_to_date || 0);
+    const dailyBudget = Number(c.budget || 0);
+    const start = c.start_date ? String(c.start_date) : null;
+    const endDate = c.end_date ? String(c.end_date) : null;
+    let days = Number(c.duration_days || 0);
+    if (!days && start && endDate) days = Math.max(1, Math.round((Date.parse(endDate) - Date.parse(start)) / 86400000));
+    const budgetTotal = dailyBudget && days ? dailyBudget * days : null;
+    const remaining = budgetTotal !== null ? Math.max(0, budgetTotal - spend) : null;
+    const sym = String(c.budget_currency || 'ILS') === 'ILS' ? '₪' : '$';
+    // Funnel events since campaign start — EXTERNAL visitors only (is_internal
+    // false OR null; the 2026-07-08 team review caught internal tests polluting
+    // the funnel, so never count is_internal=true).
+    let carts = 0, checkouts = 0, purchases = 0;
+    if (start) {
+      const { data: ev } = await sb.from('page_views').select('event')
+        .gte('created_at', `${start}T00:00:00Z`)
+        .or('is_internal.is.null,is_internal.eq.false')
+        .in('event', ['add_to_cart', 'checkout_start', 'purchase'])
+        .limit(1000);
+      for (const e of (ev || [])) {
+        const n = String((e as Record<string, unknown>).event);
+        if (n === 'add_to_cart') carts++;
+        else if (n === 'checkout_start') checkouts++;
+        else if (n === 'purchase') purchases++;
+      }
+    }
+    let gate: KillSwitchRead['gate'] = 'none'; let gateLine = '';
+    if (purchases > 0) {
+      gate = 'cac';
+      gateLine = `יש רכישות — CAC נוכחי ${sym}${(spend / purchases).toFixed(0)}`;
+    } else if (spend >= 300 && carts === 0) {
+      gate = 'desire';
+      gateLine = `שער ${sym}300/אפס-סלים נחצה (${sym}${spend.toFixed(0)} · 0 הוספות-לסל) — בעיית רצון: קריאייטיב/קהל`;
+    } else if (spend >= 600) {
+      gate = 'checkout';
+      gateLine = `שער ${sym}600/אפס-רכישות נחצה (${sym}${spend.toFixed(0)} · ${carts} סלים · ${checkouts} קופות · 0 רכישות) — בעיית קופה/אמון`;
+    } else {
+      gateLine = active ? `בתוך השערים: ${sym}${spend.toFixed(0)}${budgetTotal ? ` מתוך ${sym}${budgetTotal.toFixed(0)}` : ''} · ${carts} סלים · ${purchases} רכישות` : 'הקמפיין לא פעיל';
+    }
+    return { active, spend, sym, budgetTotal, remaining, clicks: Number(c.clicks || 0), carts, checkouts, purchases, gate, gateLine, endDate, dailyBudget };
+  } catch (_) { return null; }
+}
+
+type DecisionItem = { pr: 'P0' | 'P1' | 'P2'; title: string; why: string; cost: string; owner: string };
+
+function deriveDecisions(
+  allOpinions: Opinion[],
+  ks: KillSwitchRead | null,
+  board: Awaited<ReturnType<typeof fetchManagementBoard>>,
+  blocked: Array<{ title: string; days_late: number }>,
+): DecisionItem[] {
+  const items: DecisionItem[] = [];
+  if (ks && ks.active && ks.gate === 'checkout') {
+    items.push({
+      pr: 'P0',
+      title: 'לעצור את יתרת תקציב-הקמפיין — ולתקן קופה/אמון לפני שקל-תנועה נוסף',
+      why: `${ks.gateLine} · ${ks.clicks} קליקים הגיעו ולא קנו`,
+      cost: `כל יום נוסף שורף ~${ks.sym}${ks.dailyBudget.toFixed(0)}${ks.remaining !== null ? `; נותרו ~${ks.sym}${ks.remaining.toFixed(0)}${ks.endDate ? ` עד ${ks.endDate}` : ''}` : ''} על תנועה שנוחתת על הצעה שוברת`,
+      owner: 'אורן (המתג) · Marketing (אבחון המשפך)',
+    });
+  } else if (ks && ks.active && ks.gate === 'desire') {
+    items.push({
+      pr: 'P0',
+      title: 'להשהות את הקמפיין ולהחליף זווית/קריאייטיב — הקהל לא מוסיף לסל',
+      why: ks.gateLine,
+      cost: `כל יום נוסף שורף ~${ks.sym}${ks.dailyBudget.toFixed(0)} על מסר שלא עובד`,
+      owner: 'אורן (המתג) · Dana (זווית חדשה)',
+    });
+  } else if (ks && ks.gate === 'cac') {
+    items.push({
+      pr: 'P1',
+      title: 'לקרוא את ה-CAC ולהחליט: להגדיל, להשאיר או לעצור',
+      why: ks.gateLine,
+      cost: 'בלי קריאת-CAC ההוצאה ממשיכה עיוורת',
+      owner: 'אורן + Analyst',
+    });
+  }
+  const openEsc = (board?.recent || []).filter(r => r.decision === 'escalate' && !r.outcome).slice(0, 2);
+  for (const r of openEsc) {
+    items.push({
+      pr: 'P1',
+      title: `להכריע: ${r.recommendation.slice(0, 90)}`,
+      why: 'הסלמה פתוחה על שולחן-ההנהלה',
+      cost: 'הכרעה שלא מתקבלת = המבצע שלה תקוע',
+      owner: 'אורן',
+    });
+  }
+  for (const b of blocked.filter(x => x.days_late > 30).slice(0, 1)) {
+    items.push({
+      pr: 'P1',
+      title: `בצע-או-מחק: ${b.title.slice(0, 80)}`,
+      why: `חסם עליך כבר ${b.days_late} ימים`,
+      cost: 'חסם שלא מזדקן הוא ערוץ שנשאר סגור בחינם',
+      owner: 'אורן',
+    });
+  }
   const urgent = allOpinions
     .filter(o => o.priority === 'P0' || o.priority === 'P1')
-    .sort((a, b) => ({ P0: 0, P1: 1, P2: 2 }[a.priority] - { P0: 0, P1: 1, P2: 2 }[b.priority]))
-    .slice(0, 3);
-  if (urgent.length === 0) {
-    return '<p dir="rtl" style="color:#27ae60;font-size:13px;margin:0">✅ אין כרגע פעולה דחופה — המערכת יציבה.</p>';
+    .sort((a, b) => ({ P0: 0, P1: 1, P2: 2 }[a.priority] - { P0: 0, P1: 1, P2: 2 }[b.priority]));
+  for (const o of urgent) {
+    items.push({
+      pr: o.priority as 'P0' | 'P1',
+      title: cleanRecommendationText(o.recommendation),
+      why: o.observation,
+      cost: '',
+      owner: o.agent_he,
+    });
+  }
+  return items.sort((a, b) => ({ P0: 0, P1: 1, P2: 2 }[a.pr] - { P0: 0, P1: 1, P2: 2 }[b.pr])).slice(0, 3);
+}
+
+function buildTopDecisionsHtml(
+  decisions: DecisionItem[],
+  ks: KillSwitchRead | null,
+  contentPerf: Awaited<ReturnType<typeof fetchContentPerf>>,
+): string {
+  const paidLine = ks
+    ? `🔥 <b>מנוע בתשלום:</b> ${ks.active ? '' : '(מושהה) '}${ks.sym}${ks.spend.toFixed(0)}${ks.budgetTotal ? `/${ks.sym}${ks.budgetTotal.toFixed(0)}` : ''} · ${ks.clicks} קליקים · ${ks.carts} סלים · ${ks.purchases} רכישות → ${esc(ks.gateLine)}`
+    : '🔥 <b>מנוע בתשלום:</b> אין קמפיין רשום';
+  const learnBit = contentPerf?.learning ? esc(contentPerf.learning.summary.slice(0, 130)) : 'אין למידה טרייה';
+  const organicLine = contentPerf
+    ? `🌱 <b>מנוע אורגני:</b> ${contentPerf.totalEng} מעורבות (7י) · ${contentPerf.siteClicks.total} כניסות-אתר (30י) → ${learnBit}`
+    : '🌱 <b>מנוע אורגני:</b> אין נתוני איסוף';
+  const engines = `<div dir="rtl" style="background:#faf7f0;border-radius:6px;padding:8px 12px;margin:0 0 10px;font-size:11.5px;color:#444;line-height:1.8;text-align:right">${paidLine}<br>${organicLine}</div>`;
+  if (decisions.length === 0) {
+    return engines + '<p dir="rtl" style="color:#27ae60;font-size:13px;margin:0">✅ אין כרגע החלטה דחופה — המערכת בתוך השערים.</p>';
   }
   const PRIO: Record<string, { label: string; color: string }> = {
     'P0': { label: '🔴 דחוף', color: '#c0392b' },
     'P1': { label: '🟠 חשוב', color: '#e67e22' },
     'P2': { label: '🟡 כדאי', color: '#888' },
   };
-  return urgent.map((o, i) => {
-    const p = PRIO[o.priority] || { label: o.priority, color: '#888' };
+  return engines + decisions.map((d, i) => {
+    const p = PRIO[d.pr] || { label: d.pr, color: '#888' };
     return `<div dir="rtl" style="padding:10px 14px;background:#fafafa;border-right:4px solid ${p.color};margin:6px 0;border-radius:6px;text-align:right">
-      <div style="font-size:13.5px;color:#2c2c2c"><b style="color:${p.color}">${i + 1}. ${p.label}</b> · ${esc(cleanRecommendationText(o.recommendation))}</div>
-      <div style="font-size:11.5px;color:#666;margin-top:4px">↳ ${esc(o.observation)} <span style="color:#999">· אחראי: ${esc(o.agent_he)}</span></div>
+      <div style="font-size:13.5px;color:#2c2c2c"><b style="color:${p.color}">${i + 1}. ${p.label}</b> · ${esc(d.title)}</div>
+      <div style="font-size:11.5px;color:#666;margin-top:4px">↳ ${esc(d.why)} <span style="color:#999">· אחראי: ${esc(d.owner)}</span></div>
+      ${d.cost ? `<div style="font-size:11px;color:#a15c00;margin-top:3px">⏳ עלות אי-ההחלטה: ${esc(d.cost)}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -2958,6 +3104,9 @@ Deno.serve(async (req: Request) => {
   // recency, and collect the agents that actually failed.
   const agentCounts = { ok_count: 0, amber_count: 0, red_count: 0, grey_count: 0 };
   const failedAgents: Array<{ id: string; he: string; reason: string; hours: number }> = [];
+  // agent → its live opinion (first one wins) — feeds the per-agent conclusion line.
+  const opinionByAgent = new Map<string, Opinion>();
+  for (const o of allOpinions) if (!opinionByAgent.has(o.agent)) opinionByAgent.set(o.agent, o);
   for (const id of allAgentIds) {
     const h = agentHealth[id];
     if (!h) {
@@ -3017,6 +3166,10 @@ Deno.serve(async (req: Request) => {
         }
         actionText = esc(humanizeAgentSummary(id, h.summary, h.side_effects, hs, isFailed, h.error, healNote));
         if (h.runs_24h > 0) actionText += ` <span style="color:#999;font-size:10px">· ${h.runs_24h}× ב-24h${h.done_24h !== h.runs_24h ? ` (${h.done_24h} הצליחו)` : ''}</span>`;
+        // 2026-07-08 manager-contract: conclusion-line per agent — what it CONCLUDED
+        // (its live opinion), not just what it ran. "רץ תקין" is a log line.
+        const agentOp = opinionByAgent.get(id);
+        if (agentOp) actionText += `<div style="color:#5a4a2f;font-size:11px;margin-top:3px">🧠 <b>מסקנה:</b> ${esc(agentOp.observation)} → ${esc(cleanRecommendationText(agentOp.recommendation))}</div>`;
       }
       return `<tr style="border-bottom:1px solid #f0ebe0">
         <td dir="rtl" style="padding:6px 8px;direction:rtl;text-align:right;vertical-align:top">${icon} <b>${esc(he)}</b></td>
@@ -3036,8 +3189,17 @@ Deno.serve(async (req: Request) => {
   const autoProductHealthHtml = buildAutoProductHealthHtml(autoProductHealth);
   const reelBankGapsHtml = buildReelBankGapsHtml(await fetchReelBankGaps(sb).catch(() => null));
   const contentPerfHtml = buildContentPerfHtml(contentPerf);
-  // 🎯 3 decisions — derived from the live P0/P1 opinions (full set, incl. recurring).
-  const topDecisionsHtml = buildTopDecisionsHtml(allOpinions);
+  // 🎯 3 decisions — COMPUTED (manager-contract 2026-07-08): kill-switch gates +
+  // open escalations + aging oren-blockers + live P0/P1 opinions, each with
+  // cost-of-inaction; the card opens with the two-engines strip.
+  const killSwitch = await fetchKillSwitch(sb).catch(() => null);
+  const decisionItems = deriveDecisions(
+    allOpinions,
+    killSwitch,
+    managementBoard,
+    (planStatus?.blocked_on_oren || []).map(b => ({ title: b.title, days_late: b.days_late })),
+  );
+  const topDecisionsHtml = buildTopDecisionsHtml(decisionItems, killSwitch, contentPerf);
 
   const lastWeekSection = isWeekly && lastWeekCheck.total > 0
     ? `<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📊 מהשבוע הקודם</h2><p dir="rtl" style="font-size:13px;margin:0 0 10px"><b>${lastWeekCheck.done}/${lastWeekCheck.total} הושלמו (${Math.round(lastWeekCheck.done/lastWeekCheck.total*100)}%).</b></p>${lastWeekCheck.details.slice(0,5).map(d => { const ic = d.status === 'done' ? '✅' : d.status === 'open' ? '⏳' : '❌'; return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;margin:4px 0;border-radius:4px;text-align:right;font-size:12px">${ic} <b>${esc(d.agent)}:</b> ${esc(d.rec.slice(0,100))}</div>`; }).join('')}</td></tr><tr><td style="height:14px"></td></tr>` : '';
@@ -3068,10 +3230,10 @@ ${lastWeekSection}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📋 מעקב הזמנות פעילות (${orderTracking.total})</h2>${trackingHtml}</td></tr><tr><td style="height:14px"></td></tr>
 ${planSectionHtml}
 <tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🤖 מצב הסוכנים (24 שעות)</h2>${agentHealthHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" align="center" style="padding-top:18px;text-align:center"><p style="margin:0;color:#aaa;font-size:11px">${reportTypeLabel} v11 · ${autoFixes.length > 0 ? `🔧 ${autoFixes.filter(f=>f.succeeded).length}/${autoFixes.length} תיקונים אוטומטיים · ` : ''}<a href="https://www.dubis.net/admin" style="color:#c8a96e">פתח Admin</a></p></td></tr>
+<tr><td dir="rtl" align="center" style="padding-top:18px;text-align:center"><p style="margin:0;color:#aaa;font-size:11px">${reportTypeLabel} v12 · ${autoFixes.length > 0 ? `🔧 ${autoFixes.filter(f=>f.succeeded).length}/${autoFixes.length} תיקונים אוטומטיים · ` : ''}<a href="https://www.dubis.net/admin" style="color:#c8a96e">פתח Admin</a></p></td></tr>
 </table></td></tr></table></body></html>`;
 
-  if (!summary_he) summary_he = `${reportTypeLabel} v11: ${(realOrders || []).length} הזמנות, $${totalRevenue.toFixed(0)}, ${opinions.length} תצפיות חדשות, ${recurring.length} חוזרות, ${autoFixes.filter(f=>f.succeeded).length} תיקונים אוטומטיים, ${totalPending} לאישור, ${totalMarketing} פעילויות שיווק.`;
+  if (!summary_he) summary_he = `${reportTypeLabel} v12: ${(realOrders || []).length} הזמנות, $${totalRevenue.toFixed(0)}, ${opinions.length} תצפיות חדשות, ${recurring.length} חוזרות, ${autoFixes.filter(f=>f.succeeded).length} תיקונים אוטומטיים, ${totalPending} לאישור, ${totalMarketing} פעילויות שיווק.`;
 
   const reportDate = new Date().toISOString().slice(0, 10);
 
@@ -3085,7 +3247,7 @@ ${planSectionHtml}
   }
   if (isPreview) {
     return json({
-      ok: true, preview: true, mode, version: 'v11-truth',
+      ok: true, preview: true, mode, version: 'v12-manager',
       agent_counts: agentCounts,
       failed_agents: failedAgents.map(f => ({ id: f.id, reason: f.reason, hours: Math.round(f.hours) })),
       real_orders: (realOrders || []).length, real_revenue: totalRevenue,
@@ -3131,7 +3293,7 @@ ${planSectionHtml}
     today_orders:(realOrders || []).length, today_revenue:totalRevenue, meta_alive:!!metaData.ok,
     resend_id:resendId, resend_error:resendError, full_html:html,
     assessment:{
-      mode, version:'v11-truth', summary_he,
+      mode, version:'v12-manager', summary_he,
       agent_counts: agentCounts,
       failed_agents: failedAgents.map(f => ({ id: f.id, reason: f.reason, hours: Math.round(f.hours) })),
       real_revenue: totalRevenue, internal_revenue: internalRevenue,
@@ -3150,9 +3312,9 @@ ${planSectionHtml}
   });
   await sb.from('agent_runs').insert({
     agent_id:'boss', run_date:reportDate, status:'completed',
-    summary:`${isWeekly ? 'weekly' : 'daily'} v11: ${opinions.length} new, ${recurring.length} recurring, ${autoFixes.filter(f=>f.succeeded).length} auto-fixed, ${totalPending} pending, ${totalMarketing} marketing · agents ${agentCounts.ok_count}ok/${agentCounts.red_count}red`,
+    summary:`${isWeekly ? 'weekly' : 'daily'} v12: ${opinions.length} new, ${recurring.length} recurring, ${autoFixes.filter(f=>f.succeeded).length} auto-fixed, ${totalPending} pending, ${totalMarketing} marketing · agents ${agentCounts.ok_count}ok/${agentCounts.red_count}red`,
     tasks_created:createdTaskIds.length, tasks_completed_ids:[],
-    side_effects:{ mode, resend_id:resendId, resend_error:resendError, version:'v11', opinion_count:opinions.length, recurring_count: recurring.length, auto_fix_count: autoFixes.filter(f=>f.succeeded).length, pending_count:totalPending, marketing_total:totalMarketing, created_task_ids:createdTaskIds, meta_error: metaData.fetch_error || null, plan_status: planStatus, agent_counts: agentCounts, net_profit: realMetrics?.netProfit ?? null, pageviews_7d: realMetrics?.pageViews7d ?? null },
+    side_effects:{ mode, resend_id:resendId, resend_error:resendError, version:'v12', opinion_count:opinions.length, recurring_count: recurring.length, auto_fix_count: autoFixes.filter(f=>f.succeeded).length, pending_count:totalPending, marketing_total:totalMarketing, created_task_ids:createdTaskIds, meta_error: metaData.fetch_error || null, plan_status: planStatus, agent_counts: agentCounts, net_profit: realMetrics?.netProfit ?? null, pageviews_7d: realMetrics?.pageViews7d ?? null },
   });
 
   // Best-effort: stash a plan_status snapshot into today's daily_snapshots.raw_data.
@@ -3173,7 +3335,7 @@ ${planSectionHtml}
   }
 
   return json({
-    ok:true, mode, version:'v11-truth', resend_id:resendId, resend_error:resendError,
+    ok:true, mode, version:'v12-manager', resend_id:resendId, resend_error:resendError,
     opinion_count:opinions.length, recurring_count: recurring.length,
     auto_fix_count: autoFixes.filter(f=>f.succeeded).length, auto_fixes: autoFixes,
     pending_count:totalPending, marketing_total:totalMarketing,
