@@ -479,7 +479,6 @@ function dubisRenderCheckoutTrust() {
     strip.style.cssText = 'background:#faf6ec;border:1px solid #e8dcc0;border-radius:8px;padding:10px 14px;margin-bottom:12px;text-align:' + (he ? 'right' : 'left');
     strip.innerHTML = he ? `
         <div style="${rowStyle}">💳 <b>לא צריך חשבון PayPal</b> — בדף התשלום בוחרים "Debit or Credit Card" ומשלמים בכרטיס אשראי רגיל.</div>
-        <div style="${rowStyle}">💵 החיוב יופיע <b>בדולרים</b>${ilsEq ? ` — $${totalUsd.toFixed(0)} ≈ <b>₪${ilsEq}</b> (+ משלוח) לפי השער היומי` : ''}. אנחנו מותג בינלאומי, זה תקין ומאובטח.</div>
         <div style="${rowStyle}">📏 לא קלעתם במידה? <b>מחליפים בקלות</b> — שולחים לנו הודעה ומסדרים.</div>
         <div style="${rowStyle}">💬 מעדיפים להזמין עם בן-אדם? <a href="${waUrl}" target="_blank" rel="noopener" style="color:#1f7a43;font-weight:700;text-decoration:none">וואטסאפ 052-366-2526 ←</a></div>
     ` : `

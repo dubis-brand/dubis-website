@@ -879,7 +879,7 @@ const translations = {
     cart_empty_html: 'עוד ריק. הדברים הנכונים במרחק קליק.',
     cart_shipping_note_intl: '🚚 הזמנות ארה״ב: 5–7 ימי עסקים · בינ״ל: עד 14 יום',
     cart_customs_note: 'מסי מכס/יבוא עשויים לחול מחוץ לארה״ב',
-    cart_tax_note: 'מע״מ ומסים מקומיים אינם כלולים. החיוב הסופי דרך PayPal יבוצע בדולרים.',
+    cart_tax_note: 'מע״מ ומסים מקומיים אינם כלולים. הסכום הסופי בשקלים מוצג בקופה — כולל הכל, בלי הפתעות.',
     // PayPal modal
     paypal_modal_title: 'השלמת ההזמנה',
     paypal_contact_title: 'פרטים ליצירת קשר',
@@ -897,7 +897,7 @@ const translations = {
     paypal_pay_with: 'תשלום ב-PayPal',
     paypal_secured: '🔒 מאובטח ע״י PayPal · החזרות 30 יום',
     paypal_shipping_summary: '🚚 משלוח לישראל: 10–14 ימי עסקים · ארה״ב: 5–7 · מסי יבוא עשויים לחול',
-    paypal_tax_summary: 'מע״מ ומסים מקומיים אינם כלולים. החיוב הסופי דרך PayPal יבוצע בדולרים.',
+    paypal_tax_summary: 'מע״מ ומסים מקומיים אינם כלולים.',
     paypal_trust_ssl: '🔒 מאובטח SSL',
     paypal_trust_pp: '✓ מוגן ע״י PayPal',
     paypal_trust_returns: '↩ החזרות 30 יום',
