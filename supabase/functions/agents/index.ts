@@ -3129,9 +3129,12 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     const today = new Date().toISOString().slice(0, 10);
     const num = (v: unknown): number | null => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 
+    // agent_personas added 2026-07-10: the "מאחורי הקוד" series (incl. the sitcom
+    // episodes) published with IG/FB ids but was invisible to the metrics loop —
+    // ep1's reach-vs-baseline bet had no number.
     const { data: posts, error: pErr } = await sb
       .from('agent_tasks').select('id, content_data, updated_at')
-      .eq('status', 'done').in('category', ['social_post', 'tiktok_post'])
+      .eq('status', 'done').in('category', ['social_post', 'tiktok_post', 'agent_personas'])
       .gte('updated_at', sinceIso).order('updated_at', { ascending: false }).limit(200);
     if (pErr) return json({ error: pErr.message }, 500);
 
