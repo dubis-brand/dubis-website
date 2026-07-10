@@ -396,6 +396,10 @@ async function submitContactStep() {
     if (continueRow) continueRow.style.display = 'none';
     document.getElementById('payment-step').style.display  = '';
 
+    // 2026-07-10: trust strip at the exact moment of doubt — 3 real IL shoppers
+    // reached this step (via the IG/FB in-app browser) and dropped at PayPal.
+    try { dubisRenderCheckoutTrust(); } catch (_) {}
+
     // FB/IG in-app webview → skip PayPal SDK entirely (popup is blocked anyway)
     // and show the external-browser handoff directly.
     if (typeof window.dubisIsFacebookWebView === 'function' && window.dubisIsFacebookWebView()) {
@@ -429,6 +433,61 @@ function renderDirectPayPalButton() {
     `;
 }
 
+// ===== CHECKOUT TRUST STRIP (2026-07-10) =====
+// Funnel evidence: 3 real IL shoppers reached the payment step in one week and
+// abandoned at the PayPal stage. The strip answers the three abandonment drivers
+// at the moment of doubt: (1) a regular credit card works without a PayPal
+// account (guest checkout is enabled), (2) the USD charge is expected — shown
+// with a live ILS equivalent, (3) a human is one WhatsApp tap away, including
+// easy size exchange. Number is public — oren posted it on Facebook.
+const DUBIS_WHATSAPP_NUMBER = '972523662526';
+
+function dubisCartItemTotalUsd() {
+    try { return (cart || []).reduce((s, i) => s + (Number(i.price) || 0), 0); } catch (_) { return 0; }
+}
+
+window.dubisWhatsAppOrderUrl = function() {
+    const he = (window.currentLang || 'en') === 'he';
+    let items = '';
+    try {
+        items = (cart || [])
+            .map(i => [i.phrase || i.name || '', i.color || '', i.size || ''].filter(Boolean).join(' '))
+            .filter(Boolean).join(' · ');
+    } catch (_) {}
+    const msg = he
+        ? `היי DUBIS! אני באתר ורוצה להזמין: ${items || 'מוצר מהאתר'}`
+        : `Hi DUBIS! I'm on the site and want to order: ${items || 'an item'}`;
+    return `https://wa.me/${DUBIS_WHATSAPP_NUMBER}?text=${encodeURIComponent(msg)}`;
+};
+
+function dubisRenderCheckoutTrust() {
+    const paymentStep = document.getElementById('payment-step');
+    if (!paymentStep) return;
+    let strip = document.getElementById('checkout-trust-strip');
+    if (!strip) {
+        strip = document.createElement('div');
+        strip.id = 'checkout-trust-strip';
+        paymentStep.insertBefore(strip, paymentStep.firstChild);
+    }
+    const he = (window.currentLang || 'en') === 'he';
+    const totalUsd = dubisCartItemTotalUsd();
+    const rate = Number(window.USD_TO_ILS) || 0;
+    const ilsEq = (totalUsd > 0 && rate > 0) ? Math.round(totalUsd * rate) : 0;
+    const waUrl = window.dubisWhatsAppOrderUrl();
+    const rowStyle = 'margin:4px 0;font-size:12.5px;line-height:1.55;color:#4a4336';
+    strip.setAttribute('dir', he ? 'rtl' : 'ltr');
+    strip.style.cssText = 'background:#faf6ec;border:1px solid #e8dcc0;border-radius:8px;padding:10px 14px;margin-bottom:12px;text-align:' + (he ? 'right' : 'left');
+    strip.innerHTML = he ? `
+        <div style="${rowStyle}">💳 <b>לא צריך חשבון PayPal</b> — בדף התשלום בוחרים "Debit or Credit Card" ומשלמים בכרטיס אשראי רגיל.</div>
+        <div style="${rowStyle}">💵 החיוב יופיע <b>בדולרים</b>${ilsEq ? ` — $${totalUsd.toFixed(0)} ≈ <b>₪${ilsEq}</b> (+ משלוח) לפי השער היומי` : ''}. אנחנו מותג בינלאומי, זה תקין ומאובטח.</div>
+        <div style="${rowStyle}">📏 לא קלעתם במידה? <b>מחליפים בקלות</b> — שולחים לנו הודעה ומסדרים.</div>
+        <div style="${rowStyle}">💬 מעדיפים להזמין עם בן-אדם? <a href="${waUrl}" target="_blank" rel="noopener" style="color:#1f7a43;font-weight:700;text-decoration:none">וואטסאפ 052-366-2526 ←</a></div>
+    ` : `
+        <div style="${rowStyle}">💳 <b>No PayPal account needed.</b> Pick "Debit or Credit Card" on the payment page.</div>
+        <div style="${rowStyle}">📏 Wrong size? Easy exchange. <a href="${waUrl}" target="_blank" rel="noopener" style="color:#1f7a43;font-weight:700;text-decoration:none">Message us on WhatsApp</a></div>
+    `;
+}
+
 // ===== FB / INSTAGRAM IN-APP WEBVIEW CHECKOUT (PayPal full-page redirect) =====
 // Inside the FB/IG in-app browser the PayPal SDK popup is blocked/killed, so the
 // JS Buttons never complete. The fix: a server-built PayPal Orders-v2 order with
@@ -451,8 +510,8 @@ function renderWebViewExternalHandoff() {
 
     container.innerHTML = `
         <div class="fb-webview-notice" dir="rtl">
-            <h4>תשלום מאובטח ב-PayPal</h4>
-            <p>לחיצה על הכפתור תעביר אותך לדף התשלום המאובטח של PayPal ותחזיר אותך לכאן בסיום.</p>
+            <h4>תשלום מאובטח — כרטיס אשראי או PayPal</h4>
+            <p>לחיצה על הכפתור פותחת דף תשלום מאובטח. שם בוחרים <b>"Debit or Credit Card"</b> ומשלמים בכרטיס רגיל — בלי חשבון PayPal — וחוזרים לכאן בסיום.</p>
             <div class="fb-webview-actions">
                 <button type="button" id="fbia-paypal-redirect-btn" class="fb-webview-btn">המשך לתשלום מאובטח →</button>
             </div>
@@ -536,7 +595,7 @@ function renderWebViewExternalHandoff() {
             btn.textContent = originalLabel;
             const msg = (e && e.message === 'empty_cart')
                 ? 'העגלה ריקה.'
-                : 'לא הצלחנו לפתוח את התשלום. נסה שוב או פתח את האתר בדפדפן חיצוני.';
+                : 'לא הצלחנו לפתוח את התשלום. נסה שוב, פתח את האתר בדפדפן חיצוני — או פשוט כתוב לנו בוואטסאפ 052-366-2526 ונסגור את ההזמנה ביחד.';
             if (errEl) { errEl.textContent = msg; errEl.style.display = ''; }
         }
     });

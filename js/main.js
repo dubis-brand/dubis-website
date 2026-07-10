@@ -896,7 +896,7 @@ const translations = {
     paypal_continue: 'המשך לתשלום ←',
     paypal_pay_with: 'תשלום ב-PayPal',
     paypal_secured: '🔒 מאובטח ע״י PayPal · החזרות 30 יום',
-    paypal_shipping_summary: '🚚 הזמנות ארה״ב: 5–7 ימי עסקים · בינ״ל: עד 14 יום · מסי יבוא עשויים לחול',
+    paypal_shipping_summary: '🚚 משלוח לישראל: 10–14 ימי עסקים · ארה״ב: 5–7 · מסי יבוא עשויים לחול',
     paypal_tax_summary: 'מע״מ ומסים מקומיים אינם כלולים. החיוב הסופי דרך PayPal יבוצע בדולרים.',
     paypal_trust_ssl: '🔒 מאובטח SSL',
     paypal_trust_pp: '✓ מוגן ע״י PayPal',
@@ -1155,10 +1155,15 @@ function translateUI(lang) {
   if (cartH3) cartH3.textContent = t.cart_title_html;
   const cartShipNote = q('.cart-shipping-note');
   if (cartShipNote) {
+    // HE reader = the IL market: lead with Israel's real estimate + the human
+    // escape hatch (exchange promise + WhatsApp), not a generic "Int'l" line.
     cartShipNote.innerHTML =
       '🚚 ' + (lang === 'he'
-        ? 'הזמנות ארה״ב: 5–7 ימי עסקים · בינ״ל: עד 14 יום'
+        ? 'משלוח לישראל: 10–14 ימי עסקים · ארה״ב: 5–7'
         : 'US orders: 5–7 business days · Int\'l: up to 14 days') +
+      (lang === 'he'
+        ? '<br><span style="color:#1f7a43;font-weight:600">📏 לא קלעתם במידה? מחליפים בקלות — <a href="https://wa.me/972523662526" target="_blank" rel="noopener" style="color:#1f7a43">וואטסאפ 052-366-2526</a></span>'
+        : '') +
       '<br><span>' + t.cart_customs_note + '</span>' +
       '<br><span style="font-size:11px;color:#888">' + t.cart_tax_note + '</span>';
   }
