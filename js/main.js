@@ -1163,7 +1163,7 @@ function translateUI(lang) {
         : 'US orders: 5–7 business days · Int\'l: up to 14 days') +
       (lang === 'he'
         ? '<br><span style="color:#1f7a43;font-weight:600">📏 לא קלעתם במידה? מחליפים בקלות — <a href="https://wa.me/972523662526" target="_blank" rel="noopener" style="color:#1f7a43">וואטסאפ 052-366-2526</a></span>'
-        : '') +
+        : '<br><span style="color:#1f7a43;font-weight:600">📏 Wrong size? Easy exchange — <a href="https://wa.me/972523662526" target="_blank" rel="noopener" style="color:#1f7a43">WhatsApp us</a></span>') +
       '<br><span>' + t.cart_customs_note + '</span>' +
       '<br><span style="font-size:11px;color:#888">' + t.cart_tax_note + '</span>';
   }
