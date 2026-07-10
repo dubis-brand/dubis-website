@@ -1499,7 +1499,7 @@ const FMT_ICON: Record<string, string> = { feed_post: '🖼️', carousel: '🎠
 
 // Weekly plan as a 7-day calendar: each day → planned + published items with the POST link.
 async function fetchWeeklyMarketing(sb: SB): Promise<{
-  plan: Record<string, unknown>; weekStart: string; total: number; done: number; pending: number; backlog: number;
+  plan: Record<string, unknown>; weekStart: string; total: number; done: number; pending: number; backlog: number; extra: number;
   days: Array<{ date: string; label: string; items: Array<{ fmt: string; lang: string; status: string; slogan: string; platform: string; link: { url: string; channel: string } | null}> }>;
 } | null> {
   const { data: plans } = await sb.from('weekly_marketing_plans').select('*').order('week_start_date', { ascending: false }).limit(1);
@@ -1510,9 +1510,14 @@ async function fetchWeeklyMarketing(sb: SB): Promise<{
   const sinceIso = new Date(startMs).toISOString();
   const untilIso = new Date(startMs + 7 * 86400000).toISOString();
   const [{ data: contentTasks }, { data: ttTasks }] = await Promise.all([
-    sb.from('agent_tasks').select('status, content_data, updated_at').eq('agent_id', 'content').gte('created_at', sinceIso).limit(300),
+    sb.from('agent_tasks').select('id, status, content_data, updated_at').eq('agent_id', 'content').gte('created_at', sinceIso).limit(300),
     sb.from('agent_tasks').select('status, content_data, updated_at').eq('agent_id', 'tiktok').eq('status', 'done').gte('updated_at', sinceIso).lt('updated_at', untilIso).limit(60),
   ]);
+  // ONE DENOMINATOR (2026-07-10): the header counters count PLAN SLOTS only —
+  // the 07-09 report showed "14/17 פורסמו · 10 בהמתנה" (14+10>17) because the done
+  // counter also swallowed TikTok-GHA publishes and non-plan content tasks.
+  // Published items OUTSIDE the plan are counted separately as `extra`.
+  const planIds = new Set(((plan.task_ids as string[]) || []).map(String));
   const DOW_HE = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
   type Day = { date: string; label: string; items: Array<{ fmt: string; lang: string; status: string; slogan: string; platform: string; link: { url: string; channel: string } | null}> };
   const days: Day[] = Array.from({ length: 7 }, (_, i) => {
@@ -1520,11 +1525,13 @@ async function fetchWeeklyMarketing(sb: SB): Promise<{
     return { date, label: `${DOW_HE[d.getUTCDay()]} ${date.slice(5)}`, items: [] };
   });
   const byDate: Record<string, Day> = {}; for (const d of days) byDate[d.date] = d;
-  let done = 0, pending = 0, backlog = 0;
+  let done = 0, pending = 0, backlog = 0, extra = 0;
   for (const t of (contentTasks || []) as Array<Record<string, unknown>>) {
     const cd = (t.content_data as Record<string, unknown>) || {};
     const st = String(t.status || '');
-    if (st === 'done') done++; else if (st === 'backlog') backlog++; else pending++;
+    if (planIds.has(String(t.id))) {
+      if (st === 'done') done++; else if (st === 'backlog') backlog++; else pending++;
+    } else if (st === 'done') { extra++; }
     const sched = String(cd.scheduled_for || '').slice(0, 10);
     const day = byDate[sched] || (st === 'done' ? byDate[String(t.updated_at || '').slice(0, 10)] : null);
     if (!day) continue;
@@ -1534,12 +1541,12 @@ async function fetchWeeklyMarketing(sb: SB): Promise<{
     const cd = (t.content_data as Record<string, unknown>) || {};
     const day = byDate[String(t.updated_at || '').slice(0, 10)];
     if (!day) continue;
-    done++;
+    extra++;
     day.items.push({ fmt: 'tiktok', lang: String(cd.lang || ''), status: 'done', slogan: String(cd.product_slogan || cd.slogan || '').slice(0, 46), platform: 'tiktok', link: bestPostLink(cd) });
   }
   for (const d of days) d.items.sort((a, b) => (a.status === 'done' ? -1 : 1) - (b.status === 'done' ? -1 : 1));
   const total = (plan.total_slots as number) || (done + pending + backlog);
-  return { plan, weekStart, total, done, pending, backlog, days };
+  return { plan, weekStart, total, done, pending, backlog, extra, days };
 }
 
 function buildWeeklyMarketingHtml(wm: Awaited<ReturnType<typeof fetchWeeklyMarketing>>): string {
@@ -1571,7 +1578,7 @@ function buildWeeklyMarketingHtml(wm: Awaited<ReturnType<typeof fetchWeeklyMarke
     return `<tr><td valign="top" style="padding:6px 8px;border-bottom:1px solid #f0ece0;white-space:nowrap;font-weight:700;font-size:12px;color:#2c2c2c">${esc(d.label)}</td><td valign="top" style="padding:6px 8px;border-bottom:1px solid #f0ece0">${items}</td></tr>`;
   }).join('');
   return `<p dir="rtl" style="font-size:13px;margin:0 0 4px;text-align:right"><b>שבוע ${esc(wm.weekStart)}</b> · ${esc(String(wm.plan.status || ''))} · ${heSlots} HE / ${enSlots} EN</p>
-  <p dir="rtl" style="font-size:14px;margin:0;text-align:right"><b>${wm.done}/${wm.total} פורסמו (${pct}%)</b> · ${wm.pending} בתהליך · ${wm.backlog} בהמתנה</p>
+  <p dir="rtl" style="font-size:14px;margin:0;text-align:right"><b>${wm.done}/${wm.total} משבצות-תוכנית פורסמו (${pct}%)</b> · ${wm.pending} בתהליך · ${wm.backlog} בהמתנה${wm.extra > 0 ? ` · +${wm.extra} פרסומים מחוץ לתוכנית (TikTok יומי/סדרות)` : ''}</p>
   <div style="background:#eee;border-radius:8px;height:12px;overflow:hidden;margin:6px 0"><div style="background:#c8a96e;height:12px;width:${pct}%"></div></div>
   <table dir="rtl" width="100%" style="border-collapse:collapse;margin-top:8px"><tr><th align="right" style="font-size:11px;color:#888;padding:4px 8px;text-align:right">יום</th><th align="right" style="font-size:11px;color:#888;padding:4px 8px;text-align:right">מתוכנן/פורסם · קישור לפוסט</th></tr>${dayRows}</table>
   <p dir="rtl" style="font-size:10px;color:#aaa;margin:6px 0 0;text-align:right">התג הצבעוני = הרשת שאליה התוכן מיועד (📷IG / 📘FB / 🎵TikTok). ▶ = קישור לפוסט עצמו ברשת, לא לעמוד המוצר.</p>`;
@@ -2589,6 +2596,44 @@ Deno.serve(async (req: Request) => {
   // boss_reports/agent_runs. Lets agents verify the HTML safely (2026-06-15).
   const isPreview = url.searchParams.get('preview') === '1';
 
+  // ---- Campaign row FIRST (2026-07-10): the funnel must query the campaign that
+  // is actually running, not a hardcoded id. The 07-09 report asked Meta about the
+  // dead April campaign (META_CAMPAIGN default) and rendered "אין חשיפות" while the
+  // live summer campaign burned ₪66 that day. ad_campaigns is the source of truth:
+  // the live Meta campaign id is embedded in `notes` as "campaign_id: <digits>".
+  // Prefer env override → most-recent ACTIVE row's id → most-recent row's id → legacy default.
+  let campaignPaused = false; let campaignStatusKnown = false;
+  let dbCampSpend = 0; let dbCampClicks = 0;
+  let activeCampaignId = Deno.env.get('META_CAMPAIGN_ID') || '';
+  try {
+    const { data: campRows } = await sb.from('ad_campaigns')
+      .select('status, notes, created_at, spend_to_date, clicks')
+      .order('created_at', { ascending: false }).limit(50);
+    const rows = (campRows || []) as Array<Record<string, unknown>>;
+    const idOf = (r: Record<string, unknown>) => (String(r.notes || '').match(/campaign_id:\s*(\d+)/i) || [])[1] || '';
+    if (!activeCampaignId) {
+      const activeRow = rows.find(c => String(c.status || '').toLowerCase() === 'active' && idOf(c));
+      const anyIdRow = rows.find(c => idOf(c));
+      activeCampaignId = (activeRow && idOf(activeRow)) || (anyIdRow && idOf(anyIdRow)) || META_CAMPAIGN;
+    }
+    const idRx = new RegExp(`campaign_id:\\s*${String(activeCampaignId)}\\b`, 'i');
+    const exact = rows.find(c => idRx.test(String(c.notes || '')));
+    if (exact) {
+      // Funnel reports on activeCampaignId → its own row decides paused/active.
+      campaignStatusKnown = true;
+      campaignPaused = String(exact.status || '').toLowerCase() === 'paused';
+      dbCampSpend = Number(exact.spend_to_date || 0);
+      dbCampClicks = Number(exact.clicks || 0);
+    } else if (rows.length > 0) {
+      // No row for the campaign. Use the fleet signal: if NO campaign is active,
+      // the funnel can't be delivering — treat as paused (don't invent a delay).
+      campaignStatusKnown = true;
+      const anyActive = rows.some(c => String(c.status || '').toLowerCase() === 'active');
+      campaignPaused = !anyActive;
+    }
+  } catch (_) { /* best-effort — fall back to generic copy */ }
+  if (!activeCampaignId) activeCampaignId = META_CAMPAIGN;
+
   // ---- D.13: Meta API with explicit error capture ----
   let metaData: Record<string, unknown> = { ok: false };
   if (IG_TOKEN) {
@@ -2601,7 +2646,7 @@ Deno.serve(async (req: Request) => {
         const acc = await accRes.json();
         metaData.currency = acc.currency || 'ILS';
         for (const w of ['yesterday', 'last_7d']) {
-          const r = await fetch(`https://graph.facebook.com/v19.0/${META_CAMPAIGN}/insights?fields=spend,impressions,clicks,cpc,ctr,reach,actions&date_preset=${w}&access_token=${IG_TOKEN}`);
+          const r = await fetch(`https://graph.facebook.com/v19.0/${activeCampaignId}/insights?fields=spend,impressions,clicks,cpc,ctr,reach,actions&date_preset=${w}&access_token=${IG_TOKEN}`);
           if (!r.ok) {
             const errBody = await r.text().catch(() => '');
             metaData[`fetch_error_${w}`] = `HTTP ${r.status}: ${errBody.slice(0,160)}`;
@@ -2617,33 +2662,6 @@ Deno.serve(async (req: Request) => {
   } else {
     metaData.fetch_error = 'INSTAGRAM_ACCESS_TOKEN missing in env';
   }
-
-  // ---- Campaign status (2026-06-15): the funnel must respect a deliberate PAUSE.
-  // ad_campaigns is the source of truth for status (our Meta token is ads_read only,
-  // so live pause is oren's manual toggle — the DB row reflects intent). The Meta
-  // campaign id lives EMBEDDED in `notes` as "campaign_id: <digits>" (there is no
-  // reliable campaign_id column — see morning-report.js pause-campaign matcher).
-  // Prefer the row whose notes carry META_CAMPAIGN, else the most-recent row.
-  let campaignPaused = false; let campaignStatusKnown = false;
-  try {
-    const { data: campRows } = await sb.from('ad_campaigns')
-      .select('status, notes, created_at')
-      .order('created_at', { ascending: false }).limit(50);
-    const rows = (campRows || []) as Array<Record<string, unknown>>;
-    const idRx = new RegExp(`campaign_id:\\s*${String(META_CAMPAIGN)}\\b`, 'i');
-    const exact = rows.find(c => idRx.test(String(c.notes || '')));
-    if (exact) {
-      // Funnel reports on META_CAMPAIGN → its own row decides paused/active.
-      campaignStatusKnown = true;
-      campaignPaused = String(exact.status || '').toLowerCase() === 'paused';
-    } else if (rows.length > 0) {
-      // No row for META_CAMPAIGN. Use the fleet signal: if NO campaign is active,
-      // the funnel can't be delivering — treat as paused (don't invent a delay).
-      campaignStatusKnown = true;
-      const anyActive = rows.some(c => String(c.status || '').toLowerCase() === 'active');
-      campaignPaused = !anyActive;
-    }
-  } catch (_) { /* best-effort — fall back to generic copy */ }
 
   let igPosts7d = 0, dupes = 0;
   if (IG_TOKEN && IG_ACCOUNT) {
@@ -2927,10 +2945,16 @@ Deno.serve(async (req: Request) => {
       return `<div dir="rtl" style="padding:12px;background:#fff5f5;border-right:4px solid #c0392b;border-radius:4px;color:#c0392b;font-size:13px">❌ Meta API נכשל: <code style="font-size:11px;direction:ltr;display:inline-block">${esc(err)}</code><br><span style="color:#666;font-size:11px;margin-top:4px;display:block">לבדוק INSTAGRAM_ACCESS_TOKEN ב-Vercel envs ו-app permissions ב-developers.facebook.com</span></div>`;
     }
     if (impY === 0 && clicksY === 0) {
-      // Status unknown → neutral; status known-active → it really is a delivery gap.
+      // HONESTY CONTRACT (2026-07-10): an empty "yesterday" from Meta is a DATA GAP,
+      // not proof of a delivery problem — never invent a "delivery delay" story.
+      // Anchor the reader on the cumulative DB counter so the gap can't be misread
+      // as "the campaign is dead" (07-09 the campaign burned ₪66 while this said 0).
+      const dbAnchor = dbCampSpend > 0
+        ? ` לפי המונה המצטבר ב-DB הקמפיין כן רץ: <b>₪${dbCampSpend.toFixed(0)} · ${dbCampClicks} קליקים סה"כ</b>.`
+        : '';
       return campaignStatusKnown
-        ? '<p dir="rtl" style="color:#888;font-size:13px;margin:0">הקמפיין פעיל אבל אין חשיפות ב-24 שעות אחרונות (delivery delay או review).</p>'
-        : '<p dir="rtl" style="color:#888;font-size:13px;margin:0">אין חשיפות ב-24 שעות אחרונות.</p>';
+        ? `<p dir="rtl" style="color:#888;font-size:13px;margin:0">⚠️ Meta לא החזיר נתוני-אתמול לקמפיין (פער-דיווח בצד Meta או שהשאילתה חזרה ריקה — לא בהכרח בעיית delivery).${dbAnchor}</p>`
+        : '<p dir="rtl" style="color:#888;font-size:13px;margin:0">Meta לא החזיר נתוני-אתמול — סטטוס הקמפיין לא ידוע.</p>';
     }
     return `<table dir="rtl" width="100%" style="margin-bottom:10px"><tr>
         <td dir="rtl" align="center" style="width:20%;padding:6px"><div style="color:#3498db;font-size:16px;font-weight:700">${impY.toLocaleString()}</div><div style="color:#999;font-size:10px">חשיפות</div></td>
