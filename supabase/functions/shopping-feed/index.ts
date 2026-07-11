@@ -94,7 +94,10 @@ Deno.serve(async (_req: Request) => {
     const price = `${Number(p.price_usd).toFixed(2)} USD`;
     // ?p=N (not #product-N): fragments are dropped by redirectors/crawlers — same fix as social links 2026-04-21.
     const link = `https://www.dubis.net/?p=${id}`;
-    const colors = Array.isArray(p.colors) && p.colors.length > 0 ? p.colors.join('/') : 'Mixed';
+    // Google allows MAX 3 colors ("/"-separated, primary first) — 5 colors = invalid attribute.
+    // Primary = the mockup color actually shown in image_link. (colorList declared above for the mockup pick.)
+    const orderedColors = mockColor ? [mockColor, ...colorList.filter((c: string) => c !== mockColor)] : colorList;
+    const colors = orderedColors.length > 0 ? orderedColors.slice(0, 3).join('/') : 'Black';
     const cat = googleCategory[p.clothing_type] || '1604';
     const gender = genderMap[p.gender] || 'unisex';
 
@@ -122,11 +125,10 @@ Deno.serve(async (_req: Request) => {
       <g:size>${esc(size)}</g:size>
       <g:size_system>US</g:size_system>
       <g:identifier_exists>no</g:identifier_exists>
-      <g:mpn>DUBIS-${id}-${sizeSuffix}</g:mpn>
       <g:shipping>
         <g:country>US</g:country>
         <g:service>Standard</g:service>
-        <g:price>0.00 USD</g:price>
+        <g:price>8.99 USD</g:price>
       </g:shipping>
     </item>`);
     }
