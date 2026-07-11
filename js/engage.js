@@ -81,8 +81,11 @@
 
   function showPopup() {
     if (hasSeenPopup()) return;
-    const overlay = document.getElementById('dubis-popup-overlay');
-    if (!overlay) { injectPopup(); }
+    // Rebuild at show time: the popup used to be injected on load, BEFORE the async geo/lang
+    // detection resolved — Hebrew visitors got an English popup. Show time = language is final.
+    const stale = document.getElementById('dubis-popup-overlay');
+    if (stale && stale.parentElement) stale.parentElement.remove();
+    injectPopup();
     const el = document.getElementById('dubis-popup-overlay');
     if (el) el.classList.add('visible');
   }

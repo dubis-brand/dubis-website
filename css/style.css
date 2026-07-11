@@ -285,6 +285,9 @@ h1, h2, h3, h4 {
     font-weight: 400;
     margin-bottom: 0.5rem;
     text-shadow: 0 2px 8px rgba(0,0,0,0.35);
+    /* the wordmark is always LTR English — without this, RTL (Hebrew) pages render the ™ BEFORE "DUBIS" */
+    direction: ltr;
+    unicode-bidi: isolate;
 }
 .hero-title .hero-tm {
     font-size: 0.32em;
@@ -1525,6 +1528,17 @@ body.has-preview-banner { padding-top: 32px; }
     color: #666;
 }
 .modal-add-btn { width: 100%; padding: 14px; font-size: 1rem; margin-top: auto; }
+/* Desktop short screens: .modal-info inner-scrolls with no visible affordance (esp. macOS hidden
+   scrollbars) — the CTA sat below the fold and read as "button cut off outside the window".
+   Sticky keeps it visible at the bottom of the scroll column at all viewport heights. */
+@media (min-width: 901px) {
+    .modal-info .modal-add-btn {
+        position: sticky;
+        bottom: 0;
+        z-index: 5;
+        box-shadow: 0 -10px 14px -6px rgba(0,0,0,0.18);
+    }
+}
 .modal-add-btn:disabled,
 .modal-add-btn.disabled {
     background: #bbb !important;
