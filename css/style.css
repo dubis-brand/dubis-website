@@ -53,6 +53,9 @@
 }
 
 html {
+    /* 40+ readability (community feedback 2026-07-11): one global type step.
+       106.25% = 17px root — every rem-based size on the site scales +6%. */
+    font-size: 106.25%;
     scroll-behavior: smooth;
     /* Kill horizontal pan on mobile. The marquee (inline-block, 2x width) and
        the crew-carousel avatar track extend ~10,000px past the viewport; without
@@ -65,7 +68,7 @@ html {
 
 body {
     font-family: var(--font-body);
-    font-size: 16px;
+    font-size: 1rem;   /* follow the root step above (was hardcoded 16px) */
     font-weight: 400;
     line-height: 1.6;
     background-color: var(--cream);
@@ -494,7 +497,7 @@ h1, h2, h3, h4 {
 }
 
 .section-header p {
-    color: var(--gray-500);
+    color: var(--gray-700);   /* was gray-500 — ~3.2:1 on cream, below AA */
     font-family: var(--font-display);
     font-size: 1.05rem;
     font-style: italic;
@@ -1302,7 +1305,7 @@ body.has-preview-banner { padding-top: 32px; }
     margin-bottom: 1rem;
 }
 .promise-container > p {
-    color: rgba(246, 239, 224, 0.7);
+    color: rgba(246, 239, 224, 0.82);
     font-family: var(--font-display);
     font-style: italic;
     margin-bottom: 3.5rem;
@@ -1343,9 +1346,9 @@ body.has-preview-banner { padding-top: 32px; }
     text-transform: uppercase;
 }
 .promise-item p {
-    color: rgba(246, 239, 224, 0.75);
+    color: rgba(246, 239, 224, 0.88);
     font-family: var(--font-body);
-    font-size: 0.88rem;
+    font-size: 0.95rem;
     line-height: 1.65;
 }
 
@@ -1442,7 +1445,7 @@ body.has-preview-banner { padding-top: 32px; }
     font-size: 0.8rem;
     letter-spacing: 1px;
     text-transform: uppercase;
-    color: #999;
+    color: #6f6a60;   /* was #999 — failed contrast on white */
     margin-bottom: 0.6rem;
 }
 .modal-colors { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
@@ -1524,8 +1527,8 @@ body.has-preview-banner { padding-top: 32px; }
     padding: 1rem;
     background: var(--light-gray);
     border-radius: 8px;
-    font-size: 0.85rem;
-    color: #666;
+    font-size: 0.92rem;
+    color: #555;
 }
 .modal-add-btn { width: 100%; padding: 14px; font-size: 1rem; margin-top: auto; }
 /* Desktop short screens: .modal-info inner-scrolls with no visible affordance (esp. macOS hidden
@@ -1773,8 +1776,8 @@ body.has-preview-banner { padding-top: 32px; }
 }
 
 .about-text p {
-    color: #aaa;
-    font-size: 1rem;
+    color: rgba(246, 239, 224, 0.88);   /* was #aaa — brighter for 40+ eyes on charcoal */
+    font-size: 1.05rem;
     line-height: 1.8;
     margin-bottom: 1rem;
 }
@@ -1816,14 +1819,14 @@ body.has-preview-banner { padding-top: 32px; }
 }
 
 .contact p {
-    color: #777;
+    color: #5d5749;
     margin-bottom: 2rem;
 }
 
 /* ===== FOOTER ===== */
 .footer {
     background: var(--charcoal);
-    color: rgba(246, 239, 224, 0.65);
+    color: rgba(246, 239, 224, 0.78);
     text-align: center;
     padding: 4rem 2rem 2.5rem;
     font-family: var(--font-body);
@@ -1960,7 +1963,7 @@ body.has-preview-banner { padding-top: 32px; }
 }
 
 .cart-empty {
-    color: #aaa;
+    color: #77716a;
     text-align: center;
     margin-top: 3rem;
     font-style: italic;
@@ -1979,14 +1982,14 @@ body.has-preview-banner { padding-top: 32px; }
 }
 
 .cart-item-name {
-    font-size: 0.9rem;
+    font-size: 1rem;
     font-style: italic;
     color: var(--charcoal);
 }
 
 .cart-item-type {
-    font-size: 0.75rem;
-    color: #aaa;
+    font-size: 0.8rem;
+    color: #6f6a60;   /* was #aaa — ~2.3:1 on white, unreadable for 40+ */
 }
 
 /* 2026-05-22: cart-item country badge — minimalist, customer-country-only.
@@ -2286,14 +2289,14 @@ body.has-preview-banner { padding-top: 32px; }
 }
 
 .cart-shipping-note {
-    font-size: 11px;
-    color: #999;
+    font-size: 13px;
+    color: #6f6a60;   /* was 11px #999 — ~2.8:1 on white */
     text-align: center;
     margin-bottom: 0.75rem;
     line-height: 1.5;
 }
 .cart-shipping-note span {
-    color: #bbb;
+    color: #857e71;
 }
 
 /* ===== HAMBURGER MENU ===== */
@@ -2779,8 +2782,8 @@ body.has-preview-banner { padding-top: 32px; }
    PRODUCT DESCRIPTION IN MODAL
    =========================== */
 .product-description {
-    font-size: 0.9rem;
-    color: #555;
+    font-size: 1rem;
+    color: #4a4a4a;
     line-height: 1.75;
     font-style: italic;
     padding: 0.8rem 1rem;
@@ -2818,7 +2821,7 @@ body.has-preview-banner { padding-top: 32px; }
     font-weight: 600;
 }
 .prod-tab-content {
-    font-size: 0.84rem;
+    font-size: 0.92rem;
     line-height: 1.7;
     color: #444;
     margin-bottom: 0.5rem;
@@ -2828,7 +2831,7 @@ body.has-preview-banner { padding-top: 32px; }
 .size-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.83rem;
+    font-size: 0.9rem;
 }
 .size-table th, .size-table td {
     padding: 6px 10px;
@@ -2851,21 +2854,21 @@ body.has-preview-banner { padding-top: 32px; }
     font-size: 0.72rem;
     font-weight: 700;
     letter-spacing: 1.5px;
-    color: #888;
+    color: #6f6a60;
     text-transform: uppercase;
     margin-bottom: 4px;
 }
 
 /* ===== CART SHIPPING NOTE ===== */
 .cart-shipping-note {
-    font-size: 11px;
-    color: #999;
+    font-size: 13px;
+    color: #6f6a60;   /* was 11px #999 — ~2.8:1 on white */
     text-align: center;
     margin-bottom: 0.75rem;
     line-height: 1.5;
 }
 .cart-shipping-note span {
-    color: #bbb;
+    color: #857e71;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -3101,9 +3104,12 @@ body.has-preview-banner { padding-top: 32px; }
 /* ═══════════════════════════════════════════════════════════
    FAQ SECTION
    ═══════════════════════════════════════════════════════════ */
+/* 40+ readability (2026-07-11): FAQ is the longest reading section on the page —
+   moved from near-black #1a1a1a to the brand light-gray so long Hebrew answers
+   aren't light-grey-on-black. Footer stays charcoal to anchor the page. */
 .faq-section {
     padding: 5rem 2rem;
-    background: #1a1a1a;
+    background: var(--light-gray);
 }
 
 .faq-container {
@@ -3119,13 +3125,13 @@ body.has-preview-banner { padding-top: 32px; }
 .faq-header h2 {
     font-family: var(--font-display);
     font-size: 2.2rem;
-    color: var(--cream);
+    color: var(--charcoal);
     letter-spacing: 1px;
     margin-bottom: 0.6rem;
 }
 
 .faq-header p {
-    color: #888;
+    color: #6b6558;
     font-size: 1rem;
 }
 
@@ -3136,11 +3142,11 @@ body.has-preview-banner { padding-top: 32px; }
 }
 
 .faq-item {
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    border-bottom: 1px solid rgba(44,44,44,0.14);
 }
 
 .faq-item:first-child {
-    border-top: 1px solid rgba(255,255,255,0.08);
+    border-top: 1px solid rgba(44,44,44,0.14);
 }
 
 .faq-question {
@@ -3164,9 +3170,9 @@ body.has-preview-banner { padding-top: 32px; }
 }
 
 .faq-q-text {
-    font-size: 1rem;
+    font-size: 1.05rem;
     font-weight: 600;
-    color: #c8a96e;
+    color: var(--honey-deep);   /* deep honey — readable on the light bg */
     line-height: 1.4;
     flex: 1;
 }
@@ -3179,8 +3185,8 @@ body.has-preview-banner { padding-top: 32px; }
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    border: 1.5px solid #444;
-    color: #888;
+    border: 1.5px solid #b3ab9c;
+    color: var(--gray-500);
     font-size: 1.2rem;
     font-weight: 300;
     transition: transform 0.25s ease, border-color 0.25s ease, color 0.25s ease;
@@ -3189,8 +3195,8 @@ body.has-preview-banner { padding-top: 32px; }
 
 .faq-question[aria-expanded="true"] .faq-icon {
     transform: rotate(45deg);
-    border-color: #c8a96e;
-    color: #c8a96e;
+    border-color: var(--honey-deep);
+    color: var(--honey-deep);
 }
 
 .faq-answer {
@@ -3207,21 +3213,23 @@ body.has-preview-banner { padding-top: 32px; }
 }
 
 .faq-answer.open {
-    max-height: 200px;
+    /* 400px (was 200) — long HE answers at the larger font were at clipping
+       risk on mobile; transition stays smooth enough at this range */
+    max-height: 400px;
     padding-bottom: 1.25rem;
 }
 
 .faq-answer p {
-    font-size: 0.92rem;
-    color: #aaa;
+    font-size: 1rem;
+    color: var(--gray-700);
     line-height: 1.75;
 }
 
 @media (max-width: 600px) {
     .faq-section { padding: 3.5rem 1.2rem; }
     .faq-header h2 { font-size: 1.7rem; }
-    .faq-q-text { font-size: 0.92rem; }
-    .faq-answer p { font-size: 0.88rem; }
+    .faq-q-text { font-size: 0.98rem; }
+    .faq-answer p { font-size: 0.95rem; }
 }
 
 /* Wave 3 (2026-06-12): SVG line icons replace emoji in trust bar + nav (consistent cross-OS, brand-colorable) */
