@@ -20,6 +20,8 @@ All API files use query param routing internally:
 /api/cron/morning-report?type=feedback-apology     → 6 personal HE reminder drafts to non-responders.
 /api/cron/morning-report?type=cart-recovery        → Abandoned-cart reminder emails (2026-07-03). Reads `abandoned_carts` (captured by js/engage.js §4 at cart-modal save / #checkout-email blur / newsletter signup) + imports `fbia_pending` backlog rows with buyer_email. One email per cart, 3-48h window, dedupe per email (newest wins), skip-if-purchased. Restore link /?cart={restore_token} → `get_abandoned_cart` RPC (returns cart_items only, never the email). Also runs INLINE from ?type=auto-run and ?type=content (4 windows/day) — no new cron slot.
 
+/api/cron/morning-report?type=notify-oren          → POST {subject, html}. Generic agent→oren email via live Resend key. Recipient HARDCODED to dubis.brand@gmail.com. Auth: same gate (CRON/AGENT secret or x-pg-trigger-token). Added 2026-07-11 (local RESEND/AGENT keys are stale post-rotation).
+
 /api/create-gelato-order                           → POST. Fulfillment. Client SDK already captured PayPal in onApprove; this POST takes {cartItems, shippingAddress, paypalOrderId, buyerEmail} → Gelato order(s). Does NOT itself capture PayPal.
 /api/create-gelato-order?action=stock-probe        → POST. Pre-flight quote-API probe. Returns mode ∈ {quote_ok, quote_split_required, quote_partial_oos, all_blocked_pre_gelato}.
 /api/create-gelato-order?action=create-draft       → POST. Admin-only. Creates FREE Gelato draft order for QA (no real charge).
