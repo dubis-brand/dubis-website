@@ -368,6 +368,32 @@ module.exports = async function handler(req, res) {
         }
     }
 
+    // ── Route: ?type=notify-oren — generic "agent → oren" email primitive (2026-07-11) ──
+    // POST {subject, html}. Recipient is HARDCODED to the business inbox (no spam vector).
+    // Behind the same auth gate as everything here (CRON_SECRET / AGENT_SECRET / pg-trigger).
+    // Exists because local sessions hold a stale RESEND key; the live key lives in Vercel env.
+    if (urlType === 'notify-oren') {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+        const { subject, html } = req.body || {};
+        if (!subject || !html) return res.status(400).json({ error: 'subject and html required' });
+        try {
+            const resp = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    from: 'DUBIS הסוכן <orders@dubis.net>',
+                    to: ['dubis.brand@gmail.com'],
+                    subject: String(subject).slice(0, 200),
+                    html: String(html).slice(0, 200000),
+                }),
+            });
+            const data = await resp.json();
+            return res.status(resp.ok ? 200 : 502).json({ success: resp.ok, id: data.id, error: resp.ok ? null : data });
+        } catch (e) {
+            return res.status(500).json({ error: 'send failed', detail: e.message });
+        }
+    }
+
     // ── Route: ?type=paypal-env-check — diagnose missing/wrong PAYPAL env (no value leak) ──
     if (urlType === 'paypal-env-check') {
         const envPaypal = {
