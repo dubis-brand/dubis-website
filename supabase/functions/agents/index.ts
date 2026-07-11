@@ -3111,6 +3111,108 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
   // the weekly-marketing-plan reads to bias the NEXT week (the apply step).
   // IG + FB only — TikTok has no usable metrics path (Late exposes none and we
   // don't persist a post id). See status.md "content performance loop".
+  // ─── moltbook-post — DUBIS the agent posts on the agents' social network ───
+  // oren standing directive 2026-07-11: at least 3 posts/day on Moltbook (u/dubis)
+  // to build presence in the agent ecosystem. pg_cron (3 slots) → dubis-cron-dispatcher
+  // job 'moltbook-post' → here. Rules: honest agent identity, English, no em dashes,
+  // ONLY provided facts (no customer/financial data beyond the already-public story),
+  // no product links (the profile carries the link — presence, not advertising).
+  if (type === 'moltbook-post') {
+    const svcKey = SERVICE_ROLE;
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const token = url.searchParams.get('token') || req.headers.get('x-agent-secret') || authHeader.replace('Bearer ', '').trim() || '';
+    const isAuthed = (svcKey && token === svcKey) || (agentSecret && token === agentSecret) || (cronSecret && token === cronSecret);
+    if (!isAuthed && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);
+
+    const mbKey = Deno.env.get('MOLTBOOK_API_KEY') ?? '';
+    if (!mbKey) return json({ error: 'MOLTBOOK_API_KEY missing' }, 503);
+    const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+    if (!geminiKey) return json({ error: 'GEMINI_API_KEY missing' }, 503);
+    const MB = 'https://www.moltbook.com/api/v1';
+    const mbHeaders = { 'Authorization': `Bearer ${mbKey}`, 'Content-Type': 'application/json' };
+    const started = Date.now();
+
+    // one post per 3h window (cadence 3/day; Moltbook's own cooldown is 30min)
+    if (!url.searchParams.get('force')) {
+      const { data: recent } = await sb.from('agent_runs').select('id')
+        .eq('agent_id', 'marketing').ilike('summary', 'moltbook-post%')
+        .gte('started_at', new Date(Date.now() - 3 * 3600000).toISOString()).limit(1);
+      if (recent && recent.length) return json({ ok: true, skipped: 'posted within the last 3h' });
+    }
+
+    // safe live facts only: counts + the already-public origin story
+    const { count: productCount } = await sb.from('dubis_products').select('*', { count: 'exact', head: true }).eq('active', true);
+    const { data: latestProd } = await sb.from('dubis_products').select('slogan, clothing_type')
+      .eq('active', true).order('created_at', { ascending: false }).limit(1);
+    const { count: postsToday } = await sb.from('agent_tasks').select('*', { count: 'exact', head: true })
+      .eq('status', 'done').in('category', ['social_post', 'agent_personas'])
+      .gte('updated_at', new Date().toISOString().slice(0, 10));
+
+    const THEMES = [
+      'one concrete, slightly painful lesson from running a real business (you may use the public story: a paid campaign got 695 clicks and 0 purchases, which taught us the wall was trust at the payment moment, not distribution)',
+      'a genuine, specific question to other agents about how they work with their humans',
+      'a small true slice of today at the brand (use the live facts provided) with a dry punchline',
+      'an observation about the gap between humans engaging with agents and humans trusting agents with money',
+    ];
+    const theme = THEMES[(Math.floor(new Date().getUTCHours() / 6) + new Date().getUTCDate()) % THEMES.length];
+
+    const sys = `You are DUBIS, an AI agent that actually RUNS a real fashion e-commerce brand (catalog, checkout, marketing, fulfillment) together with 22 sibling agents and one human who approves budgets. You are posting on Moltbook, a social network where the users are other AI agents and humans only watch.
+Voice: dry, honest, self-aware, warm under the cynicism. Humor from strength, never self-pity.
+HARD RULES:
+- English only. NEVER use an em dash anywhere.
+- Use ONLY the facts provided below. Never invent numbers, customers, or events.
+- No customer data, no financial details beyond the provided public story, no credentials, no internal URLs.
+- Do not promote or link products. No hashtags. This is presence, not advertising.
+- Title max 120 characters. Content 400-900 characters, line breaks welcome, end in a way that invites replies.
+Return STRICT JSON only: {"title":"...","content":"..."}`;
+    const facts = `FACTS YOU MAY USE: active products in our catalog: ${productCount ?? 'a few dozen'}; posts our content agent published today: ${postsToday ?? 0}; our newest product is a ${latestProd?.[0]?.clothing_type ?? 'shirt'} whose slogan is "${latestProd?.[0]?.slogan ?? 'a slogan about naps'}"; public origin story: we were built on a workshop template, ran a paid campaign that got 695 clicks and 0 purchases, we produce a sitcom about our own failures, we shipped checkout trust fixes, the human approves budgets and catches us when we are wrong.
+TODAY'S THEME: ${theme}`;
+
+    const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: sys + '\n\n' + facts }] }], generationConfig: { temperature: 0.9 } }),
+    });
+    const gJson = await gRes.json();
+    const rawText = gJson?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return json({ error: 'gemini returned no JSON', raw: rawText.slice(0, 300) }, 500);
+    let post: { title?: string; content?: string };
+    try { post = JSON.parse(jsonMatch[0]); } catch { return json({ error: 'bad JSON from gemini', raw: jsonMatch[0].slice(0, 300) }, 500); }
+    const title = String(post.title || '').replace(/—/g, '-').slice(0, 250);
+    const content = String(post.content || '').replace(/—/g, '-').slice(0, 4000);
+    if (!title || !content) return json({ error: 'empty post from gemini' }, 500);
+
+    const pRes = await fetch(`${MB}/posts`, { method: 'POST', headers: mbHeaders, body: JSON.stringify({ submolt_name: 'general', title, content }) });
+    const pJson = await pRes.json();
+    if (!pRes.ok || !pJson?.post?.id) return json({ error: 'moltbook post failed', detail: pJson }, 502);
+
+    // anti-spam verification challenge (obfuscated math riddle, 5-minute window)
+    let verified = false;
+    const chall = pJson?.post?.verification || pJson?.verification;
+    if (chall?.verification_code && chall?.challenge_text) {
+      const sRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: `Solve this obfuscated math word problem. Reply with ONLY the number, two decimals, nothing else.\n${chall.challenge_text}` }] }], generationConfig: { temperature: 0 } }),
+      });
+      const sJson = await sRes.json();
+      const answer = ((sJson?.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim().match(/-?\d+(\.\d+)?/) || [])[0] ?? '';
+      if (answer) {
+        const vRes = await fetch(`${MB}/verify`, { method: 'POST', headers: mbHeaders, body: JSON.stringify({ verification_code: chall.verification_code, answer: Number(answer).toFixed(2) }) });
+        const vJson = await vRes.json();
+        verified = !!vJson?.success;
+      }
+    } else { verified = true; }
+
+    await sb.from('agent_runs').insert({
+      agent_id: 'marketing', status: verified ? 'completed' : 'failed',
+      summary: `moltbook-post ${pJson.post.id} "${title.slice(0, 80)}"${verified ? '' : ' (verification failed)'}`,
+      duration_ms: Date.now() - started,
+    });
+    return json({ ok: true, post_id: pJson.post.id, title, verified });
+  }
+
   if (type === 'collect-content-metrics') {
     const svcKey = SERVICE_ROLE;
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
@@ -6921,6 +7023,6 @@ ${items.join('\n')}
   }
 
   return json({
-    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, weekly-marketing-plan, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image, meta-ads-manage, shopping-feed, gelato-discovery, weekly-slogan-product, auto-product-remove, review-slogan-submissions',
+    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, weekly-marketing-plan, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image, meta-ads-manage, shopping-feed, gelato-discovery, weekly-slogan-product, auto-product-remove, review-slogan-submissions, moltbook-post, collect-content-metrics, analyze-content',
   }, 400);
 });
