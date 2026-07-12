@@ -3389,13 +3389,37 @@ TODAY'S THEME: ${theme}`;
     const diagText = diagnosis === 'reach_unavailable'
       ? `מצב מעורבות-בלבד: ${totalEng} לייקים+תגובות סה"כ, אך אין נתוני חשיפה — ה-token חסר הרשאת instagram_manage_insights. שדרוג ה-token יפתח reach ואבחון הפצה-מול-קריאייטיב.`
       : diagnosis === 'distribution'
-      ? `החסם הוא הפצה — חשיפה ממוצעת ${Math.round(avgReach)} בלבד. צריך טקטיקת חשיפה (שיתופים/האשטגים/שעות), לא לשנות קופי.`
+      ? `החשיפה נמוכה (ממוצע ${Math.round(avgReach)}) — שווה טקטיקת חשיפה חינמית (שעות/שיתופים/פורמטים). אבל הקיר האסטרטגי שהוכח הוא ההצעה והאמון בקופה (695 קליקים בתשלום → 0 רכישות, הכרעת 08.07) — שם המיקוד, לא בקופי.`
       : diagnosis === 'creative'
       ? `החשיפה סבירה (${Math.round(avgReach)}) אבל שיעור המעורבות נמוך (${(avgRate * 100).toFixed(1)}%) — זה הקריאייטיב.`
       : `חשיפה ${Math.round(avgReach)} · מעורבות ${(avgRate * 100).toFixed(1)}% — תקין יחסית.`;
     const topMetric = reachAvailable ? `${(fmtSorted[0]?.avg_rate * 100).toFixed(1)}% מעורבות` : `${fmtSorted[0]?.avg_eng.toFixed(1)} מעורבות/פוסט`;
     const clicksText = ` כניסות אמיתיות לאתר: ${clicks.total_sessions ?? 0} (${clicks.product_sessions ?? 0} לעמודי מוצר${clickedProducts.length ? `, מוביל #${clickedProducts[0]}` : ''}).`;
-    const summary = `${N} פוסטים נבדקו (${windowDays} ימים)${smallN ? ' — מדגם קטן, קריאה כיוונית בלבד' : ''}. ${diagText}` + (fmtSorted.length ? ` פורמט מוביל: ${fmtSorted[0]?.key} (${topMetric}).` : '') + clicksText;
+    // Δ vs the previous learning — the weekly read must lead with what CHANGED,
+    // not repeat the same numbers (oren 2026-07-12: "אותם מספרים כל הזמן").
+    // material_change=false lets the boss report fold an unchanged read into
+    // the routine digest instead of re-rendering the identical card.
+    let deltaText = '';
+    let materialChange = true;
+    try {
+      const { data: prevL } = await sb.from('content_learnings').select('directives').order('created_at', { ascending: false }).limit(1);
+      const pd = ((prevL || [])[0] as Record<string, unknown> | undefined)?.directives as Record<string, unknown> | undefined;
+      if (pd) {
+        const prevEng = Number(pd.total_eng ?? NaN);
+        const prevSessions = Number(pd.site_sessions ?? NaN);
+        const prevDiag = String(pd.diagnosis ?? '');
+        const engDelta = Number.isFinite(prevEng) ? totalEng - prevEng : null;
+        const sesDelta = Number.isFinite(prevSessions) ? (clicks.total_sessions ?? 0) - prevSessions : null;
+        deltaText = ` מול הקריאה הקודמת: מעורבות ${engDelta === null ? '?' : (engDelta >= 0 ? '+' : '') + engDelta} · כניסות-אתר ${sesDelta === null ? '?' : (sesDelta >= 0 ? '+' : '') + sesDelta}.`;
+        materialChange = prevDiag !== diagnosis
+          || (engDelta !== null && Math.abs(engDelta) >= Math.max(3, Math.abs(prevEng) * 0.25))
+          || (sesDelta !== null && Math.abs(sesDelta) >= Math.max(3, Math.abs(prevSessions) * 0.25));
+        if (!materialChange) deltaText += ' אין שינוי מהותי מהשבוע שעבר.';
+      }
+    } catch (_) { /* first learning — everything is new */ }
+    directives.total_eng = totalEng;
+    directives.material_change = materialChange;
+    const summary = `${N} פוסטים נבדקו (${windowDays} ימים)${smallN ? ' — מדגם קטן, קריאה כיוונית בלבד' : ''}. ${diagText}` + (fmtSorted.length ? ` פורמט מוביל: ${fmtSorted[0]?.key} (${topMetric}).` : '') + clicksText + deltaText;
     const { data: learning, error: lErr } = await sb.from('content_learnings').insert({ window_days: windowDays, sample_size: N, summary, directives, top_posts: topPosts, bottom_posts: bottomPosts }).select('id').single();
     if (lErr) return json({ error: 'learning insert failed', detail: lErr.message }, 500);
     await sb.from('agent_runs').insert({ agent_id: 'marketing', status: 'completed', summary: `[content-analysis] ${N} posts · diagnosis=${directives.diagnosis} · avgReach=${Math.round(avgReach)} · avgRate=${(avgRate * 100).toFixed(1)}%`, side_effects: { learning_id: learning?.id, sample_size: N, directives } }).then(() => {}).catch(() => {});

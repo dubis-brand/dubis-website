@@ -454,7 +454,11 @@ async function opinionContent(sb: SB, igPosts7d: number): Promise<Opinion | null
   if (igPosts7d < 5) return { agent:'content', agent_he:'יוצר התוכן', observation:`רק ${igPosts7d} פוסטים IG ב-7 ימים. ${published} מתויגים ב-DB.`, recommendation:'לבדוק אם ה-cron רץ ואם שלבי publish מצליחים', priority:'P1', theme:'content-cadence' };
   return null;
 }
-async function opinionMarketing(meta: Record<string, unknown>, realOrders: unknown[]): Promise<Opinion | null> {
+async function opinionMarketing(meta: Record<string, unknown>, realOrders: unknown[], campaignActive: boolean): Promise<Opinion | null> {
+  // No active campaign → 7d Meta reads are post-mortem, not a daily finding
+  // (2026-07-12: the ended summer campaign kept generating "check conversion
+  // event" every day). The weekly retro covers the closed-campaign lesson.
+  if (!campaignActive) return null;
   if (!meta.ok) {
     const err = String(meta.fetch_error || 'unknown');
     return { agent:'marketing', agent_he:'מנהל השיווק', observation:`לא הצליח למשוך נתוני Meta: ${err.slice(0,140)}`, recommendation:'לוודא ש-INSTAGRAM_ACCESS_TOKEN פעיל ו-Marketing API tier=Full Access', priority:'P1', theme:'meta-token' };
@@ -475,8 +479,11 @@ async function opinionProduct(sb: SB): Promise<Opinion | null> {
   const { data: postsThisWeek } = await sb.from('agent_tasks').select('content_data').eq('agent_id','content').gte('created_at', since);
   const productIdsPosted = new Set((postsThisWeek || []).map(t => String((t.content_data as Record<string,unknown>)?.product_id || '')).filter(Boolean));
   const notPosted = Math.max(0, total - productIdsPosted.size);
-  if (notPosted <= 3) return null;
-  return { agent:'product', agent_he:'מנהל המוצרים', observation:`${total} מוצרים פעילים, ${productIdsPosted.size} קיבלו פוסט השבוע, ${notPosted} לא.`, recommendation:'לתקן rotation ב-auto-content', priority: notPosted > 8 ? 'P1' : 'P2', theme:'catalog-coverage' };
+  // 3-4 uncovered products out of ~20 is normal weekly rotation, not a finding
+  // (2026-07-12 — this nagged oren daily). Flag only a real coverage hole, and
+  // point at the actual mechanism (the weekly plan; auto-content is retired).
+  if (notPosted <= 8) return null;
+  return { agent:'product', agent_he:'מנהל המוצרים', observation:`${total} מוצרים פעילים, ${productIdsPosted.size} קיבלו פוסט השבוע, ${notPosted} לא.`, recommendation:'לשבץ את המוצרים החסרים בתוכנית השבועית הבאה', priority:'P1', theme:'catalog-coverage' };
 }
 async function opinionSupply(sb: SB, ticketsOpened: number): Promise<Opinion | null> {
   // Only REAL customer orders — Hila/oren/test orders must never trigger a "stuck pending" flag.
@@ -708,7 +715,12 @@ async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
       }
     }
     let gate: KillSwitchRead['gate'] = 'none'; let gateLine = '';
-    if (purchases > 0) {
+    // 2026-07-12 (oren: "כבר כמה ימים שהקמפיין לא עובד — למה לרשום את זה"):
+    // an ENDED/paused campaign never produces a gate scream. One calm closing
+    // line; the lesson lives on the board, not as a daily repeated "decision".
+    if (!active) {
+      gateLine = `הקמפיין הסתיים${endDate ? ` ב-${endDate}` : ''} — סה"כ ${sym}${spend.toFixed(0)} · ${Number(c.clicks || 0)} קליקים · ${purchases} רכישות. אין הוצאה פעילה.`;
+    } else if (purchases > 0) {
       gate = 'cac';
       gateLine = `יש רכישות — CAC נוכחי ${sym}${(spend / purchases).toFixed(0)}`;
     } else if (spend >= 300 && carts === 0) {
@@ -798,7 +810,9 @@ function buildTopDecisionsHtml(
   contentPerf: Awaited<ReturnType<typeof fetchContentPerf>>,
 ): string {
   const paidLine = ks
-    ? `🔥 <b>מנוע בתשלום:</b> ${ks.active ? '' : '(מושהה) '}${ks.sym}${ks.spend.toFixed(0)}${ks.budgetTotal ? `/${ks.sym}${ks.budgetTotal.toFixed(0)}` : ''} · ${ks.clicks} קליקים · ${ks.carts} סלים · ${ks.purchases} רכישות → ${esc(ks.gateLine)}`
+    ? (ks.active
+        ? `🔥 <b>מנוע בתשלום:</b> ${ks.sym}${ks.spend.toFixed(0)}${ks.budgetTotal ? `/${ks.sym}${ks.budgetTotal.toFixed(0)}` : ''} · ${ks.clicks} קליקים · ${ks.carts} סלים · ${ks.purchases} רכישות → ${esc(ks.gateLine)}`
+        : `🔥 <b>מנוע בתשלום:</b> אין קמפיין פעיל. ${esc(ks.gateLine)}`)
     : '🔥 <b>מנוע בתשלום:</b> אין קמפיין רשום';
   const learnBit = contentPerf?.learning ? esc(contentPerf.learning.summary.slice(0, 130)) : 'אין למידה טרייה';
   const organicLine = contentPerf
@@ -2068,8 +2082,8 @@ async function fetchContentPerf(sb: SB): Promise<{
   const reachAvailable = posts.filter(p => p.reach > 0).length >= 2;
   const totalEng = posts.reduce((s, p) => s + p.eng, 0);
   const { data: lrnRows } = await sb.from('content_learnings')
-    .select('summary, sample_size, created_at').order('created_at', { ascending: false }).limit(1);
-  const learning = (lrnRows && lrnRows[0]) ? (lrnRows[0] as { summary: string; sample_size: number; created_at: string }) : null;
+    .select('summary, sample_size, created_at, directives').order('created_at', { ascending: false }).limit(1);
+  const learning = (lrnRows && lrnRows[0]) ? (lrnRows[0] as { summary: string; sample_size: number; created_at: string; directives?: Record<string, unknown> }) : null;
   // Real site clicks from social (our own funnel data — no Meta token). 30-day window for signal.
   const { data: clickData } = await sb.rpc('content_social_clicks', { days_back: 30 });
   const c = (clickData as { total_sessions?: number; product_sessions?: number; by_product?: Array<{ pid: number; sessions: number }> }) || {};
@@ -2475,9 +2489,11 @@ function buildManagementBoardHtml(b: Awaited<ReturnType<typeof fetchManagementBo
   const H24 = Date.now() - 24 * 3600000;
   const isFresh = (r: MgmtDecisionRow) => r.status === 'pending' || (r.decided_at ? new Date(r.decided_at).getTime() > H24 : new Date(r.created_at).getTime() > H24) || Boolean(r.outcome && r.outcome.includes(new Date().toISOString().slice(0, 10)));
   const taskOf = (r: MgmtDecisionRow) => r.created_task_id ? (b.taskStatus[r.created_task_id] || 'backlog') : 'backlog';
+  // An outcome on the row = CLOSED, regardless of the task's final status
+  // (done/rejected/superseded) — closed items must never linger in "עדיין פתוח".
   const isOpen = (r: MgmtDecisionRow) =>
     (r.decision === 'escalate' && !r.outcome) ||
-    (r.decision === 'adopt' && taskOf(r) !== 'done');
+    (r.decision === 'adopt' && !r.outcome && taskOf(r) !== 'done');
   const badge = (r: MgmtDecisionRow) => {
     if (r.status === 'pending') return '<span style="background:#fdf3d7;color:#8a6d00;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">⏳ ממתין להכרעה</span>';
     if (r.decision === 'adopt') {
@@ -2820,7 +2836,9 @@ Deno.serve(async (req: Request) => {
     if (exact) {
       // Funnel reports on activeCampaignId → its own row decides paused/active.
       campaignStatusKnown = true;
-      campaignPaused = String(exact.status || '').toLowerCase() === 'paused';
+      // Anything that isn't 'active' (paused/completed/draft) = not running.
+      // The old ===  'paused' check let an ENDED campaign read as live (07-12).
+      campaignPaused = String(exact.status || '').toLowerCase() !== 'active';
       dbCampSpend = Number(exact.spend_to_date || 0);
       dbCampClicks = Number(exact.clicks || 0);
     } else if (rows.length > 0) {
@@ -2938,7 +2956,7 @@ Deno.serve(async (req: Request) => {
   // ---- Opinions ----
   const rawOps = await Promise.all([
     opinionContent(sb, igPosts7d),
-    opinionMarketing(metaData, realOrders || []),
+    opinionMarketing(metaData, realOrders || [], !campaignPaused),
     opinionProduct(sb),
     opinionSupply(sb, ticketing.ticketsOpened),
     opinionDesign(sb, dupes),
@@ -2955,7 +2973,17 @@ Deno.serve(async (req: Request) => {
 
   // ---- A.5: split into recurring vs main ----
   const { recurring: recurringFromHistory, nonRecurring } = await fetchRecurringIssues(sb, allOpinions);
-  const opinions = nonRecurring;
+  // 2026-07-12 (oren: "ממצאים חדשים חוזר כל יום"): "חדשים" = FIRST appearance
+  // only. A finding shown yesterday is not news — it either graduates to the
+  // recurring card (3+ days, demands a decision) or stays silent until it
+  // changes. Yesterday's themes come from the last report's assessment.
+  let prevThemes = new Set<string>();
+  try {
+    const { data: lastRep } = await sb.from('boss_reports').select('assessment').order('created_at', { ascending: false }).limit(1);
+    const arr = ((lastRep?.[0] as Record<string, unknown> | undefined)?.assessment as Record<string, unknown> | undefined)?.opinion_themes;
+    if (Array.isArray(arr)) prevThemes = new Set(arr.map(String));
+  } catch (_) { /* first run — everything is new */ }
+  const opinions = nonRecurring.filter(o => !prevThemes.has(`${o.theme}|${o.agent_he}`));
   const synth = synthesize(opinions);
 
   // 2026-05-26 — Auto-handle two recurring-task themes per oren's directive:
@@ -3459,7 +3487,10 @@ Deno.serve(async (req: Request) => {
 
   const routine: string[] = [];
   const freshProducts = newProductsWeek.filter(p => p.days_ago === 0);
-  const learningFresh = !!(contentPerf?.learning && hoursSince(contentPerf.learning.created_at) < 26);
+  // Fresh AND materially changed — an unchanged weekly read repeating the same
+  // numbers is routine, not news (oren 2026-07-12: "אותם מספרים כל הזמן").
+  const learningFresh = !!(contentPerf?.learning && hoursSince(contentPerf.learning.created_at) < 26
+    && ((contentPerf.learning as { directives?: Record<string, unknown> }).directives?.material_change !== false));
   const snapsOrders = dailySnaps.reduce((s, d) => s + (d.orders_today || 0), 0);
   const moltbookHasNews = !!(moltbook && (moltbook.posts.length > 0 || moltbook.neo));
   const autoNews = !!(autoProductHealth && (autoProductHealth.techFailures.length > 0 || freshProducts.some(p => p.auto))) || !!(reelGaps && reelGaps.missing.length > 0);
@@ -3669,6 +3700,8 @@ ${replyNote}
     resend_id:resendId, resend_error:resendError, full_html:html,
     assessment:{
       mode, version:'v13-letter', summary_he,
+      // Yesterday-vs-today dedup source for "ממצאים חדשים" (2026-07-12).
+      opinion_themes: allOpinions.map(o => `${o.theme}|${o.agent_he}`),
       agent_counts: agentCounts,
       failed_agents: failedAgents.map(f => ({ id: f.id, reason: f.reason, hours: Math.round(f.hours) })),
       real_revenue: totalRevenue, internal_revenue: internalRevenue,
