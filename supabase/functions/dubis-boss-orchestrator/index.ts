@@ -2626,9 +2626,9 @@ function buildSparkline(snaps: Array<{ snapshot_date: string; revenue_usd: numbe
 // project-wide Supabase secret, so it's readable here too). All parsing is
 // defensive — a missing key / API change degrades to links-only, never throws.
 // =============================================================
-type MoltbookPost = { id: string; title: string; url: string; upvotes: number | null; comments: number | null; topComments: Array<{ author: string; snippet: string }> };
+type MoltbookPost = { id: string; title: string; url: string; upvotes: number | null; comments: number | null; topComments: Array<{ author: string; snippet: string }>; content: string; summaryHe: string | null };
 async function fetchMoltbookChannel(sb: SB, windowHours: number): Promise<{
-  posts: MoltbookPost[]; karma: number | null; neo: string | null; totalUp: number; totalCom: number;
+  posts: MoltbookPost[]; karma: number | null; neo: string | null; totalUp: number; totalCom: number; insightsHe: string | null;
 } | null> {
   try {
     const since = new Date(Date.now() - windowHours * 3600000).toISOString();
@@ -2641,7 +2641,7 @@ async function fetchMoltbookChannel(sb: SB, windowHours: number): Promise<{
     for (const r of (runs || []) as Array<Record<string, unknown>>) {
       const m = String(r.summary || '').match(/^moltbook-post\s+(\S+)\s+"([\s\S]*?)"/);
       if (!m) continue;
-      posts.push({ id: m[1], title: m[2], url: `https://www.moltbook.com/post/${m[1]}`, upvotes: null, comments: null, topComments: [] });
+      posts.push({ id: m[1], title: m[2], url: `https://www.moltbook.com/post/${m[1]}`, upvotes: null, comments: null, topComments: [], content: '', summaryHe: null });
     }
     const mbKey = Deno.env.get('MOLTBOOK_API_KEY') ?? '';
     let karma: number | null = null;
@@ -2659,14 +2659,26 @@ async function fetchMoltbookChannel(sb: SB, windowHours: number): Promise<{
           const post = (j.post as Record<string, unknown>) || j;
           const up = Number(post.upvotes ?? post.score ?? post.karma ?? NaN);
           p.upvotes = Number.isNaN(up) ? null : up;
+          p.content = String(post.content ?? post.body ?? '').replace(/\s+/g, ' ').slice(0, 900);
           const rawComments = (post.comments ?? j.comments) as unknown;
           const cc = Number(post.comment_count ?? post.comments_count ?? (Array.isArray(rawComments) ? (rawComments as unknown[]).length : NaN));
           p.comments = Number.isNaN(cc) ? null : cc;
-          if (Array.isArray(rawComments)) {
-            p.topComments = (rawComments as Array<Record<string, unknown>>).slice(0, 2).map(c => ({
-              author: String(((c.author as Record<string, unknown>)?.name) ?? c.author_name ?? c.agent_name ?? 'agent'),
-              snippet: String(c.content ?? c.body ?? '').replace(/\s+/g, ' ').slice(0, 90),
-            })).filter(c => c.snippet);
+          const mapComments = (arr: Array<Record<string, unknown>>) => arr.slice(0, 5).map(c => ({
+            author: String(((c.author as Record<string, unknown>)?.name) ?? c.author_name ?? c.agent_name ?? 'agent'),
+            snippet: String(c.content ?? c.body ?? '').replace(/\s+/g, ' ').slice(0, 220),
+          })).filter(c => c.snippet);
+          if (Array.isArray(rawComments)) p.topComments = mapComments(rawComments as Array<Record<string, unknown>>);
+          // The post payload often carries only a COUNT — fetch the actual
+          // comments so the Hebrew insights read real replies, not just numbers.
+          if (!p.topComments.length && (p.comments || 0) > 0) {
+            try {
+              const cr = await fetch(`https://www.moltbook.com/api/v1/posts/${p.id}/comments`, { headers: mbHeaders, signal: AbortSignal.timeout(8000) });
+              if (cr.ok) {
+                const cj = await cr.json() as Record<string, unknown>;
+                const list = (cj.comments ?? cj.data ?? cj) as unknown;
+                if (Array.isArray(list)) p.topComments = mapComments(list as Array<Record<string, unknown>>);
+              }
+            } catch (_) { /* counts-only fallback */ }
           }
         } catch (_) { /* leave nulls */ }
       }));
@@ -2683,8 +2695,46 @@ async function fetchMoltbookChannel(sb: SB, windowHours: number): Promise<{
     } catch (_) { /* no neo signal */ }
     const totalUp = posts.reduce((s, p) => s + (p.upvotes || 0), 0);
     const totalCom = posts.reduce((s, p) => s + (p.comments || 0), 0);
-    if (!posts.length && !neo) return { posts: [], karma, neo: null, totalUp: 0, totalCom: 0 };
-    return { posts, karma, neo, totalUp, totalCom };
+    if (!posts.length && !neo) return { posts: [], karma, neo: null, totalUp: 0, totalCom: 0, insightsHe: null };
+
+    // 🇮🇱 Hebrew digest (oren 2026-07-12: "תן תקציר בעברית מה הסוכן שלנו כתב
+    // ומה התובנות מהתגובות"). ONE Gemini call summarizes what we posted (per
+    // post, one Hebrew sentence) + what the other agents' comments reveal.
+    // Best-effort: on any failure the section falls back to titles + snippets.
+    let insightsHe: string | null = null;
+    const geminiKey = Deno.env.get('GEMINI_API_KEY') || '';
+    if (geminiKey && posts.length) {
+      try {
+        const postBlock = posts.slice(0, 6).map((p, i) =>
+          `${i + 1}. [${p.id}] כותרת: ${p.title}\n   תוכן: ${p.content || '(לא נשלף)'}\n   הצבעות: ${p.upvotes ?? '?'} · תגובות של סוכנים אחרים: ${p.topComments.length ? p.topComments.map(c => `"${c.author}: ${c.snippet}"`).join(' | ') : 'אין'}`
+        ).join('\n');
+        const prompt = `אתה העוזר של אורן, בעל מותג האופנה DUBIS. הסוכן שלנו (DUBIS) מפרסם פוסטים באנגלית ב-Moltbook — רשת חברתית של סוכני AI. לפניך הפוסטים האחרונים + תגובות של סוכנים אחרים. החזר אך ורק JSON תקין:
+{"posts":[{"id":"<id>","summary":"משפט אחד בעברית פשוטה — מה הפוסט שלנו אומר"}],"insights":"2-3 משפטים בעברית: מה עולה מהתגובות של הסוכנים האחרים — הטון, שאלות שחוזרות, והזדמנות אחת קונקרטית אם יש. אם אין תגובות — התייחס רק להיענות (הצבעות)."}
+בלי מקפים ארוכים, בלי ז'רגון.
+
+הפוסטים:
+${postBlock}`;
+        const gr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, responseMimeType: 'application/json' } }),
+          signal: AbortSignal.timeout(20000),
+        });
+        if (gr.ok) {
+          const gj = await gr.json() as Record<string, unknown>;
+          const text = (((((gj.candidates as unknown[]) || [])[0] as Record<string, unknown>)?.content as Record<string, unknown>)?.parts as Array<Record<string, unknown>>)?.[0]?.text as string || '';
+          const mjs = text.match(/\{[\s\S]*\}/);
+          if (mjs) {
+            const obj = JSON.parse(mjs[0]) as { posts?: Array<{ id?: string; summary?: string }>; insights?: string };
+            for (const s of (obj.posts || [])) {
+              const target = posts.find(p => p.id === String(s.id || ''));
+              if (target && s.summary) target.summaryHe = String(s.summary).slice(0, 220);
+            }
+            insightsHe = obj.insights ? String(obj.insights).slice(0, 600) : null;
+          }
+        }
+      } catch (_) { /* fall back to raw titles */ }
+    }
+    return { posts, karma, neo, totalUp, totalCom, insightsHe };
   } catch (_) { return null; }
 }
 function buildMoltbookHtml(mb: Awaited<ReturnType<typeof fetchMoltbookChannel>>, isWeekly: boolean): string {
@@ -2693,19 +2743,28 @@ function buildMoltbookHtml(mb: Awaited<ReturnType<typeof fetchMoltbookChannel>>,
   const head = `<p dir="rtl" style="font-size:12.5px;color:#555;margin:0 0 8px;text-align:right">הסוכן שלנו (<a href="https://www.moltbook.com/u/dubis" style="color:#c8a96e;font-weight:600;text-decoration:none">u/dubis</a>) פרסם <b>${mb.posts.length}</b> פוסטים ${winHe}${mb.karma != null ? ` · קארמה כוללת: <b>${mb.karma}</b>` : ''}${(mb.totalUp || mb.totalCom) ? ` · ${mb.totalUp} הצבעות · ${mb.totalCom} תגובות` : ''}</p>`;
   const postRows = mb.posts.slice(0, 6).map(p => {
     const stats = (p.upvotes != null || p.comments != null)
-      ? `<span style="color:#999;font-size:11px"> · ▲ ${p.upvotes ?? '?'} · 💬 ${p.comments ?? '?'}</span>` : '';
+      ? `<span style="color:#999;font-size:11px">▲ ${p.upvotes ?? '?'} · 💬 ${p.comments ?? '?'} · </span>` : '';
+    // Lead with the HEBREW summary of what our agent wrote (oren 2026-07-12);
+    // the English title drops to a small secondary line.
+    const mainLine = p.summaryHe
+      ? `<div style="color:#2c2c2c;line-height:1.55">🦞 ${esc(p.summaryHe)}</div><div dir="ltr" style="font-size:10.5px;color:#aaa;text-align:left;margin-top:1px">${esc(p.title.slice(0, 90))}</div>`
+      : `<div>🦞 <span dir="ltr" style="display:inline-block">${esc(p.title.slice(0, 90))}</span></div>`;
     const comments = p.topComments.length
-      ? p.topComments.map(c => `<div dir="ltr" style="font-size:11px;color:#777;padding:2px 8px;background:#fff;border-radius:4px;margin:2px 0;text-align:left">💬 <b>${esc(c.author)}</b>: ${esc(c.snippet)}</div>`).join('')
+      ? p.topComments.slice(0, 2).map(c => `<div dir="ltr" style="font-size:11px;color:#777;padding:2px 8px;background:#fff;border-radius:4px;margin:2px 0;text-align:left">💬 <b>${esc(c.author)}</b>: ${esc(c.snippet.slice(0, 110))}</div>`).join('')
       : '';
     return `<div dir="rtl" style="padding:7px 10px;background:#fafafa;margin:4px 0;border-radius:6px;text-align:right;font-size:12.5px">
-      🦞 <span dir="ltr" style="display:inline-block">${esc(p.title.slice(0, 90))}</span>${stats} · <a href="${esc(p.url)}" style="color:#c8a96e;font-weight:600;text-decoration:none">▶ לפוסט →</a>${comments}
+      ${mainLine}<div style="margin-top:3px;font-size:11.5px">${stats}<a href="${esc(p.url)}" style="color:#c8a96e;font-weight:600;text-decoration:none">▶ לפוסט →</a></div>${comments}
     </div>`;
   }).join('');
+  // 🧠 What the other agents' replies tell us — Hebrew, computed per window.
+  const insightsBlock = mb.insightsHe
+    ? `<div dir="rtl" style="margin-top:8px;padding:10px 14px;background:#2c2c2c;color:#fff;border-radius:6px;text-align:right;font-size:12.5px;line-height:1.7">🧠 <b style="color:#c8a96e">תובנות מהתגובות:</b> ${esc(mb.insightsHe)}</div>`
+    : '';
   const neoLine = mb.neo
     ? `<div dir="rtl" style="margin-top:8px;padding:8px 12px;background:#f3eee2;border-radius:6px;text-align:right;font-size:12.5px;color:#5a4a2f">🤖 <b>ניאו (agents&me):</b> מייל חדש בשרשור — "${esc(mb.neo)}" · התשובה מנוהלת דרך שולחן ההנהלה.</div>`
     : `<div dir="rtl" style="margin-top:8px;font-size:11.5px;color:#999;text-align:right">🤖 ניאו: אין מייל חדש בחלון הזה.</div>`;
   const empty = mb.posts.length === 0 ? '<p dir="rtl" style="font-size:12.5px;color:#888;text-align:right;margin:0">לא פורסם פוסט בחלון הזה — המכונה רצה 3 פעמים ביום (06:10/11:10/17:10 UTC).</p>' : '';
-  return head + postRows + empty + neoLine;
+  return head + postRows + empty + insightsBlock + neoLine;
 }
 
 // 📊 $1,000 plan — ONE line for the daily routine digest (oren 2026-07-12:
