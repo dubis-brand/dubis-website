@@ -1685,8 +1685,9 @@ async function fetchReelBankGaps(sb: SB): Promise<{ total: number; withReel: num
   const missing = ids.filter((_, i) => !checks[i]);
   return { total: ids.length, withReel: ids.length - missing.length, missing };
 }
-function buildReelBankGapsHtml(g: { total: number; withReel: number; missing: number[] } | null): string {
+function buildReelBankGapsHtml(g: { total: number; withReel: number; missing: number[] } | null, collapsed = false): string {
   if (!g || !g.total) return '';
+  if (collapsed) return `<p dir="rtl" style="font-size:13px;color:#c62828;font-weight:bold;text-align:right;margin:10px 0 0;background:#fdecea;border-radius:6px;padding:8px 10px">🔴 בנק הרילים קרס: ${g.withReel}/${g.total} מכוסים — הקבצים נעלמו מה-storage. טיקטוק/רילים מפרסמים מקישורים מתים עד שחזור. חסר: ${g.missing.map((n) => '#' + n).join(', ')}</p>`;
   if (!g.missing.length) return `<p dir="rtl" style="font-size:13px;color:#2e7d32;text-align:right;margin:10px 0 0">🎬 בנק הרילים מלא — ${g.withReel}/${g.total} מוצרים פעילים עם ריל.</p>`;
   return `<p dir="rtl" style="font-size:13px;color:#b26a00;text-align:right;margin:10px 0 0">🎬 בנק הרילים: ${g.withReel}/${g.total} מכוסים. <b>חסר ריל ל-${g.missing.length}:</b> ${g.missing.map((n) => '#' + n).join(', ')} — לייצר על-דרישה דרך ה-Higgsfield MCP (runbook).</p>`;
 }
@@ -3056,6 +3057,30 @@ Deno.serve(async (req: Request) => {
   ]);
   const managementBoard = await fetchManagementBoard(sb).catch(() => null);
 
+  // 🔴 Reel-bank collapse guard (2026-07-14): on 07-13 the whole _pilot bank was
+  // wiped from storage and the news-only letter folded 19/21→0/21 into a "quiet
+  // day" while TikTok kept publishing dead URLs. A big DROP vs the previous
+  // report is an incident, not a gap list — red alert + subject flag + P0
+  // decision, and it keeps screaming every day until coverage returns.
+  let prevReelWith: number | null = null;
+  try {
+    const { data: lastRepRb } = await sb.from('boss_reports').select('assessment').order('created_at', { ascending: false }).limit(1);
+    const rb = ((lastRepRb?.[0] as Record<string, unknown> | undefined)?.assessment as Record<string, unknown> | undefined)?.reel_bank as { withReel?: number } | undefined;
+    if (rb && typeof rb.withReel === 'number') prevReelWith = rb.withReel;
+  } catch (_) { /* no prior state — collapse still triggers on withReel===0 */ }
+  const reelBankCollapsed = !!(reelGaps && reelGaps.total > 0 && (
+    reelGaps.withReel === 0 ||
+    (prevReelWith !== null && prevReelWith >= 4 && reelGaps.withReel <= Math.floor(prevReelWith / 2))
+  ));
+  if (reelBankCollapsed && reelGaps) {
+    allOpinions.push({
+      agent: 'video', agent_he: 'וידאו',
+      observation: `בנק הרילים קרס: ${reelGaps.withReel}/${reelGaps.total} מוצרים מכוסים${prevReelWith !== null ? ` (בדוח הקודם: ${prevReelWith})` : ''} — הקבצים נעלמו מה-storage, וטיקטוק/רילים מפרסמים מקישורים מתים.`,
+      recommendation: 'לעצור פרסום רילים/טיקטוק עד שחזור, לשחזר את הבנק מהעותקים המקומיים (runbook: supabase-go storage cp) ולאתר מי מחק.',
+      priority: 'P0', theme: 'reel-bank-collapse',
+    });
+  }
+
   let action_items_json: Opinion[] = synth.topActions.slice(0, isWeekly ? 5 : 3);
   let createdTaskIds: string[] = [];
   let lastWeekCheck = { total: 0, done: 0, open: 0, details: [] as { rec: string; agent: string; status: string }[] };
@@ -3453,7 +3478,7 @@ Deno.serve(async (req: Request) => {
   const weeklyMktgHtml = buildWeeklyMarketingHtml(weeklyMktg);
   const personaHtml = buildPersonaSeriesHtml(personaData);
   const autoProductHealthHtml = buildAutoProductHealthHtml(autoProductHealth);
-  const reelBankGapsHtml = buildReelBankGapsHtml(reelGaps);
+  const reelBankGapsHtml = buildReelBankGapsHtml(reelGaps, reelBankCollapsed);
   const contentPerfHtml = buildContentPerfHtml(contentPerf);
   const moltbookHtml = buildMoltbookHtml(moltbook, isWeekly);
   // 🎯 3 decisions — COMPUTED (manager-contract 2026-07-08): kill-switch gates +
@@ -3676,6 +3701,7 @@ ${replyNote}
       const autoFixCount = autoFixes.filter(f => f.succeeded).length;
       // Subject carries only what's NON-ZERO — no noise counters (2026-07-12).
       const subjBits = [
+        reelBankCollapsed ? '🔴 בנק הרילים קרס' : '',
         opinions.length ? `${opinions.length} חדש` : '',
         autoFixCount ? `${autoFixCount} תוקן` : '',
         totalPending ? `${totalPending} לאישור` : '',
@@ -3702,6 +3728,8 @@ ${replyNote}
       mode, version:'v13-letter', summary_he,
       // Yesterday-vs-today dedup source for "ממצאים חדשים" (2026-07-12).
       opinion_themes: allOpinions.map(o => `${o.theme}|${o.agent_he}`),
+      // Reel-bank state for tomorrow's collapse-delta check (2026-07-14).
+      reel_bank: reelGaps ? { total: reelGaps.total, withReel: reelGaps.withReel, collapsed: reelBankCollapsed } : null,
       agent_counts: agentCounts,
       failed_agents: failedAgents.map(f => ({ id: f.id, reason: f.reason, hours: Math.round(f.hours) })),
       real_revenue: totalRevenue, internal_revenue: internalRevenue,
