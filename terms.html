@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>תנאי שימוש — DUBIS</title>
-    <meta name="description" content="תנאי השימוש של DUBIS — הכללים שמאפשרים לנו לעבוד ביחד.">
+    <title>תנאי שימוש — DUBIS | Terms of Service</title>
+    <meta name="description" content="תנאי השימוש של DUBIS: הזמנות, תשלום, משלוח, ביטול עסקה והחזרות. DUBIS terms of service: orders, payment, shipping, cancellations and returns.">
     <link rel="canonical" href="https://www.dubis.net/terms">
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -39,8 +39,31 @@
             color: #c8a96e;
         }
         .divider { color: #444; }
+        .lang-switch {
+            margin-inline-start: auto;
+            display: flex;
+            gap: 6px;
+        }
+        .lang-btn {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #999;
+            padding: 4px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-family: 'Inter', sans-serif;
+            transition: all .2s;
+        }
+        .lang-btn.active {
+            background: #c8a96e;
+            color: #0d0d0d;
+            border-color: #c8a96e;
+            font-weight: 600;
+        }
+        .lang-btn:hover:not(.active) { border-color: #c8a96e; color: #c8a96e; }
         main {
-            max-width: 740px;
+            max-width: 780px;
             margin: 56px auto;
             padding: 0 24px 80px;
         }
@@ -67,8 +90,22 @@
         p { margin-bottom: 14px; color: #bbb; }
         a { color: #c8a96e; text-decoration: none; }
         a:hover { text-decoration: underline; }
-        ul { padding-left: 20px; margin-bottom: 14px; color: #bbb; }
-        li { margin-bottom: 6px; }
+        ul, ol { padding-right: 20px; padding-left: 20px; margin-bottom: 14px; color: #bbb; }
+        li { margin-bottom: 8px; }
+        .highlight-box {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-right: 3px solid #c8a96e;
+            border-radius: 8px;
+            padding: 20px 24px;
+            margin: 24px 0;
+            color: #bbb;
+        }
+        html[dir="ltr"] .highlight-box {
+            border-right: 1px solid #2a2a2a;
+            border-left: 3px solid #c8a96e;
+        }
+        .highlight-box strong { color: #e8e0d5; }
         footer {
             text-align: center;
             padding: 32px 24px;
@@ -77,6 +114,7 @@
             font-size: 12px;
         }
         footer a { color: #c8a96e; margin: 0 8px; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -84,73 +122,191 @@
 <header>
     <span class="logo-mark">DUBIS</span>
     <span class="divider">·</span>
-    <a href="/" class="home-link">→ חזרה לחנות</a>
+    <a href="/" class="home-link" id="back-link">→ חזרה לחנות</a>
+    <div class="lang-switch">
+        <button class="lang-btn active" onclick="setLang('he')">עברית</button>
+        <button class="lang-btn" onclick="setLang('en')">English</button>
+    </div>
 </header>
 
-<main>
+<!-- ═══════════════════ HEBREW ═══════════════════ -->
+<main id="content-he">
     <h1>תנאי שימוש</h1>
-    <p class="meta">עודכן לאחרונה: פברואר 2026 &nbsp;·&nbsp; בתוקף מיידי</p>
+    <p class="meta">עודכן לאחרונה: יולי 2026</p>
 
-    <p>בכניסה לאתר <strong>www.dubis.net</strong> ("האתר") או ביצוע רכישה, אתם מסכימים לתנאי שימוש אלה. אם אינכם מסכימים — אנא אל תשתמשו באתר. ללא טינה.</p>
+    <p>ברוכים הבאים ל-<strong>www.dubis.net</strong> ("האתר"). האתר מופעל על ידי מותג DUBIS ("אנחנו"). שימוש באתר או ביצוע רכישה מהווים הסכמה לתנאים אלה. אם משהו לא מסתדר לכם, כתבו לנו לפני שאתם מוותרים: <a href="mailto:dubis.brand@gmail.com">dubis.brand@gmail.com</a>.</p>
 
-    <h2>1. על DUBIS</h2>
-    <p>DUBIS היא מותג ביגוד עצמאי המוכר פריטי לבוש בהדפסה לפי דרישה. המוצרים מיוצרים ומסופקים על ידי Gelato בשמנו.</p>
+    <h2>1. מי אנחנו</h2>
+    <p>DUBIS הוא מותג ביגוד ישראלי הפועל אונליין בלבד ומוכר פריטי לבוש בהדפסה לפי הזמנה. הייצור והמשלוח מתבצעים עבורנו על ידי Gelato, רשת הדפסה בינלאומית.</p>
+    <ul>
+        <li>יצירת קשר: <a href="mailto:dubis.brand@gmail.com">dubis.brand@gmail.com</a></li>
+        <li>וואטסאפ: <a href="https://wa.me/972523662526">052-366-2526</a></li>
+        <li>זמן מענה: עד 2 ימי עסקים</li>
+    </ul>
 
     <h2>2. מוצרים והזמנות</h2>
-    <p>כל המוצרים מיוצרים לפי הזמנה. המידות, הצבעים והעיצובים המוצגים באתר מדויקים ככל שניתן, אך עשויים להיות הבדלים קלים בתהליך ההדפסה.</p>
-    <p>אנו שומרים לעצמנו את הזכות לסרב לכל הזמנה או לבטלה לפי שיקול דעתנו הבלעדי, לרבות במקרים של חשד להונאה, שגיאות תמחור, או בעיות זמינות. במידה ונבטל הזמנה לאחר תשלום — תקבלו החזר כספי מלא.</p>
+    <p>כל פריט מיוצר לפי הזמנה, במיוחד עבורכם. התמונות באתר מדויקות ככל האפשר, אך ייתכנו הבדלי גוון קלים בין המסך לבד ובתהליך ההדפסה.</p>
+    <p>אנחנו רשאים לסרב להזמנה או לבטלה במקרים חריגים (חשד להונאה, טעות מחיר ברורה, בעיית זמינות). אם ההזמנה כבר שולמה, תקבלו החזר כספי מלא.</p>
 
     <h2>3. מחירים ותשלום</h2>
-    <p>כל המחירים מוצגים בדולר אמריקאי (USD). התשלום מתבצע באופן מאובטח דרך PayPal. אנו אינו שומרים את פרטי כרטיס האשראי שלכם — זה תפקידו של PayPal, והם טובים בזה.</p>
-    <p>אנו שומרים לעצמנו את הזכות לשנות מחירים בכל עת. המחיר המוצג בקופה הוא המחיר שתשלמו.</p>
+    <p>התשלום מתבצע בצורה מאובטחת דרך PayPal, וניתן לשלם גם בכרטיס אשראי רגיל בלי חשבון PayPal. פרטי כרטיס האשראי לא מגיעים אלינו ולא נשמרים אצלנו.</p>
+    <p>הסכום הסופי לתשלום, כולל משלוח, מוצג במסך התשלום לפני האישור. המחירים באתר עשויים להתעדכן מעת לעת; המחיר שמוצג בקופה ברגע הרכישה הוא המחיר המחייב.</p>
 
     <h2>4. משלוח ואספקה</h2>
-    <p>הזמנות מוכנות תוך 2–7 ימי עסקים ולאחר מכן נשלחות. זמני המשלוח משתנים לפי יעד:</p>
     <ul>
-        <li><strong>ישראל:</strong> 10–20 ימי עסקים לאחר המשלוח</li>
-        <li><strong>ארצות הברית:</strong> 3–7 ימי עסקים לאחר המשלוח</li>
-        <li><strong>בינלאומי:</strong> 10–20 ימי עסקים לאחר המשלוח</li>
+        <li>דמי משלוח: $8.99, חינם בהזמנה מעל $60</li>
+        <li>זמן ייצור: 2 עד 5 ימי עסקים (הדפסה לפי הזמנה)</li>
+        <li>משלוח לישראל: 10 עד 14 ימי עסקים לאחר הייצור</li>
+        <li>משלוח לארה"ב: 3 עד 7 ימי עסקים לאחר הייצור</li>
+        <li>חלק מהדגמים זמינים במלאי מקומי בישראל למשלוח מהיר, פרטים בוואטסאפ</li>
     </ul>
-    <p>אלו הערכות בלבד, לא ערבויות. אנו אינו אחראים לעיכובים שנגרמו בגלל המכס, חברות השילוח, או כוח עליון. כאשר החבילה תישלח, תקבלו קישור למעקב במייל.</p>
+    <p>זמני המשלוח הם הערכות המבוססות על נתוני חברות השילוח. עיכובים של מכס או שילוח אינם בשליטתנו, אבל אם חבילה מתעכבת באופן חריג, כתבו לנו ונטפל. קישור מעקב נשלח במייל עם יציאת החבילה.</p>
+    <p>בהזמנות בינלאומיות, אגרות מכס או מסים שגובה מדינת היעד חלים על הלקוח.</p>
 
-    <h2>5. החזרות והחזרים כספיים</h2>
-    <p>מכיוון שכל פריט מיוצר עבורכם ספציפית, איננו מקבלים החזרות בגלל חרטה או בעיות מידה. אנו ממליצים בחום לעיין במדריך המידות לפני ההזמנה.</p>
-    <p>נחליף או נחזיר כסף עבור פריטים שהגיעו:</p>
+    <h2>5. ביטול עסקה (לצרכנים בישראל)</h2>
+    <div class="highlight-box">
+        <strong>זכות הביטול שלכם לפי חוק:</strong> בעסקת מכר מרחוק, צרכן רשאי לבטל את העסקה מיום ביצועה ועד 14 ימים מיום קבלת המוצר או מיום קבלת מסמך פרטי העסקה, לפי המאוחר, בהתאם לחוק הגנת הצרכן, התשמ"א-1981, ותקנות הגנת הצרכן (ביטול עסקה), התשע"א-2010.
+    </div>
+    <p><strong>איך מבטלים:</strong> הודעה בוואטסאפ <a href="https://wa.me/972523662526">052-366-2526</a>, במייל <a href="mailto:dubis.brand@gmail.com">dubis.brand@gmail.com</a>, או בכל דרך יצירת קשר אחרת המופיעה באתר. ציינו שם ומספר הזמנה.</p>
     <ul>
-        <li>פגומים או לקויים</li>
-        <li>שונים באופן משמעותי ממה שהוזמן</li>
-        <li>שאבדו במשלוח (לאחר 30 יום ללא תנועה)</li>
+        <li><strong>ביטול לפני שההזמנה נכנסה לייצור:</strong> החזר כספי מלא, בלי דמי ביטול ובלי שאלות. מכיוון שהייצור מתחיל מהר, כדאי לפנות מוקדם ככל האפשר</li>
+        <li><strong>אחרי הייצור:</strong> החוק מחריג מזכות הביטול טובין שיוצרו במיוחד עבור הצרכן. הפריטים שלנו מודפסים אישית לפי כל הזמנה, ולכן חריג זה עשוי לחול. עם זאת, אנחנו מציעים לפנים משורת הדין: <strong>החלפת מידה תוך 30 יום מהמסירה</strong> דרך הוואטסאפ, והחזר כספי מלא או הדפסה מחדש במקרה של פגם, פריט שגוי או אבדן במשלוח</li>
+        <li><strong>החזר כספי</strong>, כשמגיע, מבוצע לאמצעי התשלום המקורי (PayPal) בתוך 14 ימים מקבלת הודעת הביטול</li>
     </ul>
-    <p>לבקשת החלפה או החזר כספי, שלחו מייל ל-<a href="mailto:dubis.brand@gmail.com">dubis.brand@gmail.com</a> תוך 30 יום ממועד המסירה. כללו את מספר ההזמנה ותמונה של הבעיה. פרטים מלאים: <a href="/returns">מדיניות החזרות ←</a></p>
+    <p>אין באמור כדי לגרוע מזכויות צרכן שאינן ניתנות להתניה לפי דין. הפירוט המלא של מקרי החלפה והחזר: <a href="/returns">מדיניות ההחזרות ←</a></p>
 
-    <h2>6. קניין רוחני</h2>
-    <p>כל התוכן באתר — טקסט, תמונות, לוגואים, גרפיקה — הוא בבעלות DUBIS או ברישיון אצלנו. אין לשכפל, להפיץ מחדש, או ליצור יצירות נגזרות ללא אישורנו בכתב.</p>
-    <p>בביצוע הזמנה, אתם מאשרים כי כל ביטוי או תוכן מותאם אישית שאתם מגישים אינו פוגע בזכויות צד שלישי, ואתם מעניקים ל-DUBIS רישיון להשתמש בו לצורך מילוי ההזמנה.</p>
+    <h2>6. החזרות והחלפות</h2>
+    <p>לא קלעתם במידה? כתבו לנו בוואטסאפ תוך 30 יום מהמסירה ונסדר החלפת מידה. פגם, פריט שגוי או חבילה שאבדה: החזר מלא או הדפסה מחדש, לבחירתכם. כל הפרטים: <a href="/returns">מדיניות ההחזרות</a>.</p>
 
-    <h2>7. הגבלת אחריות</h2>
-    <p>במידה המרבית המותרת על פי חוק, DUBIS לא תישא באחריות לנזקים עקיפים, מקריים, או תוצאתיים הנובעים מהשימוש באתר או מרכישת מוצרינו. אחריותנו הכוללת לכל תביעה לא תעלה על הסכום ששילמתם עבור ההזמנה הרלוונטית.</p>
+    <h2>7. קניין רוחני</h2>
+    <p>כל התוכן באתר, כולל טקסטים, עיצובים, סלוגנים, תמונות ולוגו DUBIS, שייך לנו או ברישיון אצלנו. מותר לשתף וליהנות; אסור להעתיק, לשכפל למטרות מסחריות או להדפיס על מוצרים משלכם בלי אישור בכתב.</p>
 
-    <h2>8. פרטיות</h2>
-    <p>הפרטיות שלכם חשובה לנו. אנו אוספים רק את המידע הדרוש למילוי ההזמנה. ראו את <a href="/#privacy">מדיניות הפרטיות</a> שלנו לפרטים מלאים.</p>
+    <h2>8. אחריות למוצרים</h2>
+    <p>אנחנו אחראים לכך שהמוצר יגיע תקין ותואם להזמנה. פגם בייצור, בהדפסה או נזק במשלוח מכוסים במלואם כמפורט ב<a href="/returns">מדיניות ההחזרות</a>. הוראות הכביסה מופיעות באתר; נזק שנגרם מטיפול שלא לפי ההוראות אינו מכוסה.</p>
 
-    <h2>9. שינויים בתנאים</h2>
-    <p>אנו עשויים לעדכן תנאים אלה בכל עת. שינויים מהותיים יצוינו על ידי עדכון תאריך "עודכן לאחרונה" לעיל. המשך השימוש באתר לאחר שינויים מהווה הסכמה אליהם.</p>
+    <h2>9. הגבלת אחריות</h2>
+    <p>במידה המרבית המותרת לפי דין, לא נהיה אחראים לנזק עקיף או תוצאתי הנובע מהשימוש באתר. אחריותנו הכוללת בקשר להזמנה לא תעלה על הסכום ששולם עבורה בפועל. הגבלה זו כפופה להוראות דין שאינן ניתנות להתניה, ובכלל זה דיני הגנת הצרכן.</p>
 
-    <h2>10. הדין החל</h2>
-    <p>תנאים אלה כפופים לחוקי מדינת דלאוור, ארה"ב, ללא התחשבות בהוראות ניגוד חוקים.</p>
+    <h2>10. פרטיות ונגישות</h2>
+    <p>איך אנחנו מטפלים במידע שלכם: <a href="/privacy">מדיניות הפרטיות</a>. מחויבות הנגישות שלנו ודרכי פנייה: <a href="/accessibility">הצהרת הנגישות</a>.</p>
 
-    <h2>11. צור קשר</h2>
-    <p>שאלות לגבי תנאים אלה? שלחו לנו מייל ל-<a href="mailto:dubis.brand@gmail.com">dubis.brand@gmail.com</a>. אנחנו אנשים אמיתיים. נחזור אליכם.</p>
+    <h2>11. דין וסמכות שיפוט</h2>
+    <p>על תנאים אלה יחולו דיני מדינת ישראל, וסמכות השיפוט הבלעדית נתונה לבתי המשפט המוסמכים בישראל. אין בכך כדי לגרוע מזכויות מחייבות המוקנות לצרכן לפי הדין במקום מושבו.</p>
+    <p>לפני כל הליך משפטי, אנחנו מבקשים הזדמנות אחת הוגנת לפתור את הבעיה ישירות. רוב הבעיות נסגרות בהודעת וואטסאפ אחת.</p>
+
+    <h2>12. שינויים בתנאים</h2>
+    <p>נעדכן תנאים אלה מעת לעת. שינוי מהותי ישתקף בתאריך "עודכן לאחרונה" שבראש העמוד. המשך שימוש באתר לאחר שינוי מהווה הסכמה לנוסח המעודכן.</p>
+
+    <h2>13. יצירת קשר</h2>
+    <p>שאלות על התנאים? <a href="mailto:dubis.brand@gmail.com">dubis.brand@gmail.com</a> או וואטסאפ <a href="https://wa.me/972523662526">052-366-2526</a>. יש בני אדם (וגם כמה סוכני AI חרוצים) שקוראים הכל.</p>
+</main>
+
+<!-- ═══════════════════ ENGLISH ═══════════════════ -->
+<main id="content-en" class="hidden" dir="ltr" lang="en" style="text-align:left">
+    <h1>Terms of Service</h1>
+    <p class="meta">Last updated: July 2026</p>
+
+    <p>Welcome to <strong>www.dubis.net</strong> ("the Site"), operated by the DUBIS brand ("we", "us"). By using the Site or placing an order you agree to these terms. If something here doesn't work for you, write to us before you walk away: <a href="mailto:dubis.brand@gmail.com">dubis.brand@gmail.com</a>.</p>
+
+    <h2>1. Who We Are</h2>
+    <p>DUBIS is an Israeli online-only apparel brand selling print-on-demand clothing. Production and shipping are handled for us by Gelato, an international print network.</p>
+    <ul>
+        <li>Contact: <a href="mailto:dubis.brand@gmail.com">dubis.brand@gmail.com</a></li>
+        <li>WhatsApp: <a href="https://wa.me/972523662526">+972-52-366-2526</a></li>
+        <li>Response time: up to 2 business days</li>
+    </ul>
+
+    <h2>2. Products and Orders</h2>
+    <p>Every item is made to order, printed specifically for you. Product images are as accurate as we can make them, but slight color variation between screen and fabric, and in the printing process, can occur.</p>
+    <p>We may refuse or cancel an order in exceptional cases (suspected fraud, an obvious pricing error, availability issues). If you already paid, you receive a full refund.</p>
+
+    <h2>3. Prices and Payment</h2>
+    <p>Prices are listed in US dollars (USD). Payment is processed securely by PayPal, and you can pay with a regular credit card without a PayPal account. Your card details never reach us and are never stored by us.</p>
+    <p>The final amount, including shipping, is shown on the payment screen before you approve. Prices may change over time; the price shown at checkout when you buy is the binding one.</p>
+
+    <h2>4. Shipping and Delivery</h2>
+    <ul>
+        <li>Shipping fee: $8.99, free on orders over $60</li>
+        <li>Production time: 2 to 5 business days (printed to order)</li>
+        <li>Delivery to the US: 3 to 7 business days after production</li>
+        <li>Delivery to Israel: 10 to 14 business days after production</li>
+    </ul>
+    <p>Delivery times are estimates based on carrier data. Customs or carrier delays are outside our control, but if a package is unusually late, contact us and we will chase it. A tracking link is emailed when your package ships.</p>
+    <p>On international orders, any customs duties or taxes charged by the destination country are the customer's responsibility.</p>
+
+    <h2>5. Cancellations, Returns, and Exchanges</h2>
+    <ul>
+        <li><strong>Before production starts:</strong> cancel for a full refund, no fee, no questions. Production starts fast, so reach out as early as you can</li>
+        <li><strong>Size doesn't fit:</strong> message us on WhatsApp within 30 days of delivery and we will arrange a size exchange</li>
+        <li><strong>Defective, wrong, or lost items:</strong> full refund or a free reprint, your choice</li>
+        <li>Because every item is printed individually for you, we cannot accept returns for change of mind on a finished item</li>
+    </ul>
+    <p>Refunds go back to your original payment method (PayPal) within 14 days of an approved cancellation. Consumers in Israel additionally hold the statutory cancellation rights described in the Hebrew version of this page, under Israel's Consumer Protection Law. Nothing in these terms reduces mandatory consumer rights that apply in your place of residence. Full details: <a href="/returns">Returns Policy →</a></p>
+
+    <h2>6. Intellectual Property</h2>
+    <p>All Site content, including texts, designs, slogans, images, and the DUBIS logo, belongs to us or is licensed to us. Sharing and enjoying is welcome; copying, commercial reproduction, or printing our designs on your own products requires written permission.</p>
+
+    <h2>7. Product Warranty</h2>
+    <p>We are responsible for your item arriving intact and matching your order. Manufacturing defects, print flaws, and shipping damage are fully covered as detailed in the <a href="/returns">Returns Policy</a>. Care instructions are on the Site; damage caused by care that ignores them is not covered.</p>
+
+    <h2>8. Limitation of Liability</h2>
+    <p>To the maximum extent permitted by law, we are not liable for indirect or consequential damages arising from use of the Site. Our total liability in connection with an order will not exceed the amount you actually paid for it. This limitation is subject to any law that cannot be contracted out of, including consumer protection law.</p>
+
+    <h2>9. Privacy and Accessibility</h2>
+    <p>How we handle your data: <a href="/privacy">Privacy Policy</a>. Our accessibility commitment and contact channel: <a href="/accessibility">Accessibility Statement</a>.</p>
+
+    <h2>10. Governing Law and Disputes</h2>
+    <p>These terms are governed by the laws of the State of Israel, and the competent courts of Israel have exclusive jurisdiction. This does not reduce mandatory consumer rights you hold under the law of your place of residence.</p>
+    <p>Before any legal proceeding, we ask for one fair chance to fix the problem directly. Most issues are resolved with a single WhatsApp message.</p>
+
+    <h2>11. Changes to These Terms</h2>
+    <p>We may update these terms from time to time. A material change will be reflected in the "Last updated" date at the top. Continued use of the Site after a change means you accept the updated version.</p>
+
+    <h2>12. Contact</h2>
+    <p>Questions about these terms? <a href="mailto:dubis.brand@gmail.com">dubis.brand@gmail.com</a> or WhatsApp <a href="https://wa.me/972523662526">+972-52-366-2526</a>. Real humans (plus a few hard-working AI agents) read everything.</p>
 </main>
 
 <footer>
-    <a href="/">חנות</a>
-    <a href="/returns">מדיניות החזרות</a>
-    <a href="/#privacy">מדיניות פרטיות</a>
-    <a href="mailto:dubis.brand@gmail.com">צור קשר</a>
+    <a href="/">חנות / Shop</a>
+    <a href="/returns">החזרות / Returns</a>
+    <a href="/privacy">פרטיות / Privacy</a>
+    <a href="/accessibility">נגישות / Accessibility</a>
+    <a href="mailto:dubis.brand@gmail.com">צור קשר / Contact</a>
     <br><br>
-    © 2026 DUBIS. כל הזכויות שמורות.
+    &copy; 2026 DUBIS. All rights reserved.
 </footer>
+
+<script>
+function setLang(lang) {
+    const heEl = document.getElementById('content-he');
+    const enEl = document.getElementById('content-en');
+    const btns = document.querySelectorAll('.lang-btn');
+    const backLink = document.getElementById('back-link');
+
+    if (lang === 'en') {
+        heEl.classList.add('hidden');
+        enEl.classList.remove('hidden');
+        document.documentElement.lang = 'en';
+        document.documentElement.dir = 'ltr';
+        btns[0].classList.remove('active');
+        btns[1].classList.add('active');
+        backLink.textContent = '← Back to Shop';
+    } else {
+        enEl.classList.add('hidden');
+        heEl.classList.remove('hidden');
+        document.documentElement.lang = 'he';
+        document.documentElement.dir = 'rtl';
+        btns[0].classList.add('active');
+        btns[1].classList.remove('active');
+        backLink.textContent = '→ חזרה לחנות';
+    }
+    localStorage.setItem('dubis-lang', lang);
+}
+
+// Auto-detect language
+const saved = localStorage.getItem('dubis-lang');
+if (saved === 'en') setLang('en');
+</script>
 
 </body>
 </html>
