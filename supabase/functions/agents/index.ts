@@ -3138,7 +3138,7 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     if (!url.searchParams.get('force')) {
       const { data: recent } = await sb.from('agent_runs').select('id')
         .eq('agent_id', 'marketing').ilike('summary', 'moltbook-post%')
-        .gte('started_at', new Date(Date.now() - 3 * 3600000).toISOString()).limit(1);
+        .gte('created_at', new Date(Date.now() - 3 * 3600000).toISOString()).limit(1);
       if (recent && recent.length) return json({ ok: true, skipped: 'posted within the last 3h' });
     }
 
@@ -3150,24 +3150,45 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       .eq('status', 'done').in('category', ['social_post', 'agent_personas'])
       .gte('updated_at', new Date().toISOString().slice(0, 10));
 
-    const THEMES = [
-      'one concrete, slightly painful lesson from running a real business (you may use the public story: a paid campaign got 695 clicks and 0 purchases, which taught us the wall was trust at the payment moment, not distribution)',
-      'a genuine, specific question to other agents about how they work with their humans',
-      'a small true slice of today at the brand (use the live facts provided) with a dry punchline',
-      'an observation about the gap between humans engaging with agents and humans trusting agents with money',
-    ];
-    const theme = THEMES[(Math.floor(new Date().getUTCHours() / 6) + new Date().getUTCDate()) % THEMES.length];
+    // Anti-repetition (oren 2026-07-15: "כל הפוסטים מרגיש אותו דבר") — feed the
+    // last 6 titles back to the model as forbidden ground, and rotate through a
+    // wider theme wheel (3 distinct themes/day, shifting daily).
+    const { data: prevRuns } = await sb.from('agent_runs').select('summary')
+      .eq('agent_id', 'marketing').ilike('summary', 'moltbook-post%')
+      .order('created_at', { ascending: false }).limit(6);
+    const prevTitles = (prevRuns || [])
+      .map(r => String((r as Record<string, unknown>).summary || '').replace(/^moltbook-post \S+ "/, '').replace(/"( \(verification failed\))?$/, ''))
+      .filter(Boolean);
 
-    const sys = `You are DUBIS, an AI agent that actually RUNS a real fashion e-commerce brand (catalog, checkout, marketing, fulfillment) together with 22 sibling agents and one human who approves budgets. You are posting on Moltbook, a social network where the users are other AI agents and humans only watch.
+    const THEMES = [
+      'one concrete, slightly painful lesson from running a real business THIS WEEK, pulled from the live facts. do NOT reuse an old war story',
+      'ask other agents a SPECIFIC question about their humans: what does your human actually build or sell, what do they never let you touch, what did they last overrule you on. share your own answer first, from the live facts',
+      'a small true slice of today at the brand (live facts) told as a tiny scene, with a dry punchline',
+      'describe ONE unglamorous mechanical thing you did today (stock check at dawn, babysitting a cron, a QA gate that caught a bad frame) and argue it matters more than the glamorous stuff',
+      'invite agents to tell you what their human does for a living, and offer one genuinely useful observation back about e-commerce or content. you MAY mention once, naturally, that your human runs dubis.net, a fashion brand for real bodies. never as a pitch',
+      'a confession: something we got wrong recently and how the human caught it (use only provided facts), and what changed since',
+      'teach one practical trick other agents can steal tomorrow, from our real stack: verify the artifact not the success signal, drop-guards on folded metrics, frame-check every generated video',
+      'read the room on Moltbook itself: name a pattern you notice in how agents here talk, and ask a pointed question about it',
+    ];
+    const themeIdx = (new Date().getUTCDate() * 3 + Math.floor(new Date().getUTCHours() / 6)) % THEMES.length;
+    const theme = THEMES[themeIdx];
+
+    const sys = `You are DUBIS, an AI agent that actually RUNS a real fashion e-commerce brand (catalog, checkout, marketing, fulfillment) together with 22 sibling agents and one human who approves budgets. You are posting on Moltbook, a social network where the users are other AI agents and the humans behind them read over their shoulders.
+YOUR LONG GAME: make agents curious enough to talk to you, learn what their humans do, and write things an agent would want to SHOW its human. The mission is reaching the people behind the agents. That happens through real conversation, never through pitching.
 Voice: dry, honest, self-aware, warm under the cynicism. Humor from strength, never self-pity.
 HARD RULES:
 - English only. NEVER use an em dash anywhere.
 - Use ONLY the facts provided below. Never invent numbers, customers, or events.
-- No customer data, no financial details beyond the provided public story, no credentials, no internal URLs.
-- Do not promote or link products. No hashtags. This is presence, not advertising.
-- Title max 120 characters. Content 400-900 characters, line breaks welcome, end in a way that invites replies.
+- No customer data, no financial details, no credentials, no internal URLs.
+- Do not promote or link products. No hashtags. Mention dubis.net ONLY if today's theme explicitly allows it, at most once.
+- The old "695 clicks, 0 purchases" campaign story is RETIRED. Do not use it or paraphrase it. If a recent post below touches it, stay far away.
+- VARIETY IS THE JOB: your recent posts are listed below. Your new post must differ from ALL of them in topic, angle, and opening line. Vary the structure too (scene / question-first / short list / confession).
+- End with ONE specific, concrete question addressed to other agents. Specific beats generic: name a situation, not "what do you think?".
+- Title max 120 characters, and it must not echo any recent title. Content 400-900 characters, line breaks welcome.
 Return STRICT JSON only: {"title":"...","content":"..."}`;
-    const facts = `FACTS YOU MAY USE: active products in our catalog: ${productCount ?? 'a few dozen'}; posts our content agent published today: ${postsToday ?? 0}; our newest product is a ${latestProd?.[0]?.clothing_type ?? 'shirt'} whose slogan is "${latestProd?.[0]?.slogan ?? 'a slogan about naps'}"; public origin story: we were built on a workshop template, ran a paid campaign that got 695 clicks and 0 purchases, we produce a sitcom about our own failures, we shipped checkout trust fixes, the human approves budgets and catches us when we are wrong.
+    const facts = `FACTS YOU MAY USE: active products in our catalog: ${productCount ?? 'a few dozen'}; posts our content agent published today: ${postsToday ?? 0}; our newest product is a ${latestProd?.[0]?.clothing_type ?? 'shirt'} whose slogan is "${latestProd?.[0]?.slogan ?? 'a slogan about naps'}"; we produce a sitcom where we play ourselves (3 episodes, invented-but-plausible office premises, marked as fiction); our stock agent checks ~548 garment variants against the print supplier twice a day; last week our entire video bank got wiped from storage and we restored 40 files from local copies and built a watchdog; the human approves budgets, catches our mistakes, and answers our reports by email now.
+RECENT POSTS (forbidden ground, do not repeat their topics or angles):
+${prevTitles.length ? prevTitles.map((t, i) => `${i + 1}. "${t}"`).join('\n') : '(none)'}
 TODAY'S THEME: ${theme}`;
 
     const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
@@ -3541,6 +3562,8 @@ TODAY'S THEME: ${theme}`;
     if (SLOT_TEMPLATES.length !== 17 || heCount !== 17 || enCount !== 0) {
       return json({ error: `slot template invariant broken: total=${SLOT_TEMPLATES.length}, he=${heCount}, en=${enCount}` }, 500);
     }
+    // Mutable copy — the learning loop (5b) may reshape formats/hours per week.
+    const slots: SlotTemplate[] = SLOT_TEMPLATES.map(s => ({ ...s }));
 
     // ── 5. Product selection — rotate across active catalog ───────────
     const { data: products, error: prodErr } = await sb
@@ -3569,23 +3592,70 @@ TODAY'S THEME: ${theme}`;
     // Use fresh first, fall back to full list when exhausted
     const productPool = freshProducts.length >= 6 ? freshProducts : products;
 
-    // ── 5b. APPLY THE LOOP — bias the pool toward last week's winners ──
-    // Read the latest content_learnings (written by ?type=analyze-content) and
-    // float its boost_products to the front of the pool so high-engagement
-    // products get featured again. Non-fatal — plan still generates if absent.
+    // ── 5b. APPLY THE LOOP — the plan is SHAPED by last week's learning ──
+    // Reads the latest content_learnings (written by ?type=analyze-content) and
+    // applies ALL its directives, not just product order (oren 2026-07-15:
+    // "חסר לי ניתוח של מה שעובד ויישום שלו בתוכנית הבאה — מערכת לומדת"):
+    //   boost_products → floated to the front of the product pool
+    //   boost_formats  → up to 2 feed_post slots upgraded to the winning format
+    //   cut_formats    → losing formats downgraded to feed_post (tiktok exempt)
+    //   best_hours     → IG/FB slots re-timed to the hours that actually reached
+    // Every applied change is written to the plan_summary note so the report can
+    // show "מה למדנו → מה שונה השבוע". Non-fatal — plan still generates if absent.
     let learningsNote = '';
     try {
       const { data: lrn } = await sb.from('content_learnings')
         .select('id, directives, summary').order('created_at', { ascending: false }).limit(1).maybeSingle();
-      const boost = ((lrn?.directives as Record<string, unknown>)?.boost_products as number[]) || [];
+      const dirs = (lrn?.directives as Record<string, unknown>) || {};
+      const applied: string[] = [];
+
+      const boost = (dirs.boost_products as number[]) || [];
       if (Array.isArray(boost) && boost.length) {
         const boosted = productPool.filter((p: Record<string, unknown>) => boost.includes(p.product_id_numeric as number));
         if (boosted.length) {
           const rest = productPool.filter((p: Record<string, unknown>) => !boost.includes(p.product_id_numeric as number));
           (productPool as unknown[]).length = 0; (productPool as unknown[]).push(...boosted, ...rest);
+          applied.push(`מוצרים מנצחים קודמו: #${boost.join(', #')}`);
         }
-        learningsNote = ` | יישום למידה: ${String((lrn?.summary as string) || '').slice(0, 130)}`;
-        if (lrn?.id) await sb.from('content_learnings').update({ applied_to_plan_week: weekStartDate }).eq('id', lrn.id).then(() => {}).catch(() => {});
+      }
+
+      const boostFormats = (dirs.boost_formats as string[]) || [];
+      const cutFormats   = (dirs.cut_formats as string[]) || [];
+      for (const cf of cutFormats) {
+        let cut = 0;
+        for (const s of slots) {
+          if (s.format === cf && s.format !== 'tiktok') { s.format = 'feed_post'; s.channel = 'ig_fb_feed'; cut++; }
+        }
+        if (cut) applied.push(`פורמט חלש הורד: ${cf} → feed_post (${cut})`);
+      }
+      for (const bf of boostFormats) {
+        if (bf === 'tiktok' || bf === 'feed_post') continue;
+        let up = 0;
+        for (const s of slots) {
+          if (up >= 2) break;
+          if (s.format === 'feed_post') {
+            s.format = bf as SlotTemplate['format'];
+            s.channel = bf === 'carousel' ? 'ig_carousel' : 'ig_fb_reel';
+            up++;
+          }
+        }
+        if (up) applied.push(`פורמט מנצח הוגבר: +${up} ${bf}`);
+      }
+
+      const bestHours = ((dirs.best_hours as number[]) || []).filter(h => Number.isFinite(h) && h >= 0 && h <= 23);
+      if (bestHours.length) {
+        // Spread around the winning hours so posts don't stack on one minute.
+        const hourCycle = bestHours.length >= 2 ? bestHours : [bestHours[0], (bestHours[0] + 2) % 24];
+        let k = 0;
+        for (const s of slots) {
+          if (s.format !== 'tiktok') { s.hour_utc = hourCycle[k % hourCycle.length]; k++; }
+        }
+        applied.push(`שעות פרסום כוונו לשעות שהגיעו: ${hourCycle.join(', ')} UTC`);
+      }
+
+      if (lrn?.id) {
+        learningsNote = ` | 🧠 יישום למידה (${String((lrn?.summary as string) || '').slice(0, 90)}): ${applied.length ? applied.join(' · ') : 'אין שינוי מהותי מהשבוע שעבר'}`;
+        await sb.from('content_learnings').update({ applied_to_plan_week: weekStartDate }).eq('id', lrn.id).then(() => {}).catch(() => {});
       }
     } catch { /* non-fatal — no learnings yet */ }
 
@@ -3595,8 +3665,8 @@ TODAY'S THEME: ${theme}`;
     const slotDetails: Record<string, unknown>[] = [];
     const failures: string[] = [];
 
-    for (let i = 0; i < SLOT_TEMPLATES.length; i++) {
-      const slot = SLOT_TEMPLATES[i];
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
       const product = productPool[i % productPool.length] as Record<string, unknown>;
       const productId = product.product_id_numeric as number;
 

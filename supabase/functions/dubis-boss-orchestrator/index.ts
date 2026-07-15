@@ -3056,6 +3056,7 @@ Deno.serve(async (req: Request) => {
     fetchReelBankGaps(sb).catch(() => null),
   ]);
   const managementBoard = await fetchManagementBoard(sb).catch(() => null);
+  const stockRun = await latestRun(sb, 'gelato_stock', 2).catch(() => null);
 
   // 🔴 Reel-bank collapse guard (2026-07-14): on 07-13 the whole _pilot bank was
   // wiped from storage and the news-only letter folded 19/21→0/21 into a "quiet
@@ -3063,11 +3064,17 @@ Deno.serve(async (req: Request) => {
   // report is an incident, not a gap list — red alert + subject flag + P0
   // decision, and it keeps screaming every day until coverage returns.
   let prevReelWith: number | null = null;
+  let prevReelMissing: number[] | null = null;
   try {
     const { data: lastRepRb } = await sb.from('boss_reports').select('assessment').order('created_at', { ascending: false }).limit(1);
-    const rb = ((lastRepRb?.[0] as Record<string, unknown> | undefined)?.assessment as Record<string, unknown> | undefined)?.reel_bank as { withReel?: number } | undefined;
+    const rb = ((lastRepRb?.[0] as Record<string, unknown> | undefined)?.assessment as Record<string, unknown> | undefined)?.reel_bank as { withReel?: number; missing?: number[] } | undefined;
     if (rb && typeof rb.withReel === 'number') prevReelWith = rb.withReel;
+    if (rb && Array.isArray(rb.missing)) prevReelMissing = rb.missing.map(Number);
   } catch (_) { /* no prior state — collapse still triggers on withReel===0 */ }
+  // A gap list is NEWS on first appearance / change only (oren 2026-07-15:
+  // "אני רואה כל פעם אותה הודעה") — an unchanged list folds to routine.
+  const reelGapsChanged = !!(reelGaps && reelGaps.missing.length > 0 &&
+    (prevReelMissing === null || JSON.stringify([...reelGaps.missing].sort((a, b) => a - b)) !== JSON.stringify([...prevReelMissing].sort((a, b) => a - b))));
   const reelBankCollapsed = !!(reelGaps && reelGaps.total > 0 && (
     reelGaps.withReel === 0 ||
     (prevReelWith !== null && prevReelWith >= 4 && reelGaps.withReel <= Math.floor(prevReelWith / 2))
@@ -3518,7 +3525,9 @@ Deno.serve(async (req: Request) => {
     && ((contentPerf.learning as { directives?: Record<string, unknown> }).directives?.material_change !== false));
   const snapsOrders = dailySnaps.reduce((s, d) => s + (d.orders_today || 0), 0);
   const moltbookHasNews = !!(moltbook && (moltbook.posts.length > 0 || moltbook.neo));
-  const autoNews = !!(autoProductHealth && (autoProductHealth.techFailures.length > 0 || freshProducts.some(p => p.auto))) || !!(reelGaps && reelGaps.missing.length > 0);
+  // Reel gaps render as news only when the missing set CHANGED (first appearance
+  // or delta); an unchanged gap list folds to routine (oren 2026-07-15).
+  const autoNews = !!(autoProductHealth && (autoProductHealth.techFailures.length > 0 || freshProducts.some(p => p.auto))) || reelGapsChanged || reelBankCollapsed;
 
   let sections = '';
   if (!isWeekly) {
@@ -3531,7 +3540,7 @@ Deno.serve(async (req: Request) => {
     if (freshProducts.length > 0) sections += sectionCard('✨ מוצר חדש היום', newProductsHtml);
     else {
       const last = newProductsWeek[0];
-      routine.push(`מוצר חדש: אין היום${last ? ` (האחרון: #${last.numeric} לפני ${last.days_ago} ימים)` : ''} · הבא — שלישי בבוקר, אוטומטי`);
+      routine.push(`מוצר חדש: אין היום${last ? ` (האחרון: #${last.numeric} לפני ${last.days_ago} ימים)` : ''} · הבא — שלישי/חמישי בבוקר, אוטומטי`);
     }
     if (totalPending > 0) sections += sectionCard(`✍️ מחכה לאישורך (${totalPending})`, pendingHtml);
     else routine.push('אין מוצרים שמחכים לאישור שלך');
@@ -3557,7 +3566,21 @@ Deno.serve(async (req: Request) => {
     if (snapsOrders > 0) sections += sectionCard('📈 הכנסות 14 הימים האחרונים', trendHtml);
     else routine.push('הכנסות: אפס הזמנות ב-14 הימים האחרונים');
     if (autoNews) sections += sectionCard('🤖 קו המוצרים האוטומטי — דורש מבט', autoProductHealthHtml + reelBankGapsHtml);
-    else routine.push('קו המוצרים האוטומטי: תקין · המוצר הבא — שלישי בבוקר');
+    else routine.push(`קו המוצרים האוטומטי: תקין${reelGaps && reelGaps.missing.length ? ` · רילים בהפקה למוצרים #${reelGaps.missing.join(', #')}` : ''} · מוצר חדש — שלישי וחמישי בבוקר`);
+    // Gelato stock agent — oren 2026-07-15: "חסר לי בדיווח הסוכן שבודק כל יום מלאי".
+    // OOS/restock transitions = news; a clean sweep = an explicit routine line.
+    {
+      const stockSummary = String(stockRun?.summary || '');
+      const oosM = stockSummary.match(/(\d+)\s*עברו לאזל/); const backM = stockSummary.match(/(\d+)\s*חזרו למלאי/);
+      const oosN = oosM ? Number(oosM[1]) : 0; const backN = backM ? Number(backM[1]) : 0;
+      if (oosN > 0 || backN > 0) {
+        sections += sectionCard('🧵 מלאי Gelato — שינויים היום', `<p dir="rtl" style="font-size:12.5px;margin:0;text-align:right">${esc(stockSummary)}</p><p dir="rtl" style="font-size:11.5px;color:#666;margin:6px 0 0;text-align:right">מוצרים שכל הווריאציות שלהם אזלו מוסתרים מהאתר אוטומטית (auto-hide), וחוזרים כשיש מלאי.</p>`);
+      } else if (stockRun) {
+        routine.push(`מלאי Gelato: ${stockSummary.replace(/^בדיקת מלאי Gelato הסתיימה: /, '') || 'נבדק — אין שינויים'}`);
+      } else {
+        routine.push('מלאי Gelato: ⚠️ לא רץ ביומיים האחרונים — לבדוק את הקרון');
+      }
+    }
     if (learningFresh) sections += sectionCard('📈 ביצועי תוכן — ניתוח שבועי טרי', contentPerfHtml);
     else routine.push(`תוכן אורגני: ${contentPerf?.siteClicks.total ?? 0} כניסות לאתר ב-30 ימים · הניתוח השבועי הבא — יום ראשון`);
     routine.push(buildPlanNextStepLine(planStatus));
@@ -3729,7 +3752,7 @@ ${replyNote}
       // Yesterday-vs-today dedup source for "ממצאים חדשים" (2026-07-12).
       opinion_themes: allOpinions.map(o => `${o.theme}|${o.agent_he}`),
       // Reel-bank state for tomorrow's collapse-delta check (2026-07-14).
-      reel_bank: reelGaps ? { total: reelGaps.total, withReel: reelGaps.withReel, collapsed: reelBankCollapsed } : null,
+      reel_bank: reelGaps ? { total: reelGaps.total, withReel: reelGaps.withReel, missing: reelGaps.missing, collapsed: reelBankCollapsed } : null,
       agent_counts: agentCounts,
       failed_agents: failedAgents.map(f => ({ id: f.id, reason: f.reason, hours: Math.round(f.hours) })),
       real_revenue: totalRevenue, internal_revenue: internalRevenue,

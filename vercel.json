@@ -11,7 +11,7 @@
     { "path": "/api/cron/morning-report?type=content",  "schedule": "0 16 * * *" },
     { "path": "/api/cron/morning-report?type=security", "schedule": "0 3 * * *"  },
     { "path": "/api/cron/morning-report?type=weekly-marketing-plan", "schedule": "0 4 * * 0"  },
-    { "path": "/api/cron/morning-report?type=weekly-slogan-product",  "schedule": "0 9 * * 2"  }
+    { "path": "/api/cron/morning-report?type=weekly-slogan-product",  "schedule": "0 9 * * 2,4"  }
   ],
   "rewrites": [
     { "source": "/dub-console", "destination": "/admin.html"   },
