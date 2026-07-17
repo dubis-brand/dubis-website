@@ -126,6 +126,44 @@ const TYPE_META = {
     sizes: 'SIZES_TSHIRT',
     sizeGuide: 'SIZE_GUIDE_TSHIRT',
   },
+  // 2026-07-17: ACCESSORIES pilot — single-variant Gelato products (One Size).
+  // care/care_he/sizeGuide are inline literals so no extra output consts are needed.
+  mug: {
+    typeLabel: 'Mug',
+    fabric: '11oz ceramic',
+    fitUnisex: '11oz / 330ml',
+    fitWomen: '11oz / 330ml',
+    printMethod: 'Sublimation wrap',
+    printAreas: '["Wrap"]',
+    care: '["Dishwasher safe", "Microwave safe", "Print stays put with normal use"]',
+    care_he: '["בטוח למדיח כלים", "בטוח למיקרוגל", "ההדפס נשאר במקום בשימוש רגיל"]',
+    sizes: 'SIZES_CAP',
+    sizeGuide: '[]',
+  },
+  bottle: {
+    typeLabel: 'Water Bottle',
+    fabric: '17oz stainless steel',
+    fitUnisex: '17oz / 500ml',
+    fitWomen: '17oz / 500ml',
+    printMethod: 'Sublimation wrap',
+    printAreas: '["Wrap"]',
+    care: '["Hand wash recommended", "Do not microwave", "Keeps drinks cold for hours"]',
+    care_he: '["מומלץ לשטוף ידנית", "לא להכניס למיקרוגל", "שומר על משקאות קרים לשעות"]',
+    sizes: 'SIZES_CAP',
+    sizeGuide: '[]',
+  },
+  tote: {
+    typeLabel: 'Tote Bag',
+    fabric: '100% cotton canvas',
+    fitUnisex: '38 x 42 cm',
+    fitWomen: '38 x 42 cm',
+    printMethod: 'DTG print',
+    printAreas: '["Front"]',
+    care: '["Machine wash cold", "Hang to dry", "Do not iron the print"]',
+    care_he: '["כביסה קרה במכונה", "לתלות לייבוש", "לא לגהץ על ההדפס"]',
+    sizes: 'SIZES_CAP',
+    sizeGuide: '[]',
+  },
 };
 
 const PRICES = {
@@ -140,6 +178,9 @@ const PRICES = {
   // tanktop unisex $27.11 → $28, womens $31.11 → $32
   vneck: 30,
   tanktop: 30,
+  mug: 10,     // accessories pilot 2026-07-17: cost_il + $1
+  bottle: 25,
+  tote: 18,
 };
 
 async function fetchProducts() {
@@ -239,7 +280,7 @@ function formatColorImages(map) {
   return lines.join('\n');
 }
 
-const JS_TYPE_MAP = { 't-shirt': 'tshirt', 'hoodie': 'hoodie', 'zip-hoodie': 'ziphoodie', 'long-sleeve': 'longsleeve', 'cap': 'cap', 'cap-emb': 'capemb', 'v-neck': 'vneck', 'tank-top': 'tanktop' };
+const JS_TYPE_MAP = { 't-shirt': 'tshirt', 'hoodie': 'hoodie', 'zip-hoodie': 'ziphoodie', 'long-sleeve': 'longsleeve', 'cap': 'cap', 'cap-emb': 'capemb', 'v-neck': 'vneck', 'tank-top': 'tanktop', 'mug': 'mug', 'bottle': 'bottle', 'tote': 'tote' };
 
 function generateProductEntry(p, stockMap) {
   const pType = JS_TYPE_MAP[p.clothing_type] || p.clothing_type || p.type || 'tshirt';
