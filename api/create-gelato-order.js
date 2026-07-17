@@ -236,7 +236,35 @@ function templateKey(type, gender) {
   return `${type}-${gender === 'women' ? 'women' : 'unisex'}`;
 }
 
+// ─────────────────────────────────────────────────────────────────
+// ACCESSORIES (pilot 2026-07-17) — mug / bottle / tote.
+// Non-apparel Gelato products: a FIXED single UID (no size/color/cut
+// permutation) and a single print area named "default". Verified against the
+// live Gelato drafts 09202196/9c423472 (mug), 428a0253 (bottle), 51fbed01
+// (tote): items[].files[0].type === 'default', productCategoryUid drinkware/
+// bags. Keyed by dubis_products.clothing_type.
+const ACCESSORY_UIDS = {
+  mug:    'mug_product_msz_11-oz_mmat_ceramic-white_cl_4-0',
+  bottle: 'bottle_product_bsz_17-oz_bmat_stainless-steel-white_cl_4-0',
+  tote:   'bag_product_bsc_tote-bag_bqa_clc_bsi_std-t_bco_black_bpr_0-4',
+};
+function isAccessory(type) {
+  return Object.prototype.hasOwnProperty.call(ACCESSORY_UIDS, String(type || '').toLowerCase());
+}
+// Accessory print file per product_id_numeric — the exact PNGs Gelato already
+// fetched + rendered for the verified drafts (Supabase Storage, public).
+// Resolved server-side by id (never client-supplied) so a cart cannot inject
+// an arbitrary print URL.
+const ACCESSORY_PRINT = {
+  44: 'https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/product-images/pilot/mug-design-23-v2.png',
+  45: 'https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/product-images/pilot/mug-design-11-v2.png',
+  46: 'https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/product-images/pilot/bottle-design-32-v2.png',
+  47: 'https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/product-images/pilot/tote-design-5.png',
+};
+
 function buildProductUid(type, dubisColor, dubisSize, gender = 'unisex') {
+  // Accessories: fixed single-variant UID, ignore color/size.
+  if (isAccessory(type)) return ACCESSORY_UIDS[String(type).toLowerCase()];
   const key = templateKey(type, gender);
   const t   = TEMPLATES[key];
   if (!t) return null;
@@ -265,6 +293,13 @@ function getGelatoColor(type, gender, dubisColor) {
 // designRef: use a different product's design file (for shared phrases or placeholders)
 // ─────────────────────────────────────────────────────────────────
 function getDesignFiles(productId, color, designRef, productType) {
+  // Accessories (mug/bottle/tote): single "default" print area, print file
+  // resolved server-side by product id (never client-supplied). No cache-bust
+  // query — the storage filename is already version-stamped (…-v2.png).
+  if (isAccessory(productType)) {
+    const aurl = ACCESSORY_PRINT[Number(productId)];
+    return aurl ? [{ type: 'default', url: aurl }] : [];
+  }
   const variant  = DARK_COLORS.has(color) ? 'white' : 'dark';
   const designId = designRef || productId;
   // Caps use different file naming: cap_design_*.png (front only, no back).
@@ -730,10 +765,16 @@ function parsePngDimensions(buf) {
 // fix the underlying false-positive; the post-capture refund guard around
 // the design-validation-failed branch fixes the safety hole.
 function minDimensionsFor(url) {
-  if (/\/cap_design_/i.test(url)) {
-    return { minW: 1800, minH: 900 };
+  // Accessory wraps (mug/bottle/tote) are small, wide-format PNGs (~40-110KB).
+  // Gelato already accepted these exact files for the verified drafts, so the
+  // 200KB garment heuristic would false-reject them (same class as the cap bug).
+  if (/\/(mug|bottle|tote)-design-/i.test(url)) {
+    return { minW: 500, minH: 300, minBytes: 15 * 1024 };
   }
-  return { minW: MIN_DESIGN_W, minH: MIN_DESIGN_H };
+  if (/\/cap_design_/i.test(url)) {
+    return { minW: 1800, minH: 900, minBytes: MIN_DESIGN_BYTES };
+  }
+  return { minW: MIN_DESIGN_W, minH: MIN_DESIGN_H, minBytes: MIN_DESIGN_BYTES };
 }
 
 async function validateDesignFile(url) {
@@ -754,17 +795,17 @@ async function validateDesignFile(url) {
       if (m) totalLen = parseInt(m[1], 10);
     }
     if (!totalLen) totalLen = parseInt(res.headers.get('content-length') || '0', 10);
-    if (totalLen > 0 && totalLen < MIN_DESIGN_BYTES) {
+    const { minW, minH, minBytes } = minDimensionsFor(url);
+    if (totalLen > 0 && totalLen < minBytes) {
       return {
         ok: false,
-        reason: `Design file too small: ${url} is only ${Math.round(totalLen / 1024)}KB (min ${MIN_DESIGN_BYTES / 1024}KB). Gelato will silently reject it → JB default template.`,
+        reason: `Design file too small: ${url} is only ${Math.round(totalLen / 1024)}KB (min ${Math.round(minBytes / 1024)}KB). Gelato will silently reject it → JB default template.`,
       };
     }
     const dims = parsePngDimensions(buf.slice(0, 32));
     if (!dims) {
       return { ok: false, reason: `Not a valid PNG (missing IHDR): ${url}` };
     }
-    const { minW, minH } = minDimensionsFor(url);
     if (dims.w < minW || dims.h < minH) {
       return {
         ok: false,

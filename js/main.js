@@ -666,6 +666,7 @@ const translations = {
     type_tshirt: 'T-Shirt', type_hoodie: 'Hoodie', type_cap: 'Cap',
     type_ziphoodie: 'Zip Hoodie', type_longsleeve: 'Long-Sleeve',
     type_vneck: 'V-Neck', type_tanktop: 'Tank Top',
+    type_mug: 'Mug', type_bottle: 'Water Bottle', type_tote: 'Tote Bag',
     quality_title: 'What You See Is What You Get 🐾',
     quality_sub: 'We know the worry — ordering online and getting something that looks nothing like the photo. Here\'s our promise:',
     q1_title: 'Made Fresh For You', q2_title: 'Fabrics that live with you, not judge you.', q3_title: 'Quality Control', q4_title: 'Defective? Wrong Item? We Fix It.',
@@ -811,6 +812,7 @@ const translations = {
     type_tshirt: 'חולצה', type_hoodie: 'קפוצון', type_cap: 'כובע',
     type_ziphoodie: 'קפוצון רוכסן', type_longsleeve: 'ארוכת שרוול',
     type_vneck: 'חולצת V', type_tanktop: 'גופייה',
+    type_mug: 'ספל', type_bottle: 'בקבוק מים', type_tote: 'תיק בד',
     quality_title: 'מה שרואים זה מה שמקבלים 🐾',
     quality_sub: 'מזמינים אונליין ומקווים לטוב? אצלנו לא צריך לקוות. הנה מה שאנחנו מבטיחים:',
     q1_title: 'נתפר בשבילך, לא יושב במחסן', q2_title: 'בד שזז איתך, לא נגדך.', q3_title: 'עובר בדיקה לפני שיוצא', q4_title: 'פגם? מוצר שגוי? מתקנים.',
@@ -1342,7 +1344,8 @@ function renderProducts(filter, gender) {
     filtered = filtered.filter(p =>
       p.type === _activeFilter ||
       (_activeFilter === 'cap' && p.type === 'capemb') ||
-      (_activeFilter === 'hoodie' && p.type === 'ziphoodie')  // we sell zip-hoodies under the "Hoodies" label
+      (_activeFilter === 'hoodie' && p.type === 'ziphoodie') ||  // we sell zip-hoodies under the "Hoodies" label
+      (_activeFilter === 'accessories' && (p.type === 'mug' || p.type === 'bottle' || p.type === 'tote'))
     );
   }
   if (_activeGender !== 'all') {
@@ -1357,6 +1360,9 @@ function renderProducts(filter, gender) {
     longsleeve: t.type_longsleeve,
     vneck:      t.type_vneck,
     tanktop:    t.type_tanktop,
+    mug:        t.type_mug,
+    bottle:     t.type_bottle,
+    tote:       t.type_tote,
   };
 
   // 2026-05-23 (oren UX directive): compute per-card shippability so
@@ -1473,6 +1479,9 @@ function openProductModal(productId) {
     longsleeve: t.type_longsleeve,
     vneck:      t.type_vneck,
     tanktop:    t.type_tanktop,
+    mug:        t.type_mug,
+    bottle:     t.type_bottle,
+    tote:       t.type_tote,
   };
   const modal = document.getElementById('product-modal');
   const overlay = document.getElementById('product-modal-overlay');
