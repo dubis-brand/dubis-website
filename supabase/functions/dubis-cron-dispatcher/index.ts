@@ -56,6 +56,7 @@ const JOBS: Record<string, Job> = {
   'content-metrics':  { name: 'content-metrics', url: `${FNS_BASE}/agents?type=collect-content-metrics`, method: 'POST' },
   'content-analyze':  { name: 'content-analyze', url: `${FNS_BASE}/agents?type=analyze-content`, method: 'POST' },
   'create-il-campaign': { name: 'create-il-campaign', url: `${FNS_BASE}/agents?type=create-il-campaign`, method: 'POST' },
+  'create-us-campaign': { name: 'create-us-campaign', url: `${FNS_BASE}/agents?type=create-us-campaign`, method: 'POST' },
   'pause-old-il': { name: 'pause-old-il', url: `${FNS_BASE}/agents?type=meta-pause&cid=120245295587010267`, method: 'POST' },
   'fix-campaign-copy': { name: 'fix-campaign-copy', url: `${FNS_BASE}/agents?type=fix-campaign-copy`, method: 'POST' },
   // 2026-07-11: DUBIS the agent posts 3x/day on Moltbook (oren standing directive).

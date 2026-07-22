@@ -3021,6 +3021,125 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     });
   }
 
+  // ── CREATE US CAMPAIGN — "US Last Run" (2026-07-22, the board-signed final test) ──
+  // Built PAUSED; oren flips ON. English creative per the Dana US brief
+  // (O-output/21-us-last-run/): cold ads = ZERO AI story, product+humor leads.
+  // Assets reuse the verified campaign-0628 reels (EN-native speech) + hero stills.
+  // Targeting: PA + NJ + OH + MD (region keys resolved live, fallback whole-US),
+  // ages 35-55. Budget ₪70/day (~$20 — the ad account bills ILS). Runs through
+  // 2026-09-07 inclusive (oren's Palram-PA week). Idempotent by campaign name.
+  if (type === 'create-us-campaign') {
+    const svcKey = SERVICE_ROLE;
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const tok = url.searchParams.get('token') || req.headers.get('x-agent-secret') || authHeader.replace('Bearer ', '').trim() || '';
+    const isAuthed = (svcKey && tok === svcKey) || (agentSecret && tok === agentSecret) || (cronSecret && tok === cronSecret);
+    if (!isAuthed && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);
+
+    const ACT = 'act_26201135546175057';
+    const PAGE = '947252321814810';
+    const PIX = '1000453189108953';
+    const G = 'https://graph.facebook.com/v21.0';
+    const cand: Record<string, string> = {
+      META_ACCESS_TOKEN: Deno.env.get('META_ACCESS_TOKEN') ?? '',
+      ADS_ACCESS_TOKEN: Deno.env.get('ADS_ACCESS_TOKEN') ?? '',
+      INSTAGRAM_ACCESS_TOKEN: Deno.env.get('INSTAGRAM_ACCESS_TOKEN') ?? '',
+    };
+    let FB = ''; const tokenDiag: Record<string, unknown> = {};
+    for (const [nm, tk] of Object.entries(cand)) {
+      if (!tk) { tokenDiag[nm] = 'missing'; continue; }
+      const perms = await fetch(`${G}/me/permissions?access_token=${tk}`).then(r => r.json()).catch(e => ({ error: String(e) }));
+      const granted = Array.isArray(perms.data) ? perms.data.filter((p: Record<string, string>) => p.status === 'granted').map((p: Record<string, string>) => p.permission) : [];
+      tokenDiag[nm] = { hasAds: granted.includes('ads_management') };
+      if (granted.includes('ads_management') && !FB) FB = tk;
+    }
+    if (!FB) return json({ ok: false, step: 'token-select', msg: 'No env token has ads_management', tokenDiag }, 200);
+    const post = async (path: string, params: Record<string, string>) => {
+      const body = new URLSearchParams({ ...params, access_token: FB });
+      const r = await fetch(`${G}/${path}`, { method: 'POST', body });
+      return { ok: r.ok, j: await r.json() };
+    };
+    const acct = await fetch(`${G}/${ACT}?fields=name,currency,account_status&access_token=${FB}`).then(r => r.json());
+    if (acct.error) return json({ ok: false, step: 'acct-check', error: acct.error }, 200);
+
+    const CNAME = 'DUBIS US Last Run — 2026-07-22';
+    const existingCamps = await fetch(`${G}/${ACT}/campaigns?fields=id,name&limit=100&access_token=${FB}`).then(r => r.json()).catch(() => ({}));
+    const dupes = Array.isArray(existingCamps.data) ? existingCamps.data.filter((c: Record<string, string>) => c.name === CNAME) : [];
+    for (const d of dupes) { await fetch(`${G}/${d.id}?access_token=${FB}`, { method: 'DELETE' }).catch(() => {}); }
+
+    // resolve state region keys live; fall back to whole-US if the lookup fails
+    const STATES = ['Pennsylvania', 'New Jersey', 'Ohio', 'Maryland'];
+    const regions: { key: string }[] = []; const regionDiag: Record<string, string> = {};
+    for (const s of STATES) {
+      const r = await fetch(`${G}/search?type=adgeolocation&location_types=${encodeURIComponent('["region"]')}&q=${encodeURIComponent(s)}&limit=5&access_token=${FB}`).then(x => x.json()).catch(() => ({}));
+      const hit = Array.isArray(r.data) ? r.data.find((d: Record<string, string>) => d.country_code === 'US' && d.name === s) : null;
+      if (hit) { regions.push({ key: hit.key }); regionDiag[s] = hit.key; } else regionDiag[s] = 'NOT FOUND';
+    }
+    const geo = regions.length >= 2 ? { regions } : { countries: ['US'] };
+
+    const camp = await post(`${ACT}/campaigns`, { name: CNAME, objective: 'OUTCOME_SALES', status: 'PAUSED', special_ad_categories: '[]', is_adset_budget_sharing_enabled: 'false' });
+    if (!camp.ok) return json({ ok: false, step: 'campaign', error: camp.j, account: acct.name }, 200);
+    const campaign_id = camp.j.id as string;
+
+    const startSec = Math.floor(Date.now() / 1000) + 3600;
+    const targeting = { geo_locations: geo, age_min: 35, age_max: 55, targeting_automation: { advantage_audience: 0 } };
+    const adset = await post(`${ACT}/adsets`, {
+      name: 'US 35-55 — Last Run (PA core)', campaign_id, status: 'ACTIVE',
+      daily_budget: '7000', billing_event: 'IMPRESSIONS', optimization_goal: 'OFFSITE_CONVERSIONS',
+      bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+      promoted_object: JSON.stringify({ pixel_id: PIX, custom_event_type: 'ADD_TO_CART' }),
+      targeting: JSON.stringify(targeting),
+      start_time: new Date(startSec * 1000).toISOString(), end_time: '2026-09-08T03:59:00+0000',
+    });
+    if (!adset.ok) return json({ ok: false, step: 'adset', error: adset.j, campaign_id, regionDiag }, 200);
+    const adset_id = adset.j.id as string;
+
+    // English creative — Dana US brief. NO AI story in cold ads. No em dashes.
+    const REELBASE = 'https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/video-assets/campaign-0628';
+    const ADS = [
+      { pid: 38, name: 'Sleeves were OPTIONAL.', video: true, image: true,  msg: 'A tank top that gets it. Made for the body you actually live in, not the one from the catalog. Printed in the USA, at your door in 5 to 7 days. $28, free shipping over $60. Shop now 👇' },
+      { pid: 31, name: 'Not a model. Never wanted to be.', video: true, image: false, msg: 'Fitting room, mirror, sucking it in like someone is grading me. So I stopped. A soft, honest tee for real bodies. Printed in the USA, 5 to 7 days to your door. $27 👇' },
+      { pid: 23, name: 'I am ALLERGIC to mornings.', video: true, image: true,  msg: 'Every successful person is up at 5am, right? Then I am lost. A shirt that tells the truth before coffee does. Printed in the USA. $28, free shipping over $60 👇' },
+      { pid: 32, name: 'Activewear for the INACTIVE.', video: true, image: false, msg: 'They call it activewear. My main activity is carrying coffee to the porch. You know who you are. Printed in the USA. $28 👇' },
+    ];
+    const created: Record<string, unknown>[] = [];
+    const mkLink = (pid: number) => `https://www.dubis.net/?p=${pid}&utm_source=meta&utm_medium=paid&utm_campaign=us_last_run&utm_content=p${pid}`;
+    const ups: { a: typeof ADS[0]; video_id: string | null; err?: unknown }[] = [];
+    for (const a of ADS.filter((x) => x.video)) {
+      const vid = await post(`${ACT}/advideos`, { file_url: `${REELBASE}/reel-${a.pid}.mp4`, name: `us-reel-${a.pid}` });
+      ups.push({ a, video_id: (vid.ok && vid.j.id) ? vid.j.id as string : null, err: vid.ok ? undefined : vid.j });
+    }
+    await new Promise((r) => setTimeout(r, 25000));
+    for (const u of ups) {
+      const a = u.a; const link = mkLink(a.pid);
+      if (!u.video_id) { created.push({ ad: `vid#${a.pid}`, step: 'video', error: u.err }); continue; }
+      const spec = { page_id: PAGE, video_data: { video_id: u.video_id, message: a.msg, image_url: `${REELBASE}/hero-${a.pid}.jpg`, link_description: a.name, call_to_action: { type: 'SHOP_NOW', value: { link } } } };
+      const cr = await post(`${ACT}/adcreatives`, { name: `us-cr-vid-${a.pid}`, object_story_spec: JSON.stringify(spec) });
+      if (!cr.ok) { created.push({ ad: `vid#${a.pid}`, step: 'creative', video_id: u.video_id, error: cr.j }); continue; }
+      const ad = await post(`${ACT}/ads`, { name: `US Reel #${a.pid}`, adset_id, creative: JSON.stringify({ creative_id: cr.j.id }), status: 'ACTIVE' });
+      created.push({ ad: `vid#${a.pid}`, video_id: u.video_id, ad_id: ad.ok ? ad.j.id : undefined, error: ad.ok ? undefined : ad.j });
+    }
+    for (const a of ADS.filter((x) => x.image)) {
+      const link = mkLink(a.pid); const pic = `${REELBASE}/hero-${a.pid}.jpg`;
+      let image_hash = '';
+      const imgUp = await post(`${ACT}/adimages`, { url: pic });
+      if (imgUp.ok && imgUp.j.images) { const k = Object.keys(imgUp.j.images)[0]; image_hash = imgUp.j.images[k]?.hash || ''; }
+      const link_data: Record<string, unknown> = { message: a.msg, link, name: a.name, call_to_action: { type: 'SHOP_NOW', value: { link } } };
+      if (image_hash) link_data.image_hash = image_hash; else link_data.picture = pic;
+      const spec = { page_id: PAGE, link_data };
+      const cr = await post(`${ACT}/adcreatives`, { name: `us-cr-img-${a.pid}`, object_story_spec: JSON.stringify(spec) });
+      if (!cr.ok) { created.push({ ad: `img#${a.pid}`, step: 'creative', error: cr.j }); continue; }
+      const ad = await post(`${ACT}/ads`, { name: `US Image #${a.pid}`, adset_id, creative: JSON.stringify({ creative_id: cr.j.id }), status: 'ACTIVE' });
+      created.push({ ad: `img#${a.pid}`, image_hash: !!image_hash, ad_id: ad.ok ? ad.j.id : undefined, error: ad.ok ? undefined : ad.j });
+    }
+    return json({
+      ok: true, account: acct.name, currency: acct.currency, campaign_id, adset_id, regionDiag,
+      ads: created, ads_ok: created.filter(c => c.ad_id).length,
+      edit_url: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=26201135546175057&selected_campaign_ids=${campaign_id}`,
+    });
+  }
+
   // ── FIX campaign ad copy IN PLACE (correct ₪ prices) — keeps the campaign ON ──
   // Bug: ad copy showed the USD number with a ₪ sign (e.g. "₪28" for a $28 product).
   // Correct = USD × live rate (~2.99): $28→₪84, $27→₪81, $26→₪79. Rebuild each ad's
