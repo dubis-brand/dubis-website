@@ -68,8 +68,9 @@ const PERSONA_TO_PRODUCT = {
 // .claude/skills/higgsfield-reels/SKILL.md → "The CANONICAL flip fix".
 const REEL_OVERRIDES = {
   38: 'https://www.dubis.net/preview/reels/format-38-unboxing-v4.mp4',
-  23: 'https://www.dubis.net/preview/reels/format-23-delivery-v2.mp4',
-  40: 'https://www.dubis.net/preview/reels/format-40-mirror-v2.mp4',
+  23: 'https://www.dubis.net/preview/reels/fmt-23-paparazzi.mp4',
+  40: 'https://www.dubis.net/preview/reels/fmt-40-streetstop.mp4',
+  43: 'https://www.dubis.net/preview/reels/fmt-43-endingfairy.mp4',
 };
 
 function bankUrl(productId) {
