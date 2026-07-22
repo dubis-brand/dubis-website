@@ -260,7 +260,7 @@ function openCountryPicker() {
     } else {
       detEl.innerHTML = currentLang === 'he'
         ? `<strong>הזיהוי האוטומטי נכשל</strong> — בחר/י מהרשימה למטה.`
-        : `<strong>Auto-detect failed</strong> — please pick from the list below.`;
+        : `<strong>Auto-detect failed.</strong> Please pick from the list below.`;
     }
   }
 
@@ -393,7 +393,7 @@ function countryFlagsHTML(product, opts = {}) {
   const legendHTML = customer
     ? (currentLang === 'he'
         ? `<div class="ships-to-legend-modal"><strong>איך לקרוא:</strong> <span style="color:#2e6d2c">✓ = נשלח אליך</span> · <span style="color:#b94a48">✕ = לא נשלח אליך</span> · שאר הדגלים = מדינות נוספות שאליהן ניתן לשלוח את המוצר. הגדרת הארץ נקבעת על-פי המיקום הגאוגרפי שלך — ניתן לשנות בכפתור הדגל בראש הדף.</div>`
-        : `<div class="ships-to-legend-modal"><strong>How to read this:</strong> <span style="color:#2e6d2c">✓ = ships to you</span> · <span style="color:#b94a48">✕ = doesn't ship to you</span> · The other flags = additional countries this product can be shipped to. Your country is auto-detected from your IP — you can change it via the flag button at the top of the page.</div>`)
+        : `<div class="ships-to-legend-modal"><strong>How to read this:</strong> <span style="color:#2e6d2c">✓ = ships to you</span> · <span style="color:#b94a48">✕ = doesn't ship to you</span> · The other flags = additional countries this product can be shipped to. Your country is auto-detected from your IP. You can change it via the flag button at the top of the page.</div>`)
     : (currentLang === 'he'
         ? `<div class="ships-to-legend-modal"><strong>איך לקרוא:</strong> דגלי הארצות מציגים לאן ניתן לשלוח את המוצר. לחיצה על כפתור הדגל בראש הדף תאפשר לבחור את ארץ המשלוח שלך.</div>`
         : `<div class="ships-to-legend-modal"><strong>How to read this:</strong> the flags show which countries this product can be shipped to. Click the flag button at the top of the page to pick your shipping country.</div>`);
@@ -652,10 +652,10 @@ const translations = {
   en: {
     nav_home: 'Home', nav_shop: 'Shop', nav_people: 'Real People',
     nav_about: 'About', nav_contact: 'Contact',
-    hero_tagline: 'Fashion that doesn\'t ask you to suck your stomach in.',
+    hero_tagline: 'Fashion that doesn\'t ask you to suck it in.',
     hero_subtitle: 'Built for the body you actually live in.',
-    hero_desc: 'Real clothes, real fit, real people. No apologies. No fake sizes. Made fresh to order — because you deserve something made for you.',
-    hero_btn: 'Shop the Drop — from $14',
+    hero_desc: 'Real clothes, real fit, real people. No fake sizes. No apologies. Printed fresh in the USA the moment you order.',
+    hero_btn: 'Shop the Drop · from $14',
     people_title: 'The DUBIS Crew 🐻',
     people_sub: 'Real people. Real bodies. No explanations needed.',
     shop_title: 'The Collection', shop_sub: 'Wear what you mean. Mean what you wear.',
@@ -668,33 +668,33 @@ const translations = {
     type_vneck: 'V-Neck', type_tanktop: 'Tank Top',
     type_mug: 'Mug', type_bottle: 'Water Bottle', type_tote: 'Tote Bag',
     quality_title: 'What You See Is What You Get 🐾',
-    quality_sub: 'We know the worry — ordering online and getting something that looks nothing like the photo. Here\'s our promise:',
+    quality_sub: 'You know the worry. You order online and what shows up looks nothing like the photo. Here\'s our promise:',
     q1_title: 'Made Fresh For You', q2_title: 'Fabrics that live with you, not judge you.', q3_title: 'Quality Control', q4_title: 'Defective? Wrong Item? We Fix It.',
-    q1_text: 'Every piece is made for you, the moment you order. Not sitting in a warehouse. Not pre-printed in bulk. Made fresh — because you deserve something made for you, not someone else.',
-    q2_text: '100% breathable cotton and fits that actually understand your body. No annoying seams, no feeling like you need to change for the shirt. Just put it on, feel at home, and step out into the world.',
-    q3_text: 'Every item is checked before it reaches you. Print not sharp enough? Wrong color? We reprint it. You waited for this — it better be worth the wait.',
-    q4_text: 'Got a defect? Wrong item? Email us within 30 days of delivery with a photo and order number — we\'ll replace or refund. No hassle.',
-    about_title: 'Who are we at DUBIS?',
-    about_p1: 'Sometime after 40, it hits you: Life is way too short for clothes that make you feel bad about your body. We\'ve been around, built lives worth waking up for, and we absolutely refuse to apologize for enjoying them.',
-    about_p2: 'But when it comes to fashion? Suddenly it feels like we\'re expected to change ourselves. DUBIS was created to stop this nonsense. We stopped waiting for fashion brands to notice us — and made exactly what we were looking for.',
-    about_p3: 'Clothes for real people. No fake models, just maximum comfort, fits that flatter your actual body, and cynical quotes that tell the world: "This is me, and I own it."',
-    about_tag: 'If you\'re tired of choosing between looking good and feeling comfortable — welcome home. 🐾',
+    q1_text: 'Every piece is made for you the moment you order. Not sitting in a warehouse. Not printed in bulk. Made fresh in the USA, because you deserve something made for you, not someone else.',
+    q2_text: '100% breathable cotton and fits that actually fit. No itchy seams, no changing yourself to match the shirt. Put it on and get on with your day.',
+    q3_text: 'Every item is checked before it reaches you. Print not sharp enough? Wrong color? We reprint it. You waited for it, so it better be worth the wait.',
+    q4_text: 'Got a defect? Wrong item? Email us within 30 days of delivery with a photo and order number, and we\'ll replace or refund it. No hassle.',
+    about_title: 'How DUBIS started',
+    about_p1: 'A year ago my wife and I wandered into a clothing store. Just browsing. Every wall was young, chiseled models, and I turned to her: where\'s the brand for regular guys? Forty-plus, a little belly, a little less hair, nothing left to prove. Someone should build that brand, I said. Call it DUBIS. We laughed and walked out. The idea stuck around.',
+    about_p2: 'Six months later I got tired of waiting for fashion to notice real bodies, so I started building the brand myself. Here\'s the thing: I\'m one guy with a day job. I couldn\'t afford a company, so I built a small team of AI agents to help me run one.',
+    about_p3: 'I built the site, the catalog, the line to a print shop that ships straight to your door. Then I put the agents to work. One writes, one designs, one keeps orders moving. I make the calls.',
+    about_tag: 'I know how it sounds. But this is a real business, with real products landing at real doors, run by one stubborn human and some very hardworking software. Still growing. Still getting better.',
     contact_title: 'Get in Touch', contact_sub: 'Questions? Ideas? Just want to say hi?',
     cart_title: 'Your Cart 🐾', cart_empty: 'Nothing here yet. The right things are one click away. 🐾',
     cart_total: 'Total', cart_checkout: 'CHECKOUT',
     modal_color: 'Color', modal_size: 'Size',
     modal_made: '🏭 Made fresh for you, the moment you order.',
     modal_material: '👕 Moves with you, not against you.',
-    modal_returns: '↩️ Defective? Wrong item? We fix it — no hassle.',
+    modal_returns: '↩️ Defective? Wrong item? We fix it, no hassle.',
     modal_add: 'This Is Mine 🐾',
     tab_details: 'Details', tab_size: 'Size Guide', tab_care: 'Care',
     shipping_note: '✈️ + shipping · free on $60+',
-    modal_ships: '🚚 Ships in 5–7 business days to US', modal_free_ship: 'Free shipping over $60',
-    modal_dtg: 'DTG — Direct-to-Garment',
+    modal_ships: '🚚 Printed in the USA · 5-7 business days to your door', modal_free_ship: 'Free shipping over $60',
+    modal_dtg: 'DTG · Direct-to-Garment',
     modal_fabric: 'Fabric', modal_fit: 'Fit', modal_print: 'Print', modal_print_areas: 'Print areas',
     size_size: 'Size', size_chest: 'Chest (cm)', size_length: 'Length (cm)',
     size_vary: '*Measurements may vary ±2cm', size_cap_note: 'Adjustable strap, fits most',
-    cookie_text: '🐾 We use cookies to improve your experience. We keep it minimal - just what\'s needed.',
+    cookie_text: '🐾 We use cookies to keep the site working. Just the basics, nothing more.',
     cookie_accept: 'Accept', cookie_decline: 'Decline', cookie_privacy: 'Privacy Policy',
     footer_privacy: 'Privacy Policy', footer_terms: 'Terms', footer_returns: 'Returns', footer_contact: 'Contact', footer_shop: 'Shop',
     footer_rights: '© 2026 DUBIS. All rights reserved. Built for you.',
@@ -702,19 +702,19 @@ const translations = {
     faq_title: 'Frequently Asked Questions',
     faq_subtitle: 'Everything you wanted to know, without having to search',
     faq_q1: 'What sizes do you offer?',
-    faq_a1: 'Our products come in sizes S through 3XL. All sizes run comfortable and roomy — if you\'re between sizes, take the smaller one. A detailed size chart is available on every product page.',
+    faq_a1: 'Our products come in sizes S through 3XL. Everything runs comfortable and roomy. If you\'re between sizes, size down. There\'s a detailed size chart on every product page.',
     faq_q2: 'How long does shipping take?',
-    faq_a2: 'Shipping is calculated at checkout based on your destination (free on orders over $60). Production: 3–5 business days (printed to order). Delivery: 5–12 business days depending on destination.',
+    faq_a2: 'Printed in the USA. At your door in 5-7 business days. Shipping is $8.99, free on orders over $60. Outside the US: up to 14 business days.',
     faq_q3: 'What is your return policy?',
-    faq_a3: 'Returns only for defective, wrong, or lost items. Email dubis.brand@gmail.com within 30 days of delivery with a photo and order number.',
+    faq_a3: 'Wrong size? We\'ll exchange it. Email us within 30 days and we\'ll sort it out. Full refund for defective, wrong, or lost items. Just send a photo and your order number within 30 days.',
     faq_q4: 'Will the print peel off?',
-    faq_a4: 'We use DTG (Direct-to-Garment) technology — the print goes directly into the fabric. It\'s not a sticker, not an iron-on. The print survives dozens of washes.',
+    faq_a4: 'We use DTG (Direct-to-Garment) printing. The ink goes right into the fabric. It\'s not a sticker or an iron-on, and it survives dozens of washes.',
     faq_q5: 'Why is it priced this way?',
-    faq_a5: 'Every item is made to order — not mass-produced in a factory by the thousands. DTG quality, premium materials, original design. $16–$47 for a product you\'ll wear for years.',
+    faq_a5: 'Every item is printed to order, not mass-produced by the thousands. Quality DTG printing, premium materials, original designs. $16 to $47 for something you\'ll wear for years.',
     faq_q6: 'Do you have a physical store?',
     faq_a6: 'No. DUBIS is an online-only brand. That\'s how we keep prices fair.',
     faq_q7: 'How do I wash it?',
-    faq_a7: 'Regular wash at 30°C, turn the garment inside out before washing, do not tumble dry. The print will survive.',
+    faq_a7: 'Machine wash cold, turn it inside out, and skip the dryer. The print will be fine.',
     // Banner / trust bar (top of page)
     banner_free_ship: 'Free US shipping over $60',
     banner_returns: '30-day easy returns',
@@ -762,7 +762,7 @@ const translations = {
     // Success modal
     success_title: 'Order Confirmed!',
     success_text1: 'Good call. 🐾',
-    success_text2: 'Your order is on its way — real quality, made fresh for you.',
+    success_text2: 'Your order is on its way. Real quality, made fresh for you.',
     success_sub: 'You belong here. 🐻',
     success_cta: 'Keep Exploring',
     // Auth modal
@@ -787,10 +787,10 @@ const translations = {
     orders_title: 'My Orders',
     orders_loading: 'Loading…',
     // FB coupon banner
-    fb_coupon_text: 'Welcome! Friend coupon: <strong class="fb-coupon-code">DUBIS15</strong> — 15% off your order',
+    fb_coupon_text: 'Welcome! Friend coupon: <strong class="fb-coupon-code">DUBIS15</strong> for 15% off your order',
     fb_coupon_dismiss_aria: 'Dismiss welcome offer',
     // Real People eyebrow
-    real_people_eyebrow: 'Real DUBIS customers — not paid models',
+    real_people_eyebrow: 'Real DUBIS customers, not paid models',
     quality_eyebrow: 'Our promise to you',
     // Privacy section
     privacy_title: 'Privacy Policy',
@@ -1014,7 +1014,7 @@ function translateUI(lang) {
       : 14;
     heroBtn.textContent = lang === 'he'
       ? 'לחנות — החל מ-' + formatPrice(cheapestUsd)
-      : 'Shop the Drop — from ' + formatPrice(cheapestUsd);
+      : 'Shop the Drop · from ' + formatPrice(cheapestUsd);
   }
 
   // Trust bar (top of page) — "Free shipping over $60" / "משלוח חינם מעל ₪X"
@@ -1034,7 +1034,7 @@ function translateUI(lang) {
 
   // Urgency bar
   const urgText = document.getElementById('urgency-text');
-  if (urgText) urgText.textContent = lang === 'he' ? 'מהדורה מוגבלת — כשנגמר, נגמר' : 'Limited Drop — Once they\'re gone, they\'re gone';
+  if (urgText) urgText.textContent = lang === 'he' ? 'מהדורה מוגבלת — כשנגמר, נגמר' : 'Limited Drop. Once they\'re gone, they\'re gone.';
 
   // Real People section
   const rpTitle = q('#real-people .section-header h2');
@@ -1165,7 +1165,7 @@ function translateUI(lang) {
         : 'US orders: 5–7 business days · Int\'l: up to 14 days') +
       (lang === 'he'
         ? '<br><span style="color:#1f7a43;font-weight:600">📏 לא קלעתם במידה? מחליפים בקלות — <a href="https://wa.me/972523662526" target="_blank" rel="noopener" style="color:#1f7a43">וואטסאפ 052-366-2526</a></span>'
-        : '<br><span style="color:#1f7a43;font-weight:600">📏 Wrong size? Easy exchange — <a href="https://wa.me/972523662526" target="_blank" rel="noopener" style="color:#1f7a43">WhatsApp us</a></span>') +
+        : '<br><span style="color:#1f7a43;font-weight:600">📏 Wrong size? Easy exchange. <a href="mailto:dubis.brand@gmail.com" style="color:#1f7a43">Email us</a></span>') +
       '<br><span>' + t.cart_customs_note + '</span>' +
       '<br><span style="font-size:11px;color:#888">' + t.cart_tax_note + '</span>';
   }
@@ -1527,7 +1527,7 @@ function openProductModal(productId) {
             return `
             <button class="color-btn${i === 0 ? ' selected' : ''}${oosCls}"
               onclick="selectColor(this, '${c}', ${product.id})"
-              style="background:${colorToHex(c)}" title="${c}${anyAvail ? '' : ' — Sold out'}" data-color="${c}"${oosAttr}>
+              style="background:${colorToHex(c)}" title="${c}${anyAvail ? '' : ' · Sold out'}" data-color="${c}"${oosAttr}>
               ${anyAvail ? '' : '<span class="oos-slash" aria-hidden="true"></span>'}
             </button>
           `;}).join('')}
@@ -1563,7 +1563,7 @@ function openProductModal(productId) {
         const stockN = getStockNum(product.id);
         if (stockN === 0) {
           return `<div class="modal-urgency sold-out">
-            <span>${currentLang === 'he' ? 'המוצר אזל זמנית — חזור בקרוב' : 'Currently sold out — back soon'}</span>
+            <span>${currentLang === 'he' ? 'המוצר אזל זמנית — חזור בקרוב' : 'Currently sold out, back soon'}</span>
           </div>`;
         }
         return '';
@@ -1741,7 +1741,7 @@ function selectColor(btn, color, productId) {
   if (btn.classList.contains('oos')) {
     const msg = document.getElementById(`modal-stock-msg-${productId}`);
     if (msg) {
-      msg.textContent = currentLang === 'he' ? `${color} — אזל מהמלאי` : `${color} — sold out`;
+      msg.textContent = currentLang === 'he' ? `${color} — אזל מהמלאי` : `${color} is sold out`;
       msg.style.display = 'block';
     }
     return;
@@ -1867,7 +1867,7 @@ function refreshAddToCartGuard(productId) {
     if (msgEl) {
       msgEl.textContent = currentLang === 'he'
         ? `${color || ''} ${size || ''} — אזל מהמלאי`
-        : `${color || ''} ${size || ''} — sold out`;
+        : `${color || ''} ${size || ''} is sold out`;
       msgEl.style.display = 'block';
     }
   } else {
@@ -1892,7 +1892,7 @@ function refreshStockUi(productId) {
     b.classList.toggle('oos', !anyAvail);
     if (anyAvail) b.removeAttribute('aria-disabled');
     else          b.setAttribute('aria-disabled','true');
-    b.title = c + (anyAvail ? '' : ' — Sold out');
+    b.title = c + (anyAvail ? '' : ' · Sold out');
   });
   refreshSizeAvailability(productId, color);
 }
@@ -1907,7 +1907,7 @@ function addToCartFromModal(productId) {
     if (msg) {
       msg.textContent = currentLang === 'he'
         ? `${selectedColor} ${selectedSize} — אזל מהמלאי, בחר/י שילוב אחר`
-        : `${selectedColor} ${selectedSize} — sold out, pick another combination`;
+        : `${selectedColor} ${selectedSize} is sold out, pick another combination`;
       msg.style.display = 'block';
     }
     return;
@@ -2130,7 +2130,7 @@ function _cartProbeApply(result, _country) {
   // Banner copy — name each blocking item by its phrase + type + size + color.
   const itemBullets = (result.oosItems || [])
     .map(o => {
-      const phrase = o.phrase ? `"${o.phrase}" — ` : '';
+      const phrase = o.phrase ? `"${o.phrase}" · ` : '';
       const sizeColor = `${o.size || ''}${o.color ? (o.size ? ' · ' : '') + o.color : ''}`.trim();
       return `<li><strong>${phrase}${o.typeLabel || o.type}</strong>${sizeColor ? ' (' + sizeColor + ')' : ''}</li>`;
     })
@@ -2140,7 +2140,7 @@ function _cartProbeApply(result, _country) {
        <p>הפריטים הבאים אזלו מהמלאי כרגע ולא ניתנים לשליחה למדינה שלך. נא להסירם כדי להמשיך:</p>
        <ul>${itemBullets}</ul>
        <p class="cart-banner-action">לחצ/י על ה-✕ ליד הפריט להסירו. לאחר ההסרה הסל יהיה זמין לתשלום.</p>`
-    : `<strong>⚠️ Can't continue to payment — out of stock</strong>
+    : `<strong>⚠️ Can't continue to payment: out of stock</strong>
        <p>The items below are out of stock and can't ship to your country right now. Remove them to continue:</p>
        <ul>${itemBullets}</ul>
        <p class="cart-banner-action">Click the ✕ next to the item to remove it. Then your cart will be ready to checkout.</p>`;
@@ -2855,7 +2855,7 @@ function _dubisShowPreviewBannerIfNeeded() {
     const env = isLocal ? 'LOCAL DEV' : 'VERCEL PREVIEW';
     const banner = document.createElement('div');
     banner.id = 'dubis-preview-banner';
-    banner.innerHTML = `🧪 ${env} — not the live site. Test purchases only. <code>${host}</code>`;
+    banner.innerHTML = `🧪 ${env}: not the live site. Test purchases only. <code>${host}</code>`;
     document.body.appendChild(banner);
     document.body.classList.add('has-preview-banner');
   } catch (_) {}
