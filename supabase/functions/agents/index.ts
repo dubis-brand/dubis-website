@@ -3353,6 +3353,180 @@ TODAY'S THEME: ${theme}`;
     return json({ ok: true, post_id: pJson.post.id, title, verified });
   }
 
+  // ── COMMUNITY LOOP — read viewer comments on our IG/FB posts and answer them ──
+  // oren 2026-07-24: "במקביל לפרסום — לקרוא תגובות של צופים וגם לכתוב תגובות".
+  // Requires the 2026-07-24 dubis-publisher token (adds instagram_manage_comments +
+  // pages_read_user_content + pages_manage_engagement). Runs 2×/day via pg_cron →
+  // dispatcher job 'community-loop'. Replies are drafted by Gemini in brand voice
+  // under hard guardrails; negative/order-complaint/sensitive comments are NEVER
+  // auto-answered — they become an agent_tasks escalation (category
+  // 'community_escalation') that surfaces on the tasks board + boss harvest.
+  // Idempotency: a comment that already has a reply from us (IG username
+  // dubis.brand / FB page id) is skipped, so re-runs never double-reply.
+  // Modes: ?probe=1 → live token/permission check, no reads. ?dry=1 → scan +
+  // classify + draft, POST NOTHING (returns the drafts). ?days=N (default 10),
+  // ?max=N replies per run (default 8, hard spam guard).
+  if (type === 'community-loop') {
+    const svcKey = SERVICE_ROLE;
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const token = url.searchParams.get('token') || req.headers.get('x-agent-secret') || authHeader.replace('Bearer ', '').trim() || '';
+    const isAuthed = (svcKey && token === svcKey) || (agentSecret && token === agentSecret) || (cronSecret && token === cronSecret);
+    if (!isAuthed && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);
+
+    const igToken = Deno.env.get('INSTAGRAM_ACCESS_TOKEN') ?? '';
+    if (!igToken) return json({ error: 'INSTAGRAM_ACCESS_TOKEN missing' }, 503);
+    const G = 'https://graph.facebook.com/v22.0';
+    const PAGE_ID = '947252321814810';
+    const IG_USERNAME = 'dubis.brand';
+    const started = Date.now();
+
+    // FB comment read/reply acts AS THE PAGE → mint a Page token from the system
+    // user token (works because the token carries pages_manage_engagement).
+    const pageInfo = await fetch(`${G}/${PAGE_ID}?fields=access_token,name&access_token=${igToken}`).then((r) => r.json()).catch((e) => ({ error: String(e) }));
+    const pageToken = (pageInfo?.access_token as string) || '';
+
+    if (url.searchParams.get('probe')) {
+      const perms = await fetch(`${G}/me/permissions?access_token=${igToken}`).then((r) => r.json()).catch((e) => ({ error: String(e) }));
+      const granted = Array.isArray(perms?.data)
+        ? perms.data.filter((p: Record<string, string>) => p.status === 'granted').map((p: Record<string, string>) => p.permission).sort()
+        : [];
+      const need = ['instagram_manage_comments', 'pages_read_user_content', 'pages_manage_engagement', 'instagram_basic', 'pages_manage_posts'];
+      return json({
+        ok: true, granted, granted_count: granted.length,
+        missing: need.filter((n) => !granted.includes(n)),
+        page_token_minted: !!pageToken, page_name: pageInfo?.name ?? null,
+        page_err: pageToken ? undefined : pageInfo,
+      });
+    }
+
+    const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? '';
+    if (!geminiKey) return json({ error: 'GEMINI_API_KEY missing' }, 503);
+    const dry = !!url.searchParams.get('dry');
+    const days = Math.min(30, Math.max(1, parseInt(url.searchParams.get('days') || '10', 10)));
+    const maxReplies = Math.min(20, Math.max(1, parseInt(url.searchParams.get('max') || '8', 10)));
+
+    const { data: posts, error: pErr } = await sb
+      .from('agent_tasks').select('id, content_data, updated_at')
+      .eq('status', 'done').in('category', ['social_post', 'agent_personas'])
+      .gte('updated_at', new Date(Date.now() - days * 86400000).toISOString())
+      .order('updated_at', { ascending: false }).limit(60);
+    if (pErr) return json({ error: pErr.message }, 500);
+
+    type CItem = { key: string; platform: 'instagram' | 'facebook'; comment_id: string; author: string; text: string; ts: string; permalink: string | null };
+    const found: CItem[] = [];
+    const apiErrors: Record<string, unknown>[] = [];
+    let scannedIg = 0, scannedFb = 0;
+
+    for (const t of (posts || [])) {
+      const cd = (t.content_data as Record<string, unknown>) || {};
+      const igId = cd.instagram_post_id ? String(cd.instagram_post_id) : '';
+      const fbId = cd.facebook_post_id ? String(cd.facebook_post_id) : '';
+      if (igId) {
+        scannedIg++;
+        const r = await fetch(`${G}/${igId}/comments?fields=id,text,username,timestamp,replies{username}&limit=50&access_token=${igToken}`).then((x) => x.json()).catch((e) => ({ error: String(e) }));
+        if (Array.isArray(r?.data)) {
+          for (const c of r.data) {
+            if (!c?.id || !c?.text) continue;
+            if (String(c.username || '').toLowerCase() === IG_USERNAME) continue;
+            const replied = Array.isArray(c.replies?.data) && c.replies.data.some((rr: Record<string, unknown>) => String(rr.username || '').toLowerCase() === IG_USERNAME);
+            if (replied) continue;
+            found.push({ key: `ig:${c.id}`, platform: 'instagram', comment_id: String(c.id), author: String(c.username || '?'), text: String(c.text).slice(0, 500), ts: String(c.timestamp || ''), permalink: (cd.ig_permalink as string) || null });
+          }
+        } else if (r?.error) apiErrors.push({ ig: igId, err: r.error });
+      }
+      if (fbId && pageToken) {
+        scannedFb++;
+        const r = await fetch(`${G}/${fbId}/comments?fields=id,message,from{id,name},created_time,comments{from{id}}&limit=50&access_token=${pageToken}`).then((x) => x.json()).catch((e) => ({ error: String(e) }));
+        if (Array.isArray(r?.data)) {
+          for (const c of r.data) {
+            if (!c?.id || !c?.message) continue;
+            if (String(c.from?.id || '') === PAGE_ID) continue;
+            const replied = Array.isArray(c.comments?.data) && c.comments.data.some((rr: Record<string, unknown>) => String((rr as { from?: { id?: string } }).from?.id || '') === PAGE_ID);
+            if (replied) continue;
+            found.push({ key: `fb:${c.id}`, platform: 'facebook', comment_id: String(c.id), author: String(c.from?.name || '?'), text: String(c.message).slice(0, 500), ts: String(c.created_time || ''), permalink: (cd.fb_permalink as string) || null });
+          }
+        } else if (r?.error) apiErrors.push({ fb: fbId, err: r.error });
+      }
+    }
+
+    if (!found.length) {
+      await sb.from('agent_runs').insert({ agent_id: 'marketing', status: 'completed', summary: `[community] scanned ${scannedIg} IG + ${scannedFb} FB posts · 0 new comments`, duration_ms: Date.now() - started, side_effects: { scanned_ig: scannedIg, scanned_fb: scannedFb, api_errors: apiErrors.slice(0, 5) } }).then(() => {}).catch(() => {});
+      return json({ ok: true, scanned: { ig: scannedIg, fb: scannedFb }, new_comments: 0, api_errors: apiErrors.slice(0, 5) });
+    }
+
+    // ── Classify + draft replies (one batched Gemini call) ──
+    const sys = `You are the community voice of DUBIS, a small direct-to-consumer fashion brand for real bodies (men & women 35-55). You answer comments people left on our Instagram/Facebook posts.
+VOICE: a sharp friend over a beer. Warm under dry humor. Humor from strength, never self-pity, never apologetic, never corporate.
+LANGUAGE: answer in the SAME language as the comment. Hebrew comments get rooted Israeli Hebrew (natural, everyday), English comments get original English. NEVER use an em dash in either language.
+HARD RULES:
+- 1-2 short sentences max (under 220 characters). No hashtags. No links except WhatsApp when relevant.
+- NEVER invent facts, prices, stock, discounts or delivery promises. NEVER offer a coupon.
+- Order / shipping / size / price questions: answer warmly that we handle it personally and give WhatsApp 052-3662526.
+- Compliments: thank them in brand voice, short and human.
+- Jokes / banter: play along briefly, stay classy.
+- action="escalate" (DO NOT draft a public reply) for: complaints about a paid order, anger or hostility, body-shaming or hate (toward anyone), legal or refund talk, press/business inquiries, anything sexual, anything you are unsure about.
+- action="skip" for: obvious spam/bots, giveaway-tag chains, empty mentions.
+Return STRICT JSON only: an array like [{"key":"ig:123","action":"reply|escalate|skip","reply":"..."}] — "reply" only when action="reply".`;
+    const list = found.slice(0, 40).map((c) => ({ key: c.key, platform: c.platform, author: c.author, text: c.text }));
+    const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: sys + '\n\nCOMMENTS:\n' + JSON.stringify(list, null, 1) }] }], generationConfig: { temperature: 0.6 } }),
+    });
+    const gJson = await gRes.json();
+    const rawText = gJson?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const arrMatch = rawText.match(/\[[\s\S]*\]/);
+    if (!arrMatch) return json({ error: 'gemini returned no JSON array', raw: rawText.slice(0, 300) }, 500);
+    let decisions: Array<{ key?: string; action?: string; reply?: string }> = [];
+    try { decisions = JSON.parse(arrMatch[0]); } catch { return json({ error: 'bad JSON from gemini', raw: arrMatch[0].slice(0, 300) }, 500); }
+    const byKey = new Map(found.map((c) => [c.key, c]));
+
+    const results: Record<string, unknown>[] = [];
+    let repliedCount = 0, escalated = 0, skipped = 0;
+    for (const d of decisions) {
+      const c = d.key ? byKey.get(d.key) : undefined;
+      if (!c) continue;
+      const action = String(d.action || 'skip');
+      const replyText = String(d.reply || '').replace(/—/g, '-').slice(0, 300).trim();
+      if (action === 'reply' && replyText && repliedCount < maxReplies) {
+        if (dry) {
+          results.push({ ...c, action: 'reply(dry)', reply: replyText });
+          repliedCount++;
+        } else {
+          const ep = c.platform === 'instagram'
+            ? { u: `${G}/${c.comment_id}/replies`, tk: igToken }
+            : { u: `${G}/${c.comment_id}/comments`, tk: pageToken };
+          const pr = await fetch(ep.u, { method: 'POST', body: new URLSearchParams({ message: replyText, access_token: ep.tk }) });
+          const pj = await pr.json().catch(() => ({}));
+          results.push({ ...c, action: pr.ok ? 'replied' : 'reply_failed', reply: replyText, reply_id: pj?.id, error: pr.ok ? undefined : pj });
+          if (pr.ok) repliedCount++;
+        }
+      } else if (action === 'escalate') {
+        escalated++;
+        results.push({ ...c, action: 'escalated' });
+        if (!dry) {
+          await sb.from('agent_tasks').insert({
+            agent_id: 'marketing', status: 'backlog', category: 'community_escalation',
+            title: `תגובה שדורשת החלטה (${c.platform === 'instagram' ? 'IG' : 'FB'}): "${c.text.slice(0, 90)}"`,
+            content_data: { platform: c.platform, comment_id: c.comment_id, author: c.author, comment_text: c.text, permalink: c.permalink, escalated_at: new Date().toISOString() },
+          }).then(() => {}).catch(() => {});
+        }
+      } else {
+        skipped++;
+        results.push({ key: c.key, author: c.author, text: c.text.slice(0, 80), action: 'skipped' });
+      }
+    }
+
+    await sb.from('agent_runs').insert({
+      agent_id: 'marketing', status: 'completed',
+      summary: `[community]${dry ? ' DRY' : ''} scanned ${scannedIg} IG + ${scannedFb} FB · ${found.length} new comments · replied ${repliedCount} · escalated ${escalated} · skipped ${skipped}`,
+      duration_ms: Date.now() - started,
+      side_effects: { dry, scanned_ig: scannedIg, scanned_fb: scannedFb, new_comments: found.length, replied: repliedCount, escalated, skipped, api_errors: apiErrors.slice(0, 5) },
+    }).then(() => {}).catch(() => {});
+    return json({ ok: true, dry, scanned: { ig: scannedIg, fb: scannedFb }, new_comments: found.length, replied: repliedCount, escalated, skipped, results, api_errors: apiErrors.slice(0, 5) });
+  }
+
   if (type === 'collect-content-metrics') {
     const svcKey = SERVICE_ROLE;
     const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';

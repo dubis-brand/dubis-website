@@ -61,6 +61,11 @@ const JOBS: Record<string, Job> = {
   'fix-campaign-copy': { name: 'fix-campaign-copy', url: `${FNS_BASE}/agents?type=fix-campaign-copy`, method: 'POST' },
   // 2026-07-11: DUBIS the agent posts 3x/day on Moltbook (oren standing directive).
   'moltbook-post': { name: 'moltbook-post', url: `${FNS_BASE}/agents?type=moltbook-post`, method: 'POST' },
+  // 2026-07-24: community loop — read viewer comments on IG/FB, reply in brand
+  // voice (Gemini + guardrails), escalate the sensitive ones. 2x/day pg_cron.
+  'community-loop': { name: 'community-loop', url: `${FNS_BASE}/agents?type=community-loop`, method: 'POST' },
+  'community-dry':  { name: 'community-dry', url: `${FNS_BASE}/agents?type=community-loop&dry=1`, method: 'POST' },
+  'community-probe': { name: 'community-probe', url: `${FNS_BASE}/agents?type=community-loop&probe=1`, method: 'POST' },
   // Boss runs LAST in the day
   'boss':             { name: 'boss', url: `${FNS_BASE}/dubis-boss-orchestrator`, method: 'POST' },
 };
