@@ -1489,6 +1489,46 @@ function reelVideoUrl(productId) {
     : null;
 }
 
+// ── Homepage persona gallery (2026-07-24, oren: personas + videos on the main
+// page, not only inside a product). Cards live statically in index.html; the
+// ▶ button swaps the photo for the product's reel in-place. One video at a
+// time — starting a new one restores every other card.
+function homePersonaRestore(card) {
+  const v = card.querySelector('video');
+  if (v) { try { v.pause(); } catch (_) {} v.remove(); }
+  const img = card.querySelector('img');
+  if (img) img.style.display = '';
+  const p = card.querySelector('.persona-play');
+  if (p) p.style.display = '';
+}
+function homePersonaPlay(ev, pid) {
+  ev.stopPropagation();
+  ev.preventDefault();
+  const card = ev.currentTarget.closest('.avatar-card');
+  if (!card || card.querySelector('video')) return;
+  document.querySelectorAll('.crew-carousel-track video').forEach(v => {
+    const c = v.closest('.avatar-card');
+    if (c) homePersonaRestore(c);
+  });
+  const url = reelVideoUrl(pid);
+  if (!url) return;
+  const img = card.querySelector('img');
+  if (img) img.style.display = 'none';
+  const playBtn = card.querySelector('.persona-play');
+  if (playBtn) playBtn.style.display = 'none';
+  const v = document.createElement('video');
+  v.src = url;
+  v.controls = true; v.playsInline = true; v.preload = 'metadata';
+  v.poster = personaImgUrl(pid) || '';
+  v.style.cssText = 'width:100%;height:100%;object-fit:cover;background:#111;display:block;';
+  v.addEventListener('click', e => e.stopPropagation());
+  v.addEventListener('ended', () => homePersonaRestore(card));
+  card.appendChild(v);
+  try { v.play(); } catch (_) {}
+  if (window.dubisTrack) window.dubisTrack('home_video_play', { id: pid });
+}
+window.homePersonaPlay = homePersonaPlay;
+
 // Helper: build per-color image URL — uses imageRef if product has one (placeholder)
 function productImg(productId, color, view) {
   const product = products.find(p => p.id === productId);
@@ -1715,8 +1755,8 @@ function closeProductModal() {
   // Stop any playing PDP video — the modal DOM persists after close, and a
   // hidden video would keep playing audio.
   document.querySelectorAll('#modal-body video').forEach(v => { try { v.pause(); } catch (_) {} v.remove(); });
-  const hiddenImg = document.querySelector('#modal-body .modal-image img[style*="display: none"], #modal-body .modal-image img[style*="display:none"]');
-  if (hiddenImg) hiddenImg.style.display = '';
+  const skelImg = document.querySelector('#modal-body .modal-image img');
+  if (skelImg) skelImg.style.visibility = '';
   document.getElementById('product-modal').classList.remove('open');
   document.getElementById('product-modal-overlay').classList.remove('open');
   document.body.style.overflow = '';
@@ -1902,22 +1942,26 @@ function setModalThumb(event, productId, view) {
   const wrap = imgEl.closest('.modal-image');
   // Any non-video view: tear down the video element if one is playing.
   const oldVideo = wrap ? wrap.querySelector('video') : null;
-  if (view !== 'video' && oldVideo) { try { oldVideo.pause(); } catch (_) {} oldVideo.remove(); imgEl.style.display = ''; }
+  if (view !== 'video' && oldVideo) { try { oldVideo.pause(); } catch (_) {} oldVideo.remove(); imgEl.style.visibility = ''; }
 
   if (view === 'video') {
     // Wave A (2026-07-24): persona reel inside the PDP gallery (Hoodies/Fox
     // pattern). Click-to-play only — preload=metadata so the ~10MB mp4 never
-    // loads unless asked for.
+    // loads unless asked for. The img stays in the layout as an INVISIBLE
+    // skeleton (visibility, not display) — it is the only thing giving
+    // .modal-image its height on mobile, where hiding it collapsed the wrap
+    // to padding-only and the video rendered 0px tall.
     const url = reelVideoUrl(productId);
     if (!url || !wrap) return;
     if (oldVideo) { try { oldVideo.play(); } catch (_) {} return; }
-    imgEl.style.display = 'none';
+    imgEl.style.visibility = 'hidden';
     imgEl.dataset.view = 'front'; // keep color-switch logic on a real image view
+    wrap.style.position = 'relative';
     const v = document.createElement('video');
     v.src = url;
     v.controls = true; v.playsInline = true; v.preload = 'metadata';
     v.poster = personaImgUrl(productId) || productImg(productId, imgEl.dataset.color || product?.colors[0] || '', 'front');
-    v.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#111;display:block;';
+    v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#111;display:block;';
     wrap.appendChild(v);
     try { v.play(); } catch (_) {}
     if (window.dubisTrack) window.dubisTrack('pdp_video_play', { id: productId });

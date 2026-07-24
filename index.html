@@ -951,31 +951,97 @@
         <div class="crew-carousel-wrapper">
             <button class="carousel-btn carousel-prev" aria-label="Previous">&#8249;</button>
             <div class="crew-carousel-viewport">
+                <!-- 2026-07-24 (oren): the crew is now the SHOPPABLE persona gallery — the same
+                     real-body characters wearing the exact catalog products, each card opens its
+                     product and can play its reel in-place. Order is shuffled per page load for
+                     variety (see carousel script). Slogan on garment stays English by brand rule. -->
                 <div class="crew-carousel-track">
-                    <div class="avatar-card">
-                        <img src="images/carousel/v3/front-1.jpg" alt="Real DUBIS person wearing DUBIS branded tshirt - lifestyle photo front" loading="lazy">
+                    <div class="avatar-card persona-card" onclick="openProductModal(38)" role="button" tabindex="0" aria-label="Sleeves were OPTIONAL — DUBIS tank top">
+                        <img src="images/personas-real/persona-38.jpg" alt='DUBIS real-body look — "Sleeves were OPTIONAL." tank top' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 38)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"Sleeves were OPTIONAL."</div>
                     </div>
-                    <div class="avatar-card">
-                        <img src="images/carousel/v3/back-1.jpg" alt="Real DUBIS person wearing DUBIS branded tshirt - lifestyle photo back" loading="lazy">
+                    <div class="avatar-card persona-card" onclick="openProductModal(23)" role="button" tabindex="0" aria-label="I am ALLERGIC to mornings — DUBIS t-shirt">
+                        <img src="images/personas-real/persona-23.jpg" alt='DUBIS real-body look — "I am ALLERGIC to mornings" t-shirt' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 23)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"I am ALLERGIC to mornings"</div>
                     </div>
-                    <div class="avatar-card">
-                        <img src="images/carousel/v3/front-2.jpg" alt="Real DUBIS person wearing DUBIS branded apparel - lifestyle photo front" loading="lazy">
+                    <div class="avatar-card persona-card" onclick="openProductModal(32)" role="button" tabindex="0" aria-label="Activewear for the INACTIVE — DUBIS t-shirt">
+                        <img src="images/personas-real/persona-32.jpg" alt='DUBIS real-body look — "Activewear for the INACTIVE." t-shirt' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 32)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"Activewear for the INACTIVE."</div>
                     </div>
                     <div class="avatar-card avatar-quote">
                         <div class="quote-inner">
                             <span class="quote-icon" aria-hidden="true">"</span>
-                            <p>Real people.<br>Real bodies.<br>Real style.</p>
+                            <p>Real bodies.<br>Real fit.<br>Real jokes.</p>
                             <span class="quote-tag">DUBIS — Built for you.</span>
                         </div>
                     </div>
-                    <div class="avatar-card">
-                        <img src="images/carousel/v3/back-2.jpg" alt="Real DUBIS person wearing DUBIS branded apparel - lifestyle photo back" loading="lazy">
+                    <div class="avatar-card persona-card" onclick="openProductModal(5)" role="button" tabindex="0" aria-label="Low maintenance, high value — DUBIS t-shirt">
+                        <img src="images/personas-real/persona-5.jpg" alt='DUBIS real-body look — "Low maintenance, high value" t-shirt' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 5)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"Low maintenance, high value"</div>
                     </div>
-                    <div class="avatar-card">
-                        <img src="images/carousel/v3/front-3.jpg" alt="Real DUBIS person wearing DUBIS branded apparel - lifestyle photo front" loading="lazy">
+                    <div class="avatar-card persona-card" onclick="openProductModal(2)" role="button" tabindex="0" aria-label="More of me to love — DUBIS t-shirt">
+                        <img src="images/personas-real/persona-2.jpg" alt='DUBIS real-body look — "More of me to love" t-shirt' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 2)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"More of me to love"</div>
                     </div>
-                    <div class="avatar-card">
-                        <img src="images/carousel/v3/back-3.jpg" alt="Real DUBIS person wearing DUBIS branded apparel - lifestyle photo back" loading="lazy">
+                    <div class="avatar-card persona-card" onclick="openProductModal(1)" role="button" tabindex="0" aria-label="I'm not fat, I'm a limited edition — DUBIS t-shirt">
+                        <img src="images/personas-real/persona-1.jpg" alt='DUBIS real-body look — "I&#39;m not fat, I&#39;m a limited edition" t-shirt' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 1)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"I'm not fat, I'm a limited edition"</div>
+                    </div>
+                    <div class="avatar-card persona-card" onclick="openProductModal(18)" role="button" tabindex="0" aria-label="Unfashionably COMFORTABLE — DUBIS t-shirt">
+                        <img src="images/personas-real/persona-18.jpg" alt='DUBIS real-body look — "Unfashionably COMFORTABLE." t-shirt' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 18)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"Unfashionably COMFORTABLE."</div>
+                    </div>
+                    <div class="avatar-card persona-card" onclick="openProductModal(25)" role="button" tabindex="0" aria-label="Today is CANCELLED — DUBIS t-shirt">
+                        <img src="images/personas-real/persona-25.jpg" alt='DUBIS real-body look — "Today is CANCELLED" t-shirt' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 25)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"Today is CANCELLED"</div>
+                    </div>
+                    <div class="avatar-card persona-card" onclick="openProductModal(29)" role="button" tabindex="0" aria-label="My ENERGY is a non-renewable resource — DUBIS long sleeve">
+                        <img src="images/personas-real/persona-29.jpg" alt='DUBIS real-body look — "My ENERGY is a non-renewable resource" long sleeve' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 29)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"My ENERGY is a non-renewable resource"</div>
+                    </div>
+                    <div class="avatar-card persona-card" onclick="openProductModal(30)" role="button" tabindex="0" aria-label="Still here, somehow. CONGRATS — DUBIS t-shirt">
+                        <img src="images/personas-real/persona-30.jpg" alt='DUBIS real-body look — "Still here, somehow. CONGRATS." t-shirt' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 30)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"Still here, somehow. CONGRATS."</div>
+                    </div>
+                    <div class="avatar-card persona-card" onclick="openProductModal(34)" role="button" tabindex="0" aria-label="Still waiting for my BREAK — DUBIS long sleeve">
+                        <img src="images/personas-real/persona-34.jpg" alt='DUBIS real-body look — "Still waiting for my BREAK." long sleeve' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 34)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"Still waiting for my BREAK."</div>
+                    </div>
+                    <div class="avatar-card persona-card" onclick="openProductModal(39)" role="button" tabindex="0" aria-label="DUBIS cap">
+                        <img src="images/personas-real/persona-39.jpg" alt="DUBIS real-body look — DUBIS logo cap" loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 39)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">DUBIS™ Cap</div>
+                    </div>
+                    <div class="avatar-card persona-card" onclick="openProductModal(40)" role="button" tabindex="0" aria-label="Comfort is my MASTERPIECE — DUBIS zip hoodie">
+                        <img src="images/personas-real/persona-40.jpg" alt='DUBIS real-body look — "Comfort is my MASTERPIECE." zip hoodie' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 40)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"Comfort is my MASTERPIECE."</div>
+                    </div>
+                    <div class="avatar-card persona-card" onclick="openProductModal(41)" role="button" tabindex="0" aria-label="Minimal effort. MAXIMUM comfort — DUBIS t-shirt">
+                        <img src="images/personas-real/persona-41.jpg" alt='DUBIS real-body look — "Minimal effort. MAXIMUM comfort." t-shirt' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 41)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"Minimal effort. MAXIMUM comfort."</div>
+                    </div>
+                    <div class="avatar-card persona-card" onclick="openProductModal(42)" role="button" tabindex="0" aria-label="My comfort: NON-NEGOTIABLE — DUBIS t-shirt">
+                        <img src="images/personas-real/persona-42.jpg" alt='DUBIS real-body look — "My comfort: NON-NEGOTIABLE." t-shirt' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 42)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"My comfort: NON-NEGOTIABLE."</div>
+                    </div>
+                    <div class="avatar-card persona-card" onclick="openProductModal(43)" role="button" tabindex="0" aria-label="My only FLEX is comfort — DUBIS tank top">
+                        <img src="images/personas-real/persona-43.jpg" alt='DUBIS real-body look — "My only FLEX is comfort." tank top' loading="lazy">
+                        <button class="persona-play" onclick="homePersonaPlay(event, 43)" aria-label="Play video">▶</button>
+                        <div class="persona-caption">"My only FLEX is comfort."</div>
                     </div>
                 </div>
             </div>
@@ -1536,6 +1602,18 @@
         var prevBtn = document.querySelector('.carousel-prev');
         var nextBtn = document.querySelector('.carousel-next');
         if (!track) return;
+
+        // 2026-07-24 (oren: "שיהיה מגוון"): shuffle the persona cards on every
+        // page load so the homepage never opens on the same faces twice.
+        // Runs BEFORE the cards NodeList is cached below.
+        (function shuffleCrew() {
+          var kids = Array.prototype.slice.call(track.children);
+          for (var i = kids.length - 1; i > 0; i--) {
+            var j = Math.floor(Math.random() * (i + 1));
+            var tmp = kids[i]; kids[i] = kids[j]; kids[j] = tmp;
+          }
+          kids.forEach(function (k) { track.appendChild(k); });
+        })();
 
         var cards = track.querySelectorAll('.avatar-card');
         var current = 0;
