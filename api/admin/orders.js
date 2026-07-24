@@ -39,14 +39,11 @@ module.exports = async function handler(req, res) {
         return res.status(500).json({ error: 'Server config error' });
     }
 
-    // ── Create clients ───────────────────────────────────────────
-    const supabaseAnon = createClient(
-        process.env.SUPABASE_URL,
-        process.env.SUPABASE_ANON_KEY || '',
-        { auth: { autoRefreshToken: false, persistSession: false } }
-    );
-
-    // Service-role client (bypasses RLS)
+    // ── Create client ────────────────────────────────────────────
+    // Service-role client (bypasses RLS). Also used for auth.getUser —
+    // SUPABASE_ANON_KEY holds the legacy anon JWT that was disabled in the
+    // 2026-06-13 key rotation, so validating through it returned 401 for
+    // every admin session (orders + users tabs dead since then).
     const supabase = createClient(
         process.env.SUPABASE_URL,
         process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -54,7 +51,7 @@ module.exports = async function handler(req, res) {
     );
 
     // Verify the JWT and get the user's email
-    const { data: { user }, error: authError } = await supabaseAnon.auth.getUser(token);
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) return res.status(401).json({ error: 'Invalid token' });
 
     const email = (user.email || '').toLowerCase();

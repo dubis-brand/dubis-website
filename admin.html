@@ -972,12 +972,7 @@
       <button class="nav-tab" id="nav-gallery"   onclick="showSection('gallery',this)">🖼 גלריה</button>
       <button class="nav-tab" id="nav-content-approval" onclick="showSection('content-approval',this)">✅ תוכן לאישור</button>
       <button class="nav-tab" id="nav-gelato-tools" onclick="showSection('gelato-tools',this)">🧪 Gelato Tools</button>
-      <button class="nav-tab" id="nav-tax-nexus" onclick="showSection('tax-nexus',this)">💰 Tax Nexus</button>
       <button class="nav-tab" id="nav-funnel" onclick="showSection('funnel',this)">📊 Funnel</button>
-      <button class="nav-tab" id="nav-feedback" onclick="showSection('feedback',this)">📝 Feedback</button>
-      <button class="nav-tab" id="nav-meta-campaigns" onclick="showSection('meta-campaigns',this)">📣 Meta Campaigns</button>
-      <button class="nav-tab" id="nav-carousel-approval" onclick="showSection('carousel-approval',this)">🌆 תמונות Lifestyle V3</button>
-      <button class="nav-tab" id="nav-lifestyle-preview" onclick="showSection('lifestyle-preview',this)">🌆 Lifestyle Preview</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -1075,36 +1070,37 @@
   <!-- ══ ANALYTICS SECTION (Enhanced) ════════════════════ -->
   <div id="section-analytics" style="display:none" dir="rtl">
 
-    <!-- ── יעדים ותקציב ── -->
-    <div class="analytics-section-title">🎯 יעדי צמיחה ותקציב</div>
+    <!-- ── המבחן האמריקאי — US Last Run (החלטת שולחן 2026-07-22, פסק-דין חתום מראש) ── -->
+    <div class="analytics-section-title">🇺🇸 המבחן האמריקאי — המסע האחרון (01.08 → 08.09)</div>
     <div class="goal-banner">
-      <div class="goal-title">יעד: $1,000 רווח חודשי נטו תוך 6 חודשים <span style="font-weight:400;color:#888;font-size:.75rem">(הוארך מ-3 חודשים — אורן 2026-04-28)</span></div>
-      <div id="goal-timeline" style="text-align:center;color:#aaa;font-size:.82rem;margin-bottom:6px"></div>
+      <div class="goal-title">פסק-דין חתום מראש · 08-09.09: ‏≥10 רכישות-זרים = מרחיבים · 1-9 = ישיבת פיבוט · 0 = סגירה מסודרת של זרוע המסחר <span style="font-weight:400;color:#888;font-size:.75rem">(קופון PALRAM15 = רכישת-חברים, לא נספרת בפסק-הדין)</span></div>
+      <div id="us-test-timeline" style="text-align:center;color:#aaa;font-size:.82rem;margin-bottom:6px"></div>
       <div class="goal-progress-wrap">
         <div class="goal-progress-bar">
-          <div class="goal-progress-fill" id="goal-fill" style="width:0%"></div>
-          <div class="goal-progress-text" id="goal-pct-text">0%</div>
+          <div class="goal-progress-fill" id="us-verdict-fill" style="width:0%"></div>
+          <div class="goal-progress-text" id="us-verdict-text">0 / 10</div>
         </div>
-        <div class="goal-amt" id="goal-amt">$0 / $1,000</div>
+        <div class="goal-amt" id="us-verdict-amt">רכישות-זרים: —</div>
       </div>
       <div class="budget-grid">
         <div class="budget-item">
-          <div class="budget-label">תקציב כולל</div>
-          <div class="budget-val" style="color:#c8a96e">$500</div>
+          <div class="budget-label">קמפיין Meta</div>
+          <div class="budget-val" id="us-camp-status" style="color:#c8a96e">—</div>
         </div>
         <div class="budget-item">
-          <div class="budget-label">הוצאות עד כה</div>
-          <div class="budget-val" style="color:#e74c3c" id="budget-spent">$0</div>
+          <div class="budget-label">הוצאת מדיה</div>
+          <div class="budget-val" style="color:#e74c3c" id="us-camp-spend">—</div>
         </div>
         <div class="budget-item">
-          <div class="budget-label">נותר</div>
-          <div class="budget-val" style="color:#4caf50" id="budget-remaining">$500</div>
+          <div class="budget-label">ביקורים ממוקדים</div>
+          <div class="budget-val" style="color:#64b5f6" id="us-visits">—</div>
         </div>
         <div class="budget-item">
-          <div class="budget-label">ROI</div>
-          <div class="budget-val" style="color:#64b5f6" id="budget-roi">0%</div>
+          <div class="budget-label">עגלות / קופה</div>
+          <div class="budget-val" style="color:#c8a96e" id="us-carts">—</div>
         </div>
       </div>
+      <div id="us-day7-gate" style="margin-top:.8rem;font-size:.82rem;color:#aaa;text-align:center"></div>
     </div>
 
     <!-- ── קמפיינים פעילים ── -->
@@ -1924,12 +1920,12 @@
           <span style="background:#2a2a2a;border-radius:4px;padding:.3rem .6rem;font-size:.75rem;color:#e8c97a">AUTO</span>
         </div>
         <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
-          מנהל הצוות. מתאם בין כל הסוכנים, מרכז תוצאות ושולח מייל סיכום יומי ב-07:00.
+          מנהל הצוות. מרכז את כל הסוכנים, מכריע המלצות בשולחן-ההנהלה, ושולח דוח-מנהל יומי (19:30) + דוח שבועי ביום ראשון. אפשר להשיב לדוח במייל — התשובה הופכת להנחיה.
         </div>
         <div id="agent-tasks-boss" style="margin-bottom:.6rem"></div>
         <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#e8c97a">Resend Email</span>
-          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#999">cron 05:00 UTC</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#999">cron 16:30 UTC (19:30 IL)</span>
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-boss">—</span>
         </div>
       </div>
@@ -1945,12 +1941,12 @@
           <button onclick="runAgent('content')" class="agent-run-btn">▶ הרץ</button>
         </div>
         <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
-          מייצר כיתוב בעברית + אנגלית, האשטאגים ותמונה AI לכל משימת content מאושרת. משימות עוברות ל-<em>pending_approval</em> לבדיקתך לפני פרסום.
+          מבצע את התוכנית השבועית: קפשן + מוקאפ-קטלוג או תמונת-דמות אמיתית (אפס AI על בגדים). ‏QA ≥ 75 מתפרסם אוטומטית ל-IG+FB; ‏60-74 ממתין לאישורך.
         </div>
         <div id="agent-tasks-content" style="margin-bottom:.6rem"></div>
         <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50">Gemini 2.5 Flash</span>
-          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50">Imagen 3</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50">מוקאפים אמיתיים</span>
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-content">—</span>
         </div>
       </div>
@@ -1986,7 +1982,7 @@
           <button onclick="runAgent('marketing')" class="agent-run-btn">▶ הרץ</button>
         </div>
         <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
-          מושך נתוני מכירות 7 ימים אחרונים, מנתח ביצועים ומייצר 3-5 המלצות שיווק מעשיות וספציפיות לפעולה.
+          מייצר את התוכנית השבועית (א' 04:00 UTC, מיישם למידות מהניתוח השבועי) + בעל משפך-ההמרה: קריאת קליק→סל→קופה וניסוי אחד בשבוע. פוסטים ל-Moltbook ‏3/יום.
         </div>
         <div id="agent-tasks-marketing" style="margin-bottom:.6rem"></div>
         <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
@@ -2006,12 +2002,12 @@
           <button onclick="runAgent('design')" class="agent-run-btn">▶ הרץ</button>
         </div>
         <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
-          יוצר תמונות מוצר ושיווק ב-Reve.ai ו-Gemini Imagen. סגנון: אנשים אמיתיים, תאורה חמה, לא דוגמנים. עיצובי הדפסה 3000×3000px.
+          מוקאפי-קטלוג אמיתיים מ-Gelato + תמונות-דמות ICP דרך Higgsfield (try-on עם המוצר המדויק). עיצובי הדפסה נוצרים ב-canvas דטרמיניסטי — אפס AI על טקסט-בגדים.
         </div>
         <div id="agent-tasks-design" style="margin-bottom:.6rem"></div>
         <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#ff5722">Reve.ai</span>
-          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#ff5722">Gemini Imagen</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#ff5722">Gelato mockups</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#ff5722">Higgsfield</span>
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-design">—</span>
         </div>
       </div>
@@ -2045,15 +2041,15 @@
             <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Email Monitor</div>
             <div style="color:#999;font-size:.8rem">סריקת Gmail יומית</div>
           </div>
-          <span style="background:#2a2a2a;border-radius:4px;padding:.3rem .6rem;font-size:.75rem;color:#f44336">AUTO 06:45</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.3rem .6rem;font-size:.75rem;color:#f44336">AUTO 04:00 UTC</span>
         </div>
         <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
-          סורק dubis.brand@gmail.com כל בוקר. מסווג מיילים לפי עדיפות (critical/high/medium), מזהה בעיות הזמנות וספקים, יוצר tasks ב-DB.
+          סורק את dubis.brand@gmail.com, מסנן רעש-ספקים, מנתח רעיונות שהעברת במייל (Gemini, 4 חלקים בעברית) ומזין את הדוח היומי ואת שולחן-ההנהלה. תשובה שלך לדוח = הנחיה.
         </div>
         <div id="agent-tasks-email_monitor" style="margin-bottom:.6rem"></div>
         <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#f44336">Gmail MCP</span>
-          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#f44336">Supabase SQL</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#f44336">Gmail API</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#f44336">Gemini</span>
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-email_monitor">—</span>
         </div>
       </div>
@@ -2066,7 +2062,7 @@
             <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Site Audit</div>
             <div style="color:#999;font-size:.8rem">סריקת SEO/UX יומית</div>
           </div>
-          <span style="background:#2a2a2a;border-radius:4px;padding:.3rem .6rem;font-size:.75rem;color:#00bcd4">AUTO 06:50</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.3rem .6rem;font-size:.75rem;color:#00bcd4">AUTO 04:00 UTC</span>
         </div>
         <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
           סורק את dubis.net כל בוקר. בודק SEO (title, meta, OG, H1), UX (lazy loading, viewport), ומזהה הזדמנויות עסקיות חדשות.
@@ -2093,13 +2089,13 @@
           </div>
         </div>
         <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
-          מייצר 3 הצעות סלוגנים ציניים חדשים בסגנון DUBIS דרך Gemini. כל הצעה כוללת: סלוגן, power word, טיפוגרפיה, תיאורים. דורש אישור ידני.
+          מוצר שבועי אוטומטי (ג'+ה' 09:00 UTC — סלוגן מה-DB/קהל, טיוטת Gelato, מוקאפים, עולה לאוויר לבד) + הצעות סלוגנים ידניות לאישורך מכאן.
         </div>
         <div id="product-suggestions-inline" style="margin-bottom:.6rem"></div>
         <div id="agent-tasks-product" style="margin-bottom:.6rem"></div>
         <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#9c27b0">Gemini 2.5 Flash</span>
-          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#999">ידני</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#999">cron ג'+ה'</span>
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-product">—</span>
         </div>
       </div>
@@ -2122,6 +2118,27 @@
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#f44336">Headers Scan</span>
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#999">שני 03:00 UTC</span>
           <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-security">—</span>
+        </div>
+      </div>
+
+      <!-- Video / TikTok Agent -->
+      <div class="agent-card" style="background:#1a1a1a;border-radius:10px;padding:1.2rem;border-left:4px solid #00e5ff">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.8rem">
+          <div>
+            <div style="font-size:1.4rem">🎬</div>
+            <div style="font-weight:700;color:#e8e0d5;font-size:1rem">Video / TikTok</div>
+            <div style="color:#999;font-size:.8rem">רילים + טיקטוק יומי</div>
+          </div>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.3rem .6rem;font-size:.75rem;color:#00e5ff">AUTO 15:00 UTC</span>
+        </div>
+        <div style="font-size:.8rem;color:#bbb;line-height:1.6;margin-bottom:.8rem">
+          טיקטוק יומי מבנק-הרילים (רוטציית least-recently-posted, ‏22 מוצרים) דרך GitHub Actions + Late.com. הפקת רילים חדשים + פרקי הסיטקום רצה בסשן הראשי דרך Higgsfield (פרק/שבוע).
+        </div>
+        <div id="agent-tasks-tiktok" style="margin-bottom:.6rem"></div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#00e5ff">Higgsfield</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#00e5ff">Late.com</span>
+          <span style="background:#2a2a2a;border-radius:4px;padding:.2rem .5rem;font-size:.75rem;color:#4caf50" id="agent-status-tiktok">—</span>
         </div>
       </div>
 
@@ -2443,83 +2460,7 @@
   </div><!-- /section-gelato-tools -->
 
   <!-- ══ TAX NEXUS SECTION (US Sales Tax Tracker) ══════════════════ -->
-  <div id="section-tax-nexus" style="display:none;padding:1.5rem" dir="rtl">
-    <h2 style="color:#e8e0d5;margin:0 0 .5rem">💰 Tax Nexus — מעקב מס מכירות אמריקאי</h2>
-    <p style="color:#aaa;font-size:.85rem;margin:0 0 1.5rem;max-width:780px">
-      מעקב אחרי מכירות לכל מדינה בארה"ב מתחילת השנה הקלנדרית מול סף ה-Economic Nexus (פוסט-Wayfair 2018).
-      ברגע שמדינה מגיעה ל-100% — חובה להירשם, לגבות sales tax ולהגיש דוחות.
-      כשמדינה מגיעה ל-70% (כתום) — זה הזמן להתחיל להכין מעבר ל-Merchant of Record (Paddle / Lemon Squeezy).
-    </p>
-
-    <!-- Summary cards -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:1.5rem">
-      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1rem">
-        <div style="color:#888;font-size:.75rem;margin-bottom:.4rem">הכנסות US YTD (<span id="tn-year">—</span>)</div>
-        <div id="tn-us-revenue" style="color:#c8a96e;font-size:1.5rem;font-weight:700">$0</div>
-      </div>
-      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1rem">
-        <div style="color:#888;font-size:.75rem;margin-bottom:.4rem">עסקאות US YTD</div>
-        <div id="tn-us-orders" style="color:#e8e0d5;font-size:1.5rem;font-weight:700">0</div>
-      </div>
-      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1rem">
-        <div style="color:#888;font-size:.75rem;margin-bottom:.4rem">מדינות פעילות</div>
-        <div id="tn-state-count" style="color:#e8e0d5;font-size:1.5rem;font-weight:700">0</div>
-      </div>
-      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1rem">
-        <div style="color:#888;font-size:.75rem;margin-bottom:.4rem">רזרבת מס מומלצת (8%)</div>
-        <div id="tn-reserve" style="color:#4caf50;font-size:1.5rem;font-weight:700">$0</div>
-      </div>
-    </div>
-
-    <!-- Status legend -->
-    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;font-size:.78rem;color:#aaa">
-      <span><span style="display:inline-block;width:10px;height:10px;background:#4caf50;border-radius:50%;margin-left:6px"></span>Safe (&lt;40%)</span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:#ffc107;border-radius:50%;margin-left:6px"></span>Watch (40-70%)</span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:#ff9800;border-radius:50%;margin-left:6px"></span>Near (70-100%) — <strong>תכנן MoR</strong></span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:#f44336;border-radius:50%;margin-left:6px"></span>Over (100%+) — <strong>חובת רישום</strong></span>
-      <span><span style="display:inline-block;width:10px;height:10px;background:#666;border-radius:50%;margin-left:6px"></span>No Tax (AK/DE/MT/NH/OR)</span>
-    </div>
-
-    <!-- States table -->
-    <div id="tn-table-wrap" style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-      <table style="width:100%;border-collapse:collapse;color:#e8e0d5;font-size:.85rem" dir="ltr">
-        <thead>
-          <tr style="background:#0d0d0d;color:#c8a96e;font-size:.78rem">
-            <th style="padding:.7rem .8rem;text-align:left">State</th>
-            <th style="padding:.7rem .8rem;text-align:right">Revenue YTD</th>
-            <th style="padding:.7rem .8rem;text-align:right">Txns YTD</th>
-            <th style="padding:.7rem .8rem;text-align:right">Threshold</th>
-            <th style="padding:.7rem .8rem;text-align:right">% to Threshold</th>
-            <th style="padding:.7rem .8rem;text-align:center">Status</th>
-            <th style="padding:.7rem .8rem;text-align:right">Last Order</th>
-          </tr>
-        </thead>
-        <tbody id="tn-tbody">
-          <tr><td colspan="7" style="padding:2rem;text-align:center;color:#666">Loading...</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <p id="tn-empty-msg" style="display:none;color:#888;text-align:center;padding:2rem;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;margin-top:1rem">
-      אין עדיין מכירות לארה"ב השנה. ברגע שלקוח אמריקאי ראשון יקנה — הוא יופיע כאן.
-    </p>
-
-    <!-- Action plan based on status -->
-    <div style="background:#0d1a00;border:1px solid #2a2a00;border-radius:10px;padding:1.2rem;margin-top:1.5rem">
-      <div style="color:#c8a96e;font-weight:700;margin-bottom:.6rem">📋 תוכנית פעולה לפי סטטוס</div>
-      <ul style="color:#aaa;font-size:.82rem;line-height:1.7;margin:0;padding-right:1.2rem">
-        <li><strong>כל המדינות Safe:</strong> אין דרישת רישום — להמשיך לעקוב חודשית.</li>
-        <li><strong>מדינה אחת ב-Watch:</strong> זמן לבדוק עלות-תועלת של Paddle (5-8% מכל עסקה) מול TaxJar+CPA (~$200/חודש).</li>
-        <li><strong>מדינה ב-Near (70%+):</strong> להחליט עכשיו על מעבר ל-Merchant of Record (Paddle/Lemon Squeezy) ולהתחיל אינטגרציה.</li>
-        <li><strong>מדינה ב-Over (100%+):</strong> חובה להירשם תוך 30-60 יום במדינה הספציפית. אחרי 60 יום — קנסות + ריבית רטרואקטיביים.</li>
-      </ul>
-    </div>
-
-    <p style="color:#666;font-size:.72rem;text-align:center;margin-top:1rem">
-      📚 מקור: <a href="https://www.salestaxinstitute.com/resources/economic-nexus-state-guide" target="_blank" style="color:#c8a96e">Sales Tax Institute</a> ·
-      ספים מתעדכנים פעם בשנה — לבדוק <a href="../O-output/plans/product/DUBIS_US_SALES_TAX_2026-04-28.html" target="_blank" style="color:#c8a96e">תכנון מלא</a>
-    </p>
-  </div><!-- /section-tax-nexus -->
+  
 
   <!-- ══ FUNNEL SECTION (5-step conversion funnel, last 30 days, external traffic only) ═══ -->
   <div id="section-funnel" style="display:none;padding:1.5rem" dir="rtl">
@@ -2550,182 +2491,14 @@
     </div>
   </div><!-- /section-funnel -->
 
-  <!-- ══ FEEDBACK SECTION (blind-test responses) ═══════════════════════════ -->
-  <div id="section-feedback" style="display:none;padding:1.5rem" dir="rtl">
-    <h2 style="color:#e8e0d5;margin:0 0 .5rem">📝 Feedback Responses — מבחני אמת</h2>
-    <p style="color:#aaa;font-size:.85rem;margin:0 0 1rem;max-width:780px">
-      תשובות לסקר הפיידבק העיוור שנשלח ב-2026-04-28 ל-7 מבחני אמת. הסקר חי ב-<a href="https://www.dubis.net/feedback.html" target="_blank" style="color:#c8a96e">dubis.net/feedback.html</a>.
-    </p>
-    <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:1rem">
-      <span style="color:#888;font-size:.85rem">סה"כ תשובות:</span>
-      <span id="fb-count" style="color:#c8a96e;font-size:1.4rem;font-weight:700">0</span>
-      <span style="color:#888;font-size:.85rem">מתוך 7 שנשלחו (<span id="fb-pct">0</span>%)</span>
-    </div>
-    <div id="fb-loading" style="text-align:center;color:#666;padding:2rem">Loading...</div>
-    <div id="fb-empty" style="display:none;text-align:center;color:#888;padding:3rem;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px">
-      עדיין אין תשובות. המיילים נשלחו ב-2026-04-28. סבלנות — לוקח לאנשים 1-3 ימים לענות.
-    </div>
-    <div id="fb-list" style="display:flex;flex-direction:column;gap:1rem"></div>
-  </div><!-- /section-feedback -->
+  
 
-  <!-- ══ META CAMPAIGNS SECTION (one-click IL campaign create) ══════════ -->
-  <div id="section-meta-campaigns" style="display:none;padding:1.5rem" dir="rtl">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem">
-      <h2 style="font-size:1rem;color:#c8a96e;letter-spacing:2px;text-transform:uppercase;font-weight:700">📣 Meta Campaigns</h2>
-      <span style="font-size:.72rem;color:#888">בנייה אוטומטית של קמפיינים — נוצר ב-PAUSED, אתה מפעיל ידנית</span>
-    </div>
+  
 
-    <!-- Token health -->
-    <div id="mc-token-status" style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1rem;font-size:.85rem;color:#888">בודק חיבור ל-Meta Graph API...</div>
-
-    <!-- IL Campaign card -->
-    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1.25rem;margin-bottom:1.25rem">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;gap:1rem;flex-wrap:wrap">
-        <div>
-          <div style="font-size:.95rem;color:#e8e0d5;font-weight:700;margin-bottom:.25rem">🇮🇱 קמפיין ישראל — שבוע ראשון</div>
-          <div style="font-size:.75rem;color:#888;line-height:1.6">2 קבוצות (נשים + גברים 30-55), קריאייטיב בעברית, ₪32/יום סה"כ, UTM tracking מובנה (utm_campaign=il_w1).<br>ייווצר במצב PAUSED — תפעיל ידנית ב-Ads Manager אחרי בדיקה.</div>
-        </div>
-        <button id="mc-il-btn" onclick="mcCreateILCampaign()" style="background:#1f7a42;color:white;border:none;padding:.7rem 1.4rem;border-radius:6px;cursor:pointer;font-weight:700;white-space:nowrap">
-          ✓ צור קמפיין IL
-        </button>
-      </div>
-      <div id="mc-il-status" style="font-size:.78rem;color:#888;margin-top:.5rem"></div>
-    </div>
-
-    <!-- Result panel -->
-    <div id="mc-result" style="display:none;background:#0f0f0f;border:1px solid #2a2a2a;border-radius:10px;padding:1.25rem;margin-bottom:1.25rem">
-      <div style="font-size:.75rem;color:#c8a96e;letter-spacing:1px;margin-bottom:.75rem">תוצאת יצירה:</div>
-      <pre id="mc-result-json" style="font-size:.72rem;color:#e8e0d5;background:#0a0a0a;padding:.75rem;border-radius:6px;overflow:auto;max-height:500px;direction:ltr;text-align:left;font-family:Consolas,monospace;margin:0"></pre>
-    </div>
-
-    <!-- Existing campaigns list -->
-    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1.25rem;margin-bottom:1.25rem">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-        <div style="font-size:.85rem;color:#e8e0d5;font-weight:700">קמפיינים קיימים</div>
-        <button onclick="mcListCampaigns()" style="background:#2a2a2a;color:#c8a96e;border:1px solid #3a3a3a;padding:.4rem .9rem;border-radius:5px;cursor:pointer;font-size:.75rem">↻ רענן</button>
-      </div>
-      <div id="mc-campaigns-list" style="font-size:.78rem;color:#888">טוען...</div>
-    </div>
-
-    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1rem;font-size:.75rem;color:#888;line-height:1.7">
-      <strong style="color:#c8a96e">💡 איך זה עובד:</strong> לחיצה על "צור קמפיין IL" שולחת קריאה ל-Meta Graph API דרך Edge Function שלנו (orchestrate-il-campaign).
-      נוצרים: 1 Campaign + 2 AdSets + 2 Creatives + 2 Ads — הכל ב-PAUSED.
-      אחרי היצירה, כנס ל-<a href="https://business.facebook.com/adsmanager/manage/campaigns?act=26201135546175057" target="_blank" style="color:#c8a96e">Ads Manager</a>,
-      בדוק שהמודעות נראות בסדר, וודא שה-pixel מקושר, ואז Activate ידנית.
-    </div>
-  </div><!-- /section-meta-campaigns -->
-
-  <!-- ══ CAROUSEL APPROVAL SECTION — V3 ONLY (mockup-referenced, no overlays) ══ -->
-  <section id="section-carousel-approval" style="display:none;padding:1.5rem" dir="rtl">
-    <div style="margin:0 0 1.5rem;padding:1.5rem;background:#1a1a1a;border-radius:12px;border:2px solid #c8922a">
-      <h2 style="color:#c8922a;margin-bottom:.5rem;font-size:1.1rem;letter-spacing:2px;text-transform:uppercase">🌆 תמונות Lifestyle V3 (מבוסס-מוקאפ Gelato)</h2>
-      <p style="color:#ccc;margin-bottom:1.25rem;font-size:.85rem;line-height:1.6">תמונות לייף-סטייל — 6 חזית + 8 גב. Gemini קיבל את מוקאפ Gelato האמיתי כרפרנס ויזואלי וייצר תמונה של אדם רגיל לובש את אותו פריט בדיוק. הלוגו DUBIS™ והסלוגנים מודפסים על הבד, לא אוברליי.</p>
-
-      <h3 style="color:#e8e0d5;margin:.5rem 0 .75rem;font-size:.95rem;letter-spacing:1px">FRONT (6)</h3>
-      <div id="carousel-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-bottom:1.5rem">
-        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-          <img src="/images/carousel/v3/front-1.jpg" alt="V3 Front 1" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.75rem 1rem;color:#c8a96e;font-size:.78rem">חולצה שחורה · גבר 47</div>
-        </div>
-        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-          <img src="/images/carousel/v3/front-2.jpg" alt="V3 Front 2" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.75rem 1rem;color:#c8a96e;font-size:.78rem">חולצה לבנה · אישה 42</div>
-        </div>
-        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-          <img src="/images/carousel/v3/front-3.jpg" alt="V3 Front 3" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.75rem 1rem;color:#c8a96e;font-size:.78rem">קפוצון כחול כהה · גבר 38</div>
-        </div>
-        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-          <img src="/images/carousel/v3/front-4.jpg" alt="V3 Front 4" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.75rem 1rem;color:#c8a96e;font-size:.78rem">קפוצון אפור כהה · אישה 50</div>
-        </div>
-        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-          <img src="/images/carousel/v3/front-5.jpg" alt="V3 Front 5" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.75rem 1rem;color:#c8a96e;font-size:.78rem">חולצה כחול כהה · גבר 45</div>
-        </div>
-        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-          <img src="/images/carousel/v3/front-6.jpg" alt="V3 Front 6" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.75rem 1rem;color:#c8a96e;font-size:.78rem">קפוצון שחור · אישה 36</div>
-        </div>
-      </div>
-
-      <h3 style="color:#e8e0d5;margin:.5rem 0 .75rem;font-size:.95rem;letter-spacing:1px">BACK (8) — סלוגן מודפס על הגב</h3>
-      <div id="carousel-back-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-bottom:1.5rem">
-        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-          <img src="/images/carousel/v3/back-1.jpg" alt="V3 Back 1" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.75rem 1rem;color:#c8a96e;font-size:.78rem;font-style:italic">"Built different. That's the point."</div>
-        </div>
-        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-          <img src="/images/carousel/v3/back-2.jpg" alt="V3 Back 2" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.75rem 1rem;color:#c8a96e;font-size:.78rem;font-style:italic">"Low maintenance, high value."</div>
-        </div>
-        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-          <img src="/images/carousel/v3/back-3.jpg" alt="V3 Back 3" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.75rem 1rem;color:#c8a96e;font-size:.78rem;font-style:italic">"Fashion finally caught up."</div>
-        </div>
-        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-          <img src="/images/carousel/v3/back-4.jpg" alt="V3 Back 4" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.75rem 1rem;color:#c8a96e;font-size:.78rem;font-style:italic">"Comfortable in my skin. And my hoodie."</div>
-        </div>
-        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-          <img src="/images/carousel/v3/back-5.jpg" alt="V3 Back 5" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.75rem 1rem;color:#c8a96e;font-size:.78rem;font-style:italic">"I survived. That's enough."</div>
-        </div>
-        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-          <img src="/images/carousel/v3/back-6.jpg" alt="V3 Back 6" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.75rem 1rem;color:#c8a96e;font-size:.78rem;font-style:italic">"Unfashionably comfortable."</div>
-        </div>
-        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-          <img src="/images/carousel/v3/back-7.jpg" alt="V3 Back 7" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.75rem 1rem;color:#c8a96e;font-size:.78rem;font-style:italic">"Zero Motivation Club."</div>
-        </div>
-        <div class="carousel-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden">
-          <img src="/images/carousel/v3/back-8.jpg" alt="V3 Back 8" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.75rem 1rem;color:#c8a96e;font-size:.78rem;font-style:italic">"Certified overthinker."</div>
-        </div>
-      </div>
-
-      <div style="display:flex;gap:1rem;flex-wrap:wrap">
-        <button onclick="approveCarousel()" style="background:#c8922a;color:#000;padding:.75rem 2rem;border:none;border-radius:8px;font-size:1rem;font-weight:bold;cursor:pointer">✅ אשר ועדכן קרוסלה</button>
-        <button onclick="rejectCarousel()" style="background:transparent;color:#c8922a;padding:.75rem 2rem;border:1px solid #c8922a;border-radius:8px;font-size:1rem;cursor:pointer">❌ דחה</button>
-      </div>
-      <div id="carousel-approval-toast" style="display:none;margin-top:1rem;padding:.75rem 1rem;background:#1d3a1d;border:1px solid #4caf50;border-radius:8px;color:#9fdc9f;font-size:.85rem"></div>
-    </div>
-  </section><!-- /section-carousel-approval -->
+  
 
   <!-- ══ LIFESTYLE PREVIEW SECTION ═══════════════════════════ -->
-  <section id="section-lifestyle-preview" style="display:none;padding:1.5rem" dir="rtl">
-    <div style="margin:0 0 1.5rem;padding:1.5rem;background:#1a1a1a;border-radius:12px;border:2px solid #c8922a">
-      <h2 style="color:#c8922a;margin-bottom:.5rem;font-size:1.1rem;letter-spacing:2px;text-transform:uppercase">🌆 Lifestyle Preview</h2>
-      <p style="color:#ccc;margin-bottom:1.5rem;font-size:.85rem;line-height:1.6">6 תמונות לייפסטייל חדשות מהריצה האחרונה. השוואה ויזואלית — מה לבחור לאתר ולמודעות.</p>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem">
-        <div class="lifestyle-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
-          <img src="/images/lifestyle-preview/lifestyle-1.jpg" alt="Lifestyle 1" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.85rem 1rem;color:#e8e0d5;font-weight:700;font-size:.9rem">לייפסטייל 1</div>
-        </div>
-        <div class="lifestyle-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
-          <img src="/images/lifestyle-preview/lifestyle-2.jpg" alt="Lifestyle 2" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.85rem 1rem;color:#e8e0d5;font-weight:700;font-size:.9rem">לייפסטייל 2</div>
-        </div>
-        <div class="lifestyle-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
-          <img src="/images/lifestyle-preview/lifestyle-3.jpg" alt="Lifestyle 3" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.85rem 1rem;color:#e8e0d5;font-weight:700;font-size:.9rem">לייפסטייל 3</div>
-        </div>
-        <div class="lifestyle-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
-          <img src="/images/lifestyle-preview/lifestyle-4.jpg" alt="Lifestyle 4" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.85rem 1rem;color:#e8e0d5;font-weight:700;font-size:.9rem">לייפסטייל 4</div>
-        </div>
-        <div class="lifestyle-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
-          <img src="/images/lifestyle-preview/lifestyle-5.jpg" alt="Lifestyle 5" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.85rem 1rem;color:#e8e0d5;font-weight:700;font-size:.9rem">לייפסטייל 5</div>
-        </div>
-        <div class="lifestyle-card" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;overflow:hidden;transition:border-color .2s,transform .2s" onmouseover="this.style.borderColor='#c8922a';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='#2a2a2a';this.style.transform='translateY(0)'">
-          <img src="/images/lifestyle-preview/lifestyle-6.jpg" alt="Lifestyle 6" style="width:100%;aspect-ratio:1/1;object-fit:cover;display:block">
-          <div style="padding:.85rem 1rem;color:#e8e0d5;font-weight:700;font-size:.9rem">לייפסטייל 6</div>
-        </div>
-      </div>
-    </div>
-  </section><!-- /section-lifestyle-preview -->
+  
 
   <!-- Coupon Modal -->
   <div id="coupon-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
@@ -3185,17 +2958,9 @@
     document.getElementById('section-gallery').style.display            = name === 'gallery'            ? '' : 'none';
     document.getElementById('section-content-approval').style.display   = name === 'content-approval'   ? '' : 'none';
     document.getElementById('section-gelato-tools').style.display       = name === 'gelato-tools'       ? '' : 'none';
-    document.getElementById('section-tax-nexus').style.display          = name === 'tax-nexus'          ? '' : 'none';
     document.getElementById('section-funnel').style.display             = name === 'funnel'             ? '' : 'none';
-    document.getElementById('section-feedback').style.display           = name === 'feedback'           ? '' : 'none';
-    document.getElementById('section-meta-campaigns').style.display     = name === 'meta-campaigns'     ? '' : 'none';
-    document.getElementById('section-carousel-approval').style.display  = name === 'carousel-approval'  ? '' : 'none';
-    document.getElementById('section-lifestyle-preview').style.display  = name === 'lifestyle-preview'  ? '' : 'none';
     if (name === 'gelato-tools') gtInit();
-    if (name === 'meta-campaigns') mcInit();
-    if (name === 'tax-nexus') loadTaxNexus();
     if (name === 'funnel') loadFunnel();
-    if (name === 'feedback') loadFeedback();
     if (name === 'tasks') loadTasks();
     if (name === 'agents') loadAgentsSection();
     if (name === 'campaigns' && !_campaignsLoaded) { _campaignsLoaded = true; loadCampaigns(); }
@@ -3208,29 +2973,6 @@
     if (name === 'analytics' && !_analyticsLoaded) { _analyticsLoaded = true; loadAnalytics(); }
     if (name === 'products' && !_productsLoaded) { _productsLoaded = true; loadProducts(); }
     if (name === 'reviews' && !_reviewsLoaded) { _reviewsLoaded = true; loadReviews(); }
-  }
-
-  // ── Carousel Approval ─────────────────────────────────
-  function approveCarousel() {
-    console.log('[carousel] approved — 14 V3 images ready to go live');
-    const toast = document.getElementById('carousel-approval-toast');
-    toast.style.display = 'block';
-    toast.style.background = '#1d3a1d';
-    toast.style.borderColor = '#4caf50';
-    toast.style.color = '#9fdc9f';
-    toast.textContent = '✅ הקרוסלה אושרה. ההפעלה בפועל תחווט לאחר אישור.';
-    setTimeout(() => { toast.style.display = 'none'; }, 5000);
-  }
-
-  function rejectCarousel() {
-    console.log('[carousel] rejected — 14 V3 images sent back for revision');
-    const toast = document.getElementById('carousel-approval-toast');
-    toast.style.display = 'block';
-    toast.style.background = '#3a1d1d';
-    toast.style.borderColor = '#e74c3c';
-    toast.style.color = '#f5b8b0';
-    toast.textContent = '❌ הקרוסלה נדחתה. יוצרים גרסה חדשה.';
-    setTimeout(() => { toast.style.display = 'none'; }, 5000);
   }
 
   // ── Users: Load ───────────────────────────────────────
@@ -4411,220 +4153,6 @@
     }
   }
 
-  // ── Feedback responses loader ──────────────────────────────────
-  async function loadFeedback() {
-    document.getElementById('fb-loading').style.display = '';
-    document.getElementById('fb-list').innerHTML = '';
-    document.getElementById('fb-empty').style.display = 'none';
-    try {
-      const { data, error } = await _sb.from('feedback_responses')
-        .select('*').order('created_at', { ascending: false }).limit(50);
-      if (error) throw error;
-      const rows = data || [];
-      document.getElementById('fb-count').textContent = rows.length;
-      document.getElementById('fb-pct').textContent = Math.round(rows.length / 7 * 100);
-      document.getElementById('fb-loading').style.display = 'none';
-      if (rows.length === 0) {
-        document.getElementById('fb-empty').style.display = 'block';
-        return;
-      }
-      const escape = s => String(s||'').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
-      const qLabels = {
-        q1_first_impression: '1. רושם ראשון',
-        q2_would_buy: '2. היית קונה?',
-        q3_price_perception: '3. מחיר',
-        q4_what_stood_out: '4. מה בלט',
-        q5_would_recommend: '5. מתנה למישהי',
-        q6_anything_else: '6. עוד משהו',
-      };
-      document.getElementById('fb-list').innerHTML = rows.map(r => `
-        <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:1.2rem 1.4rem">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem;border-bottom:1px solid #2a2a2a;padding-bottom:.6rem">
-            <div>
-              <span style="color:#c8a96e;font-weight:700;font-size:1.05rem">${escape(r.tester_name) || '(אנונימי)'}</span>
-              <span style="color:#888;font-size:.78rem;margin-right:.6rem">${escape(r.tester_email) || '—'}</span>
-            </div>
-            <span style="color:#666;font-size:.78rem">${new Date(r.created_at).toLocaleString('he-IL')}</span>
-          </div>
-          ${Object.entries(qLabels).map(([k,label]) => r[k] ? `
-            <div style="margin-bottom:.7rem">
-              <div style="color:#888;font-size:.78rem;margin-bottom:.2rem">${label}</div>
-              <div style="color:#e8e0d5;font-size:.92rem;line-height:1.55;white-space:pre-wrap">${escape(r[k])}</div>
-            </div>` : '').join('')}
-        </div>`).join('');
-    } catch (err) {
-      console.error('Feedback load error:', err);
-      document.getElementById('fb-loading').textContent = 'Error: ' + err.message;
-    }
-  }
-
-  // ── Meta Campaigns: token health + one-click IL campaign create ────
-  // 2026-05-06 — Calls agents Edge Function (?type=meta-ads-manage) which holds
-  // META_ACCESS_TOKEN in its env. Admin JWT auth, so only oren can fire it.
-  const _MC_FN_BASE = 'https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=meta-ads-manage';
-
-  async function _mcCall(action, body) {
-    const { data: { session } } = await _sb.auth.getSession();
-    const token = session?.access_token;
-    if (!token) throw new Error('No admin session — log in again.');
-    const url = _MC_FN_BASE + '&action=' + encodeURIComponent(action);
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(body || {}),
-    });
-    const text = await res.text();
-    let json; try { json = JSON.parse(text); } catch (_) { json = { raw: text }; }
-    if (!res.ok) throw new Error(`HTTP ${res.status} — ${json.error || text}`);
-    return json;
-  }
-
-  async function mcInit() {
-    const tokenEl = document.getElementById('mc-token-status');
-    tokenEl.textContent = 'בודק חיבור ל-Meta Graph API...';
-    try {
-      const r = await _mcCall('check-token', {});
-      const ok = r.has_ads_management;
-      const me = (r.me && r.me.name) || '?';
-      const acct = (r.ad_account && r.ad_account.name) || '?';
-      tokenEl.style.color = ok ? '#3B7A57' : '#e74c3c';
-      tokenEl.innerHTML = ok
-        ? `✅ Token תקין — מחובר ל-${acct} (משתמש: ${me}). Pixel: ${r.pixel_id}`
-        : `❌ Token חסר הרשאת ads_management. בדוק ב-Meta Business Settings.`;
-    } catch (err) {
-      tokenEl.style.color = '#e74c3c';
-      tokenEl.textContent = '❌ ' + err.message + ' — ייתכן שצריך לדפלוי את ה-Edge Function עם orchestrate-il-campaign.';
-    }
-    mcListCampaigns();
-  }
-
-  async function mcListCampaigns() {
-    const el = document.getElementById('mc-campaigns-list');
-    el.textContent = 'טוען...';
-    try {
-      const r = await _mcCall('list-campaigns', {});
-      const items = (r.campaigns && r.campaigns.data) || [];
-      if (!items.length) { el.textContent = 'אין קמפיינים'; return; }
-      el.innerHTML = items.map(c => `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:1px solid #2a2a2a;gap:1rem;flex-wrap:wrap">
-          <div style="flex:1;min-width:200px">
-            <div style="color:#e8e0d5;font-size:.85rem;font-weight:600">${(c.name||'').replace(/[<>]/g,'')}</div>
-            <div style="color:#666;font-size:.7rem;direction:ltr;text-align:right">${c.id} · ${c.objective}</div>
-          </div>
-          <div style="font-size:.72rem;color:${c.effective_status==='ACTIVE'?'#3B7A57':c.effective_status==='PAUSED'?'#C9A227':'#888'};font-weight:600">${c.effective_status}</div>
-        </div>`).join('');
-    } catch (err) {
-      el.style.color = '#e74c3c';
-      el.textContent = 'שגיאה: ' + err.message;
-    }
-  }
-
-  async function mcCreateILCampaign() {
-    if (!confirm('ליצור קמפיין IL חדש? (ייווצר ב-PAUSED — לא יחויב כסף עד שתפעיל ידנית ב-Ads Manager)')) return;
-    const btn = document.getElementById('mc-il-btn');
-    const status = document.getElementById('mc-il-status');
-    const result = document.getElementById('mc-result');
-    const resultJson = document.getElementById('mc-result-json');
-
-    btn.disabled = true;
-    btn.textContent = '⏳ יוצר...';
-    status.style.color = '#888';
-    status.textContent = 'שולח בקשה ל-Edge Function — בונה Campaign + 2 AdSets + 2 Creatives + 2 Ads...';
-
-    try {
-      const r = await _mcCall('orchestrate-il-campaign', {
-        daily_budget_ils: 16,
-      });
-      result.style.display = '';
-      resultJson.textContent = JSON.stringify(r, null, 2);
-      if (r.success) {
-        const total = r.total_daily_budget_ils;
-        status.style.color = '#3B7A57';
-        status.innerHTML = `✅ נוצר! Campaign ID: <code style="direction:ltr">${r.campaign_id}</code> · תקציב כולל ₪${total}/יום · 2 adsets · UTM=${r.utm_campaign}<br>הפעל ידנית ב-<a href="https://business.facebook.com/adsmanager/manage/ads?act=26201135546175057&selected_campaign_ids=${r.campaign_id}" target="_blank" style="color:#c8a96e">Ads Manager</a>.`;
-        mcListCampaigns();
-      } else {
-        status.style.color = '#e74c3c';
-        status.textContent = '❌ נכשל. תראה ב-result בהמשך.';
-      }
-    } catch (err) {
-      status.style.color = '#e74c3c';
-      status.textContent = '❌ ' + err.message;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = '✓ צור קמפיין IL';
-    }
-  }
-
-  // ── Tax Nexus loader ────────────────────────────────────────
-  // Reuses /api/admin/analytics response (taxNexus block). No extra endpoint = stays under 12/12 Vercel cap.
-  async function loadTaxNexus() {
-    const { data: { session } } = await _sb.auth.getSession();
-    const token = session?.access_token;
-    if (!token) { document.getElementById('tn-tbody').innerHTML = '<tr><td colspan="7" style="padding:1rem;text-align:center;color:#e74c3c">Auth required</td></tr>'; return; }
-
-    try {
-      const res = await fetch('/api/admin/analytics', { headers: { Authorization: `Bearer ${token}` }});
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      const tn = data.taxNexus || {};
-      const rows = tn.byState || [];
-
-      document.getElementById('tn-year').textContent = tn.calendarYear || new Date().getFullYear();
-      document.getElementById('tn-us-revenue').textContent = `$${(tn.usRevenueYtd || 0).toLocaleString()}`;
-      document.getElementById('tn-us-orders').textContent = tn.usOrderCountYtd || 0;
-      document.getElementById('tn-state-count').textContent = rows.length;
-      document.getElementById('tn-reserve').textContent = `$${(tn.taxReserveSuggested || 0).toLocaleString()}`;
-
-      const statusBadge = (s) => {
-        const m = {
-          over:    { color: '#f44336', label: '🔴 OVER — REGISTER NOW' },
-          near:    { color: '#ff9800', label: '🟠 NEAR (70%+) — PLAN MoR' },
-          watch:   { color: '#ffc107', label: '🟡 WATCH (40%+)' },
-          safe:    { color: '#4caf50', label: '🟢 SAFE' },
-          no_tax:  { color: '#666',    label: '⚪ NO SALES TAX' },
-          unknown: { color: '#888',    label: '❓ UNKNOWN' }
-        };
-        const x = m[s] || m.unknown;
-        return `<span style="color:${x.color};font-weight:600;font-size:.78rem">${x.label}</span>`;
-      };
-
-      const tbody = document.getElementById('tn-tbody');
-      const emptyMsg = document.getElementById('tn-empty-msg');
-      if (rows.length === 0) {
-        tbody.innerHTML = '';
-        document.getElementById('tn-table-wrap').style.display = 'none';
-        emptyMsg.style.display = 'block';
-        return;
-      }
-      document.getElementById('tn-table-wrap').style.display = '';
-      emptyMsg.style.display = 'none';
-
-      tbody.innerHTML = rows.map(r => {
-        const thresholdStr = r.revThreshold == null
-          ? (r.status === 'no_tax' ? '— (no sales tax)' : '— (unknown)')
-          : `$${r.revThreshold.toLocaleString()}${r.txnThreshold ? ` <span style="color:#666">or ${r.txnThreshold} txns</span>` : ''}`;
-        const pctStr = r.pctRev == null
-          ? '—'
-          : `${r.pctRev}%${r.pctTxn ? ` <span style="color:#666">/ ${r.pctTxn}%</span>` : ''}`;
-        const lastOrderStr = r.lastOrder ? new Date(r.lastOrder).toLocaleDateString('en-US') : '—';
-        const rowBg = r.status === 'over' ? 'background:rgba(244,67,54,.08)' :
-                      r.status === 'near' ? 'background:rgba(255,152,0,.06)' : '';
-        return `<tr style="border-top:1px solid #2a2a2a;${rowBg}">
-          <td style="padding:.6rem .8rem;font-weight:600;color:#c8a96e">${r.state}</td>
-          <td style="padding:.6rem .8rem;text-align:right">$${r.revenue.toLocaleString()}</td>
-          <td style="padding:.6rem .8rem;text-align:right">${r.txnCount}</td>
-          <td style="padding:.6rem .8rem;text-align:right;font-size:.8rem;color:#aaa">${thresholdStr}</td>
-          <td style="padding:.6rem .8rem;text-align:right;font-size:.85rem">${pctStr}</td>
-          <td style="padding:.6rem .8rem;text-align:center">${statusBadge(r.status)}</td>
-          <td style="padding:.6rem .8rem;text-align:right;color:#888;font-size:.78rem">${lastOrderStr}</td>
-        </tr>`;
-      }).join('');
-    } catch (err) {
-      console.error('Tax nexus load error:', err);
-      document.getElementById('tn-tbody').innerHTML = `<tr><td colspan="7" style="padding:1rem;text-align:center;color:#e74c3c">Error: ${err.message}</td></tr>`;
-    }
-  }
-
   async function loadAnalytics() {
     const { data: { session } } = await _sb.auth.getSession();
     const token = session?.access_token;
@@ -4775,32 +4303,68 @@
   }
 
   async function loadGoalsAndSocial(analyticsData) {
-    // Profit goal tracking — $100 net profit/month over the last 30 days
-    // Net profit = revenue - COGS (Gelato cost × qty). Ad spend tracked separately as budget line.
-    const monthlyProfit = analyticsData.monthlyProfit30d != null ? analyticsData.monthlyProfit30d : 0;
     const monthlyRevenue30d = analyticsData.monthlyRevenue30d || 0;
     const totalOrders = analyticsData.totalOrders || 0;
-    const goalTarget = 1000;
-    // Profit can be negative — clamp the bar at 0 but show the real number in the label
-    const goalPct = Math.max(0, Math.min(100, Math.round((monthlyProfit / goalTarget) * 100)));
-    document.getElementById('goal-fill').style.width = goalPct + '%';
-    document.getElementById('goal-pct-text').textContent = goalPct + '%';
-    const profitColor = monthlyProfit >= goalTarget ? '#4caf50' : monthlyProfit >= 0 ? '#c8a96e' : '#e74c3c';
-    document.getElementById('goal-amt').innerHTML = `<span style="color:${profitColor}">$${monthlyProfit.toLocaleString()}</span> / $${goalTarget.toLocaleString()} <span style="color:#666;font-size:.7rem">(הכנסה 30 יום: $${monthlyRevenue30d.toLocaleString()})</span>`;
 
-    // Goal timeline — extended from 60 to 180 days per oren 2026-04-28
-    const GOAL_START = new Date('2026-03-23'); // Original date goal was set
-    const GOAL_DAYS = 180; // Extended from 60 to 180 days (oren 2026-04-28)
+    // ── 🇺🇸 US Last Run test card (board decision 2026-07-22 — pre-signed verdict) ──
+    // Replaced the retired "$1,000 in 6 months / $500 budget" banner (superseded by the board).
+    const ut = analyticsData.usTest || {};
+    const VERDICT_TARGET = 10; // ≥10 stranger purchases = scale
     const now = new Date();
-    const daysElapsed = Math.floor((now - GOAL_START) / 86400000);
-    const daysRemaining = Math.max(0, GOAL_DAYS - daysElapsed);
-    const goalEndDate = new Date(GOAL_START.getTime() + GOAL_DAYS * 86400000);
-    const startStr = GOAL_START.toLocaleDateString('he-IL', {day:'2-digit', month:'2-digit', year:'numeric'});
-    const endStr = goalEndDate.toLocaleDateString('he-IL', {day:'2-digit', month:'2-digit', year:'numeric'});
-    const timelineEl = document.getElementById('goal-timeline');
-    if (timelineEl) {
-      const barColor = daysRemaining > 20 ? '#4caf50' : daysRemaining > 7 ? '#ff9800' : '#e74c3c';
-      timelineEl.innerHTML = `התחלה: ${startStr} &nbsp;|&nbsp; סיום: ${endStr} &nbsp;|&nbsp; <span style="color:${barColor};font-weight:600">${daysElapsed} ימים עברו, ${daysRemaining} ימים נותרו</span>`;
+    const sp = ut.strangerPurchases || 0;
+    const vPct = Math.min(100, Math.round((sp / VERDICT_TARGET) * 100));
+    document.getElementById('us-verdict-fill').style.width = vPct + '%';
+    document.getElementById('us-verdict-text').textContent = `${sp} / ${VERDICT_TARGET}`;
+    const vColor = sp >= VERDICT_TARGET ? '#4caf50' : sp >= 1 ? '#c8a96e' : '#e74c3c';
+    document.getElementById('us-verdict-amt').innerHTML =
+      `<span style="color:${vColor}">רכישות-זרים: ${sp}</span> ` +
+      `<span style="color:#666;font-size:.7rem">(הכנסה: $${(ut.strangerRevenue || 0).toLocaleString()} · חברים/PALRAM15: ${ut.friendlyPurchases || 0})</span>`;
+
+    // Test timeline
+    const tStart = new Date((ut.start || '2026-08-01') + 'T00:00:00Z');
+    const tEnd   = new Date((ut.end   || '2026-09-08') + 'T23:59:59Z');
+    const tl = document.getElementById('us-test-timeline');
+    if (tl) {
+      if (now < tStart) {
+        const days = Math.ceil((tStart - now) / 86400000);
+        tl.innerHTML = `הקמפיין בנוי וממתין להדלקה — יוצא לדרך ב-01.08 (עוד <span style="color:#ff9800;font-weight:600">${days} ימים</span>) · פסק-דין 08-09.09`;
+      } else if (now <= tEnd) {
+        const elapsed = Math.floor((now - tStart) / 86400000) + 1;
+        const remaining = Math.max(0, Math.ceil((tEnd - now) / 86400000));
+        tl.innerHTML = `יום <span style="color:#c8a96e;font-weight:700">${elapsed}</span> למבחן · נותרו <span style="color:#4caf50;font-weight:600">${remaining} ימים</span> עד 08.09`;
+      } else {
+        tl.innerHTML = `המבחן הסתיים ב-08.09 — פסק-הדין על השולחן`;
+      }
+    }
+
+    // Campaign status + funnel counters
+    const usCamp = ut.campaign;
+    const usStatusMap = { active: ['🟢 רץ', '#4caf50'], paused: ['⏸️ ממתין להדלקה', '#ff9800'], completed: ['הסתיים', '#888'] };
+    const [usStTxt, usStColor] = usCamp ? (usStatusMap[usCamp.status] || [usCamp.status, '#aaa']) : ['לא נמצא', '#e74c3c'];
+    const usStEl = document.getElementById('us-camp-status');
+    if (usStEl) { usStEl.textContent = usStTxt; usStEl.style.color = usStColor; }
+    const usSpendEl = document.getElementById('us-camp-spend');
+    if (usSpendEl) usSpendEl.textContent = usCamp ? `₪${Math.round(usCamp.spend)} / ₪${Math.round(usCamp.budget)}` : '—';
+    const usVisitsEl = document.getElementById('us-visits');
+    if (usVisitsEl) usVisitsEl.textContent = (ut.visits || 0).toLocaleString();
+    const usCartsEl = document.getElementById('us-carts');
+    if (usCartsEl) usCartsEl.textContent = `${ut.addToCarts || 0} / ${ut.checkoutStarts || 0}`;
+
+    // Day-7 gate: <200 targeted visits by 07.08 ⇒ stop and fix traffic (analyst owns)
+    const gateEl = document.getElementById('us-day7-gate');
+    if (gateEl) {
+      const gateDate = new Date('2026-08-07T23:59:59Z');
+      const uVisits = ut.visits || 0;
+      if (now < tStart) {
+        gateEl.innerHTML = '🚧 שער יום-7: עד 07.08 נדרשים ≥200 ביקורים ממוקדים — אחרת עוצרים ומתקנים תנועה לפני ששורפים את החודש.';
+      } else if (now <= gateDate) {
+        const gc = uVisits >= 200 ? '#4caf50' : '#ff9800';
+        gateEl.innerHTML = `🚧 שער יום-7 (עד 07.08): <span style="color:${gc};font-weight:700">${uVisits} / 200</span> ביקורים ממוקדים`;
+      } else {
+        gateEl.innerHTML = uVisits >= 200
+          ? `✅ שער יום-7 עבר (${uVisits} ביקורים ממוקדים)`
+          : `🔴 שער יום-7 נכשל — ${uVisits}/200 ביקורים. לפי ההחלטה: עוצרים ומתקנים תנועה.`;
+      }
     }
 
     // Budget tracking — ALL campaigns (budget allocated + actual spend)
@@ -4828,10 +4392,7 @@
       }, 0);
     } catch(e) { console.error('Campaigns spend error:', e); }
 
-    const budgetAllocatedUSD = Math.round((totalBudgetILS / ILS_TO_USD) * 100) / 100;
     const spentUSD = Math.round((totalSpentILS / ILS_TO_USD) * 100) / 100;
-    const masterBudget = 500; // Total budget cap in USD
-    const remainingUSD = masterBudget - spentUSD;
 
     // ROI = (Gross Profit - Ad Spend) / Ad Spend * 100
     // COGS ~60% for print-on-demand (Gelato production + shipping)
@@ -4839,10 +4400,6 @@
     const grossProfit = monthlyRevenue30d * (1 - COGS_RATE);
     const netProfit = grossProfit - spentUSD;
     const roi = spentUSD > 0 ? (netProfit / spentUSD * 100).toFixed(0) + '%' : (monthlyRevenue30d > 0 ? '∞' : 'N/A');
-
-    document.getElementById('budget-spent').textContent = `$${spentUSD.toFixed(0)} (₪${Math.round(totalSpentILS)})`;
-    document.getElementById('budget-remaining').textContent = '$' + remainingUSD.toFixed(0);
-    document.getElementById('budget-roi').textContent = roi;
 
     // ── ROAS card in sales section — prefer API value, fall back to local calc ──
     const apiRoas = analyticsData.roas;
@@ -4862,7 +4419,7 @@
       document.getElementById('api-roas').textContent      = apiRoas  != null ? apiRoas.toFixed(2) + 'x'  : (spentUSD > 0 ? ((monthlyRevenue30d / spentUSD)).toFixed(2) + 'x' : '—');
       document.getElementById('api-roi').textContent       = apiRoi   != null ? apiRoi.toFixed(0) + '%'   : roi;
       document.getElementById('api-ad-spend').textContent  = apiSpend  != null ? '₪' + apiSpend.toFixed(0)  : `$${spentUSD.toFixed(0)} (₪${Math.round(totalSpentILS)})`;
-      document.getElementById('api-total-budget').textContent = apiBudget != null ? '₪' + apiBudget.toFixed(0) : `$${masterBudget}`;
+      document.getElementById('api-total-budget').textContent = apiBudget != null ? '₪' + apiBudget.toFixed(0) : '—';
       document.getElementById('api-active-camps').textContent = apiActive != null ? apiActive : (allCampaigns.filter(c => c.status === 'active').length);
     }
 

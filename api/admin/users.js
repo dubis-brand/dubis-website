@@ -47,12 +47,10 @@ module.exports = async function handler(req, res) {
         return res.status(500).json({ error: 'Server config error' });
     }
 
-    // ── Clients ──────────────────────────────────────────────
-    const supabaseAnon = createClient(
-        process.env.SUPABASE_URL,
-        process.env.SUPABASE_ANON_KEY || '',
-        { auth: { autoRefreshToken: false, persistSession: false } }
-    );
+    // ── Client ───────────────────────────────────────────────
+    // Single service-role client — also validates the caller's JWT.
+    // (SUPABASE_ANON_KEY = legacy anon JWT, dead since the 2026-06-13
+    // rotation; validating through it 401'd every admin session.)
     const supabaseAdmin = createClient(
         process.env.SUPABASE_URL,
         process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -64,7 +62,7 @@ module.exports = async function handler(req, res) {
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
     if (!token) return res.status(401).json({ error: 'No token provided' });
 
-    const { data: { user }, error: authError } = await supabaseAnon.auth.getUser(token);
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
     if (authError || !user) return res.status(401).json({ error: 'Invalid token' });
 
     const staticAdmins = getStaticAdmins();
