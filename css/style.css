@@ -1269,6 +1269,43 @@ body.has-preview-banner { padding-top: 32px; }
 }
 .avatar-card:hover img { transform: scale(1.04); }
 
+/* ── 2026-07-24: shoppable persona cards on the homepage crew carousel ── */
+.persona-card { cursor: pointer; }
+.persona-play {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 0.95rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    padding: 0 0 0 3px; /* optical centering of the ▶ glyph */
+    transition: background 0.2s, transform 0.2s;
+}
+.persona-play:hover { background: var(--honey); transform: scale(1.1); }
+.persona-caption {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 36px 14px 12px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.68));
+    color: #fff;
+    font-size: 0.85rem;
+    font-style: italic;
+    pointer-events: none;
+    text-align: left;
+    direction: ltr; /* slogans are English by brand rule — keep them LTR even in HE UI */
+}
+
 /* Quote card */
 .avatar-card.avatar-quote {
     background: var(--honey);
@@ -1481,6 +1518,13 @@ body.has-preview-banner { padding-top: 32px; }
     border-radius: 16px 0 0 16px;
     overflow: hidden;
     background: #f5f0eb;
+    /* 2026-07-24 gallery fix: cap the image column at the same height as the
+       info column. Without this, a PORTRAIT gallery image (persona photos are
+       2:3, mockups are 1:1) inflates the column via intrinsic sizing on tall
+       viewports — the thumbnail strip gets pushed below the viewport with no
+       scroll affordance, and the gallery reads as "stuck" (oren repro 1001x787). */
+    max-height: 88vh;
+    min-height: 0;
 }
 .modal-image { flex: 1; overflow: hidden; min-height: 0; padding: 1.25rem; box-sizing: border-box; }
 /* contain (not cover) so the full shirt is visible with a small margin
