@@ -71,6 +71,9 @@ const REEL_OVERRIDES = {
   23: 'https://www.dubis.net/preview/reels/fmt-23-paparazzi.mp4',
   40: 'https://www.dubis.net/preview/reels/fmt-40-streetstop.mp4',
   43: 'https://www.dubis.net/preview/reels/fmt-43-endingfairy.mp4',
+  39: 'https://www.dubis.net/preview/reels/fmt-39-summerhaze.mp4',
+  41: 'https://www.dubis.net/preview/reels/fmt-41-headphones.mp4',
+  42: 'https://www.dubis.net/preview/reels/fmt-42-supermarket.mp4',
 };
 
 function bankUrl(productId) {
@@ -95,9 +98,17 @@ async function buildAvailableBank() {
     .order('product_id_numeric', { ascending: true });
   if (error) throw new Error(`active-products query failed: ${error.message}`);
 
-  const candidates = (actives || [])
+  let candidates = (actives || [])
     .map(r => ({ product_id: Number(r.product_id_numeric), slogan: r.slogan, url: bankUrl(Number(r.product_id_numeric)) }))
     .filter(c => Number.isFinite(c.product_id));
+
+  // FRESH-FORMAT ONLY (2026-07-24, oren: "הטיקטוק ממשיך עם סרטונים משעממים"):
+  // until the product-keyed bank is regenerated in the new scene formats, rotation
+  // serves ONLY the REEL_OVERRIDES set — each one a frame-verified new-format reel.
+  // The old June try-on bank is retired from TikTok. Remove this filter only after
+  // the full bank refresh.
+  const fresh = candidates.filter(c => REEL_OVERRIDES[c.product_id]);
+  if (fresh.length >= 3) candidates = fresh; // safety: never shrink to a tiny/empty pool
 
   const checks = await Promise.all(candidates.map(c => checkReelExists(c.url)));
   const avail = candidates.filter((_, i) => checks[i]);
