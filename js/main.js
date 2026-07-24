@@ -118,6 +118,35 @@ function modalShipsTextFor(country, lang) {
                  : `🚚 Ships in ${days} business days`;
 }
 
+// Wave A (2026-07-24): concrete delivery window — "Expected delivery: Aug 4–8"
+// beats "5–7 business days" (True Classic pattern; shipping anxiety is the #1
+// stated objection). Derived from the SAME shippingDaysForCountry table, so the
+// two claims can never disagree.
+function _addBusinessDays(from, n) {
+  const d = new Date(from.getTime());
+  let added = 0;
+  while (added < n) {
+    d.setDate(d.getDate() + 1);
+    const dow = d.getDay();
+    if (dow !== 5 && dow !== 6) added++; // skip Fri+Sat (covers IL weekend; close enough for US too)
+  }
+  return d;
+}
+function deliveryWindowText(country, lang) {
+  const { days } = shippingDaysForCountry(country);
+  const m = String(days).match(/(\d+)\D+(\d+)/);
+  if (!m) return '';
+  const start = _addBusinessDays(new Date(), Number(m[1]) + 1); // +1 production dispatch buffer
+  const end   = _addBusinessDays(new Date(), Number(m[2]) + 2);
+  const loc = lang === 'he' ? 'he-IL' : 'en-US';
+  const fmt = (d) => d.toLocaleDateString(loc, { month: 'short', day: 'numeric' });
+  const sameMonth = start.getMonth() === end.getMonth();
+  const range = sameMonth
+    ? (lang === 'he' ? `${start.getDate()}–${end.getDate()} ${start.toLocaleDateString(loc, { month: 'short' })}` : `${start.toLocaleDateString(loc, { month: 'short' })} ${start.getDate()}–${end.getDate()}`)
+    : `${fmt(start)} – ${fmt(end)}`;
+  return lang === 'he' ? `📅 צפי הגעה: ${range}` : `📅 Expected delivery: ${range}`;
+}
+
 // 2026-05-22: Customer's GEOGRAPHIC country — independent of UI language.
 // Bug oren caught: previously inferred IL from dubis-lang='he' which is wrong
 // (a US user toggling Hebrew because they're a Hebrew speaker isn't in IL).
@@ -350,8 +379,11 @@ function countryFlagsHTML(product, opts = {}) {
       const cName = (COUNTRY_NAME[customer]||{})[currentLang] || customer;
       const flag  = COUNTRY_FLAG[customer] || customer;
       if (shipsToCustomer) {
-        const txt = currentLang === 'he' ? `נשלח ל${cName}` : `Ships to ${cName}`;
-        return `<div class="ships-to ships-to-pill ships-yes" title="${titleAll}"><span class="pill-flag">${flag}</span><span class="pill-check">✓</span> ${txt}</div>`;
+        // Wave A (2026-07-24): ships-to-you is the DEFAULT — repeating a green
+        // pill on every card is noise (27 identical pills on the grid). Only
+        // the EXCEPTION (can't ship) earns a card-level signal; the modal
+        // still shows the full coverage story.
+        return '';
       } else {
         const txt = currentLang === 'he' ? `לא זמין ב${cName}` : `Not available in ${cName}`;
         return `<div class="ships-to ships-to-pill ships-no" title="${titleAll}"><span class="pill-flag">${flag}</span><span class="pill-x">✕</span> ${txt}</div>`;
@@ -657,7 +689,7 @@ const translations = {
     hero_desc: 'Real clothes, real fit, real people. No apologies. No fake sizes. Made fresh to order — because you deserve something made for you.',
     hero_btn: 'Shop the Drop — from $14',
     people_title: 'The DUBIS Crew 🐻',
-    people_sub: 'Real people. Real bodies. No explanations needed.',
+    people_sub: 'Real bodies. Real fit. No explanations needed.',
     shop_title: 'The Collection', shop_sub: 'Wear what you mean. Mean what you wear.',
     filter_all: 'All', filter_tshirt: 'T-Shirts', filter_hoodie: 'Hoodies', filter_cap: 'Caps',
     filter_longsleeve: 'Long-Sleeves',
@@ -790,7 +822,7 @@ const translations = {
     fb_coupon_text: 'Welcome! Friend coupon: <strong class="fb-coupon-code">DUBIS15</strong> — 15% off your order',
     fb_coupon_dismiss_aria: 'Dismiss welcome offer',
     // Real People eyebrow
-    real_people_eyebrow: 'Real DUBIS customers — not paid models',
+    real_people_eyebrow: 'Made for bodies like these — not for runway models',
     quality_eyebrow: 'Our promise to you',
     // Privacy section
     privacy_title: 'Privacy Policy',
@@ -936,7 +968,7 @@ const translations = {
     fb_coupon_text: 'ברוך הבא! קוד קופון לחברים: <strong class="fb-coupon-code">DUBIS15</strong> — 15% הנחה על כל הרכישה',
     fb_coupon_dismiss_aria: 'סגירת ההצעה',
     // Real People eyebrow
-    real_people_eyebrow: 'לקוחות אמיתיים של DUBIS — לא דוגמנים בתשלום',
+    real_people_eyebrow: 'נעשה בשביל גופים כאלה — לא בשביל דוגמני מסלול',
     quality_eyebrow: 'ההבטחה שלנו',
     // Privacy section
     privacy_title: 'מדיניות פרטיות',
@@ -1389,6 +1421,7 @@ function renderProducts(filter, gender) {
       </div>
       <div class="product-info">
         <div class="product-phrase">"${product.phrase}"</div>
+        <div class="card-rating" id="badge-${product.id}"></div>
         <div class="product-bottom">
           <div class="product-price">${(() => {
             // Always price from the cheapest SELECTABLE variant — never the raw
@@ -1414,6 +1447,10 @@ function renderProducts(filter, gender) {
     </div>
     `;
   }).join('');
+  // Re-apply live review badges — re-renders (filter clicks) rebuild the DOM
+  // and would otherwise wipe them (the pre-Wave-A bug: badges only applied once
+  // at load, against markup that no longer emitted the badge element at all).
+  try { applyReviewBadges(); } catch (_) {}
 }
 
 // ===== COLOR SWATCH ON PRODUCT CARD =====
@@ -1433,6 +1470,23 @@ function selectCardColor(productId, color, dotEl) {
     if (backImg)  { backImg.onerror  = () => { backImg.onerror  = null; backImg.src  = fallback; }; backImg.src  = productImg(productId, color, 'back'); }
     if (frontImg) { frontImg.onerror = () => { frontImg.onerror = null; frontImg.src = fallback; }; frontImg.src = productImg(productId, color, 'front'); }
   }
+}
+
+// ── Wave A (2026-07-24): real-body persona photos + reel videos on the PDP ──
+// Persona hero images (character wearing the EXACT product, generated via
+// try-on against the real mockups) live at images/personas-real/persona-{id}.jpg.
+// Reel bank videos (same characters, front+back garment beats) live in the
+// public Supabase video-assets bucket. Both lists are verified-200 at build
+// time (2026-07-24); a missing asset simply hides its thumb — nothing breaks.
+const PERSONA_IMG_PIDS = new Set([1, 2, 5, 18, 23, 25, 29, 30, 32, 34, 38, 39, 40, 41, 42, 43]);
+const REEL_VIDEO_PIDS  = new Set([1, 2, 3, 4, 5, 8, 10, 11, 18, 23, 25, 29, 30, 31, 32, 34, 38, 39, 40, 41, 42, 43]);
+function personaImgUrl(productId) {
+  return PERSONA_IMG_PIDS.has(Number(productId)) ? `images/personas-real/persona-${productId}.jpg` : null;
+}
+function reelVideoUrl(productId) {
+  return REEL_VIDEO_PIDS.has(Number(productId))
+    ? `https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/video-assets/_pilot/product-${productId}-FINAL-EN.mp4`
+    : null;
 }
 
 // Helper: build per-color image URL — uses imageRef if product has one (placeholder)
@@ -1506,6 +1560,17 @@ function openProductModal(productId) {
           <img src="${productImg(product.id, product.colors[0], 'back')}" alt="Back view" loading="lazy"
                onerror="this.onerror=null;this.src='${product.image}'" />
         </div>
+        ${personaImgUrl(product.id) ? `
+        <div class="thumb" data-view="persona" onclick="setModalThumb(event, ${product.id}, 'persona')">
+          <img src="${personaImgUrl(product.id)}" alt="${currentLang === 'he' ? 'על גוף אמיתי' : 'On a real body'}" loading="lazy"
+               onerror="this.onerror=null;this.closest('.thumb').style.display='none'" />
+        </div>` : ''}
+        ${reelVideoUrl(product.id) ? `
+        <div class="thumb thumb-video" data-view="video" onclick="setModalThumb(event, ${product.id}, 'video')" title="${currentLang === 'he' ? 'לצפייה בסרטון' : 'Watch the video'}">
+          <img src="${personaImgUrl(product.id) || productImg(product.id, product.colors[0], 'front')}" alt="${currentLang === 'he' ? 'סרטון' : 'Video'}" loading="lazy"
+               onerror="this.onerror=null;this.src='${product.image}'" />
+          <span class="thumb-play" aria-hidden="true">▶</span>
+        </div>` : ''}
       </div>
     </div>
     <div class="modal-info">
@@ -1513,8 +1578,21 @@ function openProductModal(productId) {
       <div class="modal-limited-badge">&#128293; ${currentLang === 'he' ? 'מהדורה מוגבלת' : 'Limited Edition'}</div>
       <h2 class="modal-phrase">"${product.phrase}"</h2>
       <div class="modal-price" id="modal-price-${product.id}" data-base-price="${product.price}">${formatPrice(getVariantPrice(product.id, product.colors[0], product.sizes[0], product.price))}</div>
+      ${(() => {
+        // Review summary near the price — rendered ONLY from real approved
+        // reviews (no seeded stars). Click jumps to the Reviews tab.
+        const rev = (typeof productReviews === 'object') ? productReviews[(product.phrase || '').toLowerCase()] : null;
+        if (!rev || !rev.count) return '';
+        const avg = (rev.total / rev.count).toFixed(1);
+        return `<div class="modal-review-summary" onclick="document.querySelector('.prod-tab[onclick*=\\'tab-reviews-${product.id}\\']')?.click()">★ ${avg} · ${rev.count} ${currentLang === 'he' ? 'ביקורות' : (rev.count === 1 ? 'review' : 'reviews')}</div>`;
+      })()}
       <div class="modal-price-note" id="modal-price-note-${product.id}" style="font-size:0.78rem;color:#888;margin-top:-4px;margin-bottom:6px;display:none;">${currentLang === 'he' ? 'המחיר משתנה לפי צבע/מידה' : 'Price varies by color/size'}</div>
       <div class="modal-shipping-info">${modalShipsTextFor(detectedCustomerCountry(), currentLang)} · <span class="free-ship-badge">${t.modal_free_ship}</span></div>
+      ${(() => {
+        const win = deliveryWindowText(detectedCustomerCountry(), currentLang);
+        const usBadge = detectedCustomerCountry() === 'US' ? `<span class="usa-print-badge">🇺🇸 Printed in the USA</span>` : '';
+        return (win || usBadge) ? `<div class="modal-delivery-window">${win}${win && usBadge ? ' · ' : ''}${usBadge}</div>` : '';
+      })()}
       ${countryFlagsHTML(product)}
       <div class="modal-dtg-badge">${t.modal_dtg}</div>
       <div class="modal-option">
@@ -1571,6 +1649,9 @@ function openProductModal(productId) {
       <button class="btn-primary modal-add-btn" onclick="addToCartFromModal(${product.id})">
         ${t.modal_add}
       </button>
+      <div class="dubis-promise">🤝 <strong>${currentLang === 'he' ? 'ההבטחה של DUBIS' : 'The DUBIS Promise'}</strong> — ${currentLang === 'he'
+        ? 'מידה לא מתאימה? מחליפים. פגם או פריט שגוי? החלפה או החזר מלא. 30 יום, בלי טפסים, בלי דרמה.'
+        : 'Wrong size? We swap it. Defective or wrong item? Replaced or refunded. 30 days, no forms, no drama.'}</div>
       ${(currentLang === 'he' && product.description_he ? product.description_he : product.description) ? `<p class="product-description">${currentLang === 'he' && product.description_he ? product.description_he : product.description}</p>` : ''}
       <div class="product-tabs">
         <button class="prod-tab active" onclick="switchTab(this,'tab-details-${product.id}')">${t.tab_details}</button>
@@ -1631,6 +1712,11 @@ function openProductModal(productId) {
 }
 
 function closeProductModal() {
+  // Stop any playing PDP video — the modal DOM persists after close, and a
+  // hidden video would keep playing audio.
+  document.querySelectorAll('#modal-body video').forEach(v => { try { v.pause(); } catch (_) {} v.remove(); });
+  const hiddenImg = document.querySelector('#modal-body .modal-image img[style*="display: none"], #modal-body .modal-image img[style*="display:none"]');
+  if (hiddenImg) hiddenImg.style.display = '';
   document.getElementById('product-modal').classList.remove('open');
   document.getElementById('product-modal-overlay').classList.remove('open');
   document.body.style.overflow = '';
@@ -1811,13 +1897,44 @@ function setModalThumb(event, productId, view) {
     event.currentTarget.classList.add('active');
   }
   const imgEl = document.getElementById(`modal-img-src-${productId}`);
-  if (imgEl) {
-    const color = imgEl.dataset.color || products.find(p => p.id === productId)?.colors[0] || '';
-    const product = products.find(p => p.id === productId);
-    imgEl.onerror = () => { imgEl.onerror = null; imgEl.src = product?.image || ''; };
-    imgEl.src = productImg(productId, color, view);
-    imgEl.dataset.view = view;
+  if (!imgEl) return;
+  const product = products.find(p => p.id === productId);
+  const wrap = imgEl.closest('.modal-image');
+  // Any non-video view: tear down the video element if one is playing.
+  const oldVideo = wrap ? wrap.querySelector('video') : null;
+  if (view !== 'video' && oldVideo) { try { oldVideo.pause(); } catch (_) {} oldVideo.remove(); imgEl.style.display = ''; }
+
+  if (view === 'video') {
+    // Wave A (2026-07-24): persona reel inside the PDP gallery (Hoodies/Fox
+    // pattern). Click-to-play only — preload=metadata so the ~10MB mp4 never
+    // loads unless asked for.
+    const url = reelVideoUrl(productId);
+    if (!url || !wrap) return;
+    if (oldVideo) { try { oldVideo.play(); } catch (_) {} return; }
+    imgEl.style.display = 'none';
+    imgEl.dataset.view = 'front'; // keep color-switch logic on a real image view
+    const v = document.createElement('video');
+    v.src = url;
+    v.controls = true; v.playsInline = true; v.preload = 'metadata';
+    v.poster = personaImgUrl(productId) || productImg(productId, imgEl.dataset.color || product?.colors[0] || '', 'front');
+    v.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#111;display:block;';
+    wrap.appendChild(v);
+    try { v.play(); } catch (_) {}
+    if (window.dubisTrack) window.dubisTrack('pdp_video_play', { id: productId });
+    return;
   }
+  if (view === 'persona') {
+    const url = personaImgUrl(productId);
+    if (!url) return;
+    imgEl.onerror = () => { imgEl.onerror = null; imgEl.src = product?.image || ''; };
+    imgEl.src = url;
+    imgEl.dataset.view = 'front'; // color-switch falls back to a real view
+    return;
+  }
+  const color = imgEl.dataset.color || product?.colors[0] || '';
+  imgEl.onerror = () => { imgEl.onerror = null; imgEl.src = product?.image || ''; };
+  imgEl.src = productImg(productId, color, view);
+  imgEl.dataset.view = view;
 }
 
 function selectSize(btn, size, productId) {
@@ -2232,6 +2349,29 @@ function renderCart() {
   if (totalRow) {
     totalRow.innerHTML = labelText + '<span id="cart-total">' + formatPrice(total) + '</span>';
   }
+
+  // Wave A (2026-07-24): free-shipping progress bar. The $60 threshold existed
+  // for months and never sold anything — now it asks for the next item.
+  try {
+    const fsEl = document.getElementById('cart-freeship');
+    if (fsEl) {
+      if (cart.length === 0) {
+        fsEl.style.display = 'none';
+      } else {
+        const THRESH = 60; // USD — single source: same threshold as freeShippingThreshold()
+        const pct = Math.min(100, Math.round((total / THRESH) * 100));
+        const remaining = Math.max(0, THRESH - total);
+        const msg = remaining <= 0
+          ? (currentLang === 'he' ? '🎉 יש לך משלוח חינם' : '🎉 You\'ve got free shipping')
+          : (currentLang === 'he'
+              ? `עוד ${formatPrice(remaining)} למשלוח חינם`
+              : `${formatPrice(remaining)} away from free shipping`);
+        fsEl.innerHTML = `<div class="freeship-msg${remaining <= 0 ? ' done' : ''}">${msg}</div>` +
+                         `<div class="freeship-track"><div class="freeship-fill" style="width:${pct}%"></div></div>`;
+        fsEl.style.display = '';
+      }
+    }
+  } catch (_) { /* non-fatal */ }
 
   if (cart.length === 0) {
     cartItems.innerHTML = '<p class="cart-empty">' + t.cart_empty + '</p>';
@@ -2825,20 +2965,25 @@ async function loadProductReviews() {
       productReviews[name].count++;
       productReviews[name].total += r.rating;
     });
-    // Update badges on cards
-    document.querySelectorAll('[id^="badge-"]').forEach(badge => {
-      const id = badge.id.replace('badge-', '');
-      const product = products.find(p => p.id == id);
-      if (!product) return;
-      const key = product.phrase.toLowerCase();
-      const rev = productReviews[key];
-      if (rev && rev.count > 0) {
-        const avg = (rev.total / rev.count).toFixed(1);
-        badge.textContent = `★ ${avg} (${rev.count})`;
-        badge.classList.add('has-reviews');
-      }
-    });
+    applyReviewBadges();
   } catch { /* non-critical */ }
+}
+
+// Paints ★ avg (count) badges onto the catalog cards. Safe to call any time —
+// re-invoked from renderProducts so filter-clicks don't wipe the badges.
+// Renders NOTHING for products with zero approved reviews (no fake stars).
+function applyReviewBadges() {
+  document.querySelectorAll('[id^="badge-"]').forEach(badge => {
+    const id = badge.id.replace('badge-', '');
+    const product = products.find(p => p.id == id);
+    if (!product) return;
+    const rev = productReviews[(product.phrase || '').toLowerCase()];
+    if (rev && rev.count > 0) {
+      const avg = (rev.total / rev.count).toFixed(1);
+      badge.textContent = `★ ${avg} (${rev.count})`;
+      badge.classList.add('has-reviews');
+    }
+  });
 }
 
 // 2026-05-23: PREVIEW banner — auto-appears on any host that isn't the

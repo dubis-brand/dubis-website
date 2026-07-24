@@ -763,6 +763,79 @@ body[dir="rtl"] .product-price .price-from { margin-left: 2px; margin-right: 0; 
     object-position: top;
 }
 
+/* ── Wave A 2026-07-24: PDP video thumb + persona gallery ────── */
+.thumb-video { position: relative; }
+.thumb-play {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 1.15rem;
+    background: rgba(0,0,0,0.35);
+    text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+    pointer-events: none;
+}
+
+/* ── Wave A: named guarantee under the buy button ────────────── */
+.dubis-promise {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #f7f2e9;
+    border: 1px solid #e7dcc8;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: #4a4a4a;
+}
+.dubis-promise strong { color: var(--charcoal, #2c2c2c); }
+
+/* ── Wave A: review summary near price + card rating badge ───── */
+.modal-review-summary {
+    font-size: 0.85rem;
+    color: #b8860b;
+    cursor: pointer;
+    margin: 2px 0 4px;
+}
+.modal-review-summary:hover { text-decoration: underline; }
+.card-rating { font-size: 0.78rem; color: #b8860b; min-height: 0; }
+.card-rating:empty { display: none; }
+
+/* ── Wave A: dated delivery window + USA print badge ─────────── */
+.modal-delivery-window {
+    font-size: 0.8rem;
+    color: #555;
+    margin: 2px 0 6px;
+}
+.usa-print-badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #2c2c2c;
+    background: #eef3f8;
+    border: 1px solid #d6e2ee;
+    border-radius: 12px;
+    padding: 1px 8px;
+}
+
+/* ── Wave A: free-shipping progress bar in cart ──────────────── */
+.cart-freeship { margin: 0 0 10px; }
+.freeship-msg { font-size: 0.82rem; color: #4a4a4a; margin-bottom: 4px; }
+.freeship-msg.done { color: #2e6d2c; font-weight: 700; }
+.freeship-track {
+    height: 6px;
+    background: #eee5d8;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.freeship-fill {
+    height: 100%;
+    background: var(--honey, #c17e3a);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
 /* ── Color name display ──────────────────────────────────────── */
 .modal-color-label {
     font-size: 0.72rem;
@@ -1530,14 +1603,14 @@ body.has-preview-banner { padding-top: 32px; }
 .modal-add-btn { width: 100%; padding: 14px; font-size: 1rem; margin-top: auto; }
 /* Desktop short screens: .modal-info inner-scrolls with no visible affordance (esp. macOS hidden
    scrollbars) — the CTA sat below the fold and read as "button cut off outside the window".
-   Sticky keeps it visible at the bottom of the scroll column at all viewport heights. */
-@media (min-width: 901px) {
-    .modal-info .modal-add-btn {
-        position: sticky;
-        bottom: 0;
-        z-index: 5;
-        box-shadow: 0 -10px 14px -6px rgba(0,0,0,0.18);
-    }
+   Sticky keeps it visible at the bottom of the scroll column at all viewport heights.
+   Wave A 2026-07-24: applied at ALL widths — on mobile (the majority of ad traffic) the
+   button scrolled away entirely; sticky-bottom is table-stakes on every benchmarked site. */
+.modal-info .modal-add-btn {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    box-shadow: 0 -10px 14px -6px rgba(0,0,0,0.18);
 }
 .modal-add-btn:disabled,
 .modal-add-btn.disabled {

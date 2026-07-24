@@ -52,6 +52,8 @@ const esc = (s) => String(s ?? '')
 const TYPE_LABEL = {
   tshirt: 'T-Shirt', hoodie: 'Hoodie', ziphoodie: 'Zip Hoodie',
   longsleeve: 'Long Sleeve', cap: 'Cap', capemb: 'Cap',
+  vneck: 'V-Neck', tanktop: 'Tank Top',
+  mug: 'Mug', bottle: 'Water Bottle', tote: 'Tote Bag',
 };
 
 function mockupUrl(p) {
