@@ -1406,13 +1406,21 @@ function renderProducts(filter, gender) {
     const displayColor = pickDisplayColor(product) || product.colors[0];
     const _supported = Array.isArray(product.supportedCountries) ? product.supportedCountries : DEFAULT_SUPPORTED;
     const _notShippable = _customerCountry && !_supported.includes(_customerCountry);
+    // 2026-07-25 (oren, HOODIES-style shelf): cards with a real-body persona
+    // photo lead with the PERSON wearing the garment; hover reveals the flat
+    // mockup. Cards with a reel get an inline ▶ (cardReelPlay). Persona cards
+    // skip the back-default variety class — persona IS their variety.
+    const _persona = personaImgUrl(product.id);
+    const _reel = reelVideoUrl(product.id);
     return `
-    <div class="product-card${shouldShowBackDefault(product.id) ? ' show-back-default' : ''}${_notShippable ? ' not-shippable' : ''}" data-id="${product.id}" data-type="${product.type}"
+    <div class="product-card${_persona ? ' has-persona' : (shouldShowBackDefault(product.id) ? ' show-back-default' : '')}${_notShippable ? ' not-shippable' : ''}" data-id="${product.id}" data-type="${product.type}"
          data-selected-color="${displayColor}"${_notShippable ? ' data-not-shippable="true"' : ''}
          onclick="openProductModal(${product.id})">
       <div class="product-image" id="card-img-${product.id}">
         <img class="img-view img-back"  src="${productImg(product.id, displayColor, 'back')}"  alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}';const c=this.closest('.product-card');if(c)c.classList.remove('show-back-default');" />
         <img class="img-view img-front" src="${productImg(product.id, displayColor, 'front')}" alt="${product.phrase}" loading="lazy" onerror="this.onerror=null;this.src='${product.image}'" />
+        ${_persona ? `<img class="img-view img-persona" src="${_persona}" alt="${product.phrase} — ${currentLang === 'he' ? 'על גוף אמיתי' : 'on a real body'}" loading="lazy" onerror="this.onerror=null;const c=this.closest('.product-card');if(c)c.classList.remove('has-persona');this.remove();" />` : ''}
+        ${_reel ? `<button class="card-play" type="button" onclick="cardReelPlay(event, ${product.id})" aria-label="${currentLang === 'he' ? 'נגן סרטון' : 'Play video'}">▶</button>` : ''}
         ${(() => {
           // NEW badge: only on products Boss pipeline added (is_new=true) within featuredUntil window.
           const isNewActive = product.isNew === true && product.featuredUntil && new Date(product.featuredUntil) > new Date();
@@ -1528,6 +1536,51 @@ function homePersonaPlay(ev, pid) {
   if (window.dubisTrack) window.dubisTrack('home_video_play', { id: pid });
 }
 window.homePersonaPlay = homePersonaPlay;
+
+// ── Shop-grid inline reels (2026-07-25, oren: HOODIES-style shelf — personas
+// and videos INSIDE the product grid, not only in a separate gallery).
+// ▶ overlays the product reel on the card image stack; ✕ or 'ended' restores.
+// One playing video at a time across the whole grid.
+function cardReelStop(card) {
+  const v = card.querySelector('video.card-reel');
+  if (v) { try { v.pause(); } catch (_) {} v.remove(); }
+  const x = card.querySelector('.card-reel-close');
+  if (x) x.remove();
+  card.classList.remove('reel-playing');
+}
+function cardReelPlay(ev, pid) {
+  ev.stopPropagation();
+  ev.preventDefault();
+  const card = ev.currentTarget.closest('.product-card');
+  if (!card || card.querySelector('video.card-reel')) return;
+  document.querySelectorAll('.product-card video.card-reel').forEach(v => {
+    const c = v.closest('.product-card');
+    if (c) cardReelStop(c);
+  });
+  const url = reelVideoUrl(pid);
+  if (!url) return;
+  const box = card.querySelector('.product-image');
+  if (!box) return;
+  const v = document.createElement('video');
+  v.className = 'card-reel';
+  v.src = url;
+  v.controls = true; v.playsInline = true; v.preload = 'metadata';
+  v.poster = personaImgUrl(pid) || '';
+  v.addEventListener('click', e => e.stopPropagation());
+  v.addEventListener('ended', () => cardReelStop(card));
+  const x = document.createElement('button');
+  x.className = 'card-reel-close';
+  x.type = 'button';
+  x.setAttribute('aria-label', currentLang === 'he' ? 'סגירת סרטון' : 'Close video');
+  x.textContent = '✕';
+  x.addEventListener('click', e => { e.stopPropagation(); e.preventDefault(); cardReelStop(card); });
+  box.appendChild(v);
+  box.appendChild(x);
+  card.classList.add('reel-playing');
+  try { const p = v.play(); if (p && p.catch) p.catch(() => {}); } catch (_) {}
+  if (window.dubisTrack) window.dubisTrack('grid_video_play', { id: pid });
+}
+window.cardReelPlay = cardReelPlay;
 
 // Helper: build per-color image URL — uses imageRef if product has one (placeholder)
 function productImg(productId, color, view) {

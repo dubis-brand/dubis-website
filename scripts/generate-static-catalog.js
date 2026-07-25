@@ -62,13 +62,21 @@ function mockupUrl(p) {
   return `images/product-${p.id}-${encodeURIComponent(c)}-front.jpg`;
 }
 
+// 2026-07-25 (HOODIES-style shelf): the static card leads with the real-body
+// persona photo where one exists on disk — crawlers index the on-model look.
+// JSON-LD keeps the flat mockup (product image, not lifestyle — Merchant rules).
+function staticCardImgUrl(p) {
+  const persona = `images/personas-real/persona-${p.id}.jpg`;
+  return fs.existsSync(path.join(ROOT, persona)) ? persona : mockupUrl(p);
+}
+
 // ── 1. Static grid cards (crawler content + no-JS fallback; JS hydrates over) ──
 function buildGrid(products) {
   return products.map((p) => {
     const label = TYPE_LABEL[p.type] || 'Apparel';
     return [
       `<a class="product-card product-card-static" href="/?p=${p.id}">`,
-      `<img src="${mockupUrl(p)}" alt="${esc(p.phrase)} — DUBIS ${esc(label).toLowerCase()}" loading="lazy" width="600" height="600">`,
+      `<img src="${staticCardImgUrl(p)}" alt="${esc(p.phrase)} — DUBIS ${esc(label).toLowerCase()}" loading="lazy" width="600" height="600">`,
       `<div class="product-info">`,
       `<div class="product-phrase">"${esc(p.phrase)}"</div>`,
       `<div class="product-meta-static">${esc(label)} · $${p.price}</div>`,
