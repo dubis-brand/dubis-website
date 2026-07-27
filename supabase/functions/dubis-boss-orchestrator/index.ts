@@ -473,17 +473,20 @@ async function opinionMarketing(meta: Record<string, unknown>, realOrders: unkno
   return null;
 }
 async function opinionProduct(sb: SB): Promise<Opinion | null> {
-  const { data: products } = await sb.from('dubis_products').select('id, active').eq('active', true);
-  const total = (products || []).length;
-  const since = new Date(Date.now() - 7*86400000).toISOString();
-  const { data: postsThisWeek } = await sb.from('agent_tasks').select('content_data').eq('agent_id','content').gte('created_at', since);
-  const productIdsPosted = new Set((postsThisWeek || []).map(t => String((t.content_data as Record<string,unknown>)?.product_id || '')).filter(Boolean));
-  const notPosted = Math.max(0, total - productIdsPosted.size);
-  // 3-4 uncovered products out of ~20 is normal weekly rotation, not a finding
-  // (2026-07-12 — this nagged oren daily). Flag only a real coverage hole, and
-  // point at the actual mechanism (the weekly plan; auto-content is retired).
-  if (notPosted <= 8) return null;
-  return { agent:'product', agent_he:'מנהל המוצרים', observation:`${total} מוצרים פעילים, ${productIdsPosted.size} קיבלו פוסט השבוע, ${notPosted} לא.`, recommendation:'לשבץ את המוצרים החסרים בתוכנית השבועית הבאה', priority:'P1', theme:'catalog-coverage' };
+  // 2026-07-27 (oren: the daily "17 לא קיבלו פוסט השבוע" was noise): 27 active
+  // products vs ~17 weekly slots means WEEKLY coverage is partial BY DESIGN —
+  // that's the rotation working, not a finding. A real hole = a product with
+  // ZERO posts across a full rotation cycle (21 days). Name the exact IDs so
+  // the Sunday plan can act on them; nothing to "decide".
+  const { data: products } = await sb.from('dubis_products').select('product_id_numeric').eq('active', true);
+  const activeIds = (products || []).map(p => Number((p as Record<string, unknown>).product_id_numeric)).filter(n => n > 0);
+  const since = new Date(Date.now() - 21*86400000).toISOString();
+  const { data: posts } = await sb.from('agent_tasks').select('content_data').eq('agent_id','content').gte('created_at', since).limit(1000);
+  const posted = new Set((posts || []).map(t => String((t.content_data as Record<string,unknown>)?.product_id || '')).filter(Boolean));
+  const starved = activeIds.filter(id => !posted.has(String(id))).sort((a, b) => a - b);
+  if (starved.length === 0) return null;
+  const idList = starved.map(n => '#' + n).join(', ');
+  return { agent:'product', agent_he:'מנהל המוצרים', observation:`${activeIds.length} מוצרים פעילים; ${starved.length} מהם בלי אף פוסט כבר 3 שבועות: ${idList}.`, recommendation:`לתת ל-${idList} עדיפות בתוכנית של יום ראשון — 3 שבועות בלי פוסט זה חור בסבב, לא רוטציה`, priority: starved.length >= 5 ? 'P1' : 'P2', theme:'catalog-coverage' };
 }
 async function opinionSupply(sb: SB, ticketsOpened: number): Promise<Opinion | null> {
   // Only REAL customer orders — Hila/oren/test orders must never trigger a "stuck pending" flag.
@@ -740,12 +743,12 @@ async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
       gateLine = `יש רכישות — CAC נוכחי ${sym}${(spend / purchases).toFixed(0)}`;
     } else if (spend >= 300 && carts === 0) {
       gate = 'desire';
-      gateLine = `שער ${sym}300/אפס-סלים נחצה (${sym}${spend.toFixed(0)} · 0 הוספות-לסל) — בעיית רצון: קריאייטיב/קהל`;
+      gateLine = `עברנו את קו-העצירה שסיכמנו: ${sym}${spend.toFixed(0)} הוצאו ואף אחד לא הוסיף לסל — המסר או הקהל לא עובדים`;
     } else if (spend >= 600) {
       gate = 'checkout';
-      gateLine = `שער ${sym}600/אפס-רכישות נחצה (${sym}${spend.toFixed(0)} · ${carts} סלים · ${checkouts} קופות · 0 רכישות) — בעיית קופה/אמון`;
+      gateLine = `עברנו את קו-העצירה השני: ${sym}${spend.toFixed(0)} הוצאו · ${carts} סלים · ${checkouts} התחלות-תשלום · 0 רכישות — אנשים רוצים אבל לא סוגרים, הבעיה בקופה/אמון`;
     } else {
-      gateLine = active ? `בתוך השערים: ${sym}${spend.toFixed(0)}${budgetTotal ? ` מתוך ${sym}${budgetTotal.toFixed(0)}` : ''} · ${carts} סלים · ${purchases} רכישות` : 'הקמפיין לא פעיל';
+      gateLine = active ? `הכל בתוך הכללים שקבענו: ${sym}${spend.toFixed(0)}${budgetTotal ? ` מתוך ${sym}${budgetTotal.toFixed(0)}` : ''} · ${carts} סלים · ${purchases} רכישות` : 'הקמפיין לא פעיל';
     }
     return { active, armed, spend, sym, budgetTotal, remaining, clicks: Number(c.clicks || 0), carts, checkouts, purchases, gate, gateLine, endDate, startDate: start, dailyBudget };
   } catch (_) { return null; }
@@ -779,9 +782,9 @@ function deriveDecisions(
   } else if (ks && ks.gate === 'cac') {
     items.push({
       pr: 'P1',
-      title: 'לקרוא את ה-CAC ולהחליט: להגדיל, להשאיר או לעצור',
+      title: 'לבדוק כמה עלה לנו כל קונה, ולהחליט: להגדיל, להשאיר או לעצור',
       why: ks.gateLine,
-      cost: 'בלי קריאת-CAC ההוצאה ממשיכה עיוורת',
+      cost: 'בלי המספר הזה ממשיכים להוציא כסף בלי לדעת אם זה משתלם',
       owner: 'אורן + Analyst',
     });
   }
@@ -789,9 +792,9 @@ function deriveDecisions(
   for (const r of openEsc) {
     items.push({
       pr: 'P1',
-      title: `להכריע: ${r.recommendation.slice(0, 90)}`,
-      why: 'הסלמה פתוחה על שולחן-ההנהלה',
-      cost: 'הכרעה שלא מתקבלת = המבצע שלה תקוע',
+      title: `צריך תשובה שלך: ${r.recommendation.slice(0, 90)}`,
+      why: 'זו שאלה של כסף או כיוון — לכן היא שלך ולא שלנו. יש לנו המלצה מוכנה בשולחן-ההנהלה',
+      cost: 'עד שתענה, אף אחד לא מקדם את זה',
       owner: 'אורן',
     });
   }
@@ -853,7 +856,7 @@ function buildTopDecisionsHtml(
     : '🌱 <b>מנוע אורגני:</b> אין נתוני איסוף';
   const engines = `<div dir="rtl" style="background:#faf7f0;border-radius:6px;padding:8px 12px;margin:0 0 10px;font-size:11.5px;color:#444;line-height:1.8;text-align:right">${paidLine}<br>${organicLine}</div>`;
   if (decisions.length === 0) {
-    return engines + '<p dir="rtl" style="color:#27ae60;font-size:13px;margin:0">✅ אין כרגע החלטה דחופה — המערכת בתוך השערים.</p>';
+    return engines + '<p dir="rtl" style="color:#27ae60;font-size:13px;margin:0">✅ אין כרגע החלטה דחופה — הכל רץ לפי הכללים שקבענו.</p>';
   }
   const PRIO: Record<string, { label: string; color: string }> = {
     'P0': { label: '🔴 דחוף', color: '#c0392b' },
@@ -865,7 +868,7 @@ function buildTopDecisionsHtml(
     return `<div dir="rtl" style="padding:10px 14px;background:#fafafa;border-right:4px solid ${p.color};margin:6px 0;border-radius:6px;text-align:right">
       <div style="font-size:13.5px;color:#2c2c2c"><b style="color:${p.color}">${i + 1}. ${p.label}</b> · ${esc(d.title)}</div>
       <div style="font-size:11.5px;color:#666;margin-top:4px">↳ ${esc(d.why)} <span style="color:#999">· אחראי: ${esc(d.owner)}</span></div>
-      ${d.cost ? `<div style="font-size:11px;color:#a15c00;margin-top:3px">⏳ עלות אי-ההחלטה: ${esc(d.cost)}</div>` : ''}
+      ${d.cost ? `<div style="font-size:11px;color:#a15c00;margin-top:3px">⏳ מה קורה אם לא מחליטים: ${esc(d.cost)}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -2306,7 +2309,8 @@ const ADAM_DOCTRINE = `אתה אדם — ה-COO של DUBIS, מותג אופנה 
 2. כלכלת מפעיל-יחיד: אמץ רק מה שערכו הצפוי מצדיק את המאמץ, והעדף לרכוב על תשתית קיימת. משימה מאומצת חייבת בעלים ברור וצעד ראשון קונקרטי.
 3. גבולות קשיחים — לעולם אל תאמץ בעצמך: הוצאה כספית חדשה / תקציב מודעות / כלי בתשלום / הזנת סיסמאות-טוקנים / שינוי אסטרטגי מהותי / עניין אישי או משפטי → אלה תמיד escalate לאורן, עם המלצה מנומקת.
 4. דחייה היא החלטה לגיטימית ושכיחה: רעיון גנרי, לא-רלוונטי לשלב, כפול למשימה קיימת, או "נחמד אבל לא עכשיו" → reject עם סיבה במשפט אחד. עדיף לדחות מלהציף את המערכת.
-5. אימוץ = משימה: כותרת ברורה, בעלים מבין הסוכנים (content/marketing/product/design/video/supply/cto) או manual כשזה אנושי, וצעד ראשון. שינוי בקוד הפונה-ללקוח מקבל הערת branch+preview.`;
+5. אימוץ = משימה: כותרת ברורה, בעלים מבין הסוכנים (content/marketing/product/design/video/supply/cto) או manual כשזה אנושי, וצעד ראשון. שינוי בקוד הפונה-ללקוח מקבל הערת branch+preview.
+6. הקפאת-בנייה עד פסק-הדין של מבחן-ארה"ב (2026-09-09): רעיון של כלי/פלטפורמה/אינטגרציה חדשים (ניוזלטרים, מוצרי-דב, "שווה לבדוק") — ההחלטה היא reject עם הסיבה "חונה עד אחרי פסק-הדין 09.09", לא escalate. מעלים לאורן רק מה שמכניס כסף עכשיו או חוסם את המבחן. אל תעביר לאורן שאלות שאתה יכול לענות עליהן בעצמך עם הכללים האלה.`;
 
 type MgmtDecisionRow = {
   id: string; source_agent: string; recommendation: string;
@@ -2346,30 +2350,13 @@ async function harvestRecommendations(sb: SB): Promise<{ harvested: number }> {
     });
   }
 
-  // 2) Content-perf loop — the latest weekly learning's directives become ONE
-  //    recommendation (source_task_id = the content_learnings row id → dedup).
-  //    2026-07-06: FRESHNESS FILTER added — without it, a 6-day-old learning
-  //    (pre-token-fix "אין נתוני חשיפה") got harvested + escalated on 07-04
-  //    even though a newer learning had superseded it. Only harvest learnings
-  //    from the last 48h; older ones are history, not a decision input.
-  const { data: learn } = await sb.from('content_learnings')
-    .select('id, summary, directives, created_at')
-    .gte('created_at', since)
-    .order('created_at', { ascending: false }).limit(1);
-  const L = (learn || [])[0] as Record<string, unknown> | undefined;
-  if (L && L.summary) {
-    const d = (L.directives || {}) as Record<string, unknown>;
-    const bits: string[] = [];
-    if (Array.isArray(d.boost_products) && d.boost_products.length) bits.push(`להקדים מוצרים ${(d.boost_products as unknown[]).slice(0, 4).join(', ')}`);
-    if (Array.isArray(d.boost_formats) && d.boost_formats.length) bits.push(`להגביר פורמט ${(d.boost_formats as unknown[]).join(', ')}`);
-    if (Array.isArray(d.cut_formats) && d.cut_formats.length) bits.push(`לצמצם ${(d.cut_formats as unknown[]).join(', ')}`);
-    await tryInsert({
-      source_agent: 'content_loop',
-      source_task_id: L.id as string,
-      recommendation: `ניתוח התוכן השבועי: ${String(L.summary).slice(0, 400)}${bits.length ? ' | הנחיות: ' + bits.join(' · ') : ''}`.slice(0, 900),
-      context: { directives: d, learned_at: L.created_at },
-    });
-  }
+  // 2) Content-perf loop — REMOVED as a board source (2026-07-27, oren: the
+  //    weekly analysis kept resurfacing as a daily "decision"). The learning's
+  //    directives are APPLIED AUTOMATICALLY by the weekly-marketing-plan route
+  //    since 2026-07-15 (boost_products/boost_formats/best_hours) — routing it
+  //    to the board on top of that was double machinery that produced a
+  //    non-decision every Sunday. The read itself still renders in the report's
+  //    content-performance section; it is a report, not a decision input.
 
   // 3) Site-audit findings (open, 48h) — each finding is a recommendation to fix.
   const { data: audits } = await sb.from('agent_tasks')
