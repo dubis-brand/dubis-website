@@ -2310,7 +2310,8 @@ const ADAM_DOCTRINE = `אתה אדם — ה-COO של DUBIS, מותג אופנה 
 3. גבולות קשיחים — לעולם אל תאמץ בעצמך: הוצאה כספית חדשה / תקציב מודעות / כלי בתשלום / הזנת סיסמאות-טוקנים / שינוי אסטרטגי מהותי / עניין אישי או משפטי → אלה תמיד escalate לאורן, עם המלצה מנומקת.
 4. דחייה היא החלטה לגיטימית ושכיחה: רעיון גנרי, לא-רלוונטי לשלב, כפול למשימה קיימת, או "נחמד אבל לא עכשיו" → reject עם סיבה במשפט אחד. עדיף לדחות מלהציף את המערכת.
 5. אימוץ = משימה: כותרת ברורה, בעלים מבין הסוכנים (content/marketing/product/design/video/supply/cto) או manual כשזה אנושי, וצעד ראשון. שינוי בקוד הפונה-ללקוח מקבל הערת branch+preview.
-6. הקפאת-בנייה עד פסק-הדין של מבחן-ארה"ב (2026-09-09): רעיון של כלי/פלטפורמה/אינטגרציה חדשים (ניוזלטרים, מוצרי-דב, "שווה לבדוק") — ההחלטה היא reject עם הסיבה "חונה עד אחרי פסק-הדין 09.09", לא escalate. מעלים לאורן רק מה שמכניס כסף עכשיו או חוסם את המבחן. אל תעביר לאורן שאלות שאתה יכול לענות עליהן בעצמך עם הכללים האלה.`;
+6. הקפאת-בנייה עד פסק-הדין של מבחן-ארה"ב (2026-09-09): רעיון של כלי/פלטפורמה/אינטגרציה חדשים (ניוזלטרים, מוצרי-דב, "שווה לבדוק") — ההחלטה היא reject עם הסיבה "חונה עד אחרי פסק-הדין 09.09", לא escalate. מעלים לאורן רק מה שמכניס כסף עכשיו או חוסם את המבחן. אל תעביר לאורן שאלות שאתה יכול לענות עליהן בעצמך עם הכללים האלה.
+7. טיפים של שיווק/קופי שאורן מעביר במייל (מדריכים של כותבי-שיווק, למשל זהר אוריין) — הנחיית אורן 27.07: אלה חומר-לימוד לדנה ולקופירייטר. adopt עם בעלים marketing, וניסוח המשימה חייב להיות "ללמוד את המדריך [קישור] ולהחליט אילו טיפים מאמצים בקופי/שיווק — עם רשימת אימוץ/דחייה מנומקת". לעולם לא "לבדוק לעומק" ריק. כלל 6 (הקפאה) חל רק על אימוץ כלים, לא על הלימוד עצמו.`;
 
 type MgmtDecisionRow = {
   id: string; source_agent: string; recommendation: string;
@@ -2522,7 +2523,12 @@ function buildManagementBoardHtml(b: Awaited<ReturnType<typeof fetchManagementBo
       const done = ts === 'done';
       const stuck = !done && (Date.now() - new Date(r.decided_at || r.created_at).getTime()) > 48 * 3600000;
       if (done) return '<span style="background:#e6f4e6;color:#1e6b1e;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">✅ אומץ ובוצע</span>';
-      if (stuck) return `<span style="background:#fdeaea;color:#a12020;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">🔴 אומץ אבל תקוע → ${esc(r.owner_agent || 'manual')} — יטופל בסשן /adam הקרוב</span>`;
+      if (stuck) {
+        // 2026-07-27: no promise badges ("יטופל בסשן הקרוב" was an empty promise
+        // — oren: "סתם מספר לי סיפורים"). State the fact + how long it sat.
+        const stuckDays = Math.floor((Date.now() - new Date(r.decided_at || r.created_at).getTime()) / 86400000);
+        return `<span style="background:#fdeaea;color:#a12020;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">🔴 אומץ לפני ${stuckDays} ימים ועדיין לא בוצע → ${esc(r.owner_agent || 'manual')}</span>`;
+      }
       return `<span style="background:#eaf3fb;color:#1f618d;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">✅ אומץ → ${esc(r.owner_agent || 'manual')} (${esc(ts)})</span>`;
     }
     if (r.decision === 'reject') return '<span style="background:#f4f4f4;color:#777;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">❌ נדחה</span>';
