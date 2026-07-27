@@ -3700,13 +3700,15 @@ Return STRICT JSON only: an array like [{"key":"ig:123","action":"reply|escalate
     directives.site_sessions = clicks.total_sessions ?? 0;
     directives.product_click_sessions = clicks.product_sessions ?? 0;
     const smallN = N < 6;
+    // 2026-07-27 (oren: "אל תשתמש במילים כמו קיר אסטרטגי, זה לא ברור"): plain
+    // Hebrew a 10-year-old gets, no retired stories (the 695 line is history).
     const diagText = diagnosis === 'reach_unavailable'
-      ? `מצב מעורבות-בלבד: ${totalEng} לייקים+תגובות סה"כ, אך אין נתוני חשיפה — ה-token חסר הרשאת instagram_manage_insights. שדרוג ה-token יפתח reach ואבחון הפצה-מול-קריאייטיב.`
+      ? `יש לנו רק לייקים+תגובות (${totalEng} סה"כ) — אין נתוני צפיות כי חסרה הרשאה ב-token של Meta. שדרוג ה-token יראה גם כמה אנשים ראו כל פוסט.`
       : diagnosis === 'distribution'
-      ? `החשיפה נמוכה (ממוצע ${Math.round(avgReach)}) — שווה טקטיקת חשיפה חינמית (שעות/שיתופים/פורמטים). אבל הקיר האסטרטגי שהוכח הוא ההצעה והאמון בקופה (695 קליקים בתשלום → 0 רכישות, הכרעת 08.07) — שם המיקוד, לא בקופי.`
+      ? `מעט אנשים רואים את הפוסטים (ממוצע ${Math.round(avgReach)} צפיות לפוסט). מה שעוזר בחינם: לפרסם בשעות החזקות ופורמטים שאנשים משתפים. וחשוב לזכור: מה שעצר מכירות עד היום זה לא כמה רואים אלא כמה קונים — את זה בודק מבחן-ארה"ב.`
       : diagnosis === 'creative'
-      ? `החשיפה סבירה (${Math.round(avgReach)}) אבל שיעור המעורבות נמוך (${(avgRate * 100).toFixed(1)}%) — זה הקריאייטיב.`
-      : `חשיפה ${Math.round(avgReach)} · מעורבות ${(avgRate * 100).toFixed(1)}% — תקין יחסית.`;
+      ? `אנשים רואים (ממוצע ${Math.round(avgReach)} צפיות) אבל כמעט לא מגיבים (${(avgRate * 100).toFixed(1)}%) — התוכן עצמו צריך רענון.`
+      : `ממוצע ${Math.round(avgReach)} צפיות לפוסט · ${(avgRate * 100).toFixed(1)}% מגיבים — סביר ביחס לגודל העמוד.`;
     const topMetric = reachAvailable ? `${(fmtSorted[0]?.avg_rate * 100).toFixed(1)}% מעורבות` : `${fmtSorted[0]?.avg_eng.toFixed(1)} מעורבות/פוסט`;
     const clicksText = ` כניסות אמיתיות לאתר: ${clicks.total_sessions ?? 0} (${clicks.product_sessions ?? 0} לעמודי מוצר${clickedProducts.length ? `, מוביל #${clickedProducts[0]}` : ''}).`;
     // Δ vs the previous learning — the weekly read must lead with what CHANGED,
@@ -3733,7 +3735,20 @@ Return STRICT JSON only: an array like [{"key":"ig:123","action":"reply|escalate
     } catch (_) { /* first learning — everything is new */ }
     directives.total_eng = totalEng;
     directives.material_change = materialChange;
-    const summary = `${N} פוסטים נבדקו (${windowDays} ימים)${smallN ? ' — מדגם קטן, קריאה כיוונית בלבד' : ''}. ${diagText}` + (fmtSorted.length ? ` פורמט מוביל: ${fmtSorted[0]?.key} (${topMetric}).` : '') + clicksText + deltaText;
+    // 2026-07-27 (oren: "חסר לי הניתוח — למה אתה מייצר תוכן חדש, על פי איזה
+    // הבנות"): the read must END with what we DO about it — the concrete
+    // changes the next weekly plan makes because of these numbers.
+    const actionBits: string[] = [];
+    const bp = directives.boost_products as number[];
+    if (bp.length) actionBits.push(`נקדים את המוצרים שהוכיחו עניין (${bp.map(n => '#' + n).join(', ')}${clickedProducts.length ? ' — קליקים אמיתיים לאתר' : ' — הכי הרבה תגובות'})`);
+    const bf = directives.boost_formats as string[];
+    const cf = directives.cut_formats as string[];
+    if (bf.length) actionBits.push(`יותר ${bf.join(' + ')}`);
+    if (cf.length) actionBits.push(`פחות ${cf.join(' + ')}`);
+    const bh = directives.best_hours as number[];
+    if (bh.length) actionBits.push(`נפרסם בשעות שהוכיחו את עצמן (${bh.map(h => `${(h + 3) % 24}:00`).join(', ')} שעון ישראל)`);
+    const actionText = actionBits.length ? ` ⇐ מה נשנה בתוכנית הבאה בגלל זה: ${actionBits.join(' · ')}.` : '';
+    const summary = `${N} פוסטים נבדקו (${windowDays} ימים)${smallN ? ' — מדגם קטן, קריאה כיוונית בלבד' : ''}. ${diagText}` + (fmtSorted.length ? ` פורמט מוביל: ${fmtSorted[0]?.key} (${topMetric}).` : '') + clicksText + deltaText + actionText;
     const { data: learning, error: lErr } = await sb.from('content_learnings').insert({ window_days: windowDays, sample_size: N, summary, directives, top_posts: topPosts, bottom_posts: bottomPosts }).select('id').single();
     if (lErr) return json({ error: 'learning insert failed', detail: lErr.message }, 500);
     await sb.from('agent_runs').insert({ agent_id: 'marketing', status: 'completed', summary: `[content-analysis] ${N} posts · diagnosis=${directives.diagnosis} · avgReach=${Math.round(avgReach)} · avgRate=${(avgRate * 100).toFixed(1)}%`, side_effects: { learning_id: learning?.id, sample_size: N, directives } }).then(() => {}).catch(() => {});
