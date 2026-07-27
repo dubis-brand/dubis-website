@@ -488,6 +488,27 @@ async function opinionProduct(sb: SB): Promise<Opinion | null> {
   const idList = starved.map(n => '#' + n).join(', ');
   return { agent:'product', agent_he:'מנהל המוצרים', observation:`${activeIds.length} מוצרים פעילים; ${starved.length} מהם בלי אף פוסט כבר 3 שבועות: ${idList}.`, recommendation:`לתת ל-${idList} עדיפות בתוכנית של יום ראשון — 3 שבועות בלי פוסט זה חור בסבב, לא רוטציה`, priority: starved.length >= 5 ? 'P1' : 'P2', theme:'catalog-coverage' };
 }
+// 2026-07-27 (oren: "מה עם הסיטקום? למה לא יוצא כל שבוע פרק?"): the weekly
+// episode has NO cron (Higgsfield is main-session-only), so the only guard is
+// this report line — if the newest published episode is older than 7 days,
+// scream. The episode itself gets produced in the next /dubis session.
+async function opinionSitcomCadence(sb: SB): Promise<Opinion | null> {
+  try {
+    const { data } = await sb.from('agent_tasks').select('updated_at')
+      .filter('content_data->>video_url', 'ilike', '%sitcom%').eq('status', 'done')
+      .order('updated_at', { ascending: false }).limit(1);
+    const last = (data || [])[0] as { updated_at: string } | undefined;
+    if (!last) return null;
+    const days = Math.floor((Date.now() - new Date(last.updated_at).getTime()) / 86400000);
+    if (days <= 7) return null;
+    return {
+      agent: 'video', agent_he: 'וידאו',
+      observation: `הפרק האחרון של הסיטקום פורסם לפני ${days} ימים — הקצב שקבענו הוא פרק בשבוע.`,
+      recommendation: 'להפיק את הפרק הבא בסשן העבודה הקרוב (ההפקה רצה רק מסשן חי — אין לה קרון)',
+      priority: 'P1', theme: 'sitcom-cadence',
+    };
+  } catch (_) { return null; }
+}
 async function opinionSupply(sb: SB, ticketsOpened: number): Promise<Opinion | null> {
   // Only REAL customer orders — Hila/oren/test orders must never trigger a "stuck pending" flag.
   const { data: openOrders } = await sb.from('orders').select('id, status, created_at, gelato_ticket_opened_at, buyer_email').in('status', ['pending', 'in_production', 'shipped']);
@@ -2995,6 +3016,7 @@ Deno.serve(async (req: Request) => {
     opinionVideo(sb),
     opinionPlanner(sb),
     opinionCheckoutCanary(sb), // 2026-05-23 — Gelato ↔ orders.row diff
+    opinionSitcomCadence(sb), // 2026-07-27 — weekly episode drop-guard
   ]);
   const allOpinions: Opinion[] = rawOps.filter((o): o is Opinion => o !== null);
 
