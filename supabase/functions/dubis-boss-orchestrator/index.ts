@@ -673,10 +673,10 @@ async function opinionPlanner(sb: SB): Promise<Opinion | null> {
 // learn yesterday (paid funnel vs gates + organic learning) and what changes today.
 
 type KillSwitchRead = {
-  active: boolean; spend: number; sym: string; budgetTotal: number | null;
+  active: boolean; armed: boolean; spend: number; sym: string; budgetTotal: number | null;
   remaining: number | null; clicks: number; carts: number; checkouts: number;
   purchases: number; gate: 'desire' | 'checkout' | 'cac' | 'none'; gateLine: string;
-  endDate: string | null; dailyBudget: number;
+  endDate: string | null; startDate: string | null; dailyBudget: number;
 };
 
 async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
@@ -715,11 +715,26 @@ async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
       }
     }
     let gate: KillSwitchRead['gate'] = 'none'; let gateLine = '';
+    // 2026-07-27 (oren: "החלק העליון חוזר בדיוק אותו דבר"): a campaign that was
+    // BUILT but never launched (status paused, zero spend, window still ahead)
+    // is ARMED — not "ended". The 2026-07-22 US row rendered "הקמפיין הסתיים
+    // ב-2026-09-08 — ₪0" every day for a week. Three states: active / armed / closed.
+    const today = new Date().toISOString().slice(0, 10);
+    const armed = !active && ((!!start && start > today) || (spend === 0 && !!endDate && endDate > today));
     // 2026-07-12 (oren: "כבר כמה ימים שהקמפיין לא עובד — למה לרשום את זה"):
     // an ENDED/paused campaign never produces a gate scream. One calm closing
     // line; the lesson lives on the board, not as a daily repeated "decision".
-    if (!active) {
-      gateLine = `הקמפיין הסתיים${endDate ? ` ב-${endDate}` : ''} — סה"כ ${sym}${spend.toFixed(0)} · ${Number(c.clicks || 0)} קליקים · ${purchases} רכישות. אין הוצאה פעילה.`;
+    if (armed) {
+      const daysToLaunch = start ? Math.ceil((Date.parse(start) - Date.now()) / 86400000) : 0;
+      const whenBit = start
+        ? (daysToLaunch > 0 ? `התנעה מתוכננת ${start} (בעוד ${daysToLaunch} ימים)` : `מועד ההתנעה המתוכנן (${start}) הגיע — המתג אצלך`)
+        : 'ממתין למועד התנעה';
+      gateLine = `הקמפיין בנוי וממתין להדלקה שלך — ${whenBit} · ${sym}${dailyBudget.toFixed(0)}/יום${budgetTotal ? ` · תקציב ${sym}${budgetTotal.toFixed(0)}` : ''}${endDate ? ` · רץ עד ${endDate}` : ''}.`;
+    } else if (!active) {
+      const closed = String(c.status || '').toLowerCase() === 'completed' || (!!endDate && endDate <= today);
+      gateLine = closed
+        ? `הקמפיין הסתיים${endDate ? ` ב-${endDate}` : ''} — סה"כ ${sym}${spend.toFixed(0)} · ${Number(c.clicks || 0)} קליקים · ${purchases} רכישות. אין הוצאה פעילה.`
+        : `הקמפיין מושהה — סה"כ עד כה ${sym}${spend.toFixed(0)} · ${Number(c.clicks || 0)} קליקים · ${purchases} רכישות. אין הוצאה פעילה.`;
     } else if (purchases > 0) {
       gate = 'cac';
       gateLine = `יש רכישות — CAC נוכחי ${sym}${(spend / purchases).toFixed(0)}`;
@@ -732,7 +747,7 @@ async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
     } else {
       gateLine = active ? `בתוך השערים: ${sym}${spend.toFixed(0)}${budgetTotal ? ` מתוך ${sym}${budgetTotal.toFixed(0)}` : ''} · ${carts} סלים · ${purchases} רכישות` : 'הקמפיין לא פעיל';
     }
-    return { active, spend, sym, budgetTotal, remaining, clicks: Number(c.clicks || 0), carts, checkouts, purchases, gate, gateLine, endDate, dailyBudget };
+    return { active, armed, spend, sym, budgetTotal, remaining, clicks: Number(c.clicks || 0), carts, checkouts, purchases, gate, gateLine, endDate, startDate: start, dailyBudget };
   } catch (_) { return null; }
 }
 
@@ -808,15 +823,33 @@ function buildTopDecisionsHtml(
   decisions: DecisionItem[],
   ks: KillSwitchRead | null,
   contentPerf: Awaited<ReturnType<typeof fetchContentPerf>>,
+  prevEngines: { eng7?: number; clicks30?: number } | null,
 ): string {
   const paidLine = ks
     ? (ks.active
         ? `🔥 <b>מנוע בתשלום:</b> ${ks.sym}${ks.spend.toFixed(0)}${ks.budgetTotal ? `/${ks.sym}${ks.budgetTotal.toFixed(0)}` : ''} · ${ks.clicks} קליקים · ${ks.carts} סלים · ${ks.purchases} רכישות → ${esc(ks.gateLine)}`
-        : `🔥 <b>מנוע בתשלום:</b> אין קמפיין פעיל. ${esc(ks.gateLine)}`)
+        : ks.armed
+          ? `🔥 <b>מנוע בתשלום:</b> ⏳ ${esc(ks.gateLine)}`
+          : `🔥 <b>מנוע בתשלום:</b> אין קמפיין פעיל. ${esc(ks.gateLine)}`)
     : '🔥 <b>מנוע בתשלום:</b> אין קמפיין רשום';
-  const learnBit = contentPerf?.learning ? esc(contentPerf.learning.summary.slice(0, 130)) : 'אין למידה טרייה';
+  // 2026-07-27 (oren: "החלק העליון חוזר בדיוק אותו דבר"): the weekly learning
+  // summary showed verbatim for 7 straight days. Full text only while FRESH
+  // (<26h, i.e. the Sunday after analyze-content runs); the rest of the week a
+  // one-line pointer. The daily NEWS in this strip is the numbers + their delta.
+  const lrn = contentPerf?.learning || null;
+  const lrnAgeH = lrn ? (Date.now() - Date.parse(lrn.created_at)) / 3600000 : Infinity;
+  const lrnDate = lrn ? `${lrn.created_at.slice(8, 10)}.${lrn.created_at.slice(5, 7)}` : '';
+  const learnBit = !lrn
+    ? 'אין למידה טרייה'
+    : lrnAgeH < 26
+      ? `📚 קריאה שבועית חדשה: ${esc(lrn.summary.slice(0, 130))}`
+      : `הקריאה השבועית מ-${lrnDate} בתוקף (הבאה ביום א׳)`;
+  const dEng = (contentPerf && prevEngines && typeof prevEngines.eng7 === 'number') ? contentPerf.totalEng - prevEngines.eng7 : null;
+  const dClk = (contentPerf && prevEngines && typeof prevEngines.clicks30 === 'number') ? contentPerf.siteClicks.total - prevEngines.clicks30 : null;
+  const dTxt = (n: number | null) => (n === null || n === 0) ? '' : ` (${n > 0 ? '+' : ''}${n} מאתמול)`;
+  const flatBit = (dEng === 0 && dClk === 0) ? ' · ללא שינוי מאתמול' : '';
   const organicLine = contentPerf
-    ? `🌱 <b>מנוע אורגני:</b> ${contentPerf.totalEng} מעורבות (7י) · ${contentPerf.siteClicks.total} כניסות-אתר (30י) → ${learnBit}`
+    ? `🌱 <b>מנוע אורגני:</b> ${contentPerf.totalEng} מעורבות (7י)${dTxt(dEng)} · ${contentPerf.siteClicks.total} כניסות-אתר (30י)${dTxt(dClk)}${flatBit} → ${learnBit}`
     : '🌱 <b>מנוע אורגני:</b> אין נתוני איסוף';
   const engines = `<div dir="rtl" style="background:#faf7f0;border-radius:6px;padding:8px 12px;margin:0 0 10px;font-size:11.5px;color:#444;line-height:1.8;text-align:right">${paidLine}<br>${organicLine}</div>`;
   if (decisions.length === 0) {
@@ -3065,11 +3098,15 @@ Deno.serve(async (req: Request) => {
   // decision, and it keeps screaming every day until coverage returns.
   let prevReelWith: number | null = null;
   let prevReelMissing: number[] | null = null;
+  let prevEngines: { eng7?: number; clicks30?: number } | null = null;
   try {
     const { data: lastRepRb } = await sb.from('boss_reports').select('assessment').order('created_at', { ascending: false }).limit(1);
-    const rb = ((lastRepRb?.[0] as Record<string, unknown> | undefined)?.assessment as Record<string, unknown> | undefined)?.reel_bank as { withReel?: number; missing?: number[] } | undefined;
+    const prevAssess = (lastRepRb?.[0] as Record<string, unknown> | undefined)?.assessment as Record<string, unknown> | undefined;
+    const rb = prevAssess?.reel_bank as { withReel?: number; missing?: number[] } | undefined;
     if (rb && typeof rb.withReel === 'number') prevReelWith = rb.withReel;
     if (rb && Array.isArray(rb.missing)) prevReelMissing = rb.missing.map(Number);
+    const eng = prevAssess?.engines as { eng7?: number; clicks30?: number } | undefined;
+    if (eng && (typeof eng.eng7 === 'number' || typeof eng.clicks30 === 'number')) prevEngines = eng;
   } catch (_) { /* no prior state — collapse still triggers on withReel===0 */ }
   // A gap list is NEWS on first appearance / change only (oren 2026-07-15:
   // "אני רואה כל פעם אותה הודעה") — an unchanged list folds to routine.
@@ -3498,7 +3535,7 @@ Deno.serve(async (req: Request) => {
     managementBoard,
     (planStatus?.blocked_on_oren || []).map(b => ({ title: b.title, days_late: b.days_late })),
   );
-  const topDecisionsHtml = buildTopDecisionsHtml(decisionItems, killSwitch, contentPerf);
+  const topDecisionsHtml = buildTopDecisionsHtml(decisionItems, killSwitch, contentPerf, prevEngines);
 
   const lastWeekSection = isWeekly && lastWeekCheck.total > 0
     ? `<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📊 מהשבוע הקודם</h2><p dir="rtl" style="font-size:13px;margin:0 0 10px"><b>${lastWeekCheck.done}/${lastWeekCheck.total} הושלמו (${Math.round(lastWeekCheck.done/lastWeekCheck.total*100)}%).</b></p>${lastWeekCheck.details.slice(0,5).map(d => { const ic = d.status === 'done' ? '✅' : d.status === 'open' ? '⏳' : '❌'; return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;margin:4px 0;border-radius:4px;text-align:right;font-size:12px">${ic} <b>${esc(d.agent)}:</b> ${esc(d.rec.slice(0,100))}</div>`; }).join('')}</td></tr><tr><td style="height:14px"></td></tr>` : '';
@@ -3753,6 +3790,8 @@ ${replyNote}
       opinion_themes: allOpinions.map(o => `${o.theme}|${o.agent_he}`),
       // Reel-bank state for tomorrow's collapse-delta check (2026-07-14).
       reel_bank: reelGaps ? { total: reelGaps.total, withReel: reelGaps.withReel, missing: reelGaps.missing, collapsed: reelBankCollapsed } : null,
+      // Organic-engine state for tomorrow's delta in the two-engines strip (2026-07-27).
+      engines: contentPerf ? { eng7: contentPerf.totalEng, clicks30: contentPerf.siteClicks.total } : null,
       agent_counts: agentCounts,
       failed_agents: failedAgents.map(f => ({ id: f.id, reason: f.reason, hours: Math.round(f.hours) })),
       real_revenue: totalRevenue, internal_revenue: internalRevenue,
