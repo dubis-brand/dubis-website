@@ -488,6 +488,33 @@ async function opinionProduct(sb: SB): Promise<Opinion | null> {
   const idList = starved.map(n => '#' + n).join(', ');
   return { agent:'product', agent_he:'מנהל המוצרים', observation:`${activeIds.length} מוצרים פעילים; ${starved.length} מהם בלי אף פוסט כבר 3 שבועות: ${idList}.`, recommendation:`לתת ל-${idList} עדיפות בתוכנית של יום ראשון — 3 שבועות בלי פוסט זה חור בסבב, לא רוטציה`, priority: starved.length >= 5 ? 'P1' : 'P2', theme:'catalog-coverage' };
 }
+// 2026-07-27 (oren: "למה דברים שסיכמנו לא מתבצעים אוטומטית ועקבית"): the
+// commitments LEDGER is the answer to "memory is not a scheduler". Every
+// agreement lives in standing_commitments with a due_date; this check turns
+// an overdue commitment into a red report line the same evening — no
+// agreement gets to die quietly in prose again.
+async function opinionStandingCommitments(sb: SB): Promise<Opinion | null> {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data } = await sb.from('standing_commitments')
+      .select('title, due_date, owner')
+      .eq('active', true).lt('due_date', today)
+      .order('due_date', { ascending: true }).limit(5);
+    const rows = (data || []) as Array<{ title: string; due_date: string; owner: string }>;
+    if (!rows.length) return null;
+    const bits = rows.slice(0, 3).map(r => {
+      const days = Math.floor((Date.now() - Date.parse(r.due_date)) / 86400000);
+      return `"${r.title}" (באיחור ${days} ימים, אחראי: ${r.owner === 'oren' ? 'אורן' : 'סשן-הניהול'})`;
+    });
+    return {
+      agent: 'boss', agent_he: 'המנהל',
+      observation: `${rows.length} התחייבויות שסיכמנו עברו את התאריך שלהן: ${bits.join(' · ')}.`,
+      recommendation: 'לסגור אותן בסשן-העבודה הקרוב או להזיז תאריך עם סיבה — התחייבות בלי תאריך חדש היא הבטחה ריקה',
+      priority: 'P1', theme: 'commitments-overdue',
+    };
+  } catch (_) { return null; }
+}
+
 // 2026-07-27 (oren: "מה עם הסיטקום? למה לא יוצא כל שבוע פרק?"): the weekly
 // episode has NO cron (Higgsfield is main-session-only), so the only guard is
 // this report line — if the newest published episode is older than 7 days,
@@ -3017,6 +3044,7 @@ Deno.serve(async (req: Request) => {
     opinionPlanner(sb),
     opinionCheckoutCanary(sb), // 2026-05-23 — Gelato ↔ orders.row diff
     opinionSitcomCadence(sb), // 2026-07-27 — weekly episode drop-guard
+    opinionStandingCommitments(sb), // 2026-07-27 — the commitments ledger clock
   ]);
   const allOpinions: Opinion[] = rawOps.filter((o): o is Opinion => o !== null);
 
