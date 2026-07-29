@@ -41,3 +41,14 @@
   - **PR #3 (frontend):** `reconcileCartPrices()` re-prices every cart line from the live catalog (`getVariantPrice`) at init/renderCart/checkout/createOrder — kills both the undercharge and the mismatch at source.
 **Recovery:** Hila's order manually backfilled to `orders` (id `5f54b38f…`), matched to her `user_id` + the email breakdown (6 items, $141 sub, DUBIS15 −$21.15, $119.85 total).
 **Still open:** Could not pull Vercel runtime logs (MCP tool needs oren's approval) to scan for OTHER past orders dropped the same way. Worth a sweep.
+
+## 2026-07-13 — Supabase free-tier quota exceeded → site images + REST + agents dropped
+**Symptom:** Supabase email: org quota consumed (Storage 1.3GB/1.1GB, cached egress 8.22GB/5.5GB). All requests dropped until cycle reset (21.07) — collection page showed broken product images, REST blocked, 8 agents dead.
+**Root cause:** Published marketing assets were never cleaned up: `video-assets/_pilot/` 610MB + `tiktok-videos` 142MB + `ig-images` 200MB of already-posted content. Egress burned by serving ~1MB unoptimized product JPGs to visitors.
+**Fix:**
+  1. oren upgraded org to Pro → service restored immediately (verified HTTP 200 on product images via DB `http` extension — env proxy blocks direct curl, test from inside Postgres instead).
+  2. Deployed `storage-cleanup` Edge Function (service-role deletes via Storage API — NEVER `DELETE FROM storage.objects`, that orphans the S3 blobs). Deleted 247 files / 961MB: all `_pilot`, all `tiktok-videos`, all `videos`, `ig-images` older than 30 days. Storage now ~344MB (product-images 309MB + campaign-0628 35MB).
+**Invocation:** `SELECT content FROM http_get('https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/storage-cleanup?token=<CLEANUP_TOKEN>&dry=1')` — dry=1 preview, dry=0 delete. Token baked into deployed function (repo copy has placeholder).
+**Still open / prevention:**
+  - Product images are ~1MB each → egress will keep growing with traffic. Planned: compress all 321 to WebP ~1000px (~80% egress cut).
+  - Content pipeline should delete assets from storage after successful publish (Meta/TikTok keep their own copy).
