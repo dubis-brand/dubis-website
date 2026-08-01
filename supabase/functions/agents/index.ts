@@ -3140,6 +3140,128 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     });
   }
 
+  // ── US CAMPAIGN RESTRUCTURE (2026-08-01, per the ori.ai.israel lesson oren sent) ──
+  // The lesson's 3 floors: campaign = one purpose · adset = ONE audience (never mix
+  // cold with remarketing — it confuses the algorithm) · ads = toggle by performance.
+  // Our US Last Run had a single cold adset and ZERO remarketing layer — the exact
+  // gap that left the IL campaign's 695 clicks unreachable. This route (idempotent):
+  //   1. creates a "site visitors 30d" website custom audience off the pixel,
+  //   2. adds a dedicated remarketing adset (₪15/day, US-wide, that audience only),
+  //   3. shrinks the cold adset ₪70→₪55/day (total stays the approved ₪70/day),
+  //      renames it "US Cold …" and EXCLUDES the site-visitors audience from it,
+  //   4. duplicates the 6 ads into the remarketing adset (same creatives).
+  // Campaign stays PAUSED — oren still flips the switch.
+  if (type === 'us-campaign-restructure') {
+    const svcKey = SERVICE_ROLE;
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const tok = url.searchParams.get('token') || req.headers.get('x-agent-secret') || req.headers.get('x-cron-token') || authHeader.replace('Bearer ', '').trim() || '';
+    const isAuthed = (svcKey && tok === svcKey) || (agentSecret && tok === agentSecret) || (cronSecret && tok === cronSecret);
+    if (!isAuthed && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);
+
+    const ACT = 'act_26201135546175057';
+    const PIX = '1000453189108953';
+    const G = 'https://graph.facebook.com/v21.0';
+    const CAMPAIGN_ID = '120250052467260267';
+    const COLD_ADSET = '120250052467360267';
+    const CA_NAME = 'DUBIS US - Site Visitors 30d';
+    const RMK_NAME = 'US Remarketing — Site Visitors 30d';
+    const cand: Record<string, string> = {
+      META_ACCESS_TOKEN: Deno.env.get('META_ACCESS_TOKEN') ?? '',
+      ADS_ACCESS_TOKEN: Deno.env.get('ADS_ACCESS_TOKEN') ?? '',
+      INSTAGRAM_ACCESS_TOKEN: Deno.env.get('INSTAGRAM_ACCESS_TOKEN') ?? '',
+    };
+    let FB = '';
+    for (const tk of Object.values(cand)) {
+      if (!tk) continue;
+      const perms = await fetch(`${G}/me/permissions?access_token=${tk}`).then(r => r.json()).catch(() => ({}));
+      const granted = Array.isArray(perms.data) ? perms.data.filter((p: Record<string, string>) => p.status === 'granted').map((p: Record<string, string>) => p.permission) : [];
+      if (granted.includes('ads_management')) { FB = tk; break; }
+    }
+    if (!FB) return json({ ok: false, step: 'token-select', error: 'no env token has ads_management' }, 200);
+    const post = async (path: string, params: Record<string, string>) => {
+      const r = await fetch(`${G}/${path}`, { method: 'POST', body: new URLSearchParams({ ...params, access_token: FB }) });
+      return { ok: r.ok, j: await r.json() };
+    };
+
+    // BEFORE state (also verifies the campaign still exists as built)
+    const before = await fetch(`${G}/${CAMPAIGN_ID}?fields=name,status,effective_status,adsets{id,name,status,daily_budget,targeting},ads{id,name,status,adset_id,creative{id}}&access_token=${FB}`).then(r => r.json());
+    if (before.error) return json({ ok: false, step: 'read-campaign', error: before.error }, 200);
+    const adsets: Record<string, unknown>[] = before.adsets?.data ?? [];
+    const allAds: Record<string, unknown>[] = before.ads?.data ?? [];
+
+    // 1. site-visitors custom audience (idempotent by name)
+    const existingCAs = await fetch(`${G}/${ACT}/customaudiences?fields=id,name&limit=200&access_token=${FB}`).then(r => r.json()).catch(() => ({}));
+    let caId = Array.isArray(existingCAs.data) ? (existingCAs.data.find((c: Record<string, string>) => c.name === CA_NAME)?.id ?? '') : '';
+    let caCreated = false;
+    if (!caId) {
+      // NOTE: no `subtype` param — removed from the API (error 2654/1870053); the pixel lives inside the rule.
+      const rule = { inclusions: { operator: 'or', rules: [{ event_sources: [{ id: PIX, type: 'pixel' }], retention_seconds: 30 * 86400, filter: { operator: 'and', filters: [{ field: 'url', operator: 'i_contains', value: '' }] } }] } };
+      const ca = await post(`${ACT}/customaudiences`, { name: CA_NAME, rule: JSON.stringify(rule), prefill: '1', description: 'All dubis.net visitors, last 30 days (pixel). Created by us-campaign-restructure.' });
+      if (!ca.ok) {
+        return json({ ok: false, step: 'custom-audience', error: ca.j, hint: 'If this is a Custom Audience ToS error, oren accepts once at https://business.facebook.com/ads/manage/customaudiences/tos/?act=26201135546175057 then re-run.' }, 200);
+      }
+      caId = ca.j.id as string; caCreated = true;
+    }
+
+    // 2. remarketing adset (idempotent by name)
+    let rmkId = (adsets.find((a) => a.name === RMK_NAME)?.id as string) ?? '';
+    let rmkCreated = false;
+    if (!rmkId) {
+      const rmkTargeting = { geo_locations: { countries: ['US'] }, custom_audiences: [{ id: caId }], targeting_automation: { advantage_audience: 0 } };
+      const rmk = await post(`${ACT}/adsets`, {
+        name: RMK_NAME, campaign_id: CAMPAIGN_ID, status: 'ACTIVE',
+        daily_budget: '1500', billing_event: 'IMPRESSIONS', optimization_goal: 'OFFSITE_CONVERSIONS',
+        bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+        promoted_object: JSON.stringify({ pixel_id: PIX, custom_event_type: 'ADD_TO_CART' }),
+        targeting: JSON.stringify(rmkTargeting),
+        end_time: '2026-09-08T03:59:00+0000',
+      });
+      if (!rmk.ok) return json({ ok: false, step: 'rmk-adset', error: rmk.j, caId }, 200);
+      rmkId = rmk.j.id as string; rmkCreated = true;
+    }
+
+    // 3. cold adset: budget ₪55/day + exclude site visitors + honest name
+    const coldRow = adsets.find((a) => a.id === COLD_ADSET) as Record<string, unknown> | undefined;
+    const coldTargeting = (coldRow?.targeting ?? {}) as Record<string, unknown>;
+    coldTargeting.excluded_custom_audiences = [{ id: caId }];
+    const coldUpd = await post(COLD_ADSET, {
+      name: 'US Cold 35-55 — PA/NJ/OH/MD', daily_budget: '5500', targeting: JSON.stringify(coldTargeting),
+    });
+    if (!coldUpd.ok) return json({ ok: false, step: 'cold-update', error: coldUpd.j, caId, rmkId }, 200);
+
+    // 4. duplicate the cold adset's ads into the remarketing adset (same creatives)
+    const rmkExisting = new Set(allAds.filter((a) => a.adset_id === rmkId).map((a) => a.name as string));
+    const copied: Record<string, unknown>[] = [];
+    for (const a of allAds.filter((x) => x.adset_id === COLD_ADSET)) {
+      const nm = `RMK ${a.name}`;
+      if (rmkExisting.has(nm)) { copied.push({ ad: nm, skipped: 'exists' }); continue; }
+      const crId = (a.creative as Record<string, string> | undefined)?.id;
+      if (!crId) { copied.push({ ad: nm, skipped: 'no-creative' }); continue; }
+      const mk = await post(`${ACT}/ads`, { name: nm, adset_id: rmkId, creative: JSON.stringify({ creative_id: crId }), status: 'ACTIVE' });
+      copied.push({ ad: nm, ad_id: mk.ok ? mk.j.id : undefined, error: mk.ok ? undefined : mk.j });
+    }
+
+    // 5. reflect in ad_campaigns
+    const stamp = `\n[2026-08-01 DUBIS] Restructured per the ori.ai.israel lesson (oren email 31.07): cold adset ₪55/day (renamed, excludes site visitors) + NEW remarketing adset ₪15/day (${RMK_NAME}, CA ${caId}) with the same 6 creatives. Total unchanged ₪70/day. Ongoing rule from the lesson: toggle individual ads by performance once live.`;
+    const { data: campRow } = await sb.from('ad_campaigns').select('id, notes, audience').ilike('notes', `%${CAMPAIGN_ID}%`).limit(1).maybeSingle();
+    if (campRow) {
+      await sb.from('ad_campaigns').update({
+        notes: `${campRow.notes ?? ''}${stamp}`,
+        audience: 'Cold: US 35-55 PA/NJ/OH/MD (excl. site visitors) ₪55/d + Remarketing: US site visitors 30d ₪15/d',
+      }).eq('id', campRow.id);
+    }
+
+    const after = await fetch(`${G}/${CAMPAIGN_ID}?fields=name,status,effective_status,adsets{id,name,status,daily_budget,end_time},ads{id,name,status,adset_id}&access_token=${FB}`).then(r => r.json()).catch(() => ({}));
+    return json({
+      ok: true, campaign_status: before.status, caId, caCreated, rmkId, rmkCreated,
+      cold_updated: coldUpd.ok, ads_copied: copied.filter(c => c.ad_id).length, copied,
+      after: { adsets: after.adsets?.data, ads_count: after.ads?.data?.length },
+      edit_url: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=26201135546175057&selected_campaign_ids=${CAMPAIGN_ID}`,
+    });
+  }
+
   // ── FIX campaign ad copy IN PLACE (correct ₪ prices) — keeps the campaign ON ──
   // Bug: ad copy showed the USD number with a ₪ sign (e.g. "₪28" for a $28 product).
   // Correct = USD × live rate (~2.99): $28→₪84, $27→₪81, $26→₪79. Rebuild each ad's
