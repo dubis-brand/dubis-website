@@ -319,6 +319,15 @@
     'הבקשה נחסמה אחרי 20 שניות': 'Request blocked after 20 seconds',
     'Supabase session תקוע — רענן דף ונסה שוב': 'Supabase session stuck — refresh and try again',
     'אין session פעיל — התחבר מחדש': 'No active session — sign in again',
+    // full-node variants caught in live verification (apostrophes / merged sentences)
+    "✨ פיצ'ר חדש": '✨ New feature',
+    '👇 בחר תמונה מהגלריה למטה, או העלה תמונה חדשה דרך כפתור "העלה תמונה" בגלריה': '👇 Pick an image from the gallery below, or upload a new one via the "Upload image" button in the gallery',
+    'כיתוב': 'Caption',
+    "מייצר את התוכנית השבועית (א' 04:00 UTC, מיישם למידות מהניתוח השבועי) + בעל משפך-ההמרה: קריאת קליק→סל→קופה וניסוי אחד בשבוע. פוסטים ל-Moltbook ‏3/יום.": 'Generates the weekly plan (Sun 04:00 UTC, applies learnings from the weekly analysis) + owns the conversion funnel: click→cart→checkout read and one experiment per week. Moltbook posts 3/day.',
+    "מוצר שבועי אוטומטי (ג'+ה' 09:00 UTC — סלוגן מה-DB/קהל, טיוטת Gelato, מוקאפים, עולה לאוויר לבד) + הצעות סלוגנים ידניות לאישורך מכאן.": 'Automatic weekly product (Tue+Thu 09:00 UTC — slogan from DB/crowd, Gelato draft, mockups, goes live on its own) + manual slogan suggestions for your approval here.',
+    "cron ג'+ה'": 'cron Tue+Thu',
+    'Draft order נוצר ב-Gelato ללא חיוב וללא ייצור. התגובה תציג את מיקום ה-facility שבו Gelato תייצר (לראות שזה באמת מיוצר ב-US עבור לקוחות אמריקאים). אחרי יצירת ה-draft, תוכל לראות את המוקאפ ב-': 'A draft order is created in Gelato with no charge and no production. The response shows which facility Gelato would print at (verify it really prints in the US for US customers). After creating the draft, you can view the mockup at ',
+    '. Drafts נמחקים אוטומטית אחרי ~30 יום.': '. Drafts auto-delete after ~30 days.',
   };
 
   // ---------- digit-pattern entries (numbers replaced by #) ----------
