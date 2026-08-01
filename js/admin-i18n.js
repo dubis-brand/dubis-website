@@ -385,7 +385,7 @@
   const ATTRS = ['placeholder', 'title', 'aria-label'];
   function translateEl(root) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode: n => (n.parentElement && ['SCRIPT', 'STYLE'].includes(n.parentElement.tagName)) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+      acceptNode: n => (n.parentElement && (['SCRIPT', 'STYLE'].includes(n.parentElement.tagName) || n.parentElement.closest('#admin-lang-toggle'))) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
     });
     const nodes = [];
     while (walker.nextNode()) nodes.push(walker.currentNode);
