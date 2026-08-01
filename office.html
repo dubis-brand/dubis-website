@@ -110,6 +110,10 @@
   #isocam .sep { width:1px; height:22px; background:#555; }
   #isocam .camhint { color:#999; font-size:.68rem; padding:0 8px; max-width:190px; line-height:1.3; }
   @media (max-width:760px) { body.iso .depts, body.iso .dept h2, body.iso .acard, body.iso .ceo-card { transform:none; } #isobtn, #isocam { display:none !important; } }
+  /* connection wires overlay */
+  #wires { position:fixed; inset:0; width:100vw; height:100vh; pointer-events:none; z-index:55; }
+  #wires path { animation: wireflow .9s linear infinite; filter: drop-shadow(0 1px 2px rgba(193,126,58,.5)); }
+  @keyframes wireflow { to { stroke-dashoffset: -24; } }
   footer { text-align:center; font-size:.72rem; color:#9a8f7d; padding:20px; }
   footer span { direction:ltr; display:inline-block; }
 </style>
@@ -139,6 +143,8 @@
   <div class="floor" id="doc-floor"><h2 id="t-fdoc"></h2><div class="chips" id="docs"></div></div>
   <details class="floor wf-floor" id="wf-floor"><summary><span id="t-fwf"></span> (<span id="wfcount"></span>)</summary><div class="chips" id="wfs"></div></details>
 </main>
+
+<svg id="wires" aria-hidden="true"></svg>
 
 <div id="isocam">
   <button data-cam="zin" title="+">➕</button>
@@ -241,6 +247,7 @@ function init(d) {
     b.setProperty('--tilt', cam.tilt + 'deg');
     b.setProperty('--spin', cam.spin + 'deg');
     b.setProperty('--zoom', cam.zoom);
+    drawWires();
   }
   document.getElementById('isocam').addEventListener('click', e => {
     const btn = e.target.closest('[data-cam]'); if (!btn) return;
@@ -345,6 +352,40 @@ function init(d) {
   });
 }
 
+const wiresSvg = document.getElementById('wires');
+function elFor(id) {
+  return [...document.querySelectorAll('[data-id="' + CSS.escape(id) + '"]')].find(el => !el.closest('#panel'));
+}
+let wireRaf = null;
+function drawWires() {
+  if (wireRaf) return;
+  wireRaf = requestAnimationFrame(() => { wireRaf = null; _drawWires(); });
+}
+function _drawWires() {
+  if (!selected) { wiresSvg.innerHTML = ''; return; }
+  const src = elFor(selected);
+  if (!src) { wiresSvg.innerHTML = ''; return; }
+  const sr = src.getBoundingClientRect();
+  if (!sr.width) { wiresSvg.innerHTML = ''; return; }
+  const sx = sr.left + sr.width / 2, sy = sr.top + sr.height / 2;
+  const rel = ADJ.get(selected) || new Set();
+  let out = '';
+  for (const id of rel) {
+    const el = elFor(id);
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) continue; // hidden (e.g. collapsed schedule board)
+    const tx = r.left + r.width / 2, ty = r.top + r.height / 2;
+    const mx = (sx + tx) / 2, my = (sy + ty) / 2 - 30 - Math.abs(sx - tx) * 0.06;
+    out += '<path d="M ' + sx + ' ' + sy + ' Q ' + mx + ' ' + my + ' ' + tx + ' ' + ty + '" fill="none" stroke="#C17E3A" stroke-width="2.2" opacity="0.9" stroke-dasharray="8 5"/>';
+    out += '<circle cx="' + tx + '" cy="' + ty + '" r="4" fill="#C17E3A" opacity="0.95"/>';
+  }
+  out += '<circle cx="' + sx + '" cy="' + sy + '" r="5.5" fill="#2C2C2C" stroke="#C17E3A" stroke-width="2.5"/>';
+  wiresSvg.innerHTML = out;
+}
+window.addEventListener('scroll', drawWires, true);
+window.addEventListener('resize', drawWires);
+
 function lightUp(ids) {
   document.body.classList.add('focusmode');
   document.querySelectorAll('.sel-target').forEach(el => el.classList.toggle('lit', ids.has(el.dataset.id)));
@@ -352,6 +393,7 @@ function lightUp(ids) {
 
 function clearSel() {
   selected = null;
+  wiresSvg.innerHTML = '';
   document.body.classList.remove('focusmode');
   document.querySelectorAll('.lit').forEach(el => el.classList.remove('lit'));
   document.getElementById('panel').classList.remove('open');
@@ -393,7 +435,9 @@ function select(id) {
   if (!rel.size) html += `<div class="desc">${UI.none}</div>`;
   document.getElementById('p-body').innerHTML = html;
   document.getElementById('panel').classList.add('open');
+  drawWires();
 }
+document.getElementById('wf-floor').addEventListener('toggle', drawWires);
 </script>
 </body>
 </html>
