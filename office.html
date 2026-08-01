@@ -71,9 +71,8 @@
   body.focusmode .lit { opacity:1 !important; box-shadow:0 0 0 2.5px var(--honey), 0 4px 12px rgba(193,126,58,.35); }
 
   /* panel */
-  #panel { position:fixed; top:0; inset-inline-start:0; height:100%; width:min(420px,100%); background:#fff; z-index:60; box-shadow:4px 0 24px rgba(0,0,0,.25); transform:translateX(-105%); transition:.25s; display:flex; flex-direction:column; }
-  html[dir="rtl"] #panel { transform:translateX(-105%); }
-  #panel.open { transform:translateX(0); }
+  #panel { position:fixed; top:0; right:0; height:100%; width:min(420px,100%); background:#fff; z-index:60; box-shadow:-4px 0 24px rgba(0,0,0,.25); transform:translateX(105%); transition:.25s; display:flex; flex-direction:column; visibility:hidden; }
+  #panel.open { transform:translateX(0); visibility:visible; }
   #panel .phead { background:var(--charcoal); color:var(--cream); padding:16px 18px; display:flex; gap:12px; align-items:center; }
   #panel .phead img, #panel .phead .em { width:52px; height:52px; border-radius:50%; object-fit:cover; border:2px solid var(--honey); }
   #panel .phead .em { font-size:26px; line-height:48px; text-align:center; background:#444; }
