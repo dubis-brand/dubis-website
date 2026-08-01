@@ -92,6 +92,15 @@
     #panel.open { transform:translateY(0); }
     .hstats { display:none; }
   }
+  /* 3D diorama mode */
+  body.iso .depts { transform: perspective(1500px) rotateX(52deg); transform-style: preserve-3d; margin: -10px 0 30px; }
+  body.iso .dept { transform-style: preserve-3d; border-width:0; border-bottom:10px solid color-mix(in srgb, var(--dc) 60%, #333); box-shadow: 0 26px 34px rgba(0,0,0,.35); background: color-mix(in srgb, var(--dc) 14%, var(--paper)); }
+  body.iso .dept h2 { transform: rotateX(-52deg); transform-origin: 50% 100%; }
+  body.iso .agents { transform-style: preserve-3d; }
+  body.iso .acard { transform: rotateX(-52deg); transform-origin: 50% 100%; box-shadow: 0 14px 10px -6px rgba(0,0,0,.3); }
+  body.iso .acard:hover { transform: rotateX(-52deg) translateY(-4px); }
+  body.iso .ceo-card { transform: perspective(1500px) rotateX(10deg); box-shadow: 0 22px 30px rgba(0,0,0,.3); }
+  @media (max-width:760px) { body.iso .depts, body.iso .dept h2, body.iso .acard, body.iso .ceo-card { transform:none; } #isobtn { display:none; } }
   footer { text-align:center; font-size:.72rem; color:#9a8f7d; padding:20px; }
   footer span { direction:ltr; display:inline-block; }
 </style>
@@ -106,6 +115,7 @@
       <div class="sub" id="t-sub"></div>
     </div>
     <div class="hstats" id="stats"></div>
+    <a id="isobtn" href="#" style="color:var(--cream);font-size:.85rem;border:1px solid #666;border-radius:8px;padding:4px 12px;text-decoration:none;white-space:nowrap"></a>
     <a id="langbtn" style="color:var(--honey);font-size:.85rem;border:1px solid var(--honey);border-radius:8px;padding:4px 12px;text-decoration:none;white-space:nowrap"></a>
   </div>
   <input id="search" type="search" placeholder="">
@@ -152,7 +162,7 @@ const UI = LANG === 'en' ? {
   floors: { conn:'🔌 Connections floor: the apps the office talks to', table:'🗄️ Data floor: the Supabase tables', doc:'📚 Knowledge library: the docs the agents read', wf:'⏰ Schedule board: every automated process' },
   agents:'agents', brain:'brain · thinking', body:'body · execution', brainL:' · brain layer', bodyL:' · execution layer',
   schedule:'⏰ Schedule:', connected:'👥 Connected agents', gSkills:'▲ Skills', gDocs:'📚 Knowledge docs', gWfs:'⏰ Automated processes', gConns:'🔌 Connections', gTables:'🗄️ Tables',
-  none:'No mapped relations for this entity yet.', updated:'Updated', footer:'Built from the live map of the system', footer2:'office.json is the same map Claude queries before building anything new', langBtn:'עברית', langHref:'office.html'
+  none:'No mapped relations for this entity yet.', updated:'Updated', footer:'Built from the live map of the system', footer2:'office.json is the same map Claude queries before building anything new', langBtn:'עברית', langHref:'office.html', iso3d:'🧊 3D view', iso2d:'▦ Flat view'
 } : {
   kinds: { agent:'סוכן', skill:'סקיל (יכולת)', doc:'מסמך ידע', conn:'חיבור חיצוני', table:'טבלת דאטה', wf:'תהליך אוטומטי' },
   title: '🏢 המשרד הווירטואלי של <span>DUBIS</span>',
@@ -165,7 +175,7 @@ const UI = LANG === 'en' ? {
   floors: { conn:'🔌 קומת החיבורים: האפליקציות שהמשרד מדבר איתן', table:'🗄️ קומת הדאטה: הטבלאות ב-Supabase', doc:'📚 ספריית הידע: המסמכים שהסוכנים קוראים', wf:'⏰ לוח הזמנים: כל התהליכים האוטומטיים' },
   agents:'סוכנים', brain:'מוח · חשיבה', body:'גוף · ביצוע', brainL:' · שכבת המוח', bodyL:' · שכבת הביצוע',
   schedule:'⏰ לו"ז:', connected:'👥 סוכנים מחוברים', gSkills:'▲ סקילים', gDocs:'📚 מסמכי ידע', gWfs:'⏰ תהליכים אוטומטיים', gConns:'🔌 חיבורים', gTables:'🗄️ טבלאות',
-  none:'אין קשרים ממופים לישות הזאת עדיין.', updated:'עודכן', footer:'המשרד נבנה מהמפה החיה של המערכת', footer2:'office.json הוא אותה מפה שגם קלוד שואל לפני כל בנייה חדשה', langBtn:'English', langHref:'office.html?lang=en'
+  none:'אין קשרים ממופים לישות הזאת עדיין.', updated:'עודכן', footer:'המשרד נבנה מהמפה החיה של המערכת', footer2:'office.json הוא אותה מפה שגם קלוד שואל לפני כל בנייה חדשה', langBtn:'English', langHref:'office.html?lang=en', iso3d:'🧊 תלת-ממד', iso2d:'▦ תצוגה שטוחה'
 };
 const L = n => (LANG === 'en' && n.en) ? n.en : n.he;
 const D = n => (LANG === 'en' && n.desc_en) ? n.desc_en : (n.desc || '');
@@ -190,6 +200,15 @@ function init(d) {
   document.getElementById('t-foot1').textContent = UI.footer;
   document.getElementById('t-foot2').textContent = UI.footer2;
   const lb = document.getElementById('langbtn'); lb.textContent = UI.langBtn; lb.href = UI.langHref;
+  const ib = document.getElementById('isobtn');
+  const setIso = on => {
+    document.body.classList.toggle('iso', on);
+    ib.textContent = on ? UI.iso2d : UI.iso3d;
+    const u = new URL(location); if (on) u.searchParams.set('view', 'iso'); else u.searchParams.delete('view'); history.replaceState(null, '', u);
+    lb.href = UI.langHref + (on ? (UI.langHref.includes('?') ? '&' : '?') + 'view=iso' : '');
+  };
+  ib.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); setIso(!document.body.classList.contains('iso')); });
+  setIso(new URLSearchParams(location.search).get('view') === 'iso');
   d.nodes.forEach(n => { NODE.set(n.id, n); ADJ.set(n.id, new Set()); });
   d.edges.forEach(([a, b]) => { if (ADJ.has(a) && ADJ.has(b)) { ADJ.get(a).add(b); ADJ.get(b).add(a); } });
 
