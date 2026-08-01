@@ -102,22 +102,23 @@
   <div class="hrow">
     <img class="ceo" src="images/team/dubis.jpg" alt="DUBIS" onerror="this.style.display='none'">
     <div class="htitles">
-      <h1>🏢 המשרד הווירטואלי של <span>DUBIS</span></h1>
-      <div class="sub">כל האופרציה — סוכנים, סקילים, ידע, חיבורים ותהליכים — במקום אחד חי</div>
+      <h1 id="t-title"></h1>
+      <div class="sub" id="t-sub"></div>
     </div>
     <div class="hstats" id="stats"></div>
+    <a id="langbtn" style="color:var(--honey);font-size:.85rem;border:1px solid var(--honey);border-radius:8px;padding:4px 12px;text-decoration:none;white-space:nowrap"></a>
   </div>
-  <input id="search" type="search" placeholder="🔎 חיפוש — סוכן, סקיל, חיבור, טבלה…">
+  <input id="search" type="search" placeholder="">
 </header>
 
 <main>
-  <div class="hint">לוחצים על כל דבר — סוכן, לוגו, טבלה, סקיל — ורואים למי הוא מחובר. לחיצה על הרקע מנקה.</div>
+  <div class="hint" id="t-hint"></div>
   <div id="ceo-slot"></div>
   <div class="depts" id="depts"></div>
-  <div class="floor" id="conn-floor"><h2>🔌 קומת החיבורים — האפליקציות שהמשרד מדבר איתן</h2><div class="chips" id="conns"></div></div>
-  <div class="floor" id="table-floor"><h2>🗄️ קומת הדאטה — הטבלאות ב-Supabase</h2><div class="chips" id="tables"></div></div>
-  <div class="floor" id="doc-floor"><h2>📚 ספריית הידע — המסמכים שהסוכנים קוראים</h2><div class="chips" id="docs"></div></div>
-  <details class="floor wf-floor" id="wf-floor"><summary>⏰ לוח הזמנים — כל התהליכים האוטומטיים (<span id="wfcount"></span>)</summary><div class="chips" id="wfs"></div></details>
+  <div class="floor" id="conn-floor"><h2 id="t-fconn"></h2><div class="chips" id="conns"></div></div>
+  <div class="floor" id="table-floor"><h2 id="t-ftable"></h2><div class="chips" id="tables"></div></div>
+  <div class="floor" id="doc-floor"><h2 id="t-fdoc"></h2><div class="chips" id="docs"></div></div>
+  <details class="floor wf-floor" id="wf-floor"><summary><span id="t-fwf"></span> (<span id="wfcount"></span>)</summary><div class="chips" id="wfs"></div></details>
 </main>
 
 <aside id="panel" aria-hidden="true">
@@ -129,10 +130,46 @@
   <div class="pbody" id="p-body"></div>
 </aside>
 
-<footer>המשרד נבנה מהמפה החיה של המערכת · <span id="gen"></span> · office.json הוא אותה מפה שגם קלוד שואל לפני כל בנייה חדשה</footer>
+<footer><span id="t-foot1"></span> · <span id="gen"></span> · <span id="t-foot2"></span></footer>
 
 <script>
-const KIND_HE = { agent:'סוכן', skill:'סקיל (יכולת)', doc:'מסמך ידע', conn:'חיבור חיצוני', table:'טבלת דאטה', wf:'תהליך אוטומטי' };
+const LANG = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'he';
+if (LANG === 'en') {
+  document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
+  const st = document.createElement('style');
+  st.textContent = '#panel{right:auto;left:0;transform:translateX(-105%);box-shadow:4px 0 24px rgba(0,0,0,.25)} #panel.open{transform:translateX(0)} @media (max-width:640px){#panel{left:0;transform:translateY(110%)} #panel.open{transform:translateY(0)}}';
+  document.head.appendChild(st);
+}
+const UI = LANG === 'en' ? {
+  kinds: { agent:'Agent', skill:'Skill (capability)', doc:'Knowledge doc', conn:'External connection', table:'Data table', wf:'Automated process' },
+  title: '🏢 The <span>DUBIS</span> Virtual Office',
+  sub: 'The whole operation, agents, skills, knowledge, connections and schedules, in one living map',
+  search: '🔎 Search: agent, skill, connection, table…',
+  hint: 'Click anything, an agent, a logo, a table, a skill, to see what it is connected to. Click the background to reset.',
+  ceoTitle: '<span>DUBIS</span> · The CEO',
+  ceoRole: "The business's own agent: doctrine, the commitments ledger, work chains, decisions",
+  stats: [['Agents','agent'],['Skills','skill'],['Knowledge','doc'],['Connections','conn'],['Tables','table'],['Processes','wf']],
+  floors: { conn:'🔌 Connections floor: the apps the office talks to', table:'🗄️ Data floor: the Supabase tables', doc:'📚 Knowledge library: the docs the agents read', wf:'⏰ Schedule board: every automated process' },
+  agents:'agents', brain:'brain · thinking', body:'body · execution', brainL:' · brain layer', bodyL:' · execution layer',
+  schedule:'⏰ Schedule:', connected:'👥 Connected agents', gSkills:'▲ Skills', gDocs:'📚 Knowledge docs', gWfs:'⏰ Automated processes', gConns:'🔌 Connections', gTables:'🗄️ Tables',
+  none:'No mapped relations for this entity yet.', updated:'Updated', footer:'Built from the live map of the system', footer2:'office.json is the same map Claude queries before building anything new', langBtn:'עברית', langHref:'office.html'
+} : {
+  kinds: { agent:'סוכן', skill:'סקיל (יכולת)', doc:'מסמך ידע', conn:'חיבור חיצוני', table:'טבלת דאטה', wf:'תהליך אוטומטי' },
+  title: '🏢 המשרד הווירטואלי של <span>DUBIS</span>',
+  sub: 'כל האופרציה, סוכנים, סקילים, ידע, חיבורים ותהליכים, במקום אחד חי',
+  search: '🔎 חיפוש: סוכן, סקיל, חיבור, טבלה…',
+  hint: 'לוחצים על כל דבר, סוכן, לוגו, טבלה, סקיל, ורואים למי הוא מחובר. לחיצה על הרקע מנקה.',
+  ceoTitle: '<span>DUBIS</span> · המנכ"ל',
+  ceoRole: 'הסוכן של העסק עצמו: דוקטרינה, פנקס ההתחייבויות, שרשראות העבודה, ההחלטות',
+  stats: [['סוכנים','agent'],['סקילים','skill'],['מסמכי ידע','doc'],['חיבורים','conn'],['טבלאות','table'],['תהליכים','wf']],
+  floors: { conn:'🔌 קומת החיבורים: האפליקציות שהמשרד מדבר איתן', table:'🗄️ קומת הדאטה: הטבלאות ב-Supabase', doc:'📚 ספריית הידע: המסמכים שהסוכנים קוראים', wf:'⏰ לוח הזמנים: כל התהליכים האוטומטיים' },
+  agents:'סוכנים', brain:'מוח · חשיבה', body:'גוף · ביצוע', brainL:' · שכבת המוח', bodyL:' · שכבת הביצוע',
+  schedule:'⏰ לו"ז:', connected:'👥 סוכנים מחוברים', gSkills:'▲ סקילים', gDocs:'📚 מסמכי ידע', gWfs:'⏰ תהליכים אוטומטיים', gConns:'🔌 חיבורים', gTables:'🗄️ טבלאות',
+  none:'אין קשרים ממופים לישות הזאת עדיין.', updated:'עודכן', footer:'המשרד נבנה מהמפה החיה של המערכת', footer2:'office.json הוא אותה מפה שגם קלוד שואל לפני כל בנייה חדשה', langBtn:'English', langHref:'office.html?lang=en'
+};
+const L = n => (LANG === 'en' && n.en) ? n.en : n.he;
+const D = n => (LANG === 'en' && n.desc_en) ? n.desc_en : (n.desc || '');
+const KIND_HE = UI.kinds;
 const KIND_ICON = { agent:'👤', skill:'▲', doc:'📄', conn:'🔌', table:'🗄️', wf:'◴' };
 let DATA = null, ADJ = new Map(), NODE = new Map(), selected = null;
 
@@ -142,15 +179,23 @@ fetch('office.json').then(r => r.json()).then(init).catch(e => {
 
 function init(d) {
   DATA = d;
+  document.getElementById('t-title').innerHTML = UI.title;
+  document.getElementById('t-sub').textContent = UI.sub;
+  document.getElementById('search').placeholder = UI.search;
+  document.getElementById('t-hint').textContent = UI.hint;
+  document.getElementById('t-fconn').textContent = UI.floors.conn;
+  document.getElementById('t-ftable').textContent = UI.floors.table;
+  document.getElementById('t-fdoc').textContent = UI.floors.doc;
+  document.getElementById('t-fwf').textContent = UI.floors.wf;
+  document.getElementById('t-foot1').textContent = UI.footer;
+  document.getElementById('t-foot2').textContent = UI.footer2;
+  const lb = document.getElementById('langbtn'); lb.textContent = UI.langBtn; lb.href = UI.langHref;
   d.nodes.forEach(n => { NODE.set(n.id, n); ADJ.set(n.id, new Set()); });
   d.edges.forEach(([a, b]) => { if (ADJ.has(a) && ADJ.has(b)) { ADJ.get(a).add(b); ADJ.get(b).add(a); } });
 
   const c = d.counts;
-  document.getElementById('stats').innerHTML = [
-    ['סוכנים', c.agent], ['סקילים', c.skill], ['מסמכי ידע', c.doc],
-    ['חיבורים', c.conn], ['טבלאות', c.table], ['תהליכים', c.wf],
-  ].map(([he, n]) => `<div><b>${n}</b>${he}</div>`).join('');
-  document.getElementById('gen').textContent = 'עודכן ' + (d.generated_at || '').slice(0, 10);
+  document.getElementById('stats').innerHTML = UI.stats.map(([lbl, k]) => `<div><b>${c[k]}</b>${lbl}</div>`).join('');
+  document.getElementById('gen').textContent = UI.updated + ' ' + (d.generated_at || '').slice(0, 10);
 
   // CEO
   const ceo = d.nodes.find(n => n.id === 'agent:adam');
@@ -158,8 +203,8 @@ function init(d) {
     <div class="ceo-card sel-target" data-id="agent:adam">
       <img src="images/team/dubis.jpg" alt="DUBIS" onerror="this.outerHTML='<div class=em style=\\'width:84px;height:84px;border-radius:50%;background:#C17E3A;font-size:44px;line-height:84px;text-align:center\\'>🐻</div>'">
       <div>
-        <div class="big"><span>DUBIS</span> · המנכ"ל</div>
-        <div class="role">הסוכן של העסק עצמו — דוקטרינה, פנקס ההתחייבויות, שרשראות העבודה, ההחלטות</div>
+        <div class="big">${UI.ceoTitle}</div>
+        <div class="role">${UI.ceoRole}</div>
       </div>
     </div>`;
 
@@ -176,17 +221,17 @@ function init(d) {
         : `<div class="em">${a.emoji || '👤'}</div>`;
       return `<div class="acard sel-target" data-id="${a.id}">
         <div class="badges">${skills ? `<span class="b" title="סקילים">▲${skills}</span>` : ''}${wfs ? `<span class="b" title="תהליכים">◴${wfs}</span>` : ''}</div>
-        ${face}<div class="nm">${a.he}</div><div class="layer">${a.layer === 'brain' ? 'מוח · חשיבה' : 'גוף · ביצוע'}</div>
+        ${face}<div class="nm">${L(a)}</div><div class="layer">${a.layer === 'brain' ? UI.brain : UI.body}</div>
       </div>`;
     }).join('');
     deptEl.insertAdjacentHTML('beforeend',
-      `<section class="dept" style="--dc:${dept.color}"><h2>${dept.icon} ${dept.name} <span class="cnt">${agents.length} סוכנים</span></h2><div class="agents">${cards}</div></section>`);
+      `<section class="dept" style="--dc:${dept.color}"><h2>${dept.icon} ${LANG==='en'&&dept.en?dept.en:dept.name} <span class="cnt">${agents.length} ${UI.agents}</span></h2><div class="agents">${cards}</div></section>`);
   }
 
   // floors
-  const chip = (n, extra = '') => `<span class="chip t-${n.kind} sel-target" data-id="${n.id}">${n.icon ? n.icon + ' ' : ''}${n.he}${extra}</span>`;
+  const chip = (n, extra = '') => `<span class="chip t-${n.kind} sel-target" data-id="${n.id}">${n.icon ? n.icon + ' ' : ''}${L(n)}${extra}</span>`;
   document.getElementById('conns').innerHTML = d.nodes.filter(n => n.kind === 'conn')
-    .map(n => chip(n, ` <span class="sch">${[...(ADJ.get(n.id) || [])].filter(x => x.startsWith('agent:')).length} סוכנים</span>`)).join('');
+    .map(n => chip(n, ` <span class="sch">${[...(ADJ.get(n.id) || [])].filter(x => x.startsWith('agent:')).length} ${UI.agents}</span>`)).join('');
   document.getElementById('tables').innerHTML = d.nodes.filter(n => n.kind === 'table').map(n => chip(n)).join('');
   document.getElementById('docs').innerHTML = d.nodes.filter(n => n.kind === 'doc').map(n => chip(n)).join('');
   const wfs = d.nodes.filter(n => n.kind === 'wf');
@@ -202,7 +247,7 @@ function init(d) {
   document.getElementById('search').addEventListener('input', e => {
     const q = e.target.value.trim().toLowerCase();
     if (!q) { clearSel(); return; }
-    const hits = d.nodes.filter(n => (n.he || '').toLowerCase().includes(q) || (n.name || '').toLowerCase().includes(q) || (n.desc || '').toLowerCase().includes(q)).map(n => n.id);
+    const hits = d.nodes.filter(n => (n.he || '').toLowerCase().includes(q) || (n.en || '').toLowerCase().includes(q) || (n.name || '').toLowerCase().includes(q) || (n.desc || '').toLowerCase().includes(q)).map(n => n.id);
     lightUp(new Set(hits));
   });
 }
@@ -233,26 +278,26 @@ function select(id) {
   } else {
     av.innerHTML = `<div class="em">${n.icon || n.emoji || KIND_ICON[n.kind] || ''}</div>`;
   }
-  document.getElementById('p-kind').textContent = KIND_HE[n.kind] + (n.src ? ' · ' + n.src : '') + (n.layer ? (n.layer === 'brain' ? ' · שכבת המוח' : ' · שכבת הביצוע') : '');
-  document.getElementById('p-title').textContent = n.he + (n.name ? ' (' + n.name + ')' : '');
+  document.getElementById('p-kind').textContent = KIND_HE[n.kind] + (n.src ? ' · ' + n.src : '') + (n.layer ? (n.layer === 'brain' ? UI.brainL : UI.bodyL) : '');
+  document.getElementById('p-title').textContent = L(n) + (n.name ? ' (' + n.name + ')' : '');
 
   // panel body
   let html = '';
-  if (n.desc) html += `<div class="desc">${n.desc}</div>`;
-  if (n.schedule) html += `<div class="desc">⏰ לו"ז: <bdo dir="ltr">${n.schedule}</bdo> (UTC)</div>`;
+  if (D(n)) html += `<div class="desc">${D(n)}</div>`;
+  if (n.schedule) html += `<div class="desc">${UI.schedule} <bdo dir="ltr">${n.schedule}</bdo> (UTC)</div>`;
   if (n.file) html += `<div class="file">${n.file}</div>`;
 
   const groups = [
-    ['agent:', '👥 סוכנים מחוברים'], ['skill:', '▲ סקילים'], ['doc:', '📚 מסמכי ידע'],
-    ['wf:', '⏰ תהליכים אוטומטיים'], ['conn:', '🔌 חיבורים'], ['table:', '🗄️ טבלאות'],
+    ['agent:', UI.connected], ['skill:', UI.gSkills], ['doc:', UI.gDocs],
+    ['wf:', UI.gWfs], ['conn:', UI.gConns], ['table:', UI.gTables],
   ];
   for (const [prefix, title] of groups) {
     const items = [...rel].filter(x => x.startsWith(prefix)).map(x => NODE.get(x)).filter(Boolean);
     if (!items.length) continue;
     html += `<h4>${title} (${items.length})</h4><div class="rel">` +
-      items.map(m => `<span class="chip t-${m.kind} sel-target" data-id="${m.id}">${m.icon ? m.icon + ' ' : ''}${m.he}${m.schedule ? ` <span class="sch">${m.schedule}</span>` : ''}</span>`).join('') + '</div>';
+      items.map(m => `<span class="chip t-${m.kind} sel-target" data-id="${m.id}">${m.icon ? m.icon + ' ' : ''}${L(m)}${m.schedule ? ` <span class="sch">${m.schedule}</span>` : ''}</span>`).join('') + '</div>';
   }
-  if (!rel.size) html += '<div class="desc">אין קשרים ממופים לישות הזאת עדיין.</div>';
+  if (!rel.size) html += `<div class="desc">${UI.none}</div>`;
   document.getElementById('p-body').innerHTML = html;
   document.getElementById('panel').classList.add('open');
 }

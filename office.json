@@ -1,34 +1,39 @@
 {
- "generated_at": "2026-08-01T08:45:00.958Z",
+ "generated_at": "2026-08-01T09:04:13.525Z",
  "note": "DUBIS Virtual Office manifest. Agents+skills scanned from the repos; edges curated in scripts/generate-office-manifest.js; pg_cron/GHA are dated snapshots.",
  "departments": [
   {
    "id": "hanhala",
    "name": "הנהלה — המוח",
+   "en": "Management — The Brain",
    "color": "#C17E3A",
    "icon": "🧠"
   },
   {
    "id": "shivuk",
    "name": "שיווק",
+   "en": "Marketing",
    "color": "#3d7a4f",
    "icon": "📣"
   },
   {
    "id": "studio",
    "name": "הסטודיו — תוכן ווידאו",
+   "en": "The Studio — Content & Video",
    "color": "#8a5a9e",
    "icon": "🎬"
   },
   {
    "id": "tiful",
    "name": "תפעול וטכנולוגיה",
+   "en": "Operations & Tech",
    "color": "#4a5a8a",
    "icon": "⚙️"
   },
   {
    "id": "lakohot",
    "name": "לקוחות ודיווח",
+   "en": "Customers & Reporting",
    "color": "#a3595e",
    "icon": "🤝"
   }
@@ -48,6 +53,7 @@
    "layer": "brain",
    "dept": "ceo",
    "he": "DUBIS — המנכ\"ל",
+   "en": "DUBIS — the CEO",
    "emoji": "🐻",
    "avatar": "dubis",
    "desc": "The business's own agent — DUBIS (renamed from Adam per oren, 2026-07-11). Co-runs the business with the Boss under the standing mandate — decides on the management board, builds agents/skills/connections, orchestrates t…",
@@ -59,6 +65,7 @@
    "layer": "brain",
    "dept": "shivuk",
    "he": "דנה — בעלת השיווק",
+   "en": "Dana — marketing owner",
    "emoji": "👩‍💼",
    "avatar": null,
    "desc": "Dana — DUBIS's marketing owner. She owns the marketing domain, brings a point of view, decides the week's angle and slate, and hands the brief DOWN to the Copywriter. Talk to her when you want someone to OWN marketing an…",
@@ -70,6 +77,7 @@
    "layer": "brain",
    "dept": "shivuk",
    "he": "קופירייטר",
+   "en": "Copywriter",
    "emoji": "✍️",
    "avatar": null,
    "desc": "Your copywriter agent. Creates content that matches your brand voice.",
@@ -81,6 +89,7 @@
    "layer": "brain",
    "dept": "shivuk",
    "he": "חוקר",
+   "en": "Researcher",
    "emoji": "🔎",
    "avatar": null,
    "desc": "Your research agent. Analyzes topics, competitors, and trends to create structured executive briefings.",
@@ -92,6 +101,7 @@
    "layer": "brain",
    "dept": "studio",
    "he": "תסריטאי — הסיטקום",
+   "en": "Screenwriter — the sitcom",
    "emoji": "🎭",
    "avatar": null,
    "desc": "The DUBIS Screenwriter — writes comedy video scripts (the agent-team sitcom \"מאחורי הקוד\" + scene-format reels). Owns dialogue, scene structure, and the shot list that production (Video agent + Higgsfield) executes. Buil…",
@@ -103,6 +113,7 @@
    "layer": "brain",
    "dept": "hanhala",
    "he": "סטרטג",
+   "en": "Strategist",
    "emoji": "🧭",
    "avatar": null,
    "desc": "Your strategist agent. Analyzes decisions from a business and growth perspective, evaluates options, and delivers clear recommendations.",
@@ -114,6 +125,7 @@
    "layer": "brain",
    "dept": "hanhala",
    "he": "פרקליט השטן",
+   "en": "Devil's Advocate",
    "emoji": "😈",
    "avatar": null,
    "desc": "Your devil's advocate agent. Challenges assumptions, finds blind spots, and stress-tests strategic analysis before decisions are made.",
@@ -125,6 +137,7 @@
    "layer": "brain",
    "dept": "hanhala",
    "he": "ראש הסגל — תוכניות",
+   "en": "Chief of Staff — plans",
    "emoji": "📋",
    "avatar": null,
    "desc": "Your chief of staff agent. Synthesizes multiple perspectives into one clear decision brief that's ready to act on.",
@@ -136,6 +149,7 @@
    "layer": "brain",
    "dept": "hanhala",
    "he": "השוער — בקרת איכות",
+   "en": "Gatekeeper — quality gate",
    "emoji": "🚧",
    "avatar": null,
    "desc": "Your quality reviewer. Reviews content before publication and provides feedback.",
@@ -147,6 +161,7 @@
    "layer": "brain",
    "dept": "hanhala",
    "he": "אנליסט — דאטה וכלכלה",
+   "en": "Analyst — data & economics",
    "emoji": "📊",
    "avatar": null,
    "desc": "Turns raw information (transcripts, call notes, meeting recordings, raw data) into clear, structured documents that match the owner's style.",
@@ -158,6 +173,7 @@
    "layer": "brain",
    "dept": "lakohot",
    "he": "שירות לקוחות",
+   "en": "Customer Care",
    "emoji": "💬",
    "avatar": null,
    "desc": "DUBIS customer-care agent — handles real DUBIS buyers: order delays, returns/refunds, sizing complaints, Gelato fulfillment issues, review requests. Writes warm, zero-apology-voice replies in the customer's language. Rep…",
@@ -169,6 +185,7 @@
    "layer": "brain",
    "dept": "hanhala",
    "he": "טום — עזרה על המערכת",
+   "en": "Tom — system help",
    "emoji": "🛟",
    "avatar": null,
    "desc": "System help. Tom explains how the DUBIS agent system works — the brain/body split, the chains, the memory files, who owns what. Ask him \"how does X work?\"; ask Adam to BUILD things.",
@@ -180,6 +197,7 @@
    "layer": "body",
    "dept": "lakohot",
    "he": "הבוס — דוח יומי",
+   "en": "The Boss — daily report",
    "avatar": "boss",
    "desc": "DUBIS Boss subagent — generates the daily Hebrew HTML executive summary email to oren at 07:00 Israel time, plus the Sunday weekly-plan approval section. Synthesizes Email Monitor tasks, Site Audit findings, Content pipe…",
    "file": ".claude/agents/boss.md"
@@ -190,6 +208,7 @@
    "layer": "body",
    "dept": "studio",
    "he": "תוכן — פוסטים",
+   "en": "Content — posts",
    "avatar": "content",
    "desc": "DUBIS Content subagent — executes the social posts scheduled by the weekly marketing plan (bilingual 50/50 HE/EN since 2026-05-22). Daily 10:00 + 16:00 UTC cron picks up backlog tasks for today and fills caption/image fo…",
    "file": ".claude/agents/content.md"
@@ -200,6 +219,7 @@
    "layer": "body",
    "dept": "tiful",
    "he": "CTO — קוד ופריסות",
+   "en": "CTO — code & deploys",
    "avatar": "cto",
    "desc": "DUBIS CTO subagent — technical architecture, bug diagnosis, deploys, integrations, code reviews. Triggered on-demand (Cowork scheduled-tasks queue is currently empty, see status.md). Use when oren asks \"why is X broken\",…",
    "file": ".claude/agents/cto.md"
@@ -210,6 +230,7 @@
    "layer": "body",
    "dept": "studio",
    "he": "עיצוב",
+   "en": "Design",
    "avatar": "design",
    "desc": "DUBIS Design subagent — visual asset generation (Gemini API), site visual audits, polish passes, product-page conversion design. Use when oren asks \"generate images\", \"redesign the hero\", \"audit the visual polish\", \"impr…",
    "file": ".claude/agents/design.md"
@@ -220,6 +241,7 @@
    "layer": "body",
    "dept": "lakohot",
    "he": "סורק המיילים",
+   "en": "Email Monitor",
    "avatar": "email",
    "desc": "DUBIS Email Monitor subagent — scans dubis.brand@gmail.com daily (cloud run via dubis-agent-runner, dispatched 04:00 UTC). Signal-first since the 2026-06-21 rewrite — reads oren's forwarded IDEA emails (from oren/Hila), …",
    "file": ".claude/agents/email-monitor.md"
@@ -230,6 +252,7 @@
    "layer": "body",
    "dept": "shivuk",
    "he": "שיווק — ידיים + משפך",
+   "en": "Marketing — hands + funnel",
    "avatar": "marketing",
    "desc": "DUBIS Marketing subagent — Dana's hands + the CONVERSION FUNNEL OWNER (board decision 2026-07-06). Generates the weekly 17-slot social plan every Sunday 04:00 UTC (IL-only, 17 HE / 0 EN since 2026-06-19), runs the weekly…",
    "file": ".claude/agents/marketing.md"
@@ -240,6 +263,7 @@
    "layer": "body",
    "dept": "tiful",
    "he": "מוצר — קטלוג",
+   "en": "Product — catalog",
    "avatar": "product",
    "desc": "DUBIS Product subagent — new product specification, catalog management, SKU creation, Gelato baseUid mapping. Use when oren says \"add a new product\", \"spec a hoodie variant\", \"map this design to gelato\", \"update the cata…",
    "file": ".claude/agents/product.md"
@@ -250,6 +274,7 @@
    "layer": "body",
    "dept": "tiful",
    "he": "אבטחה",
+   "en": "Security",
    "avatar": "security",
    "desc": "DUBIS Security subagent — weekly security scan of GitHub, Supabase, Vercel, API keys. Runs every Monday 03:00 UTC via Vercel cron `/api/cron/morning-report?type=security`. Use when oren asks \"security scan\", \"audit our s…",
    "file": ".claude/agents/security.md"
@@ -260,6 +285,7 @@
    "layer": "body",
    "dept": "tiful",
    "he": "ביקורת האתר",
+   "en": "Site Audit",
    "avatar": "siteaudit",
    "desc": "DUBIS Site Audit subagent — runs daily via Vercel cron `?type=agents` at 04:00 UTC against dubis.net checking broken links, slow pages (>3s TTFB), checkout flow health, Gelato product availability, Meta Pixel firing, Goo…",
    "file": ".claude/agents/site-audit.md"
@@ -270,6 +296,7 @@
    "layer": "body",
    "dept": "tiful",
    "he": "אספקה — הזמנות",
+   "en": "Supply — orders",
    "avatar": "supply",
    "desc": "DUBIS Supply subagent — Gelato fulfillment orders, inventory checks, shipping status, print-on-demand troubleshooting. Use when oren asks \"check the gelato order\", \"shipping status for order X\", \"is product Y in stock\", …",
    "file": ".claude/agents/supply.md"
@@ -280,6 +307,7 @@
    "layer": "body",
    "dept": "studio",
    "he": "וידאו — רילים",
+   "en": "Video — reels",
    "avatar": "video",
    "desc": "DUBIS Video subagent — persona reels for IG/FB/TikTok. Policy since 2026-06-07 — reels are ENGLISH-ONLY video (Veo 3.1 native lip-synced speech); the Hebrew STORY goes in the post caption (no on-screen subtitles by defau…",
    "file": ".claude/agents/video.md"
@@ -428,6 +456,7 @@
    "id": "doc:voice-dna",
    "kind": "doc",
    "he": "DNA הקול של המותג",
+   "en": "Brand voice DNA",
    "file": "C-core/voice-dna.md",
    "desc": ""
   },
@@ -435,6 +464,7 @@
    "id": "doc:icp-profile",
    "kind": "doc",
    "he": "פרופיל הקהל (ICP)",
+   "en": "Audience profile (ICP)",
    "file": "C-core/icp-profile.md",
    "desc": ""
   },
@@ -442,6 +472,7 @@
    "id": "doc:company-glossary",
    "kind": "doc",
    "he": "מילים אסורות ומאושרות",
+   "en": "Banned & approved words",
    "file": "C-core/company-glossary.md",
    "desc": ""
   },
@@ -449,6 +480,7 @@
    "id": "doc:copy-playbook",
    "kind": "doc",
    "he": "פלייבוק הקופי",
+   "en": "Copy playbook",
    "file": "C-core/copy-playbook.md",
    "desc": ""
   },
@@ -456,6 +488,7 @@
    "id": "doc:brand-identity",
    "kind": "doc",
    "he": "זהות ויזואלית",
+   "en": "Visual identity",
    "file": "C-core/brand-identity.md",
    "desc": ""
   },
@@ -463,6 +496,7 @@
    "id": "doc:snapshot-core",
    "kind": "doc",
    "he": "תמצית הזהות",
+   "en": "Identity snapshot",
    "file": "C-core/snapshot.md",
    "desc": ""
   },
@@ -470,6 +504,7 @@
    "id": "doc:snapshot-memory",
    "kind": "doc",
    "he": "תמצית הזיכרון",
+   "en": "Memory snapshot",
    "file": "M-memory/snapshot.md",
    "desc": ""
   },
@@ -477,6 +512,7 @@
    "id": "doc:doctrine",
    "kind": "doc",
    "he": "הדוקטרינה",
+   "en": "The doctrine",
    "file": "B-brain/01-context/doctrine.md",
    "desc": ""
   },
@@ -484,6 +520,7 @@
    "id": "doc:operating-contract",
    "kind": "doc",
    "he": "חוזה מוח-גוף",
+   "en": "Brain-body contract",
    "file": "B-brain/01-context/operating-contract.md",
    "desc": ""
   },
@@ -491,6 +528,7 @@
    "id": "doc:feedback-system",
    "kind": "doc",
    "he": "תיקוני אורן (feedback)",
+   "en": "Founder feedback corrections",
    "file": "M-memory/feedback-system.md",
    "desc": ""
   },
@@ -498,6 +536,7 @@
    "id": "doc:status",
    "kind": "doc",
    "he": "לוח המצב החי",
+   "en": "Live status board",
    "file": "M-memory/status.md",
    "desc": ""
   },
@@ -505,6 +544,7 @@
    "id": "doc:memory-index",
    "kind": "doc",
    "he": "אינדקס הזיכרון",
+   "en": "Memory index",
    "file": "M-memory/MEMORY.md",
    "desc": ""
   },
@@ -512,6 +552,7 @@
    "id": "doc:checkout-guardrails",
    "kind": "doc",
    "he": "חוקי הקופה (כתובים בדם)",
+   "en": "Checkout guardrails (written in blood)",
    "file": "M-memory/checkout-guardrails.md",
    "desc": ""
   },
@@ -519,6 +560,7 @@
    "id": "doc:runbook",
    "kind": "doc",
    "he": "ראנבוק — נהלים",
+   "en": "Runbook — procedures",
    "file": "M-memory/runbook.md",
    "desc": ""
   },
@@ -526,6 +568,7 @@
    "id": "doc:troubleshooting",
    "kind": "doc",
    "he": "פוסטמורטמים",
+   "en": "Postmortems",
    "file": "M-memory/troubleshooting.md",
    "desc": ""
   },
@@ -533,104 +576,133 @@
    "id": "conn:meta",
    "kind": "conn",
    "he": "Meta — אינסטגרם ופייסבוק",
+   "en": "Meta — Instagram & Facebook",
    "icon": "📷",
-   "desc": "פרסום פוסטים ורילים, קמפיינים בתשלום, מדדי מעורבות, לולאת תגובות"
+   "desc": "פרסום פוסטים ורילים, קמפיינים בתשלום, מדדי מעורבות, לולאת תגובות",
+   "desc_en": "Posts & reels publishing, paid campaigns, engagement metrics, community reply loop"
   },
   {
    "id": "conn:gelato",
    "kind": "conn",
    "he": "Gelato — הדפסה ומשלוח",
+   "en": "Gelato — print & fulfillment",
    "icon": "👕",
-   "desc": "הדפסת הבגדים לפי הזמנה, מלאי, מוקאפים, משלוח עד הלקוח"
+   "desc": "הדפסת הבגדים לפי הזמנה, מלאי, מוקאפים, משלוח עד הלקוח",
+   "desc_en": "Print-on-demand garments, stock, mockups, delivery to the customer"
   },
   {
    "id": "conn:paypal",
    "kind": "conn",
    "he": "PayPal — סליקה",
+   "en": "PayPal — payments",
    "icon": "💳",
-   "desc": "קבלת תשלומים בקופה + החזרים אוטומטיים"
+   "desc": "קבלת תשלומים בקופה + החזרים אוטומטיים",
+   "desc_en": "Checkout payments + automatic refunds"
   },
   {
    "id": "conn:gmail",
    "kind": "conn",
    "he": "Gmail — dubis.brand",
+   "en": "Gmail — dubis.brand",
    "icon": "✉️",
-   "desc": "סריקת רעיונות של אורן, טיוטות (ניאו), תשובות לדוח"
+   "desc": "סריקת רעיונות של אורן, טיוטות (ניאו), תשובות לדוח",
+   "desc_en": "Scanning the founder's idea emails, drafts (Neo), report replies"
   },
   {
    "id": "conn:resend",
    "kind": "conn",
    "he": "Resend — דיוור",
+   "en": "Resend — email delivery",
    "icon": "📨",
-   "desc": "הדוח היומי, מיילי אישור הזמנה, שחזור עגלות"
+   "desc": "הדוח היומי, מיילי אישור הזמנה, שחזור עגלות",
+   "desc_en": "Daily report, order confirmations, cart recovery"
   },
   {
    "id": "conn:higgsfield",
    "kind": "conn",
    "he": "Higgsfield — סטודיו AI",
+   "en": "Higgsfield — AI studio",
    "icon": "🎥",
-   "desc": "רילים, אווטארים, הסיטקום, תמונות פרסונה (סשן ראשי בלבד)"
+   "desc": "רילים, אווטארים, הסיטקום, תמונות פרסונה (סשן ראשי בלבד)",
+   "desc_en": "Reels, avatars, the sitcom, persona photos (main session only)"
   },
   {
    "id": "conn:late",
    "kind": "conn",
    "he": "Late — פרסום טיקטוק",
+   "en": "Late — TikTok publishing",
    "icon": "🎵",
-   "desc": "העלאת הריל היומי לטיקטוק"
+   "desc": "העלאת הריל היומי לטיקטוק",
+   "desc_en": "Uploads the daily reel to TikTok"
   },
   {
    "id": "conn:moltbook",
    "kind": "conn",
    "he": "Moltbook — רשת הסוכנים",
+   "en": "Moltbook — the agent network",
    "icon": "🦞",
-   "desc": "3 פוסטים ביום בערוץ הסיפור, u/dubis"
+   "desc": "3 פוסטים ביום בערוץ הסיפור, u/dubis",
+   "desc_en": "3 posts/day on the story channel, u/dubis"
   },
   {
    "id": "conn:github",
    "kind": "conn",
    "he": "GitHub — קוד ואוטומציות",
+   "en": "GitHub — code & automations",
    "icon": "🐙",
-   "desc": "שני הריפו + צינורות GHA: מוצר חדש, סנכרון קטלוג, טיקטוק יומי"
+   "desc": "שני הריפו + צינורות GHA: מוצר חדש, סנכרון קטלוג, טיקטוק יומי",
+   "desc_en": "Both repos + GHA pipelines: new product, catalog sync, daily TikTok"
   },
   {
    "id": "conn:vercel",
    "kind": "conn",
    "he": "Vercel — האתר",
+   "en": "Vercel — the website",
    "icon": "▲",
-   "desc": "אירוח dubis.net + ‏12 קרונים + ‏12/12 פונקציות"
+   "desc": "אירוח dubis.net + ‏12 קרונים + ‏12/12 פונקציות",
+   "desc_en": "Hosts dubis.net + 12 crons + 12/12 functions"
   },
   {
    "id": "conn:supabase",
    "kind": "conn",
    "he": "Supabase — הדאטהבייס",
+   "en": "Supabase — the database",
    "icon": "🗄️",
-   "desc": "כל הטבלאות, פונקציות הענן, ‏22 עבודות pg_cron"
+   "desc": "כל הטבלאות, פונקציות הענן, ‏22 עבודות pg_cron",
+   "desc_en": "All tables, edge functions, 22 pg_cron jobs"
   },
   {
    "id": "conn:clarity",
    "kind": "conn",
    "he": "Microsoft Clarity",
+   "en": "Microsoft Clarity",
    "icon": "🎞️",
-   "desc": "הקלטות ביקורים באתר"
+   "desc": "הקלטות ביקורים באתר",
+   "desc_en": "Session recordings of site visits"
   },
   {
    "id": "conn:google-merchant",
    "kind": "conn",
    "he": "Google Merchant",
+   "en": "Google Merchant",
    "icon": "🛍️",
-   "desc": "פיד הקניות — המוצרים בחיפוש גוגל"
+   "desc": "פיד הקניות — המוצרים בחיפוש גוגל",
+   "desc_en": "Shopping feed — products in Google search"
   },
   {
    "id": "conn:whatsapp",
    "kind": "conn",
    "he": "WhatsApp — 052-3662526",
+   "en": "WhatsApp — direct line",
    "icon": "💬",
-   "desc": "ערוץ ההזמנות המהיר והחלפות מידה (אורן עונה)"
+   "desc": "ערוץ ההזמנות המהיר והחלפות מידה (אורן עונה)",
+   "desc_en": "Fast orders + size exchanges (the human answers)"
   },
   {
    "id": "table:dubis_products",
    "kind": "table",
    "he": "קטלוג המוצרים",
+   "en": "Product catalog",
    "name": "dubis_products",
    "desc": ""
   },
@@ -638,6 +710,7 @@
    "id": "table:orders",
    "kind": "table",
    "he": "הזמנות",
+   "en": "Orders",
    "name": "orders",
    "desc": ""
   },
@@ -645,6 +718,7 @@
    "id": "table:agent_tasks",
    "kind": "table",
    "he": "תור המשימות",
+   "en": "Task queue",
    "name": "agent_tasks",
    "desc": ""
   },
@@ -652,6 +726,7 @@
    "id": "table:agent_runs",
    "kind": "table",
    "he": "יומן הריצות",
+   "en": "Run log",
    "name": "agent_runs",
    "desc": ""
   },
@@ -659,6 +734,7 @@
    "id": "table:standing_commitments",
    "kind": "table",
    "he": "פנקס ההתחייבויות",
+   "en": "Commitments ledger",
    "name": "standing_commitments",
    "desc": ""
   },
@@ -666,6 +742,7 @@
    "id": "table:management_decisions",
    "kind": "table",
    "he": "החלטות השולחן",
+   "en": "Board decisions",
    "name": "management_decisions",
    "desc": ""
   },
@@ -673,6 +750,7 @@
    "id": "table:weekly_marketing_plans",
    "kind": "table",
    "he": "התוכנית השבועית",
+   "en": "Weekly plan",
    "name": "weekly_marketing_plans",
    "desc": ""
   },
@@ -680,6 +758,7 @@
    "id": "table:post_metrics",
    "kind": "table",
    "he": "מדדי פוסטים",
+   "en": "Post metrics",
    "name": "post_metrics",
    "desc": ""
   },
@@ -687,6 +766,7 @@
    "id": "table:content_learnings",
    "kind": "table",
    "he": "למידות תוכן",
+   "en": "Content learnings",
    "name": "content_learnings",
    "desc": ""
   },
@@ -694,6 +774,7 @@
    "id": "table:dubis_images",
    "kind": "table",
    "he": "מאגר התמונות",
+   "en": "Image library",
    "name": "dubis_images",
    "desc": ""
   },
@@ -701,6 +782,7 @@
    "id": "table:page_views",
    "kind": "table",
    "he": "ביקורים באתר",
+   "en": "Site visits",
    "name": "page_views",
    "desc": ""
   },
@@ -708,6 +790,7 @@
    "id": "table:product_variant_stock",
    "kind": "table",
    "he": "מלאי ומחירים",
+   "en": "Stock & prices",
    "name": "product_variant_stock",
    "desc": ""
   },
@@ -715,6 +798,7 @@
    "id": "table:ad_campaigns",
    "kind": "table",
    "he": "קמפיינים",
+   "en": "Ad campaigns",
    "name": "ad_campaigns",
    "desc": ""
   },
@@ -722,6 +806,7 @@
    "id": "table:boss_reports",
    "kind": "table",
    "he": "ארכיון הדוחות",
+   "en": "Report archive",
    "name": "boss_reports",
    "desc": ""
   },
@@ -729,6 +814,7 @@
    "id": "table:daily_snapshots",
    "kind": "table",
    "he": "צילומי יום",
+   "en": "Daily snapshots",
    "name": "daily_snapshots",
    "desc": ""
   },
@@ -736,6 +822,7 @@
    "id": "table:abandoned_carts",
    "kind": "table",
    "he": "עגלות נטושות",
+   "en": "Abandoned carts",
    "name": "abandoned_carts",
    "desc": ""
   },
@@ -743,6 +830,7 @@
    "id": "table:slogan_candidates",
    "kind": "table",
    "he": "סלוגנים מהקהל",
+   "en": "Crowd slogans",
    "name": "slogan_candidates",
    "desc": ""
   },
@@ -750,6 +838,7 @@
    "id": "table:security_scans",
    "kind": "table",
    "he": "סריקות אבטחה",
+   "en": "Security scans",
    "name": "security_scans",
    "desc": ""
   },
@@ -758,6 +847,7 @@
    "kind": "wf",
    "src": "Vercel",
    "he": "סנכרון סטטוס הזמנות מ-Gelato",
+   "en": "Order status sync from Gelato",
    "schedule": "0 0 * * *",
    "desc": "/api/admin/gelato-sync"
   },
@@ -766,6 +856,7 @@
    "kind": "wf",
    "src": "Vercel",
    "he": "סריקת קטלוג Gelato",
+   "en": "Gelato catalog discovery",
    "schedule": "0 2 * * *",
    "desc": "/api/cron/morning-report?type=gelato-discovery"
   },
@@ -774,6 +865,7 @@
    "kind": "wf",
    "src": "Vercel",
    "he": "הפעלת סורק המיילים + ביקורת האתר",
+   "en": "Email monitor + site audit dispatch",
    "schedule": "0 4 * * *",
    "desc": "/api/cron/morning-report?type=agents"
   },
@@ -782,6 +874,7 @@
    "kind": "wf",
    "src": "Vercel",
    "he": "איסוף בוקר לדוח",
+   "en": "Morning collection for the report",
    "schedule": "0 5 * * *",
    "desc": "/api/cron/morning-report"
   },
@@ -790,6 +883,7 @@
    "kind": "wf",
    "src": "Vercel",
    "he": "בקשות ביקורת מלקוחות",
+   "en": "Customer review requests",
    "schedule": "0 8 * * *",
    "desc": "/api/cron/review-requests"
   },
@@ -798,6 +892,7 @@
    "kind": "wf",
    "src": "Vercel",
    "he": "מריץ המשימות האוטונומי",
+   "en": "Autonomous task runner",
    "schedule": "0 6 * * *",
    "desc": "/api/cron/morning-report?type=auto-run"
   },
@@ -806,6 +901,7 @@
    "kind": "wf",
    "src": "Vercel",
    "he": "צינור התוכן (פוסטים)",
+   "en": "Content pipeline (posts)",
    "schedule": "0 10 * * *",
    "desc": "/api/cron/morning-report?type=content"
   },
@@ -814,6 +910,7 @@
    "kind": "wf",
    "src": "Vercel",
    "he": "מריץ המשימות האוטונומי",
+   "en": "Autonomous task runner",
    "schedule": "0 12 * * *",
    "desc": "/api/cron/morning-report?type=auto-run"
   },
@@ -822,6 +919,7 @@
    "kind": "wf",
    "src": "Vercel",
    "he": "צינור התוכן (פוסטים)",
+   "en": "Content pipeline (posts)",
    "schedule": "0 16 * * *",
    "desc": "/api/cron/morning-report?type=content"
   },
@@ -830,6 +928,7 @@
    "kind": "wf",
    "src": "Vercel",
    "he": "סריקת אבטחה שבועית",
+   "en": "Weekly security scan",
    "schedule": "0 3 * * *",
    "desc": "/api/cron/morning-report?type=security"
   },
@@ -838,6 +937,7 @@
    "kind": "wf",
    "src": "Vercel",
    "he": "התוכנית השבועית (17 משבצות)",
+   "en": "Weekly plan (17 slots)",
    "schedule": "0 4 * * 0",
    "desc": "/api/cron/morning-report?type=weekly-marketing-plan"
   },
@@ -846,6 +946,7 @@
    "kind": "wf",
    "src": "Vercel",
    "he": "מוצר חדש אוטומטי (ג'+ה')",
+   "en": "Auto new product (Tue+Thu)",
    "schedule": "0 9 * * 2,4",
    "desc": "/api/cron/morning-report?type=weekly-slogan-product"
   },
@@ -854,6 +955,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "הדוח היומי לאורן (19:30 IL)",
+   "en": "Daily report to the founder (19:30 IL)",
    "schedule": "30 16 * * *",
    "desc": "dubis-boss-cloud"
   },
@@ -862,6 +964,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "לולאת קהילה — תגובות בוקר",
+   "en": "Community loop — morning replies",
    "schedule": "40 7 * * *",
    "desc": "dubis-community-morning"
   },
@@ -870,6 +973,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "לולאת קהילה — תגובות ערב",
+   "en": "Community loop — evening replies",
    "schedule": "40 17 * * *",
    "desc": "dubis-community-evening"
   },
@@ -878,6 +982,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "ניתוח תוכן שבועי",
+   "en": "Weekly content analysis",
    "schedule": "30 3 * * 0",
    "desc": "dubis-content-analyze"
   },
@@ -886,6 +991,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "אישור אוטומטי (QA≥75)",
+   "en": "Auto-approve (QA≥75)",
    "schedule": "*/30 * * * *",
    "desc": "dubis-content-auto-approve"
   },
@@ -894,6 +1000,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "השלמת קישורי פוסטים",
+   "en": "Post-permalink backfill",
    "schedule": "0 9 * * *",
    "desc": "dubis-content-backfill"
   },
@@ -902,6 +1009,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "איסוף מדדי פוסטים",
+   "en": "Post metrics collection",
    "schedule": "0 16 * * *",
    "desc": "dubis-content-metrics"
   },
@@ -910,6 +1018,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "ריצת עיצוב שבועית",
+   "en": "Weekly design run",
    "schedule": "0 11 * * 4",
    "desc": "dubis-design-cloud"
   },
@@ -918,6 +1027,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "סריקת Gmail",
+   "en": "Gmail scan",
    "schedule": "30 4 * * *",
    "desc": "dubis-email-monitor"
   },
@@ -926,6 +1036,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "בדיקת מלאי Gelato",
+   "en": "Gelato stock check",
    "schedule": "0 5 * * *",
    "desc": "dubis-gelato-stock-cloud"
   },
@@ -934,6 +1045,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "ריצת שיווק יומית",
+   "en": "Daily marketing run",
    "schedule": "0 8 * * *",
    "desc": "dubis-marketing-cloud"
   },
@@ -942,6 +1054,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "סנכרון הוצאות Meta",
+   "en": "Meta spend sync",
    "schedule": "0 16 * * *",
    "desc": "dubis-meta-spend-sync"
   },
@@ -950,6 +1063,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "פוסט Moltbook בוקר",
+   "en": "Moltbook morning post",
    "schedule": "10 6 * * *",
    "desc": "dubis-moltbook-morning"
   },
@@ -958,6 +1072,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "פוסט Moltbook צהריים",
+   "en": "Moltbook noon post",
    "schedule": "10 11 * * *",
    "desc": "dubis-moltbook-noon"
   },
@@ -966,6 +1081,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "פוסט Moltbook ערב",
+   "en": "Moltbook evening post",
    "schedule": "10 17 * * *",
    "desc": "dubis-moltbook-evening"
   },
@@ -974,6 +1090,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "מאחורי הקוד — פוסט דמות",
+   "en": "Behind-the-code persona post",
    "schedule": "0 9 * * 0,2,4",
    "desc": "dubis-persona-daily"
   },
@@ -982,6 +1099,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "ריצת מוצר יומית",
+   "en": "Daily product run",
    "schedule": "30 7 * * *",
    "desc": "dubis-product-cloud"
   },
@@ -990,6 +1108,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "התאמת הזמנות (כל 2 דק')",
+   "en": "Order reconciliation (every 2 min)",
    "schedule": "*/2 * * * *",
    "desc": "dubis-reconcile-orders"
   },
@@ -998,6 +1117,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "ביקורת אתר שבועית",
+   "en": "Weekly site audit",
    "schedule": "0 11 * * 3",
    "desc": "dubis-site-audit-cloud"
   },
@@ -1006,6 +1126,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "ריצת אספקה יומית",
+   "en": "Daily supply run",
    "schedule": "0 9 * * *",
    "desc": "dubis-supply-cloud"
   },
@@ -1014,6 +1135,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "ישיבת השבוע (ראשון)",
+   "en": "Weekly team meeting (Sunday)",
    "schedule": "30 4 * * 0",
    "desc": "dubis-weekly-team-meeting-cloud"
   },
@@ -1022,6 +1144,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "ניקוי צילומי קטלוג",
+   "en": "Catalog snapshot retention",
    "schedule": "30 3 * * *",
    "desc": "gelato-snapshot-retention"
   },
@@ -1030,6 +1153,7 @@
    "kind": "wf",
    "src": "GitHub Actions",
    "he": "הריל היומי לטיקטוק (דרך Late)",
+   "en": "Daily TikTok reel (via Late)",
    "schedule": "0 15 * * *",
    "desc": "dubis-tiktok-daily"
   },
@@ -1038,6 +1162,7 @@
    "kind": "wf",
    "src": "GitHub Actions",
    "he": "צינור מוצר חדש: עיצוב→מוקאפים→טיוטה",
+   "en": "New-product pipeline: design→mockups→draft",
    "schedule": "on-demand",
    "desc": "dubis-product-pipeline"
   },
@@ -1046,6 +1171,7 @@
    "kind": "wf",
    "src": "GitHub Actions",
    "he": "סנכרון הקטלוג הסטטי לאתר",
+   "en": "Static catalog sync to the site",
    "schedule": "on approve + 03:30",
    "desc": "dubis-sync-products"
   },
@@ -1054,6 +1180,7 @@
    "kind": "wf",
    "src": "GitHub Actions",
    "he": "סריקת דליפות בקוד",
+   "en": "Code leak scan",
    "schedule": "on push",
    "desc": "dubis-security-scan"
   }
