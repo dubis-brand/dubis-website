@@ -74,6 +74,9 @@ const REEL_OVERRIDES = {
   39: 'https://www.dubis.net/preview/reels/fmt-39-summerhaze.mp4',
   41: 'https://www.dubis.net/preview/reels/fmt-41-headphones.mp4',
   42: 'https://www.dubis.net/preview/reels/fmt-42-supermarket.mp4',
+  // 2026-08-01: first Hebrew-narration reels (oren voice-clone + Naomi, minimax) — fresh music per reel
+  8: 'https://www.dubis.net/preview/reels/he-8-couch-nap.mp4',
+  31: 'https://www.dubis.net/preview/reels/he-31-balcony.mp4',
 };
 
 function bankUrl(productId) {
