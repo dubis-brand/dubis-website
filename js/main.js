@@ -1527,7 +1527,8 @@ function homePersonaPlay(ev, pid) {
   const v = document.createElement('video');
   v.src = url;
   v.controls = true; v.playsInline = true; v.preload = 'metadata';
-  v.poster = personaImgUrl(pid) || '';
+  // 2026-08-01 honesty fix: poster = garment mockup (see cardReelPlay note).
+  v.poster = productImg(pid, (products.find(p => p.id === pid)?.colors || [])[0] || '', 'front');
   v.style.cssText = 'width:100%;height:100%;object-fit:cover;background:#111;display:block;';
   v.addEventListener('click', e => e.stopPropagation());
   v.addEventListener('ended', () => homePersonaRestore(card));
@@ -1565,7 +1566,9 @@ function cardReelPlay(ev, pid) {
   v.className = 'card-reel';
   v.src = url;
   v.controls = true; v.playsInline = true; v.preload = 'metadata';
-  v.poster = personaImgUrl(pid) || '';
+  // 2026-08-01 honesty fix: poster = the garment mockup, not the persona photo
+  // (the June reel bank features different people than the July persona stills).
+  v.poster = productImg(pid, (products.find(p => p.id === pid)?.colors || [])[0] || '', 'front');
   v.addEventListener('click', e => e.stopPropagation());
   v.addEventListener('ended', () => cardReelStop(card));
   const x = document.createElement('button');
@@ -1660,7 +1663,12 @@ function openProductModal(productId) {
         </div>` : ''}
         ${reelVideoUrl(product.id) ? `
         <div class="thumb thumb-video" data-view="video" onclick="setModalThumb(event, ${product.id}, 'video')" title="${currentLang === 'he' ? 'לצפייה בסרטון' : 'Watch the video'}">
-          <img src="${personaImgUrl(product.id) || productImg(product.id, product.colors[0], 'front')}" alt="${currentLang === 'he' ? 'סרטון' : 'Video'}" loading="lazy"
+          <!-- 2026-08-01 (oren: "רואים כאילו סרטון מסוים אבל בדף המוצר סרטון אחר"):
+               the video thumb/poster must NEVER promise a person the reel does not
+               contain — the July persona photos and the June reel bank feature
+               DIFFERENT people. The garment mockup is the only always-truthful
+               preview for the video. Persona photos stay on the persona thumb only. -->
+          <img src="${productImg(product.id, product.colors[0], 'front')}" alt="${currentLang === 'he' ? 'סרטון' : 'Video'}" loading="lazy"
                onerror="this.onerror=null;this.src='${product.image}'" />
           <span class="thumb-play" aria-hidden="true">▶</span>
         </div>` : ''}
@@ -2013,7 +2021,9 @@ function setModalThumb(event, productId, view) {
     const v = document.createElement('video');
     v.src = url;
     v.controls = true; v.playsInline = true; v.preload = 'metadata';
-    v.poster = personaImgUrl(productId) || productImg(productId, imgEl.dataset.color || product?.colors[0] || '', 'front');
+    // 2026-08-01: poster = garment mockup, never the persona photo — the reel
+    // may feature a different person than the July persona stills (honesty fix).
+    v.poster = productImg(productId, imgEl.dataset.color || product?.colors[0] || '', 'front');
     v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#111;display:block;';
     wrap.appendChild(v);
     try { v.play(); } catch (_) {}
