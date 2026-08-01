@@ -1,11 +1,11 @@
 {
- "generated_at": "2026-08-01T09:04:13.525Z",
+ "generated_at": "2026-08-01T09:07:35.774Z",
  "note": "DUBIS Virtual Office manifest. Agents+skills scanned from the repos; edges curated in scripts/generate-office-manifest.js; pg_cron/GHA are dated snapshots.",
  "departments": [
   {
    "id": "hanhala",
    "name": "הנהלה — המוח",
-   "en": "Management — The Brain",
+   "en": "Management · The Brain",
    "color": "#C17E3A",
    "icon": "🧠"
   },
@@ -19,7 +19,7 @@
   {
    "id": "studio",
    "name": "הסטודיו — תוכן ווידאו",
-   "en": "The Studio — Content & Video",
+   "en": "The Studio · Content & Video",
    "color": "#8a5a9e",
    "icon": "🎬"
   },
@@ -53,7 +53,7 @@
    "layer": "brain",
    "dept": "ceo",
    "he": "DUBIS — המנכ\"ל",
-   "en": "DUBIS — the CEO",
+   "en": "DUBIS · the CEO",
    "emoji": "🐻",
    "avatar": "dubis",
    "desc": "The business's own agent — DUBIS (renamed from Adam per oren, 2026-07-11). Co-runs the business with the Boss under the standing mandate — decides on the management board, builds agents/skills/connections, orchestrates t…",
@@ -65,7 +65,7 @@
    "layer": "brain",
    "dept": "shivuk",
    "he": "דנה — בעלת השיווק",
-   "en": "Dana — marketing owner",
+   "en": "Dana · marketing owner",
    "emoji": "👩‍💼",
    "avatar": null,
    "desc": "Dana — DUBIS's marketing owner. She owns the marketing domain, brings a point of view, decides the week's angle and slate, and hands the brief DOWN to the Copywriter. Talk to her when you want someone to OWN marketing an…",
@@ -101,7 +101,7 @@
    "layer": "brain",
    "dept": "studio",
    "he": "תסריטאי — הסיטקום",
-   "en": "Screenwriter — the sitcom",
+   "en": "Screenwriter · the sitcom",
    "emoji": "🎭",
    "avatar": null,
    "desc": "The DUBIS Screenwriter — writes comedy video scripts (the agent-team sitcom \"מאחורי הקוד\" + scene-format reels). Owns dialogue, scene structure, and the shot list that production (Video agent + Higgsfield) executes. Buil…",
@@ -137,7 +137,7 @@
    "layer": "brain",
    "dept": "hanhala",
    "he": "ראש הסגל — תוכניות",
-   "en": "Chief of Staff — plans",
+   "en": "Chief of Staff · plans",
    "emoji": "📋",
    "avatar": null,
    "desc": "Your chief of staff agent. Synthesizes multiple perspectives into one clear decision brief that's ready to act on.",
@@ -149,7 +149,7 @@
    "layer": "brain",
    "dept": "hanhala",
    "he": "השוער — בקרת איכות",
-   "en": "Gatekeeper — quality gate",
+   "en": "Gatekeeper · quality gate",
    "emoji": "🚧",
    "avatar": null,
    "desc": "Your quality reviewer. Reviews content before publication and provides feedback.",
@@ -161,7 +161,7 @@
    "layer": "brain",
    "dept": "hanhala",
    "he": "אנליסט — דאטה וכלכלה",
-   "en": "Analyst — data & economics",
+   "en": "Analyst · data & economics",
    "emoji": "📊",
    "avatar": null,
    "desc": "Turns raw information (transcripts, call notes, meeting recordings, raw data) into clear, structured documents that match the owner's style.",
@@ -185,7 +185,7 @@
    "layer": "brain",
    "dept": "hanhala",
    "he": "טום — עזרה על המערכת",
-   "en": "Tom — system help",
+   "en": "Tom · system help",
    "emoji": "🛟",
    "avatar": null,
    "desc": "System help. Tom explains how the DUBIS agent system works — the brain/body split, the chains, the memory files, who owns what. Ask him \"how does X work?\"; ask Adam to BUILD things.",
@@ -197,7 +197,7 @@
    "layer": "body",
    "dept": "lakohot",
    "he": "הבוס — דוח יומי",
-   "en": "The Boss — daily report",
+   "en": "The Boss · daily report",
    "avatar": "boss",
    "desc": "DUBIS Boss subagent — generates the daily Hebrew HTML executive summary email to oren at 07:00 Israel time, plus the Sunday weekly-plan approval section. Synthesizes Email Monitor tasks, Site Audit findings, Content pipe…",
    "file": ".claude/agents/boss.md"
@@ -208,7 +208,7 @@
    "layer": "body",
    "dept": "studio",
    "he": "תוכן — פוסטים",
-   "en": "Content — posts",
+   "en": "Content · posts",
    "avatar": "content",
    "desc": "DUBIS Content subagent — executes the social posts scheduled by the weekly marketing plan (bilingual 50/50 HE/EN since 2026-05-22). Daily 10:00 + 16:00 UTC cron picks up backlog tasks for today and fills caption/image fo…",
    "file": ".claude/agents/content.md"
@@ -219,7 +219,7 @@
    "layer": "body",
    "dept": "tiful",
    "he": "CTO — קוד ופריסות",
-   "en": "CTO — code & deploys",
+   "en": "CTO · code & deploys",
    "avatar": "cto",
    "desc": "DUBIS CTO subagent — technical architecture, bug diagnosis, deploys, integrations, code reviews. Triggered on-demand (Cowork scheduled-tasks queue is currently empty, see status.md). Use when oren asks \"why is X broken\",…",
    "file": ".claude/agents/cto.md"
@@ -252,7 +252,7 @@
    "layer": "body",
    "dept": "shivuk",
    "he": "שיווק — ידיים + משפך",
-   "en": "Marketing — hands + funnel",
+   "en": "Marketing · hands + funnel",
    "avatar": "marketing",
    "desc": "DUBIS Marketing subagent — Dana's hands + the CONVERSION FUNNEL OWNER (board decision 2026-07-06). Generates the weekly 17-slot social plan every Sunday 04:00 UTC (IL-only, 17 HE / 0 EN since 2026-06-19), runs the weekly…",
    "file": ".claude/agents/marketing.md"
@@ -263,7 +263,7 @@
    "layer": "body",
    "dept": "tiful",
    "he": "מוצר — קטלוג",
-   "en": "Product — catalog",
+   "en": "Product · catalog",
    "avatar": "product",
    "desc": "DUBIS Product subagent — new product specification, catalog management, SKU creation, Gelato baseUid mapping. Use when oren says \"add a new product\", \"spec a hoodie variant\", \"map this design to gelato\", \"update the cata…",
    "file": ".claude/agents/product.md"
@@ -296,7 +296,7 @@
    "layer": "body",
    "dept": "tiful",
    "he": "אספקה — הזמנות",
-   "en": "Supply — orders",
+   "en": "Supply · orders",
    "avatar": "supply",
    "desc": "DUBIS Supply subagent — Gelato fulfillment orders, inventory checks, shipping status, print-on-demand troubleshooting. Use when oren asks \"check the gelato order\", \"shipping status for order X\", \"is product Y in stock\", …",
    "file": ".claude/agents/supply.md"
@@ -307,7 +307,7 @@
    "layer": "body",
    "dept": "studio",
    "he": "וידאו — רילים",
-   "en": "Video — reels",
+   "en": "Video · reels",
    "avatar": "video",
    "desc": "DUBIS Video subagent — persona reels for IG/FB/TikTok. Policy since 2026-06-07 — reels are ENGLISH-ONLY video (Veo 3.1 native lip-synced speech); the Hebrew STORY goes in the post caption (no on-screen subtitles by defau…",
    "file": ".claude/agents/video.md"
@@ -560,7 +560,7 @@
    "id": "doc:runbook",
    "kind": "doc",
    "he": "ראנבוק — נהלים",
-   "en": "Runbook — procedures",
+   "en": "Runbook · procedures",
    "file": "M-memory/runbook.md",
    "desc": ""
   },
@@ -576,7 +576,7 @@
    "id": "conn:meta",
    "kind": "conn",
    "he": "Meta — אינסטגרם ופייסבוק",
-   "en": "Meta — Instagram & Facebook",
+   "en": "Meta · Instagram & Facebook",
    "icon": "📷",
    "desc": "פרסום פוסטים ורילים, קמפיינים בתשלום, מדדי מעורבות, לולאת תגובות",
    "desc_en": "Posts & reels publishing, paid campaigns, engagement metrics, community reply loop"
@@ -585,7 +585,7 @@
    "id": "conn:gelato",
    "kind": "conn",
    "he": "Gelato — הדפסה ומשלוח",
-   "en": "Gelato — print & fulfillment",
+   "en": "Gelato · print & fulfillment",
    "icon": "👕",
    "desc": "הדפסת הבגדים לפי הזמנה, מלאי, מוקאפים, משלוח עד הלקוח",
    "desc_en": "Print-on-demand garments, stock, mockups, delivery to the customer"
@@ -594,7 +594,7 @@
    "id": "conn:paypal",
    "kind": "conn",
    "he": "PayPal — סליקה",
-   "en": "PayPal — payments",
+   "en": "PayPal · payments",
    "icon": "💳",
    "desc": "קבלת תשלומים בקופה + החזרים אוטומטיים",
    "desc_en": "Checkout payments + automatic refunds"
@@ -603,7 +603,7 @@
    "id": "conn:gmail",
    "kind": "conn",
    "he": "Gmail — dubis.brand",
-   "en": "Gmail — dubis.brand",
+   "en": "Gmail · dubis.brand",
    "icon": "✉️",
    "desc": "סריקת רעיונות של אורן, טיוטות (ניאו), תשובות לדוח",
    "desc_en": "Scanning the founder's idea emails, drafts (Neo), report replies"
@@ -612,7 +612,7 @@
    "id": "conn:resend",
    "kind": "conn",
    "he": "Resend — דיוור",
-   "en": "Resend — email delivery",
+   "en": "Resend · email delivery",
    "icon": "📨",
    "desc": "הדוח היומי, מיילי אישור הזמנה, שחזור עגלות",
    "desc_en": "Daily report, order confirmations, cart recovery"
@@ -621,7 +621,7 @@
    "id": "conn:higgsfield",
    "kind": "conn",
    "he": "Higgsfield — סטודיו AI",
-   "en": "Higgsfield — AI studio",
+   "en": "Higgsfield · AI studio",
    "icon": "🎥",
    "desc": "רילים, אווטארים, הסיטקום, תמונות פרסונה (סשן ראשי בלבד)",
    "desc_en": "Reels, avatars, the sitcom, persona photos (main session only)"
@@ -630,7 +630,7 @@
    "id": "conn:late",
    "kind": "conn",
    "he": "Late — פרסום טיקטוק",
-   "en": "Late — TikTok publishing",
+   "en": "Late · TikTok publishing",
    "icon": "🎵",
    "desc": "העלאת הריל היומי לטיקטוק",
    "desc_en": "Uploads the daily reel to TikTok"
@@ -639,7 +639,7 @@
    "id": "conn:moltbook",
    "kind": "conn",
    "he": "Moltbook — רשת הסוכנים",
-   "en": "Moltbook — the agent network",
+   "en": "Moltbook · the agent network",
    "icon": "🦞",
    "desc": "3 פוסטים ביום בערוץ הסיפור, u/dubis",
    "desc_en": "3 posts/day on the story channel, u/dubis"
@@ -648,7 +648,7 @@
    "id": "conn:github",
    "kind": "conn",
    "he": "GitHub — קוד ואוטומציות",
-   "en": "GitHub — code & automations",
+   "en": "GitHub · code & automations",
    "icon": "🐙",
    "desc": "שני הריפו + צינורות GHA: מוצר חדש, סנכרון קטלוג, טיקטוק יומי",
    "desc_en": "Both repos + GHA pipelines: new product, catalog sync, daily TikTok"
@@ -657,7 +657,7 @@
    "id": "conn:vercel",
    "kind": "conn",
    "he": "Vercel — האתר",
-   "en": "Vercel — the website",
+   "en": "Vercel · the website",
    "icon": "▲",
    "desc": "אירוח dubis.net + ‏12 קרונים + ‏12/12 פונקציות",
    "desc_en": "Hosts dubis.net + 12 crons + 12/12 functions"
@@ -666,7 +666,7 @@
    "id": "conn:supabase",
    "kind": "conn",
    "he": "Supabase — הדאטהבייס",
-   "en": "Supabase — the database",
+   "en": "Supabase · the database",
    "icon": "🗄️",
    "desc": "כל הטבלאות, פונקציות הענן, ‏22 עבודות pg_cron",
    "desc_en": "All tables, edge functions, 22 pg_cron jobs"
@@ -687,13 +687,13 @@
    "en": "Google Merchant",
    "icon": "🛍️",
    "desc": "פיד הקניות — המוצרים בחיפוש גוגל",
-   "desc_en": "Shopping feed — products in Google search"
+   "desc_en": "Shopping feed · products in Google search"
   },
   {
    "id": "conn:whatsapp",
    "kind": "conn",
    "he": "WhatsApp — 052-3662526",
-   "en": "WhatsApp — direct line",
+   "en": "WhatsApp · direct line",
    "icon": "💬",
    "desc": "ערוץ ההזמנות המהיר והחלפות מידה (אורן עונה)",
    "desc_en": "Fast orders + size exchanges (the human answers)"
@@ -964,7 +964,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "לולאת קהילה — תגובות בוקר",
-   "en": "Community loop — morning replies",
+   "en": "Community loop · morning replies",
    "schedule": "40 7 * * *",
    "desc": "dubis-community-morning"
   },
@@ -973,7 +973,7 @@
    "kind": "wf",
    "src": "pg_cron",
    "he": "לולאת קהילה — תגובות ערב",
-   "en": "Community loop — evening replies",
+   "en": "Community loop · evening replies",
    "schedule": "40 17 * * *",
    "desc": "dubis-community-evening"
   },
