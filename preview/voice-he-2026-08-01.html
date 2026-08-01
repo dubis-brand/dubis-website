@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>DUBIS — ניסוי קריינות עברית (voice-clone) — 01.08.2026</title>
+<style>
+  body{font-family:'Heebo',Arial,sans-serif;background:#F5F0E8;color:#2C2C2C;margin:0;padding:24px;max-width:720px;margin:0 auto}
+  h1{color:#C17E3A;font-size:1.5rem}
+  .card{background:#fff;border-radius:12px;padding:18px;margin:14px 0;box-shadow:0 2px 8px rgba(44,44,44,.08)}
+  .card h2{font-size:1.05rem;margin:0 0 4px}
+  .tag{display:inline-block;background:#2C2C2C;color:#F5F0E8;border-radius:20px;padding:2px 12px;font-size:.75rem;margin-left:6px}
+  .tag.clone{background:#C17E3A}
+  .line{color:#777;font-size:.85rem;margin:6px 0 10px}
+  audio{width:100%}
+  .note{background:#2C2C2C;color:#F5F0E8;border-radius:12px;padding:16px;font-size:.9rem;line-height:1.7}
+  .note b{color:#C17E3A}
+</style>
+</head>
+<body>
+<h1>🎙️ ניסוי קריינות עברית לרילים — 5 דגימות</h1>
+<p>המטרה: לבדוק אם יש קול עברי שנשמע טבעי מספיק לרילים של IL. שלוש הדגימות הראשונות הן <b>הקול המשוכפל שלך</b> ("Oren" מ-Higgsfield) בשני מנועים; שתיים להשוואה עם קולות מדף.</p>
+
+<div class="card">
+  <h2>דגימה 1 <span class="tag clone">הקול שלך</span> <span class="tag">מנוע Seed</span></h2>
+  <div class="line">"שלושים ושמונה מעלות בחוץ. השכן עוד שואל אם לא קר לי בלי שרוולים..."</div>
+  <audio controls preload="none" src="voice-he/oren-seed-38.wav"></audio>
+</div>
+
+<div class="card">
+  <h2>דגימה 2 <span class="tag clone">הקול שלך</span> <span class="tag">מנוע Minimax</span></h2>
+  <div class="line">"שלושים ושמונה מעלות בחוץ. השכן עוד שואל אם לא קר לי בלי שרוולים..."</div>
+  <audio controls preload="none" src="voice-he/oren-minimax-38.mp3"></audio>
+</div>
+
+<div class="card">
+  <h2>דגימה 3 <span class="tag clone">הקול שלך</span> <span class="tag">מנוע Seed</span></h2>
+  <div class="line">"קמתי בשש וחצי. פקקים בנתיבי איילון, והקפה השני עוד לא התחיל לעבוד..."</div>
+  <audio controls preload="none" src="voice-he/oren-seed-morning.wav"></audio>
+</div>
+
+<div class="card">
+  <h2>דגימה 4 <span class="tag">קול מדף — Marcus</span> <span class="tag">מנוע Seed</span></h2>
+  <div class="line">"קמתי בשש וחצי. פקקים בנתיבי איילון..."</div>
+  <audio controls preload="none" src="voice-he/marcus-seed-morning.wav"></audio>
+</div>
+
+<div class="card">
+  <h2>דגימה 5 <span class="tag">קול מדף — John</span> <span class="tag">מנוע Minimax</span></h2>
+  <div class="line">"קמתי בשש וחצי. פקקים בנתיבי איילון..."</div>
+  <audio controls preload="none" src="voice-he/john-minimax-morning.mp3"></audio>
+</div>
+
+<div class="note">
+  <b>איך מחליטים:</b> תקשיב לחמש. השאלה היחידה — האם דגימה כלשהי עוברת את מבחן "חבר על בירה" (נשמע כמו בן-אדם, לא כמו קריין)? אם כן, תגיד איזו מספר, ומהריל הבא קריינות עברית נכנסת לרוטציה. אם כולן נשמעות מלאכותיות — נשארים באנגלית עם כתוביות עברית, והניסוי נסגר בכנות.
+</div>
+</body>
+</html>
