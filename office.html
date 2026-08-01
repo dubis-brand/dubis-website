@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>המשרד הווירטואלי של DUBIS</title>
+<link rel="icon" href="favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root { --charcoal:#2C2C2C; --honey:#C17E3A; --cream:#F5F0E8; --paper:#fffdf9; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Heebo',sans-serif; background:var(--cream); color:var(--charcoal); min-height:100vh; }
+
+  header { background:var(--charcoal); color:var(--cream); padding:22px 20px 18px; position:sticky; top:0; z-index:40; box-shadow:0 2px 10px rgba(0,0,0,.25); }
+  .hrow { max-width:1200px; margin:0 auto; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  .hrow img.ceo { width:56px; height:56px; border-radius:50%; object-fit:cover; border:2.5px solid var(--honey); }
+  .htitles h1 { font-size:1.35rem; line-height:1.2; }
+  .htitles h1 span { color:var(--honey); }
+  .htitles .sub { font-size:.78rem; color:#aaa; }
+  .hstats { margin-inline-start:auto; display:flex; gap:8px; flex-wrap:wrap; }
+  .hstats div { background:rgba(255,255,255,.08); border-radius:8px; padding:4px 10px; font-size:.75rem; text-align:center; }
+  .hstats b { color:var(--honey); font-size:.95rem; display:block; }
+  #search { width:100%; max-width:1200px; margin:12px auto 0; display:block; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); border-radius:10px; color:var(--cream); padding:8px 14px; font-family:inherit; font-size:.9rem; }
+  #search::placeholder { color:#999; }
+
+  main { max-width:1200px; margin:0 auto; padding:20px 16px 90px; }
+  .hint { text-align:center; color:#8a7f6d; font-size:.85rem; margin-bottom:16px; }
+
+  /* CEO floor */
+  .ceo-card { background:var(--charcoal); color:var(--cream); border-radius:16px; padding:18px 22px; display:flex; align-items:center; gap:18px; cursor:pointer; margin-bottom:22px; border:2px solid transparent; transition:.2s; }
+  .ceo-card:hover { border-color:var(--honey); }
+  .ceo-card img { width:84px; height:84px; border-radius:50%; object-fit:cover; border:3px solid var(--honey); background:#444; }
+  .ceo-card .big { font-size:1.3rem; font-weight:800; }
+  .ceo-card .big span { color:var(--honey); }
+  .ceo-card .role { font-size:.85rem; color:#bbb; margin-top:2px; }
+
+  /* departments */
+  .depts { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
+  .dept { border-radius:14px; padding:14px; border:2px solid var(--dc,#999); background:color-mix(in srgb, var(--dc) 7%, var(--paper)); }
+  .dept h2 { font-size:1rem; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+  .dept h2 .cnt { font-size:.7rem; background:var(--dc); color:#fff; border-radius:12px; padding:1px 8px; font-weight:400; }
+  .agents { display:grid; grid-template-columns:repeat(auto-fill,minmax(128px,1fr)); gap:8px; }
+  .acard { background:#fff; border:1.5px solid color-mix(in srgb, var(--dc) 55%, #fff); border-radius:10px; padding:8px; text-align:center; cursor:pointer; transition:.15s; position:relative; }
+  .acard:hover { transform:translateY(-2px); box-shadow:0 4px 10px rgba(0,0,0,.1); }
+  .acard img, .acard .em { width:46px; height:46px; border-radius:50%; object-fit:cover; display:block; margin:0 auto 6px; }
+  .acard .em { background:color-mix(in srgb, var(--dc) 16%, #fff); font-size:24px; line-height:46px; }
+  .acard .nm { font-size:.78rem; font-weight:600; line-height:1.25; }
+  .acard .badges { position:absolute; top:5px; inset-inline-end:6px; display:flex; gap:3px; }
+  .acard .b { font-size:.6rem; background:var(--charcoal); color:var(--honey); border-radius:8px; padding:0 5px; }
+  .acard .layer { font-size:.62rem; color:#999; margin-top:2px; }
+
+  /* floors */
+  .floor { margin-top:22px; border:2px dashed #c9bfae; border-radius:14px; padding:14px; background:var(--paper); }
+  .floor h2 { font-size:1rem; margin-bottom:10px; }
+  .chips { display:flex; flex-wrap:wrap; gap:7px; }
+  .chip { border-radius:20px; padding:4px 13px; font-size:.8rem; cursor:pointer; border:1.5px solid #b9ad99; background:#fff; transition:.15s; display:inline-flex; align-items:center; gap:6px; }
+  .chip:hover { border-color:var(--honey); }
+  .chip.t-table { border-radius:6px 6px 14px 14px; background:#eee9df; }
+  .chip.t-conn { font-weight:600; background:#fff8ee; border-color:var(--honey); }
+  .chip.t-skill { border-radius:4px; }
+  .chip.t-skill::before { content:'▲'; font-size:.6rem; color:var(--charcoal); }
+  .chip.t-wf::before { content:'◴'; color:#3d7a4f; font-weight:800; }
+  .chip .sch { font-size:.66rem; color:#888; direction:ltr; }
+  details.wf-floor summary { cursor:pointer; font-weight:600; font-size:1rem; }
+  details.wf-floor .chips { margin-top:10px; }
+
+  /* highlight modes */
+  body.focusmode .acard, body.focusmode .chip, body.focusmode .ceo-card { opacity:.22; }
+  body.focusmode .lit { opacity:1 !important; box-shadow:0 0 0 2.5px var(--honey), 0 4px 12px rgba(193,126,58,.35); }
+  body.focusmode #panel .chip { opacity:1; box-shadow:none; }
+
+  /* panel */
+  #panel { position:fixed; top:0; right:0; height:100%; width:min(420px,100%); background:#fff; z-index:60; box-shadow:-4px 0 24px rgba(0,0,0,.25); transform:translateX(105%); transition:.25s; display:flex; flex-direction:column; visibility:hidden; }
+  #panel.open { transform:translateX(0); visibility:visible; }
+  #panel .phead { background:var(--charcoal); color:var(--cream); padding:16px 18px; display:flex; gap:12px; align-items:center; }
+  #panel .phead img, #panel .phead .em { width:52px; height:52px; border-radius:50%; object-fit:cover; border:2px solid var(--honey); }
+  #panel .phead .em { font-size:26px; line-height:48px; text-align:center; background:#444; }
+  #panel .phead h3 { font-size:1.05rem; }
+  #panel .phead .kind { font-size:.72rem; color:var(--honey); }
+  #panel .pclose { margin-inline-start:auto; background:none; border:none; color:var(--cream); font-size:1.4rem; cursor:pointer; }
+  #panel .pbody { padding:14px 18px; overflow-y:auto; flex:1; }
+  #panel .desc { font-size:.86rem; color:#555; margin-bottom:12px; line-height:1.55; }
+  #panel .file { font-size:.72rem; color:#999; direction:ltr; text-align:left; word-break:break-all; margin-bottom:12px; background:#f6f2ea; border-radius:6px; padding:5px 8px; }
+  #panel h4 { font-size:.82rem; color:var(--honey); margin:12px 0 6px; border-bottom:1px solid #eee4d4; padding-bottom:3px; }
+  #panel .rel { display:flex; flex-wrap:wrap; gap:6px; }
+  #panel .rel .chip { font-size:.75rem; }
+
+  @media (max-width:640px) {
+    #panel { top:auto; bottom:0; height:72%; width:100%; border-radius:18px 18px 0 0; transform:translateY(110%); }
+    #panel.open { transform:translateY(0); }
+    .hstats { display:none; }
+  }
+  /* 3D diorama mode — camera driven by CSS vars (--tilt / --spin / --zoom) */
+  body.iso { --tilt:52deg; --spin:0deg; --zoom:1; }
+  body.iso .depts { transform: perspective(1600px) scale(var(--zoom)) rotateX(var(--tilt)) rotateZ(var(--spin)); transform-style: preserve-3d; margin: 4px 0 40px; cursor: grab; user-select:none; }
+  body.iso .depts.dragging { cursor: grabbing; }
+  body.iso .dept { transform-style: preserve-3d; border-width:0; border-bottom:10px solid color-mix(in srgb, var(--dc) 60%, #333); box-shadow: 0 26px 34px rgba(0,0,0,.35); background: color-mix(in srgb, var(--dc) 14%, var(--paper)); padding-top:8px; }
+  body.iso .dept h2, body.iso .acard { transform: rotateZ(calc(var(--spin) * -1)) rotateX(calc(var(--tilt) * -1)); transform-origin: 50% 100%; }
+  body.iso .dept h2 { display:inline-flex; background:rgba(255,253,249,.9); border-radius:8px; padding:2px 10px; }
+  body.iso .agents { transform-style: preserve-3d; gap: 30px 10px; }
+  body.iso .acard { box-shadow: 0 14px 10px -6px rgba(0,0,0,.3); }
+  body.iso .acard:hover { transform: rotateZ(calc(var(--spin) * -1)) rotateX(calc(var(--tilt) * -1)) translateY(-4px); }
+  body.iso .ceo-card { transform: perspective(1500px) rotateX(8deg); box-shadow: 0 22px 30px rgba(0,0,0,.3); }
+  #isocam { display:none; position:fixed; bottom:16px; left:50%; transform:translateX(-50%); z-index:50; background:var(--charcoal); border-radius:30px; padding:6px 10px; box-shadow:0 6px 20px rgba(0,0,0,.35); align-items:center; gap:4px; }
+  body.iso #isocam { display:flex; }
+  #isocam button { background:none; border:none; color:var(--cream); font-size:1.05rem; cursor:pointer; width:38px; height:38px; border-radius:50%; }
+  #isocam button:hover { background:rgba(255,255,255,.12); color:var(--honey); }
+  #isocam .sep { width:1px; height:22px; background:#555; }
+  #isocam .camhint { color:#999; font-size:.68rem; padding:0 8px; max-width:190px; line-height:1.3; }
+  @media (max-width:760px) { body.iso .depts, body.iso .dept h2, body.iso .acard, body.iso .ceo-card { transform:none; } #isobtn, #isocam { display:none !important; } }
+  footer { text-align:center; font-size:.72rem; color:#9a8f7d; padding:20px; }
+  footer span { direction:ltr; display:inline-block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hrow">
+    <img class="ceo" src="images/team/dubis.jpg" alt="DUBIS" onerror="this.style.display='none'">
+    <div class="htitles">
+      <h1 id="t-title"></h1>
+      <div class="sub" id="t-sub"></div>
+    </div>
+    <div class="hstats" id="stats"></div>
+    <a id="isobtn" href="#" style="color:var(--cream);font-size:.85rem;border:1px solid #666;border-radius:8px;padding:4px 12px;text-decoration:none;white-space:nowrap"></a>
+    <a id="langbtn" style="color:var(--honey);font-size:.85rem;border:1px solid var(--honey);border-radius:8px;padding:4px 12px;text-decoration:none;white-space:nowrap"></a>
+  </div>
+  <input id="search" type="search" placeholder="">
+</header>
+
+<main>
+  <div class="hint" id="t-hint"></div>
+  <div id="ceo-slot"></div>
+  <div class="depts" id="depts"></div>
+  <div class="floor" id="conn-floor"><h2 id="t-fconn"></h2><div class="chips" id="conns"></div></div>
+  <div class="floor" id="table-floor"><h2 id="t-ftable"></h2><div class="chips" id="tables"></div></div>
+  <div class="floor" id="doc-floor"><h2 id="t-fdoc"></h2><div class="chips" id="docs"></div></div>
+  <details class="floor wf-floor" id="wf-floor"><summary><span id="t-fwf"></span> (<span id="wfcount"></span>)</summary><div class="chips" id="wfs"></div></details>
+</main>
+
+<div id="isocam">
+  <button data-cam="zin" title="+">➕</button>
+  <button data-cam="zout" title="-">➖</button>
+  <span class="sep"></span>
+  <button data-cam="left" title="⟲">⟲</button>
+  <button data-cam="right" title="⟳">⟳</button>
+  <button data-cam="up" title="tilt">⬆️</button>
+  <button data-cam="down" title="tilt">⬇️</button>
+  <span class="sep"></span>
+  <button data-cam="reset" title="reset">🎯</button>
+  <span class="camhint" id="camhint"></span>
+</div>
+
+<aside id="panel" aria-hidden="true">
+  <div class="phead">
+    <div id="p-avatar"></div>
+    <div><div class="kind" id="p-kind"></div><h3 id="p-title"></h3></div>
+    <button class="pclose" onclick="clearSel()">✕</button>
+  </div>
+  <div class="pbody" id="p-body"></div>
+</aside>
+
+<footer><span id="t-foot1"></span> · <span id="gen"></span> · <span id="t-foot2"></span></footer>
+
+<script>
+const LANG = new URLSearchParams(location.search).get('lang') === 'en' ? 'en' : 'he';
+if (LANG === 'en') {
+  document.documentElement.lang = 'en'; document.documentElement.dir = 'ltr';
+  const st = document.createElement('style');
+  st.textContent = '#panel{right:auto;left:0;transform:translateX(-105%);box-shadow:4px 0 24px rgba(0,0,0,.25)} #panel.open{transform:translateX(0)} @media (max-width:640px){#panel{left:0;transform:translateY(110%)} #panel.open{transform:translateY(0)}}';
+  document.head.appendChild(st);
+}
+const UI = LANG === 'en' ? {
+  kinds: { agent:'Agent', skill:'Skill (capability)', doc:'Knowledge doc', conn:'External connection', table:'Data table', wf:'Automated process' },
+  title: '🏢 The <span>DUBIS</span> Virtual Office',
+  sub: 'The whole operation, agents, skills, knowledge, connections and schedules, in one living map',
+  search: '🔎 Search: agent, skill, connection, table…',
+  hint: 'Click anything, an agent, a logo, a table, a skill, to see what it is connected to. Click the background to reset.',
+  ceoTitle: '<span>DUBIS</span> · The CEO',
+  ceoRole: "The business's own agent: doctrine, the commitments ledger, work chains, decisions",
+  stats: [['Agents','agent'],['Skills','skill'],['Knowledge','doc'],['Connections','conn'],['Tables','table'],['Processes','wf']],
+  floors: { conn:'🔌 Connections floor: the apps the office talks to', table:'🗄️ Data floor: the Supabase tables', doc:'📚 Knowledge library: the docs the agents read', wf:'⏰ Schedule board: every automated process' },
+  agents:'agents', brain:'brain · thinking', body:'body · execution', brainL:' · brain layer', bodyL:' · execution layer',
+  schedule:'⏰ Schedule:', connected:'👥 Connected agents', gSkills:'▲ Skills', gDocs:'📚 Knowledge docs', gWfs:'⏰ Automated processes', gConns:'🔌 Connections', gTables:'🗄️ Tables',
+  none:'No mapped relations for this entity yet.', updated:'Updated', footer:'Built from the live map of the system', footer2:'office.json is the same map Claude queries before building anything new', langBtn:'עברית', langHref:'office.html', iso3d:'🧊 3D view', iso2d:'▦ Flat view', camHint:'Drag to rotate · wheel to zoom'
+} : {
+  kinds: { agent:'סוכן', skill:'סקיל (יכולת)', doc:'מסמך ידע', conn:'חיבור חיצוני', table:'טבלת דאטה', wf:'תהליך אוטומטי' },
+  title: '🏢 המשרד הווירטואלי של <span>DUBIS</span>',
+  sub: 'כל האופרציה, סוכנים, סקילים, ידע, חיבורים ותהליכים, במקום אחד חי',
+  search: '🔎 חיפוש: סוכן, סקיל, חיבור, טבלה…',
+  hint: 'לוחצים על כל דבר, סוכן, לוגו, טבלה, סקיל, ורואים למי הוא מחובר. לחיצה על הרקע מנקה.',
+  ceoTitle: '<span>DUBIS</span> · המנכ"ל',
+  ceoRole: 'הסוכן של העסק עצמו: דוקטרינה, פנקס ההתחייבויות, שרשראות העבודה, ההחלטות',
+  stats: [['סוכנים','agent'],['סקילים','skill'],['מסמכי ידע','doc'],['חיבורים','conn'],['טבלאות','table'],['תהליכים','wf']],
+  floors: { conn:'🔌 קומת החיבורים: האפליקציות שהמשרד מדבר איתן', table:'🗄️ קומת הדאטה: הטבלאות ב-Supabase', doc:'📚 ספריית הידע: המסמכים שהסוכנים קוראים', wf:'⏰ לוח הזמנים: כל התהליכים האוטומטיים' },
+  agents:'סוכנים', brain:'מוח · חשיבה', body:'גוף · ביצוע', brainL:' · שכבת המוח', bodyL:' · שכבת הביצוע',
+  schedule:'⏰ לו"ז:', connected:'👥 סוכנים מחוברים', gSkills:'▲ סקילים', gDocs:'📚 מסמכי ידע', gWfs:'⏰ תהליכים אוטומטיים', gConns:'🔌 חיבורים', gTables:'🗄️ טבלאות',
+  none:'אין קשרים ממופים לישות הזאת עדיין.', updated:'עודכן', footer:'המשרד נבנה מהמפה החיה של המערכת', footer2:'office.json הוא אותה מפה שגם קלוד שואל לפני כל בנייה חדשה', langBtn:'English', langHref:'office.html?lang=en', iso3d:'🧊 תלת-ממד', iso2d:'▦ תצוגה שטוחה', camHint:'גוררים לסיבוב · גלגלת לזום'
+};
+const L = n => (LANG === 'en' && n.en) ? n.en : n.he;
+const D = n => (LANG === 'en' && n.desc_en) ? n.desc_en : (n.desc || '');
+const KIND_HE = UI.kinds;
+const KIND_ICON = { agent:'👤', skill:'▲', doc:'📄', conn:'🔌', table:'🗄️', wf:'◴' };
+let DATA = null, ADJ = new Map(), NODE = new Map(), selected = null;
+
+fetch('office.json').then(r => r.json()).then(init).catch(e => {
+  document.querySelector('main').insertAdjacentHTML('afterbegin', '<p style="color:#a33;text-align:center">office.json לא נטען: ' + e + '</p>');
+});
+
+function init(d) {
+  DATA = d;
+  document.getElementById('t-title').innerHTML = UI.title;
+  document.getElementById('t-sub').textContent = UI.sub;
+  document.getElementById('search').placeholder = UI.search;
+  document.getElementById('t-hint').textContent = UI.hint;
+  document.getElementById('t-fconn').textContent = UI.floors.conn;
+  document.getElementById('t-ftable').textContent = UI.floors.table;
+  document.getElementById('t-fdoc').textContent = UI.floors.doc;
+  document.getElementById('t-fwf').textContent = UI.floors.wf;
+  document.getElementById('t-foot1').textContent = UI.footer;
+  document.getElementById('t-foot2').textContent = UI.footer2;
+  const lb = document.getElementById('langbtn'); lb.textContent = UI.langBtn; lb.href = UI.langHref;
+  const ib = document.getElementById('isobtn');
+  const setIso = on => {
+    document.body.classList.toggle('iso', on);
+    ib.textContent = on ? UI.iso2d : UI.iso3d;
+    const u = new URL(location); if (on) u.searchParams.set('view', 'iso'); else u.searchParams.delete('view'); history.replaceState(null, '', u);
+    lb.href = UI.langHref + (on ? (UI.langHref.includes('?') ? '&' : '?') + 'view=iso' : '');
+  };
+  ib.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); setIso(!document.body.classList.contains('iso')); });
+  document.getElementById('camhint').textContent = UI.camHint;
+
+  // --- 3D camera: zoom / spin / tilt ---
+  const cam = { tilt: 52, spin: 0, zoom: 1 };
+  const CAM0 = { ...cam };
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  function applyCam() {
+    const b = document.body.style;
+    b.setProperty('--tilt', cam.tilt + 'deg');
+    b.setProperty('--spin', cam.spin + 'deg');
+    b.setProperty('--zoom', cam.zoom);
+  }
+  document.getElementById('isocam').addEventListener('click', e => {
+    const btn = e.target.closest('[data-cam]'); if (!btn) return;
+    e.stopPropagation();
+    const a = btn.dataset.cam;
+    if (a === 'zin') cam.zoom = clamp(cam.zoom + 0.15, 0.45, 2.6);
+    if (a === 'zout') cam.zoom = clamp(cam.zoom - 0.15, 0.45, 2.6);
+    if (a === 'left') cam.spin += 12;
+    if (a === 'right') cam.spin -= 12;
+    if (a === 'up') cam.tilt = clamp(cam.tilt - 8, 0, 78);
+    if (a === 'down') cam.tilt = clamp(cam.tilt + 8, 0, 78);
+    if (a === 'reset') Object.assign(cam, CAM0);
+    applyCam();
+  });
+  // drag to rotate (mouse + touch via pointer events)
+  const board = document.getElementById('depts');
+  let drag = null, moved = false;
+  board.addEventListener('pointerdown', e => {
+    if (!document.body.classList.contains('iso')) return;
+    drag = { x: e.clientX, y: e.clientY, spin: cam.spin, tilt: cam.tilt }; moved = false;
+  });
+  window.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 6) { moved = true; board.classList.add('dragging'); }
+    if (!moved) return;
+    cam.spin = drag.spin + dx * 0.25;
+    cam.tilt = clamp(drag.tilt - dy * 0.2, 0, 78);
+    applyCam();
+  });
+  window.addEventListener('pointerup', () => { drag = null; board.classList.remove('dragging'); setTimeout(() => moved = false, 0); });
+  // a drag must not count as a click-select
+  board.addEventListener('click', e => { if (moved) { e.stopPropagation(); e.preventDefault(); } }, true);
+  // wheel to zoom over the board
+  board.addEventListener('wheel', e => {
+    if (!document.body.classList.contains('iso')) return;
+    e.preventDefault();
+    cam.zoom = clamp(cam.zoom - Math.sign(e.deltaY) * 0.12, 0.45, 2.6);
+    applyCam();
+  }, { passive: false });
+  applyCam();
+  setIso(new URLSearchParams(location.search).get('view') === 'iso');
+  d.nodes.forEach(n => { NODE.set(n.id, n); ADJ.set(n.id, new Set()); });
+  d.edges.forEach(([a, b]) => { if (ADJ.has(a) && ADJ.has(b)) { ADJ.get(a).add(b); ADJ.get(b).add(a); } });
+
+  const c = d.counts;
+  document.getElementById('stats').innerHTML = UI.stats.map(([lbl, k]) => `<div><b>${c[k]}</b>${lbl}</div>`).join('');
+  document.getElementById('gen').textContent = UI.updated + ' ' + (d.generated_at || '').slice(0, 10);
+
+  // CEO
+  const ceo = d.nodes.find(n => n.id === 'agent:adam');
+  document.getElementById('ceo-slot').innerHTML = `
+    <div class="ceo-card sel-target" data-id="agent:adam">
+      <img src="images/team/dubis.jpg" alt="DUBIS" onerror="this.outerHTML='<div class=em style=\\'width:84px;height:84px;border-radius:50%;background:#C17E3A;font-size:44px;line-height:84px;text-align:center\\'>🐻</div>'">
+      <div>
+        <div class="big">${UI.ceoTitle}</div>
+        <div class="role">${UI.ceoRole}</div>
+      </div>
+    </div>`;
+
+  // departments
+  const deptEl = document.getElementById('depts');
+  for (const dept of d.departments) {
+    const agents = d.nodes.filter(n => n.kind === 'agent' && n.dept === dept.id);
+    if (!agents.length) continue;
+    const cards = agents.map(a => {
+      const skills = [...(ADJ.get(a.id) || [])].filter(x => x.startsWith('skill:')).length;
+      const wfs = [...(ADJ.get(a.id) || [])].filter(x => x.startsWith('wf:')).length;
+      const face = a.avatar
+        ? `<img src="images/team/${a.avatar}.jpg" alt="" onerror="this.outerHTML='<div class=em>${a.emoji || '👤'}</div>'">`
+        : `<div class="em">${a.emoji || '👤'}</div>`;
+      return `<div class="acard sel-target" data-id="${a.id}">
+        <div class="badges">${skills ? `<span class="b" title="סקילים">▲${skills}</span>` : ''}${wfs ? `<span class="b" title="תהליכים">◴${wfs}</span>` : ''}</div>
+        ${face}<div class="nm">${L(a)}</div><div class="layer">${a.layer === 'brain' ? UI.brain : UI.body}</div>
+      </div>`;
+    }).join('');
+    deptEl.insertAdjacentHTML('beforeend',
+      `<section class="dept" style="--dc:${dept.color}"><h2>${dept.icon} ${LANG==='en'&&dept.en?dept.en:dept.name} <span class="cnt">${agents.length} ${UI.agents}</span></h2><div class="agents">${cards}</div></section>`);
+  }
+
+  // floors
+  const chip = (n, extra = '') => `<span class="chip t-${n.kind} sel-target" data-id="${n.id}">${n.icon ? n.icon + ' ' : ''}${L(n)}${extra}</span>`;
+  document.getElementById('conns').innerHTML = d.nodes.filter(n => n.kind === 'conn')
+    .map(n => chip(n, ` <span class="sch">${[...(ADJ.get(n.id) || [])].filter(x => x.startsWith('agent:')).length} ${UI.agents}</span>`)).join('');
+  document.getElementById('tables').innerHTML = d.nodes.filter(n => n.kind === 'table').map(n => chip(n)).join('');
+  document.getElementById('docs').innerHTML = d.nodes.filter(n => n.kind === 'doc').map(n => chip(n)).join('');
+  const wfs = d.nodes.filter(n => n.kind === 'wf');
+  document.getElementById('wfcount').textContent = wfs.length;
+  document.getElementById('wfs').innerHTML = wfs.map(n => chip(n, ` <span class="sch">${n.schedule || ''}</span>`)).join('');
+
+  // events
+  document.body.addEventListener('click', e => {
+    const t = e.target.closest('.sel-target');
+    if (t) { select(t.dataset.id); e.stopPropagation(); return; }
+    if (!e.target.closest('#panel') && !e.target.closest('header')) clearSel();
+  });
+  document.getElementById('search').addEventListener('input', e => {
+    const q = e.target.value.trim().toLowerCase();
+    if (!q) { clearSel(); return; }
+    const hits = d.nodes.filter(n => (n.he || '').toLowerCase().includes(q) || (n.en || '').toLowerCase().includes(q) || (n.name || '').toLowerCase().includes(q) || (n.desc || '').toLowerCase().includes(q)).map(n => n.id);
+    lightUp(new Set(hits));
+  });
+}
+
+function lightUp(ids) {
+  document.body.classList.add('focusmode');
+  document.querySelectorAll('.sel-target').forEach(el => el.classList.toggle('lit', ids.has(el.dataset.id)));
+}
+
+function clearSel() {
+  selected = null;
+  document.body.classList.remove('focusmode');
+  document.querySelectorAll('.lit').forEach(el => el.classList.remove('lit'));
+  document.getElementById('panel').classList.remove('open');
+}
+
+function select(id) {
+  const n = NODE.get(id);
+  if (!n) return;
+  selected = id;
+  const rel = ADJ.get(id) || new Set();
+  lightUp(new Set([id, ...rel]));
+
+  // panel head
+  const av = document.getElementById('p-avatar');
+  if (n.kind === 'agent' && (n.avatar || n.id === 'agent:adam')) {
+    av.innerHTML = `<img src="images/team/${n.avatar || 'dubis'}.jpg" onerror="this.outerHTML='<div class=em>${n.emoji || '👤'}</div>'">`;
+  } else {
+    av.innerHTML = `<div class="em">${n.icon || n.emoji || KIND_ICON[n.kind] || ''}</div>`;
+  }
+  document.getElementById('p-kind').textContent = KIND_HE[n.kind] + (n.src ? ' · ' + n.src : '') + (n.layer ? (n.layer === 'brain' ? UI.brainL : UI.bodyL) : '');
+  document.getElementById('p-title').textContent = L(n) + (n.name ? ' (' + n.name + ')' : '');
+
+  // panel body
+  let html = '';
+  if (D(n)) html += `<div class="desc">${D(n)}</div>`;
+  if (n.schedule) html += `<div class="desc">${UI.schedule} <bdo dir="ltr">${n.schedule}</bdo> (UTC)</div>`;
+  if (n.file) html += `<div class="file">${n.file}</div>`;
+
+  const groups = [
+    ['agent:', UI.connected], ['skill:', UI.gSkills], ['doc:', UI.gDocs],
+    ['wf:', UI.gWfs], ['conn:', UI.gConns], ['table:', UI.gTables],
+  ];
+  for (const [prefix, title] of groups) {
+    const items = [...rel].filter(x => x.startsWith(prefix)).map(x => NODE.get(x)).filter(Boolean);
+    if (!items.length) continue;
+    html += `<h4>${title} (${items.length})</h4><div class="rel">` +
+      items.map(m => `<span class="chip t-${m.kind} sel-target" data-id="${m.id}">${m.icon ? m.icon + ' ' : ''}${L(m)}${m.schedule ? ` <span class="sch">${m.schedule}</span>` : ''}</span>`).join('') + '</div>';
+  }
+  if (!rel.size) html += `<div class="desc">${UI.none}</div>`;
+  document.getElementById('p-body').innerHTML = html;
+  document.getElementById('panel').classList.add('open');
+}
+</script>
+</body>
+</html>
