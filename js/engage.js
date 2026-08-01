@@ -371,7 +371,7 @@
 
   function showExitIntentBanner() {
     const isHe = (typeof currentLang !== 'undefined' && currentLang === 'he');
-    const msg = isHe ? '⏳ רגע! יש לך פריטים בעגלה — קוד DUBIS15 = 15% הנחה!' : '⏳ Wait! Items in your cart — use DUBIS15 for 15% off!';
+    const msg = isHe ? '⏳ רגע! יש לך פריטים בעגלה — קוד DUBIS15 = 15% הנחה!' : '⏳ Wait! Your cart is still here. Use DUBIS15 for 15% off.';
 
     const bar = document.createElement('div');
     bar.className = 'dubis-exit-bar';
