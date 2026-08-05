@@ -48,5 +48,5 @@
   1. ב-27.07 19:27 UTC, actor "Dubis Brand" (Ads Manager UI, לא ה-API) כיבה את כל 6 המודעות בקבוצה הקרה — בזמן שהקמפיין עוד היה PAUSED, אז לא נראה שינוי. ההדלקה ב-01.08 הדליקה קמפיין+קבוצות, אבל סטטוס מודעה מוגדר PAUSED גובר.
   2. הקבוצה היחידה שנשארה חיה — הרימרקטינג (₪15/יום) — מטרגטת Site Visitors 30d בתוך US, אבל מבקרי האתר כמעט כולם ישראלים → estimate_dau=0. אין למי להגיש.
 **Diagnosis path:** ad_campaigns (spend 0.14 מסונכרן) → page_views (0 תנועה) → Meta Graph דרך Edge Function אבחון זמני (campaign-diag, הוסר) + pg_net מה-DB (הסביבה חסמה curl ישיר ל-supabase.co): effective_status של 12 המודעות + account activities עם extra_data חשפו את ה-toggle-off ואת התאריך המדויק.
-**Fix:** להדליק את 6 המודעות ב-"US Cold 35-55 — PA/NJ/OH/MD" ב-Ads Manager (או API). החשבון תקין (account_status=1, אין חוב).
+**Fix:** בוצע 05.08 — כל 6 המודעות הודלקו: 3 ע"י oren ב-Ads Manager, ו-3 שנשארו מתחת לקו הגלילה (US Reel #23, US Image #23, US Reel #31 — ה-toast אמר "3 ads were updated") הודלקו דרך ה-API. אומת חי: 12/12 ACTIVE. החשבון תקין (account_status=1, אין חוב).
 **Prevention:** "הקמפיין ACTIVE" לא אומר שמשהו מוגש — צריך לוודא effective_status=ACTIVE בשלוש הרמות (campaign/adset/ad) אחרי כל הדלקה. כדאי route בדיקת-בריאות שמתריע כשקמפיין active מגיש 0 חשיפות יום שלם.
