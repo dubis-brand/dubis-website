@@ -2893,11 +2893,11 @@ Deno.serve(async (req: Request) => {
   // the live Meta campaign id is embedded in `notes` as "campaign_id: <digits>".
   // Prefer env override → most-recent ACTIVE row's id → most-recent row's id → legacy default.
   let campaignPaused = false; let campaignStatusKnown = false;
-  let dbCampSpend = 0; let dbCampClicks = 0;
+  let dbCampSpend = 0; let dbCampClicks = 0; let dbCampBudget = 0;
   let activeCampaignId = Deno.env.get('META_CAMPAIGN_ID') || '';
   try {
     const { data: campRows } = await sb.from('ad_campaigns')
-      .select('status, notes, created_at, spend_to_date, clicks')
+      .select('status, notes, created_at, spend_to_date, clicks, budget')
       .order('created_at', { ascending: false }).limit(50);
     const rows = (campRows || []) as Array<Record<string, unknown>>;
     const idOf = (r: Record<string, unknown>) => (String(r.notes || '').match(/campaign_id:\s*(\d+)/i) || [])[1] || '';
@@ -2916,6 +2916,7 @@ Deno.serve(async (req: Request) => {
       campaignPaused = String(exact.status || '').toLowerCase() !== 'active';
       dbCampSpend = Number(exact.spend_to_date || 0);
       dbCampClicks = Number(exact.clicks || 0);
+      dbCampBudget = Number(exact.budget || 0); // daily budget per table convention (07-27)
     } else if (rows.length > 0) {
       // No row for the campaign. Use the fleet signal: if NO campaign is active,
       // the funnel can't be delivering — treat as paused (don't invent a delay).
@@ -2954,6 +2955,61 @@ Deno.serve(async (req: Request) => {
   } else {
     metaData.fetch_error = 'INSTAGRAM_ACCESS_TOKEN missing in env';
   }
+
+  // ---- 🚨 Delivery watchdog (2026-08-05): an ACTIVE campaign whose "yesterday"
+  // came back empty gets DIAGNOSED against Meta, never explained away. Root
+  // incident: 01-05.08 the US campaign delivered ~₪0.31 TOTAL (all 6 cold ads
+  // were manually OFF at the ad level since 27.07) while this report said
+  // "פער-דיווח — לא בהכרח בעיית delivery" four days straight. The watchdog asks
+  // Meta for campaign + ad effective_status and names the exact cause in red.
+  // Escalation: ads-all-active + empty yesterday = yellow once (reporting lag /
+  // learning); a SECOND consecutive empty day turns red (state persisted in
+  // boss_reports.assessment.delivery_alert).
+  let deliveryAlert: { red: boolean; cause: string; detail: string } | null = null;
+  try {
+    const yRaw = ((metaData.yesterday || {}) as Record<string, unknown>);
+    const yEmpty = num(yRaw.impressions) === 0 && num(yRaw.clicks) === 0;
+    const ySpend = num(yRaw.spend);
+    // Under-delivery is ALSO a failure state (01-04.08: ~₪0.5/day trickle from
+    // the near-empty remarketing audience while the ₪55/day cold adset sat with
+    // every ad manually OFF — impressions were >0 so an empty-check alone
+    // would never fire). Trigger when yesterday's spend < 30% of the daily budget.
+    const yUnder = !yEmpty && dbCampBudget >= 10 && ySpend < dbCampBudget * 0.3;
+    if (!isWeekly && !campaignPaused && metaData.ok && (yEmpty || yUnder) && IG_TOKEN) {
+      const cRes = await fetch(`https://graph.facebook.com/v19.0/${activeCampaignId}?fields=name,effective_status&access_token=${IG_TOKEN}`);
+      const cInfo = cRes.ok ? await cRes.json() : null;
+      const aRes = await fetch(`https://graph.facebook.com/v19.0/${activeCampaignId}/ads?fields=name,effective_status&limit=50&access_token=${IG_TOKEN}`);
+      const ads = aRes.ok ? ((((await aRes.json()).data) || []) as Array<{ name?: string; effective_status?: string }>) : [];
+      const by: Record<string, number> = {};
+      for (const a of ads) { const s = a.effective_status || '?'; by[s] = (by[s] || 0) + 1; }
+      const activeAds = by['ACTIVE'] || 0;
+      const STATUS_HE: Record<string, string> = { ACTIVE: 'דלוקות', PAUSED: 'כבויות ידנית', ADSET_PAUSED: 'קבוצת-המודעות שלהן כבויה', CAMPAIGN_PAUSED: 'הקמפיין שלהן כבוי', IN_PROCESS: 'בעיבוד אצל Meta', PENDING_REVIEW: 'בביקורת של Meta', DISAPPROVED: 'נפסלו ע"י Meta', WITH_ISSUES: 'עם בעיה בצד Meta' };
+      const breakdown = Object.entries(by).map(([s, n]) => `${n} ${STATUS_HE[s] || s}`).join(' · ');
+      const campStatus = String(cInfo?.effective_status || '');
+      if (campStatus && campStatus !== 'ACTIVE') {
+        deliveryAlert = { red: true, cause: `הקמפיין עצמו לא פעיל בצד Meta (סטטוס: ${campStatus})`, detail: breakdown || 'אין מודעות' };
+      } else if (ads.length > 0 && activeAds === 0) {
+        deliveryAlert = { red: true, cause: `אף מודעה לא רצה — יש ${ads.length} מודעות ואפס דלוקות`, detail: breakdown };
+      } else if (ads.length > 0 && yUnder) {
+        // Numbers exist and they're LOW — that's real data, not a reporting gap. Red now.
+        const offNote = activeAds < ads.length ? ` (רק ${activeAds} מתוך ${ads.length} מודעות דלוקות)` : '';
+        deliveryAlert = { red: true, cause: `הקמפיין הוציא אתמול רק ₪${ySpend.toFixed(0)} מתוך תקציב יומי של ₪${dbCampBudget.toFixed(0)}${offNote} — אספקה חלשה`, detail: breakdown };
+      } else if (ads.length > 0) {
+        // Ads are on but yesterday was EMPTY — reporting lag or learning phase.
+        // Red only if yesterday's report already saw the same state.
+        let secondDay = false;
+        try {
+          const yDate = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+          const { data: prevRep } = await sb.from('boss_reports').select('assessment').eq('report_date', yDate).limit(1);
+          const prevDa = (prevRep && prevRep[0] && (prevRep[0].assessment as Record<string, unknown>)?.delivery_alert) as Record<string, unknown> | undefined;
+          secondDay = !!prevDa;
+        } catch (_) { /* best-effort */ }
+        deliveryAlert = secondDay
+          ? { red: true, cause: `המודעות דלוקות (${activeAds}/${ads.length}) אבל זה היום השני ברצף בלי חשיפות — הקמפיין לא באמת מספק`, detail: breakdown }
+          : { red: false, cause: `כל המודעות שדלוקות (${activeAds}/${ads.length}) תקינות — כנראה עיכוב-דיווח של Meta או תחילת למידה`, detail: breakdown };
+      }
+    }
+  } catch (_) { /* best-effort — the funnel falls back to the generic gap copy */ }
 
   let igPosts7d = 0, dupes = 0;
   if (IG_TOKEN && IG_ACCOUNT) {
@@ -3047,6 +3103,16 @@ Deno.serve(async (req: Request) => {
     opinionStandingCommitments(sb), // 2026-07-27 — the commitments ledger clock
   ]);
   const allOpinions: Opinion[] = rawOps.filter((o): o is Opinion => o !== null);
+
+  // 🚨 Delivery watchdog → leads the report as P0 when red (2026-08-05).
+  if (deliveryAlert && deliveryAlert.red) {
+    allOpinions.unshift({
+      agent: 'marketing', agent_he: 'קמפיין ממומן', priority: 'P0',
+      theme: 'campaign-not-delivering',
+      observation: `הקמפיין מסומן פעיל אבל לא הוציא שקל אתמול. הסיבה: ${deliveryAlert.cause}`,
+      recommendation: `לתקן היום ב-Ads Manager (מצב המודעות: ${deliveryAlert.detail}). כל יום כזה שורף את חלון-המבחן עד 07.09 בלי דאטה. קישור: https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=26201135546175057&selected_campaign_ids=${activeCampaignId}`,
+    });
+  }
 
   // ---- A.5: split into recurring vs main ----
   const { recurring: recurringFromHistory, nonRecurring } = await fetchRecurringIssues(sb, allOpinions);
@@ -3294,11 +3360,26 @@ Deno.serve(async (req: Request) => {
       const dbAnchor = dbCampSpend > 0
         ? ` לפי המונה המצטבר ב-DB הקמפיין כן רץ: <b>₪${dbCampSpend.toFixed(0)} · ${dbCampClicks} קליקים סה"כ</b>.`
         : '';
+      // 2026-08-05: when the campaign is supposed to be ACTIVE, an empty
+      // yesterday is DIAGNOSED (the watchdog above asked Meta why), never
+      // waved off as "not necessarily a delivery problem" — that line hid
+      // 4 days of a dead campaign (all cold ads OFF) in 08/2026.
+      if (deliveryAlert && deliveryAlert.red) {
+        return `<div dir="rtl" style="padding:12px;background:#fff5f5;border-right:4px solid #c0392b;border-radius:4px;font-size:13px;text-align:right;color:#c0392b">🔴 <b>הקמפיין מסומן פעיל אבל לא רץ בפועל.</b> הסיבה: ${esc(deliveryAlert.cause)}.<br><span style="color:#666;font-size:12px">מצב המודעות: ${esc(deliveryAlert.detail)}</span><br><a href="https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=26201135546175057&selected_campaign_ids=${activeCampaignId}" style="color:#c0392b;font-weight:700">▶ לפתוח את הקמפיין ב-Ads Manager ולתקן</a></div>`;
+      }
+      if (deliveryAlert) {
+        return `<p dir="rtl" style="color:#8a6d00;font-size:13px;margin:0">🟡 אתמול לא נרשמו חשיפות, אבל בדקתי מול Meta: ${esc(deliveryAlert.cause)} (${esc(deliveryAlert.detail)}). אם גם מחר יהיה ריק — זה יעלה באדום כבעיה אמיתית.${dbAnchor}</p>`;
+      }
       return campaignStatusKnown
         ? `<p dir="rtl" style="color:#888;font-size:13px;margin:0">⚠️ Meta לא החזיר נתוני-אתמול לקמפיין (פער-דיווח בצד Meta או שהשאילתה חזרה ריקה — לא בהכרח בעיית delivery).${dbAnchor}</p>`
         : '<p dir="rtl" style="color:#888;font-size:13px;margin:0">Meta לא החזיר נתוני-אתמול — סטטוס הקמפיין לא ידוע.</p>';
     }
-    return `<table dir="rtl" width="100%" style="margin-bottom:10px"><tr>
+    // 2026-08-05: an under-delivery diagnosis renders ABOVE the numbers table —
+    // tiny numbers alone read as "slow day", not as "the campaign is broken".
+    const underHtml = (deliveryAlert && deliveryAlert.red)
+      ? `<div dir="rtl" style="padding:12px;background:#fff5f5;border-right:4px solid #c0392b;border-radius:4px;font-size:13px;text-align:right;color:#c0392b;margin-bottom:10px">🔴 <b>הקמפיין לא מוציא את התקציב.</b> ${esc(deliveryAlert.cause)}.<br><span style="color:#666;font-size:12px">מצב המודעות: ${esc(deliveryAlert.detail)}</span><br><a href="https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=26201135546175057&selected_campaign_ids=${activeCampaignId}" style="color:#c0392b;font-weight:700">▶ לפתוח את הקמפיין ב-Ads Manager ולתקן</a></div>`
+      : '';
+    return `${underHtml}<table dir="rtl" width="100%" style="margin-bottom:10px"><tr>
         <td dir="rtl" align="center" style="width:20%;padding:6px"><div style="color:#3498db;font-size:16px;font-weight:700">${impY.toLocaleString()}</div><div style="color:#999;font-size:10px">חשיפות</div></td>
         <td dir="rtl" align="center" style="width:20%;padding:6px"><div style="color:#27ae60;font-size:16px;font-weight:700">${clicksY}</div><div style="color:#999;font-size:10px">קליקים</div></td>
         <td dir="rtl" align="center" style="width:20%;padding:6px"><div style="color:#9b59b6;font-size:16px;font-weight:700">${ctrY.toFixed(2)}%</div><div style="color:#999;font-size:10px">CTR</div></td>
@@ -3790,6 +3871,7 @@ ${replyNote}
       // 🧭 Management board verification (2026-07-03)
       management: { ...mgmtDecide, board_recent: managementBoard?.recent.length ?? 0, board_pending: managementBoard?.pending ?? 0 },
       campaign_paused: campaignPaused, campaign_status_known: campaignStatusKnown,
+      delivery_alert: deliveryAlert,
       tiktok_placeholder_urls: (html.match(/v_pub_url/g) || []).length,
       html_bytes: html.length,
     });
@@ -3804,6 +3886,7 @@ ${replyNote}
       const autoFixCount = autoFixes.filter(f => f.succeeded).length;
       // Subject carries only what's NON-ZERO — no noise counters (2026-07-12).
       const subjBits = [
+        (deliveryAlert && deliveryAlert.red) ? '🔴 הקמפיין לא מוציא תקציב' : '',
         reelBankCollapsed ? '🔴 בנק הרילים קרס' : '',
         opinions.length ? `${opinions.length} חדש` : '',
         autoFixCount ? `${autoFixCount} תוקן` : '',
@@ -3835,6 +3918,8 @@ ${replyNote}
       reel_bank: reelGaps ? { total: reelGaps.total, withReel: reelGaps.withReel, missing: reelGaps.missing, collapsed: reelBankCollapsed } : null,
       // Organic-engine state for tomorrow's delta in the two-engines strip (2026-07-27).
       engines: contentPerf ? { eng7: contentPerf.totalEng, clicks30: contentPerf.siteClicks.total } : null,
+      // Delivery-watchdog state — tomorrow's run escalates yellow→red on a 2nd empty day (2026-08-05).
+      delivery_alert: deliveryAlert,
       agent_counts: agentCounts,
       failed_agents: failedAgents.map(f => ({ id: f.id, reason: f.reason, hours: Math.round(f.hours) })),
       real_revenue: totalRevenue, internal_revenue: internalRevenue,
