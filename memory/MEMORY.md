@@ -10,6 +10,7 @@
 ## Known Issues
 | Issue | Status | Notes |
 |-------|--------|-------|
+| US Last Run — 6 מודעות Cold היו כבויות ידנית | ✅ FIXED 05.08 | כובו ב-Ads Manager ‏27.07 בזמן שהקמפיין היה PAUSED → 4 ימי אפס-אספקה. הודלקו 05.08 (3 ע"י oren ב-UI, 3 דרך API). מעקב: לוודא הוצאה ~₪55-70/יום מ-06.08. פירוט: troubleshooting.md 2026-08-05 |
 | INSTAGRAM_ACCESS_TOKEN expired | ⚠️ OPEN | Renew in Meta Business Manager |
 | GMAIL_* env vars missing | ❌ OPEN | Email Monitor agent can't scan Gmail |
 | 42 product images need regeneration | ⚠️ BACKLOG | Low priority |

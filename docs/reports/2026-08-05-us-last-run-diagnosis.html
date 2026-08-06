@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>אבחון: למה US Last Run לא רץ — 05.08.2026</title>
+<style>
+  :root { --charcoal:#2C2C2C; --honey:#C17E3A; --cream:#F5F0E8; --red:#c0392b; --green:#1e8449; }
+  * { box-sizing:border-box; }
+  body { font-family:'Segoe UI', Arial, sans-serif; direction:rtl; text-align:right; background:var(--cream); color:var(--charcoal); margin:0; padding:24px; line-height:1.65; }
+  .wrap { max-width:860px; margin:0 auto; }
+  h1 { font-size:1.6rem; border-bottom:3px solid var(--honey); padding-bottom:10px; }
+  h2 { font-size:1.2rem; color:var(--honey); margin-top:32px; }
+  .verdict { background:#fdecea; border-right:5px solid var(--red); padding:16px 18px; border-radius:8px; font-size:1.05rem; }
+  .verdict b { color:var(--red); }
+  .ok { background:#eafaf1; border-right:5px solid var(--green); padding:12px 16px; border-radius:8px; }
+  table { width:100%; border-collapse:collapse; background:#fff; border-radius:8px; overflow:hidden; margin:12px 0; }
+  th, td { padding:10px 12px; border-bottom:1px solid #eee; text-align:right; vertical-align:top; }
+  th { background:var(--charcoal); color:#fff; font-weight:600; }
+  tr:last-child td { border-bottom:none; }
+  .num { font-variant-numeric:tabular-nums; direction:ltr; text-align:left; white-space:nowrap; }
+  .paused { color:var(--red); font-weight:700; }
+  .active { color:var(--green); font-weight:700; }
+  .cta { display:block; background:var(--honey); color:#fff; text-decoration:none; padding:14px 20px; border-radius:8px; font-size:1.05rem; font-weight:700; text-align:center; margin:10px 0; }
+  .cta.secondary { background:var(--charcoal); }
+  .timeline li { margin-bottom:10px; }
+  .mono { font-family:monospace; direction:ltr; unicode-bidi:embed; font-size:.9em; }
+  .note { font-size:.9rem; color:#666; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>🔍 אבחון: למה "US Last Run" לא מייצר תנועה ולא מחויב</h1>
+<p class="note">נבדק 05.08.2026 · קמפיין <span class="mono">DUBIS US Last Run — 2026-07-22</span> · חשבון מודעות <span class="mono">act_26201135546175057</span></p>
+
+<div class="verdict">
+<b>השורה התחתונה:</b> הקמפיין דולק, אבל <b>כל 6 המודעות בקבוצה הקרה (₪55/יום) כבויות ידנית ברמת המודעה מאז 27.07</b> — שבוע לפני שהדלקת את הקמפיין. מה שרץ בפועל זו רק קבוצת הרימרקטינג (₪15/יום), שהקהל שלה — מבקרי האתר ב־30 הימים האחרונים <b>בתוך ארה"ב</b> — כמעט ריק, כי מבקרי האתר הם ישראלים. תוצאה מצטברת מאז ההדלקה: <b>10 חשיפות, אדם אחד, ₪0.31</b>. אין חיובים כי אין כמעט הוצאה — לא בגלל בעיית חיוב.
+</div>
+
+<h2>מה קורה עכשיו בפועל (נמשך חי ממטא, 05.08)</h2>
+<table>
+<tr><th>רכיב</th><th>סטטוס</th><th>קהל בפועל</th><th>הערה</th></tr>
+<tr><td>קמפיין</td><td class="active">ACTIVE</td><td>—</td><td>תקין</td></tr>
+<tr><td>קבוצה: US Cold 35-55 — PA/NJ/OH/MD (₪55/יום)</td><td class="active">ACTIVE</td><td class="num">11.8–13.8M</td><td>הקבוצה דולקת אבל <b>אין בה אף מודעה פעילה</b></td></tr>
+<tr><td>↳ 6 המודעות שלה (4 וידאו + 2 תמונה)</td><td class="paused">PAUSED</td><td>—</td><td>כובו ידנית ב־Ads Manager ב־27.07, 19:27 UTC</td></tr>
+<tr><td>קבוצה: US Remarketing — Site Visitors 30d (₪15/יום)</td><td class="active">ACTIVE</td><td class="num">estimate_dau = 0</td><td>הקהל כמעט ריק בארה"ב</td></tr>
+<tr><td>↳ 6 מודעות RMK</td><td class="active">ACTIVE</td><td>—</td><td>מאושרות ותקינות — אבל אין למי להגיש</td></tr>
+<tr><td>חשבון מודעות</td><td class="active">תקין (status 1)</td><td>—</td><td>אין חסימה, אין חוב — יתרה לחיוב ₪0.31 בלבד</td></tr>
+</table>
+
+<h2>ציר הזמן — איך הגענו לזה</h2>
+<ul class="timeline">
+<li><b>22.07</b> — הקמפיין נבנה (PAUSED ברמת קמפיין). כל 6 המודעות עברו ביקורת של מטא ואושרו — <span class="active">Active</span>.</li>
+<li><b>27.07, 19:27 UTC</b> — בלוג הפעילות של החשבון: המשתמש <b>"Dubis Brand"</b> (פעולה ידנית ב־Ads Manager, לא ה־API) כיבה את כל 6 המודעות: ‏Active ‏→ Inactive. הקמפיין עוד היה PAUSED, אז השינוי לא הורגש.</li>
+<li><b>01.08, ~09:00 UTC</b> — הריסטרקטורה (cold + remarketing) רצה ויצרה את 6 מודעות ה־RMK כפעילות; ההדלקה שלך הפעילה קמפיין + שתי קבוצות. אבל סטטוס מודעה מוגדר PAUSED גובר על הכול — 6 המקוריות נשארו כבויות. האימות "12 מודעות, שתי קבוצות רצות" בדק שהמודעות קיימות ושהקבוצות דולקות — לא את הסטטוס הפרטני של כל מודעה.</li>
+<li><b>01–05.08</b> — רק הרימרקטינג "רץ": קהל של בפועל ~אדם אחד בארה"ב → 10 חשיפות (frequency 10 על אותו אדם), ₪0.31, 0 קליקים, 0 כניסות לאתר (אומת גם ב־page_views: אפס הגעות עם utm‏ us_last_run).</li>
+</ul>
+
+<h2>🔧 מה עושים — דקה אחת ב־Ads Manager</h2>
+<ol>
+<li><b>להדליק את 6 המודעות</b> בקבוצה <span class="mono">US Cold 35-55 — PA/NJ/OH/MD</span> — נכנסים לתצוגת המודעות של הקמפיין ומעבירים את ה־toggle של כולן ל־ON:</li>
+</ol>
+<a class="cta" href="https://adsmanager.facebook.com/adsmanager/manage/ads?act=26201135546175057&selected_campaign_ids=120250052467260267" target="_blank">🔗 פתח את מודעות הקמפיין ב־Ads Manager (תצוגת Ads)</a>
+<a class="cta secondary" href="https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=26201135546175057&selected_campaign_ids=120250052467260267" target="_blank">🔗 הגדרות הקמפיין (תצוגת Campaigns)</a>
+<p>אחרי ההדלקה המודעות יעברו ביקורת קצרה (הן כבר אושרו פעם — בדרך כלל דקות עד שעות) ואז יתחילו להיות מוגשות. אם תרצה, אני יכול להדליק אותן דרך ה־API במקומך — רק תגיד.</p>
+
+<h2>המלצות המשך (לא דחוף, אבל כדאי)</h2>
+<table>
+<tr><th>#</th><th>המלצה</th><th>למה</th></tr>
+<tr><td>1</td><td>לשקול להעביר זמנית את ₪15 של הרימרקטינג לקבוצה הקרה</td><td>קהל הרימרקטינג האמריקאי ריק עד שהקמפיין הקר יביא מבקרים. עכשיו זה תקציב שיושב על קהל של 0. אפשר להחזיר כשיהיו כמה מאות מבקרים אמריקאים.</td></tr>
+<tr><td>2</td><td>אחרי ההדלקה — לוודא למחרת שיש הוצאה יומית ~₪55-70</td><td>"ACTIVE" בלי הוצאה = שוב אותה בעיה. הסימן שהכול עובד הוא חשיפות + הוצאה, לא סטטוס.</td></tr>
+<tr><td>3</td><td>route בדיקת־בריאות יומי: קמפיין active עם 0 חשיפות ביום שלם → התראה בדוח הבוקר</td><td>הפעם זה התגלה אחרי 4 ימים אבודים. בדיקה אוטומטית הייתה תופסת את זה ב־02.08.</td></tr>
+</table>
+
+<div class="ok" style="margin-top:24px">
+<b>מה נבדק ונמצא תקין:</b> החשבון פעיל ואין בעיית אמצעי תשלום (חויבו ₪1,952 מצטבר בעבר ללא בעיה) · כל 12 המודעות מאושרות ע"י מטא (אין פסילות) · הקהל הקר גדול ותקין (11.8–13.8M) · ה־UTM והלינקים במודעות תקינים · הפיקסל מחובר.
+</div>
+
+<p class="note" style="margin-top:20px">מקורות: Meta Graph API (סטטוסים, insights, לוג פעילות חשבון עם actor+timestamps) · טבלת ad_campaigns · page_views · daily_snapshots. פונקציית האבחון הזמנית שנפרסה לצורך הבדיקה (campaign-diag) נוטרלה בסיום. הממצא תועד ב־memory/troubleshooting.md וב־notes של הקמפיין ב־DB.</p>
+
+</div>
+</body>
+</html>
