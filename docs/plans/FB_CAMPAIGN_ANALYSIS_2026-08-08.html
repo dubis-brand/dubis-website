@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ניתוח קמפיין פייסבוק — us_last_run — 08.08.2026</title>
+<style>
+  :root { --bg:#111418; --card:#1b2026; --text:#e8e6e1; --muted:#9aa3ad; --honey:#e8a13d; --green:#4caf7d; --red:#e05252; --border:#2c333b; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Segoe UI', Arial, sans-serif; direction:rtl; text-align:right; line-height:1.7; padding:32px 16px; }
+  .wrap { max-width:860px; margin:0 auto; }
+  h1 { color:var(--honey); font-size:1.7em; margin-bottom:4px; }
+  .sub { color:var(--muted); margin-bottom:28px; font-size:.95em; }
+  h2 { color:var(--honey); font-size:1.2em; margin:32px 0 12px; border-bottom:1px solid var(--border); padding-bottom:6px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px 20px; margin-bottom:16px; }
+  .verdict { border-right:4px solid var(--green); }
+  .warn { border-right:4px solid var(--red); }
+  table { width:100%; border-collapse:collapse; margin:10px 0; font-size:.95em; }
+  th, td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:right; }
+  th { color:var(--honey); font-weight:600; }
+  .num { font-variant-numeric:tabular-nums; direction:ltr; text-align:right; }
+  .big { font-size:1.6em; font-weight:700; color:var(--honey); }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:14px 0; }
+  .kpi { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:14px; text-align:center; }
+  .kpi .l { color:var(--muted); font-size:.85em; margin-top:4px; }
+  ul { padding-right:22px; margin:8px 0; }
+  li { margin-bottom:8px; }
+  .good { color:var(--green); font-weight:600; }
+  .bad { color:var(--red); font-weight:600; }
+  code { background:#0d1013; padding:1px 6px; border-radius:4px; font-size:.9em; color:#8ecbe8; direction:ltr; display:inline-block; }
+  .foot { color:var(--muted); font-size:.85em; margin-top:36px; border-top:1px solid var(--border); padding-top:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ניתוח קמפיין פייסבוק — us_last_run</h1>
+<div class="sub">חלון: 5–8 באוגוסט 2026 (נתוני 8.8 חלקיים) · מקור: page_views + orders ב-Supabase · הופק 08.08.2026</div>
+
+<div class="card verdict">
+  <strong class="good">התשובה הקצרה: כן. אנשים אמיתיים נכנסו, ו-5 מבקרים שונים מפייסבוק הוסיפו מוצר לסל.</strong><br>
+  אבל אף אחד מהם לא קנה. אפס הזמנות מהקמפיין. הדליפה היא בין הסל לתשלום — בתוך הדפדפן הפנימי של פייסבוק.
+</div>
+
+<h2>המספרים</h2>
+<div class="kpis">
+  <div class="kpi"><div class="big">~114</div><div class="l">מבקרים מפייסבוק (5–8.8)</div></div>
+  <div class="kpi"><div class="big">5</div><div class="l">מבקרים שהוסיפו לסל</div></div>
+  <div class="kpi"><div class="big">~4.4%</div><div class="l">שיעור הוספה לסל</div></div>
+  <div class="kpi"><div class="big bad">0</div><div class="l">הזמנות מהקמפיין</div></div>
+</div>
+
+<table>
+  <tr><th>יום</th><th>מבקרים מ-FB</th><th>צפיות מוצר</th><th>הוספות לסל</th></tr>
+  <tr><td>5.8</td><td class="num">17</td><td class="num">32</td><td class="num">1</td></tr>
+  <tr><td>6.8</td><td class="num">18</td><td class="num">43</td><td class="num">0</td></tr>
+  <tr><td>7.8</td><td class="num">58</td><td class="num">121</td><td class="num">3 מבקרים (7 קליקים)</td></tr>
+  <tr><td>8.8 (חלקי)</td><td class="num">21</td><td class="num">50</td><td class="num">1</td></tr>
+</table>
+
+<div class="card">
+  <strong>מה הוסיפו לסל:</strong>
+  <ul>
+    <li><strong>"Activewear for the INACTIVE."</strong> — 4 מבקרים שונים (ארה"ב, כולם מ-l.facebook.com). זה המוצר החזק של הקמפיין, בפער.</li>
+    <li><strong>"Low maintenance, high value"</strong> — מבקר אחד שלחץ "הוסף לסל" <strong>5 פעמים בתוך דקה</strong> (7.8, 09:11). זה כמעט בטוח בעיית פידבק של הכפתור בדפדפן הפנימי של FB — המשתמש לא ראה שהמוצר נוסף.</li>
+  </ul>
+  היה גם checkout_open אחד מ-m.facebook.com (5.8) — אבל עם סל ריק. ההזמנה היחידה בחלון ($37.09, 6.8) הגיעה מגוגל אורגני (ישראל), לא מהקמפיין.
+</div>
+
+<h2>🚨 בעיה קריטית: האטריבוציה של הקמפיין שבורה</h2>
+<div class="card warn">
+  <ul>
+    <li><strong>התנועה האמיתית מגיעה בלי UTM.</strong> כמעט כל הקליקים מהמודעה נכנסים דרך הדפדפן הפנימי של פייסבוק (Android WebView, referrer = <code>l.facebook.com</code>) — בלי <code>utm_campaign</code> ובלי <code>session_id</code>. בדוח האטריבוציה הקמפיין נראה מת, כשבפועל הביא ~114 מבקרים.</li>
+    <li><strong>מה שכן מתויג us_last_run הוא זבל:</strong> 7 "sessions" בלבד, כולם bounce של 0 שניות, חלקם עם country_code=AF — נראה כמו בוטים של Meta (ad review / link preview), לא אנשים.</li>
+    <li><strong>משמעות:</strong> אם מישהו מהקמפיין היה קונה — ההזמנה הייתה נרשמת כ-(direct) וה-ROAS היה משקר. צריך לתקן לפני הקמפיין הבא.</li>
+    <li><strong>תיקון (08.08, סשן /dubis):</strong> <code>campaign_daily_metrics</code> היא טבלת-legacy שאף אחד לא כותב אליה — לא עדות לטוקן מת. הסנכרון החי הוא <code>sync-meta-spend</code> → <code>ad_campaigns</code>: ₪282.41 · 99 קליקים · 2,085 חשיפות נמשכו מ-Meta עד 08.08, והדוח היומי מרנדר אבחון-אספקה חי (אתמול 07.08: ₪121).</li>
+  </ul>
+</div>
+
+<h2>המסקנה שלי — בלי ליפות</h2>
+<div class="card">
+  <ul>
+    <li><strong>הקריאייטיב עובד סביר:</strong> ~4.4% add-to-cart מתנועה קרה של קמפיין זה בסדר גמור (בנצ'מרק e-commerce: 3–5%). "Activewear for the INACTIVE." הוא הסוס — שווה לרכז בו את התקציב.</li>
+    <li><strong>הבעיה היא לא הקמפיין — היא ההמרה אחרי הסל.</strong> 5 סלים, 0 תשלומים. כל התנועה יושבת בתוך ה-WebView של פייסבוק, ששם צ'קאאוט PayPal הוא חוויה גרועה (וזה גם ה-flow שעדיין מחייב USD — בעיה פתוחה). באנר ה-handoff קיים, אבל המספרים אומרים שהוא לא מציל את הפאנל.</li>
+    <li><strong>נפח קטן מדי למסקנות סטטיסטיות:</strong> 114 מבקרים זה מדגם קטן. אבל דפוס של 5 סלים ו-0 קניות עם כל התנועה כלואה ב-in-app browser — זה דפוס, לא רעש.</li>
+  </ul>
+</div>
+
+<h2>מה לעשות (לפי סדר עדיפות)</h2>
+<div class="card">
+  <ol style="padding-right:22px">
+    <li><strong>לתקן אטריבוציה ל-in-app (P0):</strong> ב-tracker — אם אין UTM אבל יש <code>fbclid</code> או referrer של פייסבוק → לתייג אוטומטית <code>utm_source=facebook, utm_medium=paid_inapp</code>. במקביל לתקן את ה-<code>session_id</code> הריק ב-WebView (fallback ל-localStorage/in-memory כש-sessionStorage חסום).</li>
+    <li><strong>לוודא שה-URL של המודעה בכלל נושא UTM</strong> — לבדוק ב-Ads Manager שהקישור כולל <code>utm_campaign=us_last_run</code>. ייתכן שהתיוג קיים רק בקישור אחד וכל הקליקים באים ממקום אחר בפוסט.</li>
+    <li><strong>פידבק לכפתור "הוסף לסל" (P1):</strong> 5 קליקים בדקה = המשתמש לא רואה אישור. לוודא שהאנימציה/badge עובדים גם ב-WebView.</li>
+    <li><strong>תיקון (08.08):</strong> הטוקן חי (agent_runs מציג meta_graph_verified:true יומי) — אין צורך בחידוש. סעיף זה נשמר לתיעוד הטעות.</li>
+    <li><strong>לחזק את יציאת ה-handoff מהדפדפן הפנימי:</strong> זו נקודת המוות של הפאנל. שווה לשקול להקפיץ את הבאנר בכניסה לצ'קאאוט (לא רק בכניסה לאתר), כשיש כבר כוונת קנייה.</li>
+  </ol>
+</div>
+
+<div class="foot">
+  מקורות: page_views (referrer l.facebook.com / m.facebook.com + utm_campaign=us_last_run), orders — Supabase ntzwvqtpdmvvavbhuyeb. נתוני צד-Meta: ad_campaigns (sync חי) — ₪282.41 · 99 קליקים · 2,085 חשיפות עד 08.08.
+</div>
+
+</div>
+</body>
+</html>

@@ -2121,6 +2121,19 @@ function refreshStockUi(productId) {
   refreshSizeAvailability(productId, color);
 }
 
+// 2026-08-08: double-add guard. Campaign data showed 5 identical add_to_cart
+// events in ~8s from one visitor — feedback wasn't seen, so they hammered the
+// button and would have hit checkout with 5 duplicate lines. Identical variant
+// within the window → don't push another line, just replay the confirmation.
+let __dubisLastAdd = { key: null, at: 0 };
+function dubisIsDuplicateAdd(productId, color, size) {
+  const key = `${productId}|${color}|${size}`;
+  const now = Date.now();
+  const dup = __dubisLastAdd.key === key && (now - __dubisLastAdd.at) < 1200;
+  __dubisLastAdd = { key, at: now };
+  return dup;
+}
+
 function addToCartFromModal(productId) {
   const product = products.find(p => p.id === productId);
   const selectedColor = document.querySelector(`#modal-colors-${productId} .color-btn.selected`)?.dataset.color || product.colors[0];
@@ -2158,6 +2171,12 @@ function addToCartFromModal(productId) {
   // in admin → product_variant_stock.sell_price_usd. Frozen at add-to-cart time so subsequent
   // admin price changes don't surprise someone mid-checkout.
   const effectivePrice = getVariantPrice(productId, selectedColor, selectedSize, product.price);
+  if (dubisIsDuplicateAdd(productId, selectedColor, selectedSize)) {
+    updateCartCount();
+    showCartNotification(product.phrase);
+    closeProductModal();
+    return;
+  }
   cart.push({ ...product, price: effectivePrice, basePrice: product.price, selectedColor, selectedSize });
   saveCart();
   if (window.dubisTrack) window.dubisTrack('add_to_cart', { id: product.id, phrase: product.phrase, type: product.type, price: effectivePrice, color: selectedColor, size: selectedSize, source: 'modal' });
@@ -2200,6 +2219,12 @@ function quickAddToCart(productId, btnEl) {
   const selectedColor = card?.dataset.selectedColor || product.colors[0];
   const selectedSize  = product.sizes[2] || 'L';
   const effectivePrice = getVariantPrice(productId, selectedColor, selectedSize, product.price);
+  if (dubisIsDuplicateAdd(productId, selectedColor, selectedSize)) {
+    updateCartCount();
+    showCartNotification(product.phrase);
+    if (btnEl) animateAddToCart(btnEl);
+    return;
+  }
   cart.push({ ...product, price: effectivePrice, basePrice: product.price, selectedColor, selectedSize });
   saveCart();
   if (window.dubisTrack) window.dubisTrack('add_to_cart', { id: product.id, phrase: product.phrase, type: product.type, price: effectivePrice, color: selectedColor, source: 'quick' });
@@ -2571,17 +2596,44 @@ function removeFromCart(index) {
   renderCart();
 }
 
+// 2026-08-08: rebuilt after us_last_run campaign data showed a visitor pressing
+// add-to-cart 5x in a minute inside the FB in-app browser — the old small toast
+// was easy to miss on mobile. Now: one persistent element (no stacking), product
+// name + live count, a "view cart" CTA, and a bump on the cart icon.
+let __dubisToastTimer = null;
 function showCartNotification(phrase) {
-  const notif = document.createElement('div');
-  notif.style.cssText = `
-    position:fixed; bottom:2rem; left:50%; transform:translateX(-50%);
-    background:#2C2C2C; color:white; padding:12px 24px; border-radius:8px;
-    font-size:.9rem; z-index:9999; border-left:4px solid #C17E3A;
-    box-shadow:0 4px 20px rgba(0,0,0,.3);
-  `;
-  notif.textContent = currentLang === 'he' ? '🐾 נוסף לסל!' : '🐾 Added to cart!';
-  document.body.appendChild(notif);
-  setTimeout(() => notif.remove(), 2500);
+  let notif = document.getElementById('dubis-atc-toast');
+  if (!notif) {
+    notif = document.createElement('div');
+    notif.id = 'dubis-atc-toast';
+    notif.className = 'dubis-atc-toast';
+    notif.addEventListener('click', () => { notif.classList.remove('show'); openCart(); });
+    document.body.appendChild(notif);
+  }
+  const isHe = currentLang === 'he';
+  const count = cart.length;
+  const countTxt = isHe
+    ? (count === 1 ? 'פריט אחד בסל' : `${count} פריטים בסל`)
+    : (count === 1 ? '1 item in cart' : `${count} items in cart`);
+  notif.innerHTML =
+    `<span class="atc-check">✓</span>` +
+    `<span class="atc-text"><strong>${isHe ? 'נוסף לסל!' : 'Added to cart!'}</strong>` +
+    `<small>${(phrase || '').slice(0, 40)}${phrase && phrase.length > 40 ? '…' : ''} · ${countTxt}</small></span>` +
+    `<span class="atc-cta">${isHe ? 'לסל ←' : 'View cart →'}</span>`;
+  notif.dir = isHe ? 'rtl' : 'ltr';
+  // Restart the entrance animation on every add so repeat clicks visibly react
+  notif.classList.remove('show');
+  void notif.offsetWidth;
+  notif.classList.add('show');
+  clearTimeout(__dubisToastTimer);
+  __dubisToastTimer = setTimeout(() => notif.classList.remove('show'), 3500);
+  // Bump the cart icon in the navbar
+  const cartBtn = document.querySelector('.cart-btn');
+  if (cartBtn) {
+    cartBtn.classList.remove('cart-bump');
+    void cartBtn.offsetWidth;
+    cartBtn.classList.add('cart-bump');
+  }
 }
 
 // ===== COLOR HELPER =====
@@ -2632,12 +2684,31 @@ function checkCookieConsent() {
     if (params.get('dev') === '0') localStorage.removeItem('dubis-internal');
   } catch(e) {}
 })();
-(function initDubisSession(){
+// 2026-08-08: FB/IG in-app WebView (Android) runs storage in a quota-0 /
+// incognito-like mode — getItem works but setItem THROWS. Result during the
+// us_last_run campaign: every real ad visitor had session_id NULL and utm_*
+// NULL while bots (which do persist storage) looked like the whole campaign.
+// Fix: in-memory fallbacks that survive the SPA page-lifetime, used everywhere
+// storage writes can fail.
+window.__dubisMemSid  = null;
+window.__dubisMemAttr = { first: null, last: null };
+
+window.dubisGetSid = function() {
   try {
-    if (!sessionStorage.getItem('dubis-sid')) {
-      sessionStorage.setItem('dubis-sid', Math.random().toString(36).slice(2) + Date.now().toString(36));
-    }
+    const stored = sessionStorage.getItem('dubis-sid');
+    if (stored) return stored;
   } catch(e) {}
+  return window.__dubisMemSid;
+};
+
+(function initDubisSession(){
+  let sid = null;
+  try { sid = sessionStorage.getItem('dubis-sid'); } catch(e) {}
+  if (!sid) {
+    sid = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    try { sessionStorage.setItem('dubis-sid', sid); } catch(e) {}
+  }
+  window.__dubisMemSid = sid;
 })();
 
 // ===== ATTRIBUTION CAPTURE (UTMs + landing data) =====
@@ -2655,42 +2726,66 @@ function checkCookieConsent() {
     const gclid  = params.get('gclid');
     const ttclid = params.get('ttclid');
     const has = (k) => params.has(k) && params.get(k);
+    // 2026-08-08: referrer promotion. During us_last_run virtually every real ad
+    // click arrived via l.facebook.com with NO utm and NO fbclid (the in-app
+    // browser strips both), so the whole campaign read as unattributed. When
+    // nothing explicit survived, fall back to the referrer domain. Medium is
+    // 'inapp' inside the FB/IG WebView and 'referral' otherwise — NOT 'paid',
+    // because a bare referrer can't prove an ad click (organic FB shares look
+    // identical). Campaign-level credit still requires utms on the ad URL.
+    const ref = (document.referrer || '').toLowerCase();
+    const refSource =
+      /facebook\.com|\bfb\.com|fb\.watch/.test(ref) ? 'facebook'  :
+      /instagram\.com/.test(ref)                    ? 'instagram' :
+      /tiktok\.com/.test(ref)                       ? 'tiktok'    :
+      /\bgoogle\./.test(ref)                        ? 'google'    : null;
+    // UA test inlined — dubisIsFacebookWebView() is defined further down, after this IIFE runs.
+    // Android FB app WebView has no FB_IAB marker on some builds — '; wv)' is the generic
+    // Android WebView token and FB/IG are the only in-app browsers that reach us via these referrers.
+    const inApp = /\b(FBAN|FBAV|FB_IAB|FB4A|FBIOS|Instagram)\b/i.test(navigator.userAgent || '') ||
+                  (refSource && /; wv\)/.test(navigator.userAgent || ''));
     const incoming = {
-      utm_source:   has('utm_source')   || (fbclid ? 'facebook' : null) || (gclid ? 'google' : null) || (ttclid ? 'tiktok' : null) || null,
-      utm_medium:   has('utm_medium')   || ((fbclid || gclid || ttclid) ? 'paid' : null) || null,
+      utm_source:   has('utm_source')   || (fbclid ? 'facebook' : null) || (gclid ? 'google' : null) || (ttclid ? 'tiktok' : null) || refSource || null,
+      utm_medium:   has('utm_medium')   || ((fbclid || gclid || ttclid) ? 'paid' : null) || (refSource ? (inApp ? 'inapp' : 'referral') : null) || null,
       utm_campaign: has('utm_campaign') || null,
       utm_content:  has('utm_content')  || null,
       utm_term:     has('utm_term')     || null,
-      session_id:   sessionStorage.getItem('dubis-sid') || null,
+      session_id:   window.dubisGetSid ? window.dubisGetSid() : null,
       landing_path: (window.location.pathname || '/') + (window.location.hash || ''),
       landing_referrer: (document.referrer || '').slice(0, 500),
       first_touch_at: new Date().toISOString(),
     };
     const hasUtm = !!(incoming.utm_source || incoming.utm_medium || incoming.utm_campaign || incoming.utm_content);
 
-    // Last-touch — always overwrite this session so debug is honest
+    // Last-touch — always overwrite this session so debug is honest.
+    // setItem throws in the FB in-app WebView → memory fallback keeps it alive.
     if (hasUtm) {
-      sessionStorage.setItem('dubis-attr-last', JSON.stringify(incoming));
+      window.__dubisMemAttr.last = incoming;
+      try { sessionStorage.setItem('dubis-attr-last', JSON.stringify(incoming)); } catch(e) {}
     }
 
     // First-touch — only set if empty or expired (30d), so the original ad gets credit
     let existing = null;
     try { existing = JSON.parse(localStorage.getItem('dubis-attr') || 'null'); } catch(e) {}
+    if (!existing) existing = window.__dubisMemAttr.first;
     const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
     const isExpired = !existing || !existing.first_touch_at ||
                       (Date.now() - new Date(existing.first_touch_at).getTime() > THIRTY_DAYS_MS);
 
     if (hasUtm && (isExpired || !existing.utm_source)) {
+      window.__dubisMemAttr.first = incoming;
       try { localStorage.setItem('dubis-attr', JSON.stringify(incoming)); } catch(e) {}
     } else if (!existing && !hasUtm) {
       // Direct visitor — still record the first touch so we can attribute "direct" properly
-      try { localStorage.setItem('dubis-attr', JSON.stringify({
+      const direct = {
         utm_source:'(direct)', utm_medium:'(none)', utm_campaign:null, utm_content:null, utm_term:null,
         session_id: incoming.session_id,
         landing_path: incoming.landing_path,
         landing_referrer: incoming.landing_referrer,
         first_touch_at: incoming.first_touch_at,
-      })); } catch(e) {}
+      };
+      window.__dubisMemAttr.first = direct;
+      try { localStorage.setItem('dubis-attr', JSON.stringify(direct)); } catch(e) {}
     }
   } catch(e) { /* never throw — attribution is best-effort */ }
 })();
@@ -2857,8 +2952,12 @@ window.addEventListener('DOMContentLoaded', dubisShowFbiaBanner);
 // and sessionStorage (current session) so we never accidentally credit (direct).
 window.dubisGetAttribution = function() {
   try {
-    const first = JSON.parse(localStorage.getItem('dubis-attr') || 'null');
-    const last  = JSON.parse(sessionStorage.getItem('dubis-attr-last') || 'null');
+    let first = null, last = null;
+    try { first = JSON.parse(localStorage.getItem('dubis-attr') || 'null'); } catch(e) {}
+    try { last  = JSON.parse(sessionStorage.getItem('dubis-attr-last') || 'null'); } catch(e) {}
+    // FB in-app WebView: storage writes fail → fall back to the in-memory copy
+    if (!first) first = window.__dubisMemAttr && window.__dubisMemAttr.first;
+    if (!last)  last  = window.__dubisMemAttr && window.__dubisMemAttr.last;
     if (!first && !last) return null;
     return {
       utm_source:   (first && first.utm_source)   || (last && last.utm_source)   || '(direct)',
@@ -2876,14 +2975,16 @@ window.dubisGetAttribution = function() {
 
 window.dubisTrack = function(event, meta) {
   try {
-    if (localStorage.getItem('dubis-cookies') === 'declined') return;
+    // Guarded separately: if localStorage access itself throws (locked-down WebView),
+    // we must NOT lose the event — absence of consent state ≠ declined.
+    try { if (localStorage.getItem('dubis-cookies') === 'declined') return; } catch(e) {}
     const attr = (typeof window.dubisGetAttribution === 'function') ? window.dubisGetAttribution() : null;
     const body = JSON.stringify({
       path: (window.location.pathname || '/') + (window.location.hash || ''),
       referrer: document.referrer || '',
       event: event,
       meta: meta || null,
-      session_id: (function(){ try { return sessionStorage.getItem('dubis-sid'); } catch(e) { return null; }})(),
+      session_id: (function(){ try { return window.dubisGetSid ? window.dubisGetSid() : sessionStorage.getItem('dubis-sid'); } catch(e) { return null; }})(),
       is_dev: (function(){ try { return localStorage.getItem('dubis-internal') === '1'; } catch(e) { return false; }})(),
       utm_source:   attr ? attr.utm_source   : null,
       utm_medium:   attr ? attr.utm_medium   : null,
