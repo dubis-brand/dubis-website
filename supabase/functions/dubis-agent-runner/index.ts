@@ -146,9 +146,26 @@ const EMAIL_DENY_SUBJECT_RX = /(receipt|invoice|payment (received|sent|confirmat
 // Self-ingest: our own daily/weekly reports bouncing back into the inbox.
 const EMAIL_SELF_RX = /(DUBIS\s*דוח|DUBIS\s*פגישה|דוח יומי|פגישה שבועית|daily report|weekly report|boss agent|orders@dubis\.net)/i;
 
+// 2026-08-08 FIX (oren: "אני עושה השב למיילים ואתם לא מבצעים"): a REPLY to one
+// of our own reports is a DIRECTIVE from oren, not a self-report. The 2026-07-12
+// reply-loop exemption was implemented ONLY in the boss digest (downstream) —
+// this scanner still killed every "Re: DUBIS דוח יומי" at the self-ingest filter
+// BEFORE the sender check, so no gmail_insight row was ever created and the
+// board never saw his instructions. Note oren replies FROM dubis.brand@gmail.com
+// itself (he owns the inbox), so the brand address counts as an oren sender here.
+function isOrenReportReply(from: string, subject: string): boolean {
+  const f = from.toLowerCase();
+  const isReply = /^(re|השב|תגובה|fwd?)[:\s]/i.test(subject.trim());
+  const aboutReport = EMAIL_SELF_RX.test(subject);
+  const fromOrenSide = EMAIL_SIGNAL_SENDERS.some(addr => f.includes(addr)) || f.includes('dubis.brand@gmail.com');
+  return isReply && aboutReport && fromOrenSide;
+}
+
 function isSignalEmail(from: string, subject: string): boolean {
   const f = from.toLowerCase();
   const s = `${from} ${subject}`;
+  // oren replying to a report = a directive that MUST survive the self-report filter.
+  if (isOrenReportReply(from, subject)) return true;
   // Self-ingested reports are always noise.
   if (EMAIL_SELF_RX.test(s)) return false;
   // Mail FROM oren/hila is always signal (overrides denylists — he forwards a

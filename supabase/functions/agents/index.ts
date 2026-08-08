@@ -2104,6 +2104,17 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       // gap is visible — never publish the wrong image.
       const isPersonaPost = (((cd.series as string) || '')) === 'agent_personas';
       const stillReel = cd.format === 'reel' && cd.video_url && cd.reel_status === 'ready';
+      // 2026-08-08: a STORED image URL can be dead — accessory products (mug/
+      // bottle/tote 44-47) got garment-style mockup URLs (product-45-White-back.jpg)
+      // that 404 → IG rejects the container ("Only photo or video can be accepted")
+      // → 5 silent attempts → permanent cap. HEAD-verify the stored image; a dead
+      // URL is treated as no-image so the hydration below replaces it.
+      if (!stillReel && cd.generated_image_url && !isPersonaPost) {
+        try {
+          const h = await fetch(cd.generated_image_url as string, { method: 'HEAD' });
+          if (!h.ok) { cd.image_dead_url = cd.generated_image_url; cd.generated_image_url = ''; mutated = true; }
+        } catch { /* network blip — leave the URL in place */ }
+      }
       if (!stillReel && !cd.generated_image_url && !isPersonaPost) {
         // 2026-06-09: prefer a real Higgsfield persona-model still (model wearing
         // THIS product) over a bare garment mockup. oren wants posts to show the
@@ -2119,7 +2130,19 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
             const c = pr?.length ? (pr[0] as Record<string, unknown>).colors : null;
             if (Array.isArray(c)) productColors = c as string[];
           } catch { /* ignore */ }
-          const mockup = pickGelatoBackMockupUrl(cd.product_id as string, productColors, t.id as string);
+          let mockup = pickGelatoBackMockupUrl(cd.product_id as string, productColors, t.id as string);
+          // 2026-08-08: verify the constructed mockup actually exists; accessories
+          // have no garment mockups — fall back to the product's real catalog image.
+          if (mockup) {
+            try { const h = await fetch(mockup, { method: 'HEAD' }); if (!h.ok) mockup = ''; } catch { /* keep */ }
+          }
+          if (!mockup) {
+            try {
+              const { data: pr2 } = await sb.from('dubis_products').select('image_url').eq('active', true).eq('product_id_numeric', cd.product_id as string).limit(1);
+              const iu = pr2?.length ? String((pr2[0] as Record<string, unknown>).image_url || '') : '';
+              if (iu) { cd.generated_image_url = iu; cd.image_source = 'product_image_hydrate'; mutated = true; }
+            } catch { /* ignore */ }
+          }
           if (mockup) { cd.generated_image_url = mockup; cd.image_source = 'gelato_mockup_hydrate'; mutated = true; }
         }
       }

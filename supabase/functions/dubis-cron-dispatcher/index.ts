@@ -68,6 +68,9 @@ const JOBS: Record<string, Job> = {
   'community-loop': { name: 'community-loop', url: `${FNS_BASE}/agents?type=community-loop`, method: 'POST' },
   'community-dry':  { name: 'community-dry', url: `${FNS_BASE}/agents?type=community-loop&dry=1`, method: 'POST' },
   'community-probe': { name: 'community-probe', url: `${FNS_BASE}/agents?type=community-loop&probe=1`, method: 'POST' },
+  // 2026-08-08: pg_cron fallback for the weekly plan — the Vercel Sunday cron
+  // proved unreliable (content crons silently stopped firing ~28.07).
+  'weekly-marketing-plan': { name: 'weekly-marketing-plan', url: `${FNS_BASE}/agents?type=weekly-marketing-plan`, method: 'POST' },
   // Boss runs LAST in the day
   'boss':             { name: 'boss', url: `${FNS_BASE}/dubis-boss-orchestrator`, method: 'POST' },
 };
