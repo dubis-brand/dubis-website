@@ -4037,41 +4037,44 @@ Return STRICT JSON only: an array like [{"key":"ig:123","action":"reply|escalate
       lang: 'he' | 'en';
     };
     // IL-FOCUS (oren directive 2026-06-19): ALL marketing language → Israel only.
-    // Every caption is Hebrew, rooted-local (NOT translated from EN). The English
-    // garment slogan stays English (that's the product, not the marketing copy),
-    // and reels remain English-spoken video with a Hebrew caption per the
-    // 2026-06-07 reel-voice policy. Reversible: flip 1-2 tiktok slots back to
-    // 'en' if we later test free TikTok algorithmic discovery to a foreign audience.
+    // 2026-08-08 US-FOCUS FLIP (oren, mid-US-Last-Run-test directive): the US
+    // test campaign is the priority market — organic must match. Majority EN
+    // (12/17), HE keeps a minority IL presence (5/17, market note: "US + Israel").
+    // EN captions are ORIGINAL, not translated (voice-dna anti-translation rule
+    // still applies both directions). Garment slogan stays English regardless.
+    // Reels remain English-spoken video (2026-06-07 reel-voice policy) — HE
+    // slots get a Hebrew caption over the same English-spoken video.
+    // Supersedes the 2026-06-19 IL-only (17 HE/0 EN) pivot.
     const SLOT_TEMPLATES: SlotTemplate[] = [
       // ── Sunday ──
       { day_offset: 0, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
       // ── Monday ──
-      { day_offset: 1, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'he' },
-      { day_offset: 1, hour_utc: 10, channel: 'ig_fb_feed', format: 'feed_post', category: 'social_post', lang: 'he' },
-      { day_offset: 1, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
+      { day_offset: 1, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'en' },
+      { day_offset: 1, hour_utc: 10, channel: 'ig_fb_feed', format: 'feed_post', category: 'social_post', lang: 'en' },
+      { day_offset: 1, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'en' },
       // ── Tuesday ──
       { day_offset: 2, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'he' },
-      { day_offset: 2, hour_utc: 16, channel: 'ig_carousel',format: 'carousel',  category: 'social_post', lang: 'he' },
-      { day_offset: 2, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
+      { day_offset: 2, hour_utc: 16, channel: 'ig_carousel',format: 'carousel',  category: 'social_post', lang: 'en' },
+      { day_offset: 2, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'en' },
       // ── Wednesday ──
-      { day_offset: 3, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'he' },
+      { day_offset: 3, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'en' },
       { day_offset: 3, hour_utc: 10, channel: 'ig_fb_feed', format: 'feed_post', category: 'social_post', lang: 'he' },
-      { day_offset: 3, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
+      { day_offset: 3, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'en' },
       // ── Thursday ──
-      { day_offset: 4, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'he' },
+      { day_offset: 4, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'en' },
       { day_offset: 4, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
       // ── Friday ──
-      { day_offset: 5, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'he' },
-      { day_offset: 5, hour_utc: 14, channel: 'ig_carousel',format: 'carousel',  category: 'social_post', lang: 'he' },
-      { day_offset: 5, hour_utc: 16, channel: 'ig_fb_feed', format: 'feed_post', category: 'social_post', lang: 'he' },
-      { day_offset: 5, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
+      { day_offset: 5, hour_utc:  8, channel: 'ig_fb_reel', format: 'reel',      category: 'social_post', lang: 'en' },
+      { day_offset: 5, hour_utc: 14, channel: 'ig_carousel',format: 'carousel',  category: 'social_post', lang: 'en' },
+      { day_offset: 5, hour_utc: 16, channel: 'ig_fb_feed', format: 'feed_post', category: 'social_post', lang: 'en' },
+      { day_offset: 5, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'en' },
       // ── Saturday ──
       { day_offset: 6, hour_utc: 18, channel: 'tiktok',     format: 'tiktok',    category: 'tiktok_post', lang: 'he' },
     ];
-    // Sanity: 17 slots, 17 HE, 0 EN (IL-focus 2026-06-19)
+    // Sanity: 17 slots, majority EN (US-focus 2026-08-08, supersedes IL-only 06-19)
     const heCount = SLOT_TEMPLATES.filter(s => s.lang === 'he').length;
     const enCount = SLOT_TEMPLATES.filter(s => s.lang === 'en').length;
-    if (SLOT_TEMPLATES.length !== 17 || heCount !== 17 || enCount !== 0) {
+    if (SLOT_TEMPLATES.length !== 17 || heCount !== 5 || enCount !== 12) {
       return json({ error: `slot template invariant broken: total=${SLOT_TEMPLATES.length}, he=${heCount}, en=${enCount}` }, 500);
     }
     // Mutable copy — the learning loop (5b) may reshape formats/hours per week.
