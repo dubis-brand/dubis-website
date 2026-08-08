@@ -3325,6 +3325,10 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
       const ld = spec.link_data as Record<string, unknown> | undefined;
       const vd = spec.video_data as Record<string, unknown> | undefined;
       if (ld) ld.message = MSG[pid]; else if (vd) vd.message = MSG[pid]; else { out.push({ pid, skipped: 'no link/video data in spec' }); continue; }
+      // Graph returns REDUNDANT media fields when reading a spec back (error 1443051
+      // ObjectStorySpecRedundant on re-create) — keep image_hash, drop the derived URL fields.
+      if (vd && vd.image_hash && vd.image_url) delete vd.image_url;
+      if (ld && ld.image_hash && ld.picture) delete ld.picture;
       const cr = await post(`${ACT}/adcreatives`, { name: `US AI-STORY creative #${pid}`, object_story_spec: JSON.stringify(spec) });
       if (!cr.ok) { out.push({ pid, step: 'creative', error: cr.j }); continue; }
       const ad = await post(`${ACT}/ads`, { name: `US Cold AI-STORY #${pid}`, adset_id: COLD_ADSET, creative: JSON.stringify({ creative_id: cr.j.id }), status: 'ACTIVE' });
