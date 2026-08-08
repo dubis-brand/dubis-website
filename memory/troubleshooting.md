@@ -41,3 +41,10 @@
   - **PR #3 (frontend):** `reconcileCartPrices()` re-prices every cart line from the live catalog (`getVariantPrice`) at init/renderCart/checkout/createOrder — kills both the undercharge and the mismatch at source.
 **Recovery:** Hila's order manually backfilled to `orders` (id `5f54b38f…`), matched to her `user_id` + the email breakdown (6 items, $141 sub, DUBIS15 −$21.15, $119.85 total).
 **Still open:** Could not pull Vercel runtime logs (MCP tool needs oren's approval) to scan for OTHER past orders dropped the same way. Worth a sweep.
+
+## 2026-08-08 — FB campaign attribution broken: real ad traffic arrives with no UTM + null session_id
+**Symptom:** Campaign `us_last_run` (meta/paid, 5–8 Aug) looked dead in attribution — only 7 UTM-tagged sessions, all 0-second bounces (some country_code=AF → Meta ad-review/preview bots). Meanwhile ~114 real visitors arrived via `l.facebook.com`/`m.facebook.com` referrer with NO utm_* and NULL session_id (FB in-app Android WebView).
+**Impact:** 5 distinct FB visitors did add_to_cart (9 events) but would have shown as `(direct)` if they'd ordered — ROAS/attribution unusable. Also `campaign_daily_metrics` is EMPTY (Meta token expired → Boss agent pulls nothing, no spend data).
+**Funnel found:** ~114 visitors → 5 ATC (~4.4%, fine) → 0 orders. Death zone = post-ATC inside FB in-app browser (same flow as the open FBIA-USD issue). One user clicked ATC 5x in a minute → button feedback likely invisible in WebView.
+**Fix (pending):** tracker fallback — no UTM but fbclid/FB referrer → auto-tag `utm_source=facebook, utm_medium=paid_inapp`; session_id fallback to localStorage/in-memory when sessionStorage is blocked in WebView; verify ad destination URL actually carries UTMs in Ads Manager.
+**Report:** docs/plans/FB_CAMPAIGN_ANALYSIS_2026-08-08.html
