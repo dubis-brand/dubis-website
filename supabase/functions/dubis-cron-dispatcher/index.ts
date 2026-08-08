@@ -71,6 +71,7 @@ const JOBS: Record<string, Job> = {
   // 2026-08-08: pg_cron fallback for the weekly plan — the Vercel Sunday cron
   // proved unreliable (content crons silently stopped firing ~28.07).
   'weekly-marketing-plan': { name: 'weekly-marketing-plan', url: `${FNS_BASE}/agents?type=weekly-marketing-plan`, method: 'POST' },
+  'transparency-ab': { name: 'transparency-ab', url: `${FNS_BASE}/agents?type=transparency-ab`, method: 'POST' },
   // Boss runs LAST in the day
   'boss':             { name: 'boss', url: `${FNS_BASE}/dubis-boss-orchestrator`, method: 'POST' },
 };
