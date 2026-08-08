@@ -3285,6 +3285,61 @@ Return ONLY valid JSON: {"caption_en":"...","hashtags":"#DUBIS #ForTheRestOfUs .
     });
   }
 
+  // ── TRANSPARENCY A/B (oren approved 03.08 by email + 08.08 in chat: "מאשר להראות שקיפות" / "גו") ──
+  // Adds 3 AI-story ads to the US cold adset alongside the 3 zero-AI ads, same
+  // budget, same audience. Cells are read at AD level in Meta (spend/carts per ad).
+  // Symmetric kill line ₪150/cell lives in standing_commitments, checked by session.
+  // Idempotent: skips if AI-STORY ads already exist.
+  if (type === 'transparency-ab') {
+    const svcKey = SERVICE_ROLE;
+    const agentSecret = Deno.env.get('AGENT_SECRET') ?? '';
+    const cronSecret  = Deno.env.get('CRON_SECRET') ?? '';
+    const authHeader  = req.headers.get('authorization') ?? '';
+    const tok = url.searchParams.get('token') || req.headers.get('x-agent-secret') || authHeader.replace('Bearer ', '').trim() || '';
+    if (!((svcKey && tok === svcKey) || (agentSecret && tok === agentSecret) || (cronSecret && tok === cronSecret)) && !(await verifyAdmin(req))) return json({ error: 'Unauthorized' }, 401);
+    const ACT = 'act_26201135546175057';
+    const G = 'https://graph.facebook.com/v21.0';
+    const COLD_ADSET = '120250052467360267';
+    const cand = [Deno.env.get('META_ACCESS_TOKEN') ?? '', Deno.env.get('INSTAGRAM_ACCESS_TOKEN') ?? ''].filter(Boolean);
+    let FB = '';
+    for (const tk of cand) { const p = await fetch(`${G}/me/permissions?access_token=${tk}`).then(r => r.json()).catch(() => ({})); if (Array.isArray(p.data) && p.data.some((x: Record<string, string>) => x.permission === 'ads_management' && x.status === 'granted')) { FB = tk; break; } }
+    if (!FB) return json({ ok: false, error: 'no ads_management token' }, 200);
+    const post = async (path: string, params: Record<string, string>) => { const r = await fetch(`${G}/${path}`, { method: 'POST', body: new URLSearchParams({ ...params, access_token: FB }) }); return { ok: r.ok, j: await r.json() }; };
+    // AI-story copy per product — empowerment frame (one human + small AI team),
+    // NOT "run entirely by AI" (Palram feedback: replacement fear). No em-dashes.
+    const MSG: Record<number, string> = {
+      32: `Full disclosure: an AI team runs this brand. One human presses the buttons and laughs at the drafts. The shirts are real, printed fresh in the USA. "Activewear for the INACTIVE." For the rest of us.`,
+      38: `This store is run by a small AI team and one stubborn human. The AI does the busywork, he approves the jokes. "Sleeves were OPTIONAL." Printed fresh in the USA, built for the body you actually live in.`,
+      23: `Yes, an AI wrote this ad. A human approved it because it made him laugh. "I am ALLERGIC to mornings." Real cotton, real shirt, printed fresh in the USA.`,
+    };
+    const ads = await fetch(`${G}/${COLD_ADSET}/ads?fields=id,name,status,creative{id,object_story_spec}&limit=50&access_token=${FB}`).then(r => r.json());
+    if (ads.error) return json({ ok: false, step: 'read-ads', error: ads.error }, 200);
+    const existing = (ads.data || []) as Array<Record<string, unknown>>;
+    const already = existing.filter(a => String(a.name).includes('AI-STORY'));
+    if (already.length >= 3) return json({ ok: true, skipped: 'AI-STORY ads already exist', ads: already.map(a => a.name) });
+    const out: Record<string, unknown>[] = [];
+    for (const pid of [32, 38, 23]) {
+      const src = existing.find(a => String(a.name).includes(`#${pid}`) && !String(a.name).includes('AI-STORY'));
+      if (!src) { out.push({ pid, skipped: 'no source ad' }); continue; }
+      const spec = JSON.parse(JSON.stringify(((src.creative as Record<string, unknown>)?.object_story_spec ?? {}))) as Record<string, unknown>;
+      const ld = spec.link_data as Record<string, unknown> | undefined;
+      const vd = spec.video_data as Record<string, unknown> | undefined;
+      if (ld) ld.message = MSG[pid]; else if (vd) vd.message = MSG[pid]; else { out.push({ pid, skipped: 'no link/video data in spec' }); continue; }
+      const cr = await post(`${ACT}/adcreatives`, { name: `US AI-STORY creative #${pid}`, object_story_spec: JSON.stringify(spec) });
+      if (!cr.ok) { out.push({ pid, step: 'creative', error: cr.j }); continue; }
+      const ad = await post(`${ACT}/ads`, { name: `US Cold AI-STORY #${pid}`, adset_id: COLD_ADSET, creative: JSON.stringify({ creative_id: cr.j.id }), status: 'ACTIVE' });
+      out.push({ pid, creative_id: cr.j.id, ad_id: ad.ok ? ad.j.id : undefined, error: ad.ok ? undefined : ad.j });
+    }
+    const after = await fetch(`${G}/${COLD_ADSET}/ads?fields=id,name,status,effective_status&limit=50&access_token=${FB}`).then(r => r.json()).catch(() => ({}));
+    const created = out.filter(o => o.ad_id).length;
+    if (created > 0) {
+      const { data: campRow } = await sb.from('ad_campaigns').select('id, notes').ilike('notes', '%120250052467260267%').limit(1).maybeSingle();
+      if (campRow) await sb.from('ad_campaigns').update({ notes: `${campRow.notes ?? ''}
+[2026-08-08 DUBIS] Transparency A/B live: 3 AI-STORY ads added to the cold adset (oren approved 03.08 email + 08.08 chat). Cells read at ad level; symmetric kill line ₪150/cell in standing_commitments.` }).eq('id', campRow.id);
+    }
+    return json({ ok: true, created, results: out, cold_ads_after: after.data?.map((a: Record<string, string>) => `${a.name}:${a.effective_status}`) });
+  }
+
   // ── FIX campaign ad copy IN PLACE (correct ₪ prices) — keeps the campaign ON ──
   // Bug: ad copy showed the USD number with a ₪ sign (e.g. "₪28" for a $28 product).
   // Correct = USD × live rate (~2.99): $28→₪84, $27→₪81, $26→₪79. Rebuild each ad's
@@ -7570,6 +7625,6 @@ ${items.join('\n')}
   }
 
   return json({
-    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, weekly-marketing-plan, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image, meta-ads-manage, shopping-feed, gelato-discovery, weekly-slogan-product, auto-product-remove, review-slogan-submissions, moltbook-post, collect-content-metrics, analyze-content',
+    error: 'Invalid type. Valid types: tasks, runs, run, generate-image, generate-product-image, product-images, products-catalog, smart-match, publish, gemini-models, content-run, fb-debug, publish-ready, avatars, voices, heygen-status, upload-reel-photo, upload-talking-photo, generate-reel, reel-status, reel-webhook, auto-content, weekly-marketing-plan, qa-content, generate-slogan, approve-product, security-scan, generate-video-script, generate-video-assets, render-video, kling-callback, compose-callback, video-pipeline, serve-image, meta-ads-manage, transparency-ab, shopping-feed, gelato-discovery, weekly-slogan-product, auto-product-remove, review-slogan-submissions, moltbook-post, collect-content-metrics, analyze-content',
   }, 400);
 });
