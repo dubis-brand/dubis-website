@@ -73,7 +73,7 @@
     <li><strong>התנועה האמיתית מגיעה בלי UTM.</strong> כמעט כל הקליקים מהמודעה נכנסים דרך הדפדפן הפנימי של פייסבוק (Android WebView, referrer = <code>l.facebook.com</code>) — בלי <code>utm_campaign</code> ובלי <code>session_id</code>. בדוח האטריבוציה הקמפיין נראה מת, כשבפועל הביא ~114 מבקרים.</li>
     <li><strong>מה שכן מתויג us_last_run הוא זבל:</strong> 7 "sessions" בלבד, כולם bounce של 0 שניות, חלקם עם country_code=AF — נראה כמו בוטים של Meta (ad review / link preview), לא אנשים.</li>
     <li><strong>משמעות:</strong> אם מישהו מהקמפיין היה קונה — ההזמנה הייתה נרשמת כ-(direct) וה-ROAS היה משקר. צריך לתקן לפני הקמפיין הבא.</li>
-    <li><strong>אין נתוני spend:</strong> <code>campaign_daily_metrics</code> ריקה — ה-Boss agent לא מושך מ-Meta API (הטוקן פג, בעיה פתוחה מ-MEMORY.md). בלי spend אין ROAS ואין CPC. עובדים עיוורים בחצי עין.</li>
+    <li><strong>תיקון (08.08, סשן /dubis):</strong> <code>campaign_daily_metrics</code> היא טבלת-legacy שאף אחד לא כותב אליה — לא עדות לטוקן מת. הסנכרון החי הוא <code>sync-meta-spend</code> → <code>ad_campaigns</code>: ₪282.41 · 99 קליקים · 2,085 חשיפות נמשכו מ-Meta עד 08.08, והדוח היומי מרנדר אבחון-אספקה חי (אתמול 07.08: ₪121).</li>
   </ul>
 </div>
 
@@ -92,13 +92,13 @@
     <li><strong>לתקן אטריבוציה ל-in-app (P0):</strong> ב-tracker — אם אין UTM אבל יש <code>fbclid</code> או referrer של פייסבוק → לתייג אוטומטית <code>utm_source=facebook, utm_medium=paid_inapp</code>. במקביל לתקן את ה-<code>session_id</code> הריק ב-WebView (fallback ל-localStorage/in-memory כש-sessionStorage חסום).</li>
     <li><strong>לוודא שה-URL של המודעה בכלל נושא UTM</strong> — לבדוק ב-Ads Manager שהקישור כולל <code>utm_campaign=us_last_run</code>. ייתכן שהתיוג קיים רק בקישור אחד וכל הקליקים באים ממקום אחר בפוסט.</li>
     <li><strong>פידבק לכפתור "הוסף לסל" (P1):</strong> 5 קליקים בדקה = המשתמש לא רואה אישור. לוודא שהאנימציה/badge עובדים גם ב-WebView.</li>
-    <li><strong>לחדש את טוקן Meta (P1):</strong> בלי זה אין spend, אין ROAS, וה-Boss עיוור לקמפיינים. זה כבר ברשימת הבעיות הפתוחות חודשיים.</li>
+    <li><strong>תיקון (08.08):</strong> הטוקן חי (agent_runs מציג meta_graph_verified:true יומי) — אין צורך בחידוש. סעיף זה נשמר לתיעוד הטעות.</li>
     <li><strong>לחזק את יציאת ה-handoff מהדפדפן הפנימי:</strong> זו נקודת המוות של הפאנל. שווה לשקול להקפיץ את הבאנר בכניסה לצ'קאאוט (לא רק בכניסה לאתר), כשיש כבר כוונת קנייה.</li>
   </ol>
 </div>
 
 <div class="foot">
-  מקורות: page_views (referrer l.facebook.com / m.facebook.com + utm_campaign=us_last_run), orders, campaign_daily_metrics — Supabase ntzwvqtpdmvvavbhuyeb. אין נתוני צד-Meta (spend/impressions) — הטוקן פג.
+  מקורות: page_views (referrer l.facebook.com / m.facebook.com + utm_campaign=us_last_run), orders — Supabase ntzwvqtpdmvvavbhuyeb. נתוני צד-Meta: ad_campaigns (sync חי) — ₪282.41 · 99 קליקים · 2,085 חשיפות עד 08.08.
 </div>
 
 </div>
