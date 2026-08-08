@@ -46,5 +46,12 @@
 **Symptom:** Campaign `us_last_run` (meta/paid, 5–8 Aug) looked dead in attribution — only 7 UTM-tagged sessions, all 0-second bounces (some country_code=AF → Meta ad-review/preview bots). Meanwhile ~114 real visitors arrived via `l.facebook.com`/`m.facebook.com` referrer with NO utm_* and NULL session_id (FB in-app Android WebView).
 **Impact:** 5 distinct FB visitors did add_to_cart (9 events) but would have shown as `(direct)` if they'd ordered — ROAS/attribution unusable. Also `campaign_daily_metrics` is EMPTY (Meta token expired → Boss agent pulls nothing, no spend data).
 **Funnel found:** ~114 visitors → 5 ATC (~4.4%, fine) → 0 orders. Death zone = post-ATC inside FB in-app browser (same flow as the open FBIA-USD issue). One user clicked ATC 5x in a minute → button feedback likely invisible in WebView.
-**Fix (pending):** tracker fallback — no UTM but fbclid/FB referrer → auto-tag `utm_source=facebook, utm_medium=paid_inapp`; session_id fallback to localStorage/in-memory when sessionStorage is blocked in WebView; verify ad destination URL actually carries UTMs in Ads Manager.
+**Root cause (confirmed):** FB/IG in-app WebView runs storage in quota-0 mode — `getItem` works, `setItem` THROWS. So `dubis-sid` was never written (→ session_id null) and `dubis-attr` was never written (→ utm_* null). Bots persist storage fine, which is why only they looked attributed.
+**Fix (SHIPPED 2026-08-08, same branch):**
+  - In-memory fallbacks: `window.__dubisMemSid` + `__dubisMemAttr` used when storage writes throw; `dubisGetSid()` is now the single sid accessor.
+  - Referrer promotion: no utm/clickid but FB/IG/TikTok/Google referrer → `utm_source=<domain>`, `utm_medium='inapp'` (inside WebView) or `'referral'`. NOT 'paid' — a bare referrer can't prove an ad click. Campaign-level credit still requires UTMs on the ad URL in Ads Manager (verify there!).
+  - `dubisTrack` cookie-consent read guarded separately so a throwing localStorage can't swallow events.
+  - Add-to-cart feedback rebuilt: big toast (product + count + view-cart CTA, tap opens cart), cart-icon bump, and a 1.2s duplicate-add guard (same variant → replay confirmation instead of pushing another line).
+**Verified:** Playwright with setItem-throwing storage + l.facebook.com referer + Android wv UA → session_id present, attr = facebook/inapp on add_to_cart beacons; 3 rapid clicks = 1 cart line + visible toast; intentional re-add after 1.4s works.
+**Still open:** confirm the ad destination URL in Ads Manager carries utm_campaign — without it campaign-level (not just source-level) attribution stays blind.
 **Report:** docs/plans/FB_CAMPAIGN_ANALYSIS_2026-08-08.html

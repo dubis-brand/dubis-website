@@ -3394,3 +3394,74 @@ body.has-preview-banner { padding-top: 32px; }
 /* Wave 3 (2026-06-12): SVG line icons replace emoji in trust bar + nav (consistent cross-OS, brand-colorable) */
 .trust-icon svg { display:block; color: var(--honey); }
 .account-btn svg, .cart-btn svg { display:inline-block; vertical-align:-3px; }
+
+/* ===== ADD-TO-CART TOAST + CART BUMP (2026-08-08) =====
+   Rebuilt after us_last_run: old toast was too subtle on mobile (FB in-app
+   visitor pressed add-to-cart 5x). Single reusable element, tap opens cart. */
+.dubis-atc-toast {
+    position: fixed;
+    bottom: 1.25rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: min(92vw, 420px);
+    background: var(--charcoal, #2C2C2C);
+    color: #fff;
+    padding: 14px 18px;
+    border-radius: 12px;
+    border: 1px solid var(--honey, #C17E3A);
+    box-shadow: 0 6px 28px rgba(0,0,0,.45);
+    z-index: 10000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease, transform .25s ease;
+    cursor: pointer;
+}
+.dubis-atc-toast.show {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+}
+.dubis-atc-toast .atc-check {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--honey, #C17E3A);
+    color: #fff;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+}
+.dubis-atc-toast .atc-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.35;
+    min-width: 0;
+}
+.dubis-atc-toast .atc-text strong { font-size: .95rem; }
+.dubis-atc-toast .atc-text small {
+    font-size: .78rem;
+    color: #cfc8bd;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dubis-atc-toast .atc-cta {
+    flex: 0 0 auto;
+    font-size: .85rem;
+    font-weight: 600;
+    color: var(--honey, #C17E3A);
+    white-space: nowrap;
+}
+@keyframes dubis-cart-bump {
+    0%   { transform: scale(1); }
+    35%  { transform: scale(1.35); }
+    70%  { transform: scale(.92); }
+    100% { transform: scale(1); }
+}
+.cart-btn.cart-bump { animation: dubis-cart-bump .45s ease; }
