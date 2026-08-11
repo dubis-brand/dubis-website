@@ -1,0 +1,37 @@
+# .gitleaksignore — KNOWN/ACCEPTED secret findings baseline (2026-06-15)
+#
+# These 24 fingerprints are PRE-EXISTING leaks already on the rotation backlog
+# (status.md "API keys in git history — rotate FLUX + Gelato + PayPal keys").
+# Mostly the public anon/publishable Supabase key in history + the retired
+# gemini.key.txt. The security scan still COUNTS these into the Boss report
+# (full count via the sink), but the GHA gate only hard-fails on NEW secrets
+# introduced AFTER this baseline — so a fresh leak in a PR breaks the build,
+# while the known backlog does not block every unrelated push.
+#
+# When a backlog key is finally rotated + history-scrubbed, delete its line here.
+# DO NOT add a new line to silence a real new leak — rotate the key instead.
+#
+05abb9a62de13a96843025fb634eb754158ce860:supabase/functions/dubis-cron-dispatcher/index.ts:generic-api-key:18
+22040c52e353d97d06e129b6bd0123a9a9ec6a6b:api/cron/morning-report.js:generic-api-key:172
+2d58acbcebe27e3cc9f65396b9cabf04a2ce8a88:js/reviews.js:jwt:9
+451bca03c531dce78d06778b6f29235ebb495756:admin.html:jwt:1943
+50f5a4967e286c4e2ed8660fb8f5240d3025eba2:supabase/functions/agents/index.ts:generic-api-key:4017
+510f16319409b4da0891e5f6597ae1047cd451ec:videos/il-campaign/_pilot/batch-he-reels.mjs:generic-api-key:31
+6929783cfce7af790b9baea5b42a88e876359dc2:admin.html:generic-api-key:5353
+806f9b4ee8b9d4370b262d978297342e405afe55:supabase/functions/agents/index.ts:generic-api-key:3827
+857d8a79b433b64f979f86fc4e95ca1c785d01af:admin.html:generic-api-key:5509
+857d8a79b433b64f979f86fc4e95ca1c785d01af:admin.html:jwt:2545
+85a1da8d8e80750094e69fec60cac437cc173aed:scripts/add-en-voiceover-2026-05-20.mjs:generic-api-key:16
+9998c721a1a57736e358fdce3c2b9b8b5bff3e59:js/paypal.js:generic-api-key:606
+aa8c7ad1328be83bbf248ffd4c5e238495bbf2e2:trigger_content.bat:curl-auth-header:11
+c124219aa9517dddce876a4706960472ef469770:api/cron/morning-report.js:generic-api-key:166
+ca1bf377298b5dbec8e53676188b699384e1f0e3:js/auth.js:jwt:5
+cc5d15f0dea36d1af4ff359fcf0ed88474181bb2:js/main.js:jwt:666
+d414d4e7df20f7fe733bed9391ce727342658a4b:js/supabase-config.js:jwt:4
+e19047fafbb97d3800a585572b56046c62975f39:supabase/functions/dubis-boss-orchestrator/index.ts:generic-api-key:26
+e626780b27d0554531c3ae03af510373ab1f4943:admin.html:jwt:392
+e7a88e79606e2ddc1592cb7736c7acee72ac9346:gemini.key.txt:gcp-api-key:1
+f3e523f214af9d139d89abfd30a7e31260a3aa5f:supabase/functions/dubis-run-all/index.ts:generic-api-key:24
+fbdfb31b2bfc490537bfde405e8193ec05ef89a0:js/engage.js:jwt:8
+ffc48791a56fcf9a85eab3b5ff2fe33d3278a197:admin_committed_scripts.js:jwt:5
+ffc48791a56fcf9a85eab3b5ff2fe33d3278a197:admin_scripts_tmp.js:jwt:5
