@@ -2958,14 +2958,18 @@ window.dubisTrack = function(event, meta) {
     return false;
   }
 
-  // Initial pageview + deep-link open (fires after consent gate + a moment for products.js)
-  setTimeout(() => {
-    window.dubisTrack('pageview', { initial: true, hash: __dubisLastHash });
-    // `?p=N` takes precedence over hash (IG-safe URL format)
-    if (!openFromQueryParam()) {
-      openFromHash(__dubisLastHash, 'initial');
-    }
-  }, 500);
+  // Initial pageview — fires immediately (attribution capture above is a synchronous
+  // IIFE that already ran, so there is nothing to wait for). Previously this was
+  // delayed 500ms "for products.js", which meant any visitor who bounced within
+  // 500ms of landing was invisible to /api/analytics/track entirely — a real gap
+  // measured 2026-08-13: Meta/Clarity saw far more campaign-tagged sessions than
+  // we recorded. The deep-link modal-open logic below has its own retry loop
+  // (tryOpen, up to 6s) so it never actually needed this delay either.
+  window.dubisTrack('pageview', { initial: true, hash: __dubisLastHash });
+  // `?p=N` takes precedence over hash (IG-safe URL format)
+  if (!openFromQueryParam()) {
+    openFromHash(__dubisLastHash, 'initial');
+  }
 
   window.addEventListener('hashchange', () => {
     const newHash = window.location.hash || '';
