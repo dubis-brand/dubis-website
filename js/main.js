@@ -2815,11 +2815,42 @@ window.dubisCameFromFacebook = function() {
 window.dubisIsFacebookWebView = function() {
     try {
         const ua = navigator.userAgent || '';
+
+        // (1) Named in-app browsers — the original 2026-05-24 set.
         // FBAN/FBAV — iOS Facebook app · FB_IAB/FB4A — Android Facebook app · FBIOS — older
         // Instagram in-app browser has the same PayPal-popup issue, so include it.
-        return /\b(FBAN|FBAV|FB_IAB|FB4A|FBIOS|Instagram)\b/i.test(ua);
+        if (/\b(FBAN|FBAV|FB_IAB|FB4A|FBIOS|Instagram|Messenger|Line|MicroMessenger|TikTok|Snapchat|Pinterest)\b/i.test(ua)) return true;
+
+        // (2) 2026-08-19 — THE BLIND SPOT. Meta's Android in-app browser stopped
+        // emitting FB_IAB/FB4A, so rule (1) matched ZERO of the last 7 days'
+        // traffic while 67% of it (1,171 of 1,749 rows) was in fact an Android
+        // WebView — including ALL 10 add-to-cart events and all 8 checkout
+        // attempts, every one of them US. Those visitors got the normal PayPal
+        // buttons, whose popup silently dies in a WebView: 0 purchases.
+        //
+        // What survives the UA scrubbing is the WebView signature itself:
+        //   • a literal "; wv" in the platform block
+        //   • "Version/4.0" next to a Chrome/ token
+        // Chrome for Android sends NEITHER, so there is no false-positive path
+        // for a real browser. And the host app does not matter — every WebView
+        // blocks the PayPal popup, so the redirect handoff is the right answer
+        // in all of them.
+        if (/;\s*wv[;)\s]/i.test(ua)) return true;
+        if (/\bVersion\/4\.0\b/.test(ua) && /\bChrome\//.test(ua) && /\bAndroid\b/.test(ua)) return true;
+
+        // (3) iOS in-app WebViews (WKWebView) carry AppleWebKit + Mobile but no
+        // "Safari/" token. Real Safari always sends Safari/, Chrome sends CriOS,
+        // Firefox sends FxiOS — so requiring the absence of all three is safe.
+        if (/\b(iPhone|iPad|iPod)\b/.test(ua) && /AppleWebKit/.test(ua)
+            && !/\bSafari\//.test(ua) && !/\bCriOS\b/.test(ua) && !/\bFxiOS\b/.test(ua)) return true;
+
+        return false;
     } catch(e) { return false; }
 };
+// Truthful alias — the check is no longer Facebook-specific. New code should use
+// this name; dubisIsFacebookWebView stays as the compatibility entry point for
+// the four existing call sites in main.js + paypal.js.
+window.dubisIsInAppWebView = window.dubisIsFacebookWebView;
 
 // ===== FB COUPON BANNER (DUBIS15) =====
 // Auto-shown to FB-arriving visitors. Dismissible; dismiss state lives in
