@@ -132,13 +132,48 @@ function ff(fargs, label) {
   }
 }
 
-function hf(hfArgs, label) {
-  const r = spawnSync(HF, hfArgs, {
-    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, HIGGSFIELD_CREDENTIALS_PATH: CREDS_PATH },
-  });
-  if (r.status !== 0) throw new Error(`hf ${label} (exit ${r.status}): ${(r.stderr || r.stdout || '').slice(0, 500)}`);
-  return r.stdout || '';
+// A scheduled job must survive a blip. Run 32296969148 died on the very first
+// API call with "request failed (no response received)" — a network-level error,
+// not an auth one. Retry those; never retry a real rejection (auth, bad params,
+// insufficient credits), and never retry a generation that may already have been
+// billed.
+const TRANSIENT = /no response received|timeout|timed out|EOF|connection reset|temporarily|502|503|504|dial tcp|i\/o timeout/i;
+
+function hf(hfArgs, label, { retries = 0 } = {}) {
+  let last = '';
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const r = spawnSync(HF, hfArgs, {
+      encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+      env: { ...process.env, HIGGSFIELD_CREDENTIALS_PATH: CREDS_PATH },
+    });
+    if (r.status === 0) return r.stdout || '';
+    last = (r.stderr || r.stdout || '').slice(0, 500);
+    const transient = TRANSIENT.test(last) || r.status === null;
+    if (!transient || attempt === retries) {
+      throw new Error(`hf ${label} (exit ${r.status}): ${last}`);
+    }
+    const waitMs = 5000 * (attempt + 1);
+    log(`    hf ${label} transient failure, retry ${attempt + 1}/${retries} in ${waitMs / 1000}s: ${last.slice(0, 120)}`);
+    spawnSync(process.execPath, ['-e', `setTimeout(()=>{}, ${waitMs})`]);
+  }
+  throw new Error(`hf ${label}: exhausted retries: ${last}`);
+}
+
+// Reachability probe — turns "no response received" into a diagnosis instead of
+// a mystery. Called only when the preflight fails.
+async function diagnoseNetwork() {
+  const hosts = ['https://fnf.higgsfield.ai', 'https://higgsfield.ai', 'https://api.github.com'];
+  for (const h of hosts) {
+    try {
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), 15000);
+      const r = await fetch(h, { signal: c.signal });
+      clearTimeout(t);
+      log(`    probe ${h} -> HTTP ${r.status}`);
+    } catch (e) {
+      log(`    probe ${h} -> UNREACHABLE (${e.name}: ${String(e.message).slice(0, 80)})`);
+    }
+  }
 }
 
 // hf --json shapes vary per command; pull the first media URL out of whatever came back.
@@ -274,7 +309,7 @@ async function makeHero(p, s) {
 
   const out = hf(['product-photoshoot', 'create', '--mode', 'virtual_model_tryout',
     '--prompt', prompt, '--image', mock, '--count', '1', '--aspect_ratio', '3:4',
-    '--timeout', '10m', '--json'], 'product-photoshoot');
+    '--timeout', '10m', '--json'], 'product-photoshoot', { retries: 1 });
   return download(firstUrl(out), path.join(TMP, `hero-${p.product_id_numeric}.jpg`));
 }
 
@@ -290,7 +325,7 @@ async function makeVideo(p, s, hero) {
 
   const out = hf(['generate', 'create', HF_VIDEO_MODEL, '--aspect_ratio', '9:16', '--duration', '8',
     '--quality', 'high', '--image', hero, '--prompt', prompt,
-    '--wait', '--wait-timeout', '20m', '--json'], HF_VIDEO_MODEL);
+    '--wait', '--wait-timeout', '20m', '--json'], HF_VIDEO_MODEL, { retries: 1 });
   return download(firstUrl(out), path.join(TMP, `veo-${p.product_id_numeric}.mp4`));
 }
 
@@ -390,8 +425,15 @@ async function publish(p, finalPath, s) {
 (async () => {
   // Fail loudly and EARLY if the Higgsfield auth chain is broken — never spend
   // credits on a half-run, and never fail silently the way the bank did.
-  hf(['workspace', 'set', WORKSPACE_ID], 'workspace set');
-  const who = hf(['account', 'status'], 'account status').trim();
+  hf(['workspace', 'set', WORKSPACE_ID], 'workspace set', { retries: 2 });
+  let who;
+  try {
+    who = hf(['account', 'status'], 'account status', { retries: 3 }).trim();
+  } catch (e) {
+    log(`preflight failed: ${e.message.slice(0, 200)}`);
+    await diagnoseNetwork();
+    throw e;
+  }
   log('higgsfield: ' + who.split(String.fromCharCode(10))[0]);
 
   const targets = await pickTargets(COUNT);
