@@ -63,6 +63,11 @@ const FFMPEG = process.env.FFMPEG || 'ffmpeg';
 const HF = process.env.HF || 'hf';
 const CREDS_PATH = process.env.HIGGSFIELD_CREDENTIALS_PATH
   || path.join(os.homedir(), '.config', 'higgsfield', 'credentials.json');
+// The workspace selection lives OUTSIDE credentials.json, so a restored
+// credentials secret alone leaves the CLI with "No workspace selected". This is
+// the DUBIS paid workspace (dubis.brand@gmail.com, plus plan) — the same one the
+// Higgsfield MCP bills against. Overridable for a future team workspace.
+const WORKSPACE_ID = process.env.HIGGSFIELD_WORKSPACE_ID || '52a7bfe8-e226-42cf-856a-6d5ccbba0f7f';
 
 const args = process.argv.slice(2);
 const argVal = (k) => { const a = args.find(x => x.startsWith(`--${k}=`)); return a ? a.split('=')[1] : null; };
@@ -373,6 +378,7 @@ async function publish(p, finalPath, s) {
 (async () => {
   // Fail loudly and EARLY if the Higgsfield auth chain is broken — never spend
   // credits on a half-run, and never fail silently the way the bank did.
+  hf(['workspace', 'set', WORKSPACE_ID], 'workspace set');
   const who = hf(['account', 'status'], 'account status').trim();
   log('higgsfield: ' + who.split(String.fromCharCode(10))[0]);
 
