@@ -75,7 +75,11 @@ jobs:
         run: |
           npm install --no-audit --no-fund @supabase/supabase-js libsodium-wrappers
           npm install -g @higgsfield/cli@latest
-          hf version || true
+          # The package installs bins named "higgsfield" and "higgs" — there is no
+          # "hf" on PATH (that is only the local Windows filename). Assert it now
+          # instead of failing deep inside the run.
+          which higgsfield || { echo "higgsfield CLI not on PATH after install"; exit 1; }
+          higgsfield version
 
       - name: ffmpeg
         run: |
@@ -98,6 +102,7 @@ jobs:
       - name: 🎬 Generate reels
         id: gen
         env:
+          HF: higgsfield
           HIGGSFIELD_CREDENTIALS_PATH: /home/runner/.hfstate/credentials.json
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -118,7 +123,7 @@ jobs:
       - name: 🔁 Persist rotated Higgsfield credentials
         if: always()
         env:
-          GH_PAT: ${{ secrets.GH_PAT }}
+          GH_PAT: ${{ secrets.GH_SECRETS_PAT }}
           REPO: ${{ github.repository }}
         run: |
           awk '/===HF_CREDENTIALS===/{f=1;next}/===END_HF_CREDENTIALS===/{f=0}f' /tmp/reels.log 2>/dev/null > /tmp/newcreds.json || true
