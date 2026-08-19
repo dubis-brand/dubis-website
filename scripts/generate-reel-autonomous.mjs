@@ -298,7 +298,19 @@ async function makeVideo(p, s, hero) {
 // The reveal beat is what makes it an AD and not just a talking head — it puts
 // the actual purchasable garment on screen with its slogan, matching the
 // product-link rule (every asset ties to one real active product).
+// ffmpeg only adds polish (upscale + product tail beat). The Higgsfield clip is
+// already 9:16 h264+AAC and is a perfectly shippable reel on its own, so a
+// missing ffmpeg must never cost us the reel we already paid 22 credits for.
+function ffmpegAvailable() {
+  try { return spawnSync(FFMPEG, ['-version'], { encoding: 'utf8' }).status === 0; }
+  catch { return false; }
+}
+
 async function compose(p, veoPath) {
+  if (!ffmpegAvailable()) {
+    log('    (no ffmpeg — publishing the raw Higgsfield clip, no tail beat)');
+    return veoPath;
+  }
   const out = path.join(TMP, `final-${p.product_id_numeric}.mp4`);
   const scaled = path.join(TMP, `scaled-${p.product_id_numeric}.mp4`);
   const beat = path.join(TMP, `beat-${p.product_id_numeric}.mp4`);

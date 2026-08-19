@@ -81,19 +81,32 @@ jobs:
           which higgsfield || { echo "higgsfield CLI not on PATH after install"; exit 1; }
           higgsfield version
 
-      - name: ffmpeg
+      # ffmpeg is a NICE-TO-HAVE, not a dependency. It only adds the product tail
+      # beat and an upscale; the Higgsfield clip is already 9:16 h264+AAC and
+      # ships fine on its own. Run 32293432204 hung 18 min in apt-get, and
+      # 32295891419 failed it outright (exit 124) — apt is unreliable on this
+      # image and ffmpeg is NOT preinstalled. So: try a fast static download,
+      # fall back to apt, and if both fail just carry on. The generator detects
+      # a missing/broken ffmpeg and publishes the raw clip instead of dying.
+      - name: ffmpeg (optional — pipeline degrades gracefully without it)
+        continue-on-error: true
         run: |
-          # GitHub's ubuntu-latest image already ships ffmpeg. Run 32293432204
-          # hung 18 minutes inside `apt-get update` and had to be cancelled, so
-          # only reach for apt when the binary is genuinely absent — and cap it.
           if command -v ffmpeg >/dev/null 2>&1; then
-            echo "ffmpeg preinstalled: $(ffmpeg -version | head -1)"
-          else
-            echo "ffmpeg missing — installing (5 min cap)"
-            timeout 150 sudo apt-get update -qq || echo "apt update slow/failed — continuing"
-            timeout 150 sudo apt-get install -y -qq ffmpeg
-            ffmpeg -version | head -1
+            echo "ffmpeg preinstalled: $(ffmpeg -version | head -1)"; exit 0
           fi
+          echo "ffmpeg missing — trying static build"
+          if curl -fsSL --max-time 180 -o /tmp/ff.tar.xz \
+               https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz; then
+            mkdir -p /tmp/ffx && tar -xJf /tmp/ff.tar.xz -C /tmp/ffx --strip-components=1 \
+              && sudo install -m755 /tmp/ffx/ffmpeg /usr/local/bin/ffmpeg \
+              && echo "static ffmpeg installed: $(ffmpeg -version | head -1)" && exit 0
+          fi
+          echo "static download failed — trying apt (capped)"
+          timeout 120 sudo apt-get update -qq || true
+          timeout 180 sudo apt-get install -y -qq ffmpeg || true
+          command -v ffmpeg >/dev/null 2>&1 \
+            && echo "apt ffmpeg: $(ffmpeg -version | head -1)" \
+            || echo "NO ffmpeg — the generator will publish the raw clip (still 9:16, still valid)"
 
       # Written outside the workspace so it can never be committed by accident.
       - name: 🔐 Restore Higgsfield credentials
