@@ -1500,15 +1500,22 @@ async function fetchRecurringIssues(sb: SB, todayOpinions: Opinion[]): Promise<{
     const key = `${o.theme}|${o.agent_he}`;
     themeCount[key] = { days: 1, rec: o.recommendation, agent_he: o.agent_he, priority: o.priority, theme: o.theme };
   }
-  // walk historical reports
+  // walk historical reports.
+  // 2026-08-19 (oren: "מה היה כתוב בכל הדוחות היומיים מאז אותה סגירה כאילו לא
+  // דיברנו בכלל") — THE SILENCE BUG. This used to count from `action_items`,
+  // which holds only the opinions that SURVIVED the yesterday-dedup filter
+  // below. So a chronic problem was shown once on day 1, dedup-silenced from
+  // day 2 on, and its action_items history stayed empty forever — meaning the
+  // 3-day counter never reached 3 and it NEVER graduated to the recurring
+  // card. The two mechanisms cancelled each other out and every ongoing issue
+  // went permanently dark after one appearance. `opinion_themes` is persisted
+  // from allOpinions every single day (shown or not), so it is the honest
+  // recurrence source.
   for (const row of (history || [])) {
     const a = (row as Record<string, unknown>).assessment as Record<string, unknown> | null;
-    const items = (a?.action_items as Array<Record<string, unknown>>) || [];
+    const themes = (a?.opinion_themes as string[]) || [];
     const seenInRow = new Set<string>();
-    for (const it of items) {
-      const theme = (it.theme as string) || '';
-      const agent_he = (it.agent_he as string) || '';
-      const key = `${theme}|${agent_he}`;
+    for (const key of themes) {
       if (!key || seenInRow.has(key)) continue;
       seenInRow.add(key);
       if (themeCount[key]) themeCount[key].days++;
@@ -3126,7 +3133,22 @@ Deno.serve(async (req: Request) => {
     const arr = ((lastRep?.[0] as Record<string, unknown> | undefined)?.assessment as Record<string, unknown> | undefined)?.opinion_themes;
     if (Array.isArray(arr)) prevThemes = new Set(arr.map(String));
   } catch (_) { /* first run — everything is new */ }
-  const opinions = nonRecurring.filter(o => !prevThemes.has(`${o.theme}|${o.agent_he}`));
+  // 2026-08-19 — STATE vs NEWS. Some themes are not "findings" that get stale;
+  // they are standing conditions that stay true until someone acts. Silencing
+  // those because "we said it yesterday" is exactly how the campaign, the
+  // ledger and the sitcom went dark for a week. These always render.
+  const ALWAYS_ON = new Set([
+    'commitments-overdue',      // the ledger clock — an agreement past due
+    'campaign-not-delivering',  // paid budget not spending = burning the test window
+    'campaign-conversion',      // the live US test's core signal
+    'checkout-ghost-orders',    // money captured with no DB row
+    'checkout-canary-error',
+    'sitcom-cadence',           // weekly episode drop-guard
+    'reel-bank-collapse',
+    'inventory-fully-oos',
+  ]);
+  const opinions = nonRecurring.filter(o =>
+    ALWAYS_ON.has(o.theme) || !prevThemes.has(`${o.theme}|${o.agent_he}`));
   const synth = synthesize(opinions);
 
   // 2026-05-26 — Auto-handle two recurring-task themes per oren's directive:
