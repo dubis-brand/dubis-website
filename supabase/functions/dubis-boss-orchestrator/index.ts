@@ -454,7 +454,11 @@ async function opinionContent(sb: SB, igPosts7d: number): Promise<Opinion | null
   if (igPosts7d < 5) return { agent:'content', agent_he:'יוצר התוכן', observation:`רק ${igPosts7d} פוסטים IG ב-7 ימים. ${published} מתויגים ב-DB.`, recommendation:'לבדוק אם ה-cron רץ ואם שלבי publish מצליחים', priority:'P1', theme:'content-cadence' };
   return null;
 }
-async function opinionMarketing(meta: Record<string, unknown>, realOrders: unknown[]): Promise<Opinion | null> {
+async function opinionMarketing(meta: Record<string, unknown>, realOrders: unknown[], campaignActive: boolean): Promise<Opinion | null> {
+  // No active campaign → 7d Meta reads are post-mortem, not a daily finding
+  // (2026-07-12: the ended summer campaign kept generating "check conversion
+  // event" every day). The weekly retro covers the closed-campaign lesson.
+  if (!campaignActive) return null;
   if (!meta.ok) {
     const err = String(meta.fetch_error || 'unknown');
     return { agent:'marketing', agent_he:'מנהל השיווק', observation:`לא הצליח למשוך נתוני Meta: ${err.slice(0,140)}`, recommendation:'לוודא ש-INSTAGRAM_ACCESS_TOKEN פעיל ו-Marketing API tier=Full Access', priority:'P1', theme:'meta-token' };
@@ -469,14 +473,68 @@ async function opinionMarketing(meta: Record<string, unknown>, realOrders: unkno
   return null;
 }
 async function opinionProduct(sb: SB): Promise<Opinion | null> {
-  const { data: products } = await sb.from('dubis_products').select('id, active').eq('active', true);
-  const total = (products || []).length;
-  const since = new Date(Date.now() - 7*86400000).toISOString();
-  const { data: postsThisWeek } = await sb.from('agent_tasks').select('content_data').eq('agent_id','content').gte('created_at', since);
-  const productIdsPosted = new Set((postsThisWeek || []).map(t => String((t.content_data as Record<string,unknown>)?.product_id || '')).filter(Boolean));
-  const notPosted = Math.max(0, total - productIdsPosted.size);
-  if (notPosted <= 3) return null;
-  return { agent:'product', agent_he:'מנהל המוצרים', observation:`${total} מוצרים פעילים, ${productIdsPosted.size} קיבלו פוסט השבוע, ${notPosted} לא.`, recommendation:'לתקן rotation ב-auto-content', priority: notPosted > 8 ? 'P1' : 'P2', theme:'catalog-coverage' };
+  // 2026-07-27 (oren: the daily "17 לא קיבלו פוסט השבוע" was noise): 27 active
+  // products vs ~17 weekly slots means WEEKLY coverage is partial BY DESIGN —
+  // that's the rotation working, not a finding. A real hole = a product with
+  // ZERO posts across a full rotation cycle (21 days). Name the exact IDs so
+  // the Sunday plan can act on them; nothing to "decide".
+  const { data: products } = await sb.from('dubis_products').select('product_id_numeric').eq('active', true);
+  const activeIds = (products || []).map(p => Number((p as Record<string, unknown>).product_id_numeric)).filter(n => n > 0);
+  const since = new Date(Date.now() - 21*86400000).toISOString();
+  const { data: posts } = await sb.from('agent_tasks').select('content_data').eq('agent_id','content').gte('created_at', since).limit(1000);
+  const posted = new Set((posts || []).map(t => String((t.content_data as Record<string,unknown>)?.product_id || '')).filter(Boolean));
+  const starved = activeIds.filter(id => !posted.has(String(id))).sort((a, b) => a - b);
+  if (starved.length === 0) return null;
+  const idList = starved.map(n => '#' + n).join(', ');
+  return { agent:'product', agent_he:'מנהל המוצרים', observation:`${activeIds.length} מוצרים פעילים; ${starved.length} מהם בלי אף פוסט כבר 3 שבועות: ${idList}.`, recommendation:`לתת ל-${idList} עדיפות בתוכנית של יום ראשון — 3 שבועות בלי פוסט זה חור בסבב, לא רוטציה`, priority: starved.length >= 5 ? 'P1' : 'P2', theme:'catalog-coverage' };
+}
+// 2026-07-27 (oren: "למה דברים שסיכמנו לא מתבצעים אוטומטית ועקבית"): the
+// commitments LEDGER is the answer to "memory is not a scheduler". Every
+// agreement lives in standing_commitments with a due_date; this check turns
+// an overdue commitment into a red report line the same evening — no
+// agreement gets to die quietly in prose again.
+async function opinionStandingCommitments(sb: SB): Promise<Opinion | null> {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data } = await sb.from('standing_commitments')
+      .select('title, due_date, owner')
+      .eq('active', true).lt('due_date', today)
+      .order('due_date', { ascending: true }).limit(5);
+    const rows = (data || []) as Array<{ title: string; due_date: string; owner: string }>;
+    if (!rows.length) return null;
+    const bits = rows.slice(0, 3).map(r => {
+      const days = Math.floor((Date.now() - Date.parse(r.due_date)) / 86400000);
+      return `"${r.title}" (באיחור ${days} ימים, אחראי: ${r.owner === 'oren' ? 'אורן' : 'סשן-הניהול'})`;
+    });
+    return {
+      agent: 'boss', agent_he: 'המנהל',
+      observation: `${rows.length} התחייבויות שסיכמנו עברו את התאריך שלהן: ${bits.join(' · ')}.`,
+      recommendation: 'לסגור אותן בסשן-העבודה הקרוב או להזיז תאריך עם סיבה — התחייבות בלי תאריך חדש היא הבטחה ריקה',
+      priority: 'P1', theme: 'commitments-overdue',
+    };
+  } catch (_) { return null; }
+}
+
+// 2026-07-27 (oren: "מה עם הסיטקום? למה לא יוצא כל שבוע פרק?"): the weekly
+// episode has NO cron (Higgsfield is main-session-only), so the only guard is
+// this report line — if the newest published episode is older than 7 days,
+// scream. The episode itself gets produced in the next /dubis session.
+async function opinionSitcomCadence(sb: SB): Promise<Opinion | null> {
+  try {
+    const { data } = await sb.from('agent_tasks').select('updated_at')
+      .filter('content_data->>video_url', 'ilike', '%sitcom%').eq('status', 'done')
+      .order('updated_at', { ascending: false }).limit(1);
+    const last = (data || [])[0] as { updated_at: string } | undefined;
+    if (!last) return null;
+    const days = Math.floor((Date.now() - new Date(last.updated_at).getTime()) / 86400000);
+    if (days <= 7) return null;
+    return {
+      agent: 'video', agent_he: 'וידאו',
+      observation: `הפרק האחרון של הסיטקום פורסם לפני ${days} ימים — הקצב שקבענו הוא פרק בשבוע.`,
+      recommendation: 'להפיק את הפרק הבא בסשן העבודה הקרוב (ההפקה רצה רק מסשן חי — אין לה קרון)',
+      priority: 'P1', theme: 'sitcom-cadence',
+    };
+  } catch (_) { return null; }
 }
 async function opinionSupply(sb: SB, ticketsOpened: number): Promise<Opinion | null> {
   // Only REAL customer orders — Hila/oren/test orders must never trigger a "stuck pending" flag.
@@ -627,7 +685,7 @@ async function opinionSecurity(sb: SB): Promise<Opinion | null> {
   if (!lr) return { agent:'security', agent_he:'בודק האבטחה', observation:'security לא רץ ב-14 ימים.', recommendation:'לוודא שה-cron רץ', priority:'P1', theme:'security-stale' };
   if (lr.status === 'failed') return { agent:'security', agent_he:'בודק האבטחה', observation:`הרצה אחרונה נכשלה: ${extractError(lr.side_effects) || ''}`, recommendation:'לבדוק לוגי', priority:'P0', theme:'security-broken' };
   const ic = num((lr.side_effects as Record<string, unknown>)?.issues_count);
-  if (ic > 0) return { agent:'security', agent_he:'בודק האבטחה', observation:`${ic} הצעות תיקון.`, recommendation:'לפתוח agent_tasks WHERE agent_id=security', priority:'P1', theme:'security-findings' };
+  if (ic > 0) return { agent:'security', agent_he:'בודק האבטחה', observation:`${ic} ממצאי אבטחה פתוחים.`, recommendation:'הממצאים נכנסו לשולחן ההנהלה ויוכרעו שם (אומץ/נדחה/עולה אליך)', priority:'P1', theme:'security-findings' };
   return null;
 }
 async function opinionVideo(sb: SB): Promise<Opinion | null> {
@@ -666,10 +724,10 @@ async function opinionPlanner(sb: SB): Promise<Opinion | null> {
 // learn yesterday (paid funnel vs gates + organic learning) and what changes today.
 
 type KillSwitchRead = {
-  active: boolean; spend: number; sym: string; budgetTotal: number | null;
+  active: boolean; armed: boolean; spend: number; sym: string; budgetTotal: number | null;
   remaining: number | null; clicks: number; carts: number; checkouts: number;
   purchases: number; gate: 'desire' | 'checkout' | 'cac' | 'none'; gateLine: string;
-  endDate: string | null; dailyBudget: number;
+  endDate: string | null; startDate: string | null; dailyBudget: number;
 };
 
 async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
@@ -708,19 +766,39 @@ async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
       }
     }
     let gate: KillSwitchRead['gate'] = 'none'; let gateLine = '';
-    if (purchases > 0) {
+    // 2026-07-27 (oren: "החלק העליון חוזר בדיוק אותו דבר"): a campaign that was
+    // BUILT but never launched (status paused, zero spend, window still ahead)
+    // is ARMED — not "ended". The 2026-07-22 US row rendered "הקמפיין הסתיים
+    // ב-2026-09-08 — ₪0" every day for a week. Three states: active / armed / closed.
+    const today = new Date().toISOString().slice(0, 10);
+    const armed = !active && ((!!start && start > today) || (spend === 0 && !!endDate && endDate > today));
+    // 2026-07-12 (oren: "כבר כמה ימים שהקמפיין לא עובד — למה לרשום את זה"):
+    // an ENDED/paused campaign never produces a gate scream. One calm closing
+    // line; the lesson lives on the board, not as a daily repeated "decision".
+    if (armed) {
+      const daysToLaunch = start ? Math.ceil((Date.parse(start) - Date.now()) / 86400000) : 0;
+      const whenBit = start
+        ? (daysToLaunch > 0 ? `התנעה מתוכננת ${start} (בעוד ${daysToLaunch} ימים)` : `מועד ההתנעה המתוכנן (${start}) הגיע — המתג אצלך`)
+        : 'ממתין למועד התנעה';
+      gateLine = `הקמפיין בנוי וממתין להדלקה שלך — ${whenBit} · ${sym}${dailyBudget.toFixed(0)}/יום${budgetTotal ? ` · תקציב ${sym}${budgetTotal.toFixed(0)}` : ''}${endDate ? ` · רץ עד ${endDate}` : ''}.`;
+    } else if (!active) {
+      const closed = String(c.status || '').toLowerCase() === 'completed' || (!!endDate && endDate <= today);
+      gateLine = closed
+        ? `הקמפיין הסתיים${endDate ? ` ב-${endDate}` : ''} — סה"כ ${sym}${spend.toFixed(0)} · ${Number(c.clicks || 0)} קליקים · ${purchases} רכישות. אין הוצאה פעילה.`
+        : `הקמפיין מושהה — סה"כ עד כה ${sym}${spend.toFixed(0)} · ${Number(c.clicks || 0)} קליקים · ${purchases} רכישות. אין הוצאה פעילה.`;
+    } else if (purchases > 0) {
       gate = 'cac';
       gateLine = `יש רכישות — CAC נוכחי ${sym}${(spend / purchases).toFixed(0)}`;
     } else if (spend >= 300 && carts === 0) {
       gate = 'desire';
-      gateLine = `שער ${sym}300/אפס-סלים נחצה (${sym}${spend.toFixed(0)} · 0 הוספות-לסל) — בעיית רצון: קריאייטיב/קהל`;
+      gateLine = `עברנו את קו-העצירה שסיכמנו: ${sym}${spend.toFixed(0)} הוצאו ואף אחד לא הוסיף לסל — המסר או הקהל לא עובדים`;
     } else if (spend >= 600) {
       gate = 'checkout';
-      gateLine = `שער ${sym}600/אפס-רכישות נחצה (${sym}${spend.toFixed(0)} · ${carts} סלים · ${checkouts} קופות · 0 רכישות) — בעיית קופה/אמון`;
+      gateLine = `עברנו את קו-העצירה השני: ${sym}${spend.toFixed(0)} הוצאו · ${carts} סלים · ${checkouts} התחלות-תשלום · 0 רכישות — אנשים רוצים אבל לא סוגרים, הבעיה בקופה/אמון`;
     } else {
-      gateLine = active ? `בתוך השערים: ${sym}${spend.toFixed(0)}${budgetTotal ? ` מתוך ${sym}${budgetTotal.toFixed(0)}` : ''} · ${carts} סלים · ${purchases} רכישות` : 'הקמפיין לא פעיל';
+      gateLine = active ? `הכל בתוך הכללים שקבענו: ${sym}${spend.toFixed(0)}${budgetTotal ? ` מתוך ${sym}${budgetTotal.toFixed(0)}` : ''} · ${carts} סלים · ${purchases} רכישות` : 'הקמפיין לא פעיל';
     }
-    return { active, spend, sym, budgetTotal, remaining, clicks: Number(c.clicks || 0), carts, checkouts, purchases, gate, gateLine, endDate, dailyBudget };
+    return { active, armed, spend, sym, budgetTotal, remaining, clicks: Number(c.clicks || 0), carts, checkouts, purchases, gate, gateLine, endDate, startDate: start, dailyBudget };
   } catch (_) { return null; }
 }
 
@@ -752,9 +830,9 @@ function deriveDecisions(
   } else if (ks && ks.gate === 'cac') {
     items.push({
       pr: 'P1',
-      title: 'לקרוא את ה-CAC ולהחליט: להגדיל, להשאיר או לעצור',
+      title: 'לבדוק כמה עלה לנו כל קונה, ולהחליט: להגדיל, להשאיר או לעצור',
       why: ks.gateLine,
-      cost: 'בלי קריאת-CAC ההוצאה ממשיכה עיוורת',
+      cost: 'בלי המספר הזה ממשיכים להוציא כסף בלי לדעת אם זה משתלם',
       owner: 'אורן + Analyst',
     });
   }
@@ -762,9 +840,9 @@ function deriveDecisions(
   for (const r of openEsc) {
     items.push({
       pr: 'P1',
-      title: `להכריע: ${r.recommendation.slice(0, 90)}`,
-      why: 'הסלמה פתוחה על שולחן-ההנהלה',
-      cost: 'הכרעה שלא מתקבלת = המבצע שלה תקוע',
+      title: `צריך תשובה שלך: ${r.recommendation.slice(0, 90)}`,
+      why: 'זו שאלה של כסף או כיוון — לכן היא שלך ולא שלנו. יש לנו המלצה מוכנה בשולחן-ההנהלה',
+      cost: 'עד שתענה, אף אחד לא מקדם את זה',
       owner: 'אורן',
     });
   }
@@ -796,17 +874,37 @@ function buildTopDecisionsHtml(
   decisions: DecisionItem[],
   ks: KillSwitchRead | null,
   contentPerf: Awaited<ReturnType<typeof fetchContentPerf>>,
+  prevEngines: { eng7?: number; clicks30?: number } | null,
 ): string {
   const paidLine = ks
-    ? `🔥 <b>מנוע בתשלום:</b> ${ks.active ? '' : '(מושהה) '}${ks.sym}${ks.spend.toFixed(0)}${ks.budgetTotal ? `/${ks.sym}${ks.budgetTotal.toFixed(0)}` : ''} · ${ks.clicks} קליקים · ${ks.carts} סלים · ${ks.purchases} רכישות → ${esc(ks.gateLine)}`
+    ? (ks.active
+        ? `🔥 <b>מנוע בתשלום:</b> ${ks.sym}${ks.spend.toFixed(0)}${ks.budgetTotal ? `/${ks.sym}${ks.budgetTotal.toFixed(0)}` : ''} · ${ks.clicks} קליקים · ${ks.carts} סלים · ${ks.purchases} רכישות → ${esc(ks.gateLine)}`
+        : ks.armed
+          ? `🔥 <b>מנוע בתשלום:</b> ⏳ ${esc(ks.gateLine)}`
+          : `🔥 <b>מנוע בתשלום:</b> אין קמפיין פעיל. ${esc(ks.gateLine)}`)
     : '🔥 <b>מנוע בתשלום:</b> אין קמפיין רשום';
-  const learnBit = contentPerf?.learning ? esc(contentPerf.learning.summary.slice(0, 130)) : 'אין למידה טרייה';
+  // 2026-07-27 (oren: "החלק העליון חוזר בדיוק אותו דבר"): the weekly learning
+  // summary showed verbatim for 7 straight days. Full text only while FRESH
+  // (<26h, i.e. the Sunday after analyze-content runs); the rest of the week a
+  // one-line pointer. The daily NEWS in this strip is the numbers + their delta.
+  const lrn = contentPerf?.learning || null;
+  const lrnAgeH = lrn ? (Date.now() - Date.parse(lrn.created_at)) / 3600000 : Infinity;
+  const lrnDate = lrn ? `${lrn.created_at.slice(8, 10)}.${lrn.created_at.slice(5, 7)}` : '';
+  const learnBit = !lrn
+    ? 'אין למידה טרייה'
+    : lrnAgeH < 26
+      ? `📚 קריאה שבועית חדשה: ${esc(lrn.summary.slice(0, 130))}`
+      : `הקריאה השבועית מ-${lrnDate} בתוקף (הבאה ביום א׳)`;
+  const dEng = (contentPerf && prevEngines && typeof prevEngines.eng7 === 'number') ? contentPerf.totalEng - prevEngines.eng7 : null;
+  const dClk = (contentPerf && prevEngines && typeof prevEngines.clicks30 === 'number') ? contentPerf.siteClicks.total - prevEngines.clicks30 : null;
+  const dTxt = (n: number | null) => (n === null || n === 0) ? '' : ` (${n > 0 ? '+' : ''}${n} מאתמול)`;
+  const flatBit = (dEng === 0 && dClk === 0) ? ' · ללא שינוי מאתמול' : '';
   const organicLine = contentPerf
-    ? `🌱 <b>מנוע אורגני:</b> ${contentPerf.totalEng} מעורבות (7י) · ${contentPerf.siteClicks.total} כניסות-אתר (30י) → ${learnBit}`
+    ? `🌱 <b>מנוע אורגני:</b> ${contentPerf.totalEng} מעורבות (7י)${dTxt(dEng)} · ${contentPerf.siteClicks.total} כניסות-אתר (30י)${dTxt(dClk)}${flatBit} → ${learnBit}`
     : '🌱 <b>מנוע אורגני:</b> אין נתוני איסוף';
   const engines = `<div dir="rtl" style="background:#faf7f0;border-radius:6px;padding:8px 12px;margin:0 0 10px;font-size:11.5px;color:#444;line-height:1.8;text-align:right">${paidLine}<br>${organicLine}</div>`;
   if (decisions.length === 0) {
-    return engines + '<p dir="rtl" style="color:#27ae60;font-size:13px;margin:0">✅ אין כרגע החלטה דחופה — המערכת בתוך השערים.</p>';
+    return engines + '<p dir="rtl" style="color:#27ae60;font-size:13px;margin:0">✅ אין כרגע החלטה דחופה — הכל רץ לפי הכללים שקבענו.</p>';
   }
   const PRIO: Record<string, { label: string; color: string }> = {
     'P0': { label: '🔴 דחוף', color: '#c0392b' },
@@ -818,7 +916,7 @@ function buildTopDecisionsHtml(
     return `<div dir="rtl" style="padding:10px 14px;background:#fafafa;border-right:4px solid ${p.color};margin:6px 0;border-radius:6px;text-align:right">
       <div style="font-size:13.5px;color:#2c2c2c"><b style="color:${p.color}">${i + 1}. ${p.label}</b> · ${esc(d.title)}</div>
       <div style="font-size:11.5px;color:#666;margin-top:4px">↳ ${esc(d.why)} <span style="color:#999">· אחראי: ${esc(d.owner)}</span></div>
-      ${d.cost ? `<div style="font-size:11px;color:#a15c00;margin-top:3px">⏳ עלות אי-ההחלטה: ${esc(d.cost)}</div>` : ''}
+      ${d.cost ? `<div style="font-size:11px;color:#a15c00;margin-top:3px">⏳ מה קורה אם לא מחליטים: ${esc(d.cost)}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -982,8 +1080,11 @@ function humanizeAgentSummary(
       const issues = n('issues_count') || n('issues');
       const perf = Array.isArray(jsonData.checks_performed) ? (jsonData.checks_performed as unknown[]).length : 0;
       const skip = Array.isArray(jsonData.checks_skipped) ? (jsonData.checks_skipped as unknown[]).length : 0;
-      const detail = perf > 0 ? ` · בוצעו ${perf} בדיקות (headers/HTTPS/מפתחות/PayPal)${skip > 0 ? `, ${skip} לא זמינות (RLS-RPC, npm, git)` : ''}` : '';
-      return issues > 0 ? `סקירת אבטחה — ${issues} ממצאים${detail}` : `סקירת אבטחה — 0 ממצאים${detail}`;
+      // 2026-07-12: the daily line stays SHORT — what ran and what was found.
+      // The "N checks unavailable" list moved to the WEEKLY retro (a capability
+      // gap is a once-a-week management item, not a daily nag — oren's ask).
+      const detail = perf > 0 ? ` · בוצעו ${perf} בדיקות` : '';
+      return issues > 0 ? `סקירת אבטחה — ${issues} ממצאים (נכנסו לשולחן ההנהלה)${detail}` : `סקירת אבטחה — 0 ממצאים${detail}`;
     }
     case 'product': {
       const created = n('created') || n('queued');
@@ -1399,15 +1500,22 @@ async function fetchRecurringIssues(sb: SB, todayOpinions: Opinion[]): Promise<{
     const key = `${o.theme}|${o.agent_he}`;
     themeCount[key] = { days: 1, rec: o.recommendation, agent_he: o.agent_he, priority: o.priority, theme: o.theme };
   }
-  // walk historical reports
+  // walk historical reports.
+  // 2026-08-19 (oren: "מה היה כתוב בכל הדוחות היומיים מאז אותה סגירה כאילו לא
+  // דיברנו בכלל") — THE SILENCE BUG. This used to count from `action_items`,
+  // which holds only the opinions that SURVIVED the yesterday-dedup filter
+  // below. So a chronic problem was shown once on day 1, dedup-silenced from
+  // day 2 on, and its action_items history stayed empty forever — meaning the
+  // 3-day counter never reached 3 and it NEVER graduated to the recurring
+  // card. The two mechanisms cancelled each other out and every ongoing issue
+  // went permanently dark after one appearance. `opinion_themes` is persisted
+  // from allOpinions every single day (shown or not), so it is the honest
+  // recurrence source.
   for (const row of (history || [])) {
     const a = (row as Record<string, unknown>).assessment as Record<string, unknown> | null;
-    const items = (a?.action_items as Array<Record<string, unknown>>) || [];
+    const themes = (a?.opinion_themes as string[]) || [];
     const seenInRow = new Set<string>();
-    for (const it of items) {
-      const theme = (it.theme as string) || '';
-      const agent_he = (it.agent_he as string) || '';
-      const key = `${theme}|${agent_he}`;
+    for (const key of themes) {
       if (!key || seenInRow.has(key)) continue;
       seenInRow.add(key);
       if (themeCount[key]) themeCount[key].days++;
@@ -1549,39 +1657,35 @@ async function fetchWeeklyMarketing(sb: SB): Promise<{
   return { plan, weekStart, total, done, pending, backlog, extra, days };
 }
 
+// 2026-07-12 SIMPLIFICATION (oren: "התוכנית השבועית נורא עמוסה — בלי כל האייקונים,
+// רק מה מתוכנן ובאיזו פלטפורמה"): plain text per day — "פוסט · IG+FB · <סלוגן>".
+// Detail about what actually went up (captions, thumbnails, links) lives in the
+// "מה פורסם בפועל" section — NOT here.
 function buildWeeklyMarketingHtml(wm: Awaited<ReturnType<typeof fetchWeeklyMarketing>>): string {
-  if (!wm) return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right">אין תוכנית שבועית פעילה — נוצרת אוטומטית כל יום ראשון 04:00 UTC.</p>';
+  if (!wm) return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right">אין תוכנית שבועית פעילה — נוצרת אוטומטית כל יום ראשון בבוקר.</p>';
   const pct = wm.total > 0 ? Math.round(wm.done / wm.total * 100) : 0;
-  const heSlots = (wm.plan.he_slots as number) ?? '?'; const enSlots = (wm.plan.en_slots as number) ?? '?';
-  const badge = (st: string) => st === 'done' ? '<span style="color:#2e7d32">✅</span>' : st === 'backlog' ? '<span style="color:#bbb">⚪</span>' : '<span style="color:#c8a96e">🟡</span>';
-  // Target social network(s) per item — derived from content_data.platform/channel (else from format).
-  const netBadges = (platform: string, fmt: string): string => {
+  const FMT_HE_PLAIN: Record<string, string> = { feed_post: 'פוסט', reel: 'ריל', carousel: 'קרוסלה', story: 'סטורי', tiktok: 'טיקטוק', unknown: 'פוסט' };
+  const netPlain = (platform: string, fmt: string): string => {
     const p = (platform || '').toLowerCase();
-    const out: string[] = [];
-    if (fmt === 'tiktok' || p.includes('tiktok')) out.push('🎵TikTok');
-    if (p.includes('instagram') || p.includes('ig')) out.push('📷IG');
-    if (p.includes('facebook') || p.includes('fb')) out.push('📘FB');
-    if (!out.length) out.push(fmt === 'tiktok' ? '🎵TikTok' : '📷IG 📘FB');
-    return `<span style="background:#f3eee2;border-radius:4px;padding:1px 5px;color:#7a6a4f;font-size:10px;font-weight:600">${out.join(' ')}</span>`;
+    if (fmt === 'tiktok' || p.includes('tiktok')) return 'TikTok';
+    const nets: string[] = [];
+    if (p.includes('instagram') || p.includes('ig')) nets.push('אינסטגרם');
+    if (p.includes('facebook') || p.includes('fb')) nets.push('פייסבוק');
+    return nets.length ? nets.join('+') : 'אינסטגרם+פייסבוק';
   };
   const dayRows = wm.days.map(d => {
     const items = d.items.length
       ? d.items.map(it => {
-          const icon = FMT_ICON[it.fmt] || '•';
-          const flag = it.lang === 'he' ? '🇮🇱' : it.lang === 'en' ? '🇺🇸' : '';
-          const link = it.link
-            ? ` <a href="${esc(it.link.url)}" style="color:#c8a96e;font-weight:600;text-decoration:none">▶ ${esc(it.link.channel)}</a>`
-            : (it.status === 'done' ? ' <span style="color:#bbb;font-size:10px">פורסם — קישור בקרוב</span>' : '');
-          return `<div dir="rtl" style="font-size:11.5px;margin:3px 0;text-align:right">${badge(it.status)} ${icon} ${netBadges(it.platform, it.fmt)} ${flag} ${esc(it.slogan)}${link}</div>`;
+          const stateWord = it.status === 'done' ? 'פורסם' : 'מתוכנן';
+          const link = it.link ? ` · <a href="${esc(it.link.url)}" style="color:#c8a96e;font-weight:600;text-decoration:none">לפוסט →</a>` : '';
+          return `<div dir="rtl" style="font-size:12px;margin:3px 0;text-align:right;color:${it.status === 'done' ? '#2c2c2c' : '#888'}">${FMT_HE_PLAIN[it.fmt] || 'פוסט'} ב${netPlain(it.platform, it.fmt)} — ${esc(it.slogan)} <span style="color:#aaa;font-size:11px">(${stateWord})</span>${link}</div>`;
         }).join('')
-      : '<div style="font-size:11px;color:#ccc">—</div>';
+      : '<div style="font-size:11px;color:#ccc">אין תוכן מתוכנן</div>';
     return `<tr><td valign="top" style="padding:6px 8px;border-bottom:1px solid #f0ece0;white-space:nowrap;font-weight:700;font-size:12px;color:#2c2c2c">${esc(d.label)}</td><td valign="top" style="padding:6px 8px;border-bottom:1px solid #f0ece0">${items}</td></tr>`;
   }).join('');
-  return `<p dir="rtl" style="font-size:13px;margin:0 0 4px;text-align:right"><b>שבוע ${esc(wm.weekStart)}</b> · ${esc(String(wm.plan.status || ''))} · ${heSlots} HE / ${enSlots} EN</p>
-  <p dir="rtl" style="font-size:14px;margin:0;text-align:right"><b>${wm.done}/${wm.total} משבצות-תוכנית פורסמו (${pct}%)</b> · ${wm.pending} בתהליך · ${wm.backlog} בהמתנה${wm.extra > 0 ? ` · +${wm.extra} פרסומים מחוץ לתוכנית (TikTok יומי/סדרות)` : ''}</p>
-  <div style="background:#eee;border-radius:8px;height:12px;overflow:hidden;margin:6px 0"><div style="background:#c8a96e;height:12px;width:${pct}%"></div></div>
-  <table dir="rtl" width="100%" style="border-collapse:collapse;margin-top:8px"><tr><th align="right" style="font-size:11px;color:#888;padding:4px 8px;text-align:right">יום</th><th align="right" style="font-size:11px;color:#888;padding:4px 8px;text-align:right">מתוכנן/פורסם · קישור לפוסט</th></tr>${dayRows}</table>
-  <p dir="rtl" style="font-size:10px;color:#aaa;margin:6px 0 0;text-align:right">התג הצבעוני = הרשת שאליה התוכן מיועד (📷IG / 📘FB / 🎵TikTok). ▶ = קישור לפוסט עצמו ברשת, לא לעמוד המוצר.</p>`;
+  return `<p dir="rtl" style="font-size:13.5px;margin:0;text-align:right"><b>${wm.done} מתוך ${wm.total} פריטי-התוכנית פורסמו (${pct}%)</b>${wm.extra > 0 ? ` · ועוד ${wm.extra} פרסומים מחוץ לתוכנית` : ''}</p>
+  <div style="background:#eee;border-radius:8px;height:10px;overflow:hidden;margin:6px 0"><div style="background:#c8a96e;height:10px;width:${pct}%"></div></div>
+  <table dir="rtl" width="100%" style="border-collapse:collapse;margin-top:6px">${dayRows}</table>`;
 }
 
 // Agent-personas series ("מאחורי הקוד") — what published in 24h + who's next
@@ -1672,8 +1776,9 @@ async function fetchReelBankGaps(sb: SB): Promise<{ total: number; withReel: num
   const missing = ids.filter((_, i) => !checks[i]);
   return { total: ids.length, withReel: ids.length - missing.length, missing };
 }
-function buildReelBankGapsHtml(g: { total: number; withReel: number; missing: number[] } | null): string {
+function buildReelBankGapsHtml(g: { total: number; withReel: number; missing: number[] } | null, collapsed = false): string {
   if (!g || !g.total) return '';
+  if (collapsed) return `<p dir="rtl" style="font-size:13px;color:#c62828;font-weight:bold;text-align:right;margin:10px 0 0;background:#fdecea;border-radius:6px;padding:8px 10px">🔴 בנק הרילים קרס: ${g.withReel}/${g.total} מכוסים — הקבצים נעלמו מה-storage. טיקטוק/רילים מפרסמים מקישורים מתים עד שחזור. חסר: ${g.missing.map((n) => '#' + n).join(', ')}</p>`;
   if (!g.missing.length) return `<p dir="rtl" style="font-size:13px;color:#2e7d32;text-align:right;margin:10px 0 0">🎬 בנק הרילים מלא — ${g.withReel}/${g.total} מוצרים פעילים עם ריל.</p>`;
   return `<p dir="rtl" style="font-size:13px;color:#b26a00;text-align:right;margin:10px 0 0">🎬 בנק הרילים: ${g.withReel}/${g.total} מכוסים. <b>חסר ריל ל-${g.missing.length}:</b> ${g.missing.map((n) => '#' + n).join(', ')} — לייצר על-דרישה דרך ה-Higgsfield MCP (runbook).</p>`;
 }
@@ -2069,8 +2174,8 @@ async function fetchContentPerf(sb: SB): Promise<{
   const reachAvailable = posts.filter(p => p.reach > 0).length >= 2;
   const totalEng = posts.reduce((s, p) => s + p.eng, 0);
   const { data: lrnRows } = await sb.from('content_learnings')
-    .select('summary, sample_size, created_at').order('created_at', { ascending: false }).limit(1);
-  const learning = (lrnRows && lrnRows[0]) ? (lrnRows[0] as { summary: string; sample_size: number; created_at: string }) : null;
+    .select('summary, sample_size, created_at, directives').order('created_at', { ascending: false }).limit(1);
+  const learning = (lrnRows && lrnRows[0]) ? (lrnRows[0] as { summary: string; sample_size: number; created_at: string; directives?: Record<string, unknown> }) : null;
   // Real site clicks from social (our own funnel data — no Meta token). 30-day window for signal.
   const { data: clickData } = await sb.rpc('content_social_clicks', { days_back: 30 });
   const c = (clickData as { total_sessions?: number; product_sessions?: number; by_product?: Array<{ pid: number; sessions: number }> }) || {};
@@ -2110,7 +2215,18 @@ function buildContentPerfHtml(p: Awaited<ReturnType<typeof fetchContentPerf>>): 
 // =============================================================
 const EMAIL_SELF_REPORT_RX = /(DUBIS\s*דוח|DUBIS\s*פגישה|דוח יומי|פגישה שבועית|daily report|weekly report|boss agent)/i;
 const EMAIL_MARKETING_RX = /(grow your business|run your business|growth tips|newsletter|checklist|webinar|new feature|product update|tips? (and|&) tricks|unsubscribe to stop|special offer|% off|black friday|cyber monday|holiday sale|marketing|promo code|discover (new|more)|get inspired|inspiration|trending now|best ?sellers?)/i;
+// 2026-07-12 REPLY LOOP (oren: "אני רוצה שדרך המיילים אוכל להשיב לכם ותוכלו לבצע"):
+// a REPLY from oren to one of our own reports is a DIRECTIVE, not a self-report.
+// It must survive the self-report filter, get flagged, and flow into the
+// management board (the Gmail scanner already captures from:oren mail; the
+// harvest pass already picks up its dubis_analysis). The report's Reply-To is
+// dubis.brand@gmail.com so hitting "Reply" lands in the scanned inbox.
+const OREN_SENDER_RX = /(teharlev1976@gmail\.com|dubis\.brand@gmail\.com)/i;
+function isOrenReportReply(subject: string, from: string): boolean {
+  return OREN_SENDER_RX.test(from) && /^(re|השב|תגובה)[:\s]/i.test(subject.trim()) && EMAIL_SELF_REPORT_RX.test(subject);
+}
 function emailNeedsAttention(subject: string, from: string): boolean {
+  if (isOrenReportReply(subject, from)) return true;           // oren replying to a report = directive
   const s = `${subject} ${from}`;
   if (EMAIL_SELF_REPORT_RX.test(s)) return false;             // our own report bouncing back
   if (from.toLowerCase().includes('orders@dubis.net')) return false; // our own sender
@@ -2144,7 +2260,9 @@ async function fetchEmailDigest(sb: SB): Promise<{
     const analysis = (cd.dubis_analysis || null) as EmailAnalysis | null;
     return { subject, from, snippet, analysis, raw_title: String(r.title || '') };
   });
-  const kept = parsed.filter(p => emailNeedsAttention(p.subject, p.from));
+  const kept = parsed
+    .filter(p => emailNeedsAttention(p.subject, p.from))
+    .map(p => isOrenReportReply(p.subject, p.from) ? { ...p, subject: `📩 תשובה שלך לדוח: ${p.subject.replace(/^(re|השב|תגובה)[:\s]+/i, '').slice(0, 70)}` } : p);
   const filtered = parsed.length - kept.length;
   if (kept.length === 0) {
     return { scanned: parsed.length, kept: 0, filtered, digest: null, actions: [], emails: [] };
@@ -2246,7 +2364,9 @@ const ADAM_DOCTRINE = `אתה אדם — ה-COO של DUBIS, מותג אופנה 
 2. כלכלת מפעיל-יחיד: אמץ רק מה שערכו הצפוי מצדיק את המאמץ, והעדף לרכוב על תשתית קיימת. משימה מאומצת חייבת בעלים ברור וצעד ראשון קונקרטי.
 3. גבולות קשיחים — לעולם אל תאמץ בעצמך: הוצאה כספית חדשה / תקציב מודעות / כלי בתשלום / הזנת סיסמאות-טוקנים / שינוי אסטרטגי מהותי / עניין אישי או משפטי → אלה תמיד escalate לאורן, עם המלצה מנומקת.
 4. דחייה היא החלטה לגיטימית ושכיחה: רעיון גנרי, לא-רלוונטי לשלב, כפול למשימה קיימת, או "נחמד אבל לא עכשיו" → reject עם סיבה במשפט אחד. עדיף לדחות מלהציף את המערכת.
-5. אימוץ = משימה: כותרת ברורה, בעלים מבין הסוכנים (content/marketing/product/design/video/supply/cto) או manual כשזה אנושי, וצעד ראשון. שינוי בקוד הפונה-ללקוח מקבל הערת branch+preview.`;
+5. אימוץ = משימה: כותרת ברורה, בעלים מבין הסוכנים (content/marketing/product/design/video/supply/cto) או manual כשזה אנושי, וצעד ראשון. שינוי בקוד הפונה-ללקוח מקבל הערת branch+preview.
+6. הקפאת-בנייה עד פסק-הדין של מבחן-ארה"ב (2026-09-09): רעיון של כלי/פלטפורמה/אינטגרציה חדשים (ניוזלטרים, מוצרי-דב, "שווה לבדוק") — ההחלטה היא reject עם הסיבה "חונה עד אחרי פסק-הדין 09.09", לא escalate. מעלים לאורן רק מה שמכניס כסף עכשיו או חוסם את המבחן. אל תעביר לאורן שאלות שאתה יכול לענות עליהן בעצמך עם הכללים האלה.
+7. טיפים של שיווק/קופי שאורן מעביר במייל (מדריכים של כותבי-שיווק, למשל זהר אוריין) — הנחיית אורן 27.07: אלה חומר-לימוד לדנה ולקופירייטר. adopt עם בעלים marketing, וניסוח המשימה חייב להיות "ללמוד את המדריך [קישור] ולהחליט אילו טיפים מאמצים בקופי/שיווק — עם רשימת אימוץ/דחייה מנומקת". לעולם לא "לבדוק לעומק" ריק. כלל 6 (הקפאה) חל רק על אימוץ כלים, לא על הלימוד עצמו.`;
 
 type MgmtDecisionRow = {
   id: string; source_agent: string; recommendation: string;
@@ -2286,30 +2406,13 @@ async function harvestRecommendations(sb: SB): Promise<{ harvested: number }> {
     });
   }
 
-  // 2) Content-perf loop — the latest weekly learning's directives become ONE
-  //    recommendation (source_task_id = the content_learnings row id → dedup).
-  //    2026-07-06: FRESHNESS FILTER added — without it, a 6-day-old learning
-  //    (pre-token-fix "אין נתוני חשיפה") got harvested + escalated on 07-04
-  //    even though a newer learning had superseded it. Only harvest learnings
-  //    from the last 48h; older ones are history, not a decision input.
-  const { data: learn } = await sb.from('content_learnings')
-    .select('id, summary, directives, created_at')
-    .gte('created_at', since)
-    .order('created_at', { ascending: false }).limit(1);
-  const L = (learn || [])[0] as Record<string, unknown> | undefined;
-  if (L && L.summary) {
-    const d = (L.directives || {}) as Record<string, unknown>;
-    const bits: string[] = [];
-    if (Array.isArray(d.boost_products) && d.boost_products.length) bits.push(`להקדים מוצרים ${(d.boost_products as unknown[]).slice(0, 4).join(', ')}`);
-    if (Array.isArray(d.boost_formats) && d.boost_formats.length) bits.push(`להגביר פורמט ${(d.boost_formats as unknown[]).join(', ')}`);
-    if (Array.isArray(d.cut_formats) && d.cut_formats.length) bits.push(`לצמצם ${(d.cut_formats as unknown[]).join(', ')}`);
-    await tryInsert({
-      source_agent: 'content_loop',
-      source_task_id: L.id as string,
-      recommendation: `ניתוח התוכן השבועי: ${String(L.summary).slice(0, 400)}${bits.length ? ' | הנחיות: ' + bits.join(' · ') : ''}`.slice(0, 900),
-      context: { directives: d, learned_at: L.created_at },
-    });
-  }
+  // 2) Content-perf loop — REMOVED as a board source (2026-07-27, oren: the
+  //    weekly analysis kept resurfacing as a daily "decision"). The learning's
+  //    directives are APPLIED AUTOMATICALLY by the weekly-marketing-plan route
+  //    since 2026-07-15 (boost_products/boost_formats/best_hours) — routing it
+  //    to the board on top of that was double machinery that produced a
+  //    non-decision every Sunday. The read itself still renders in the report's
+  //    content-performance section; it is a report, not a decision input.
 
   // 3) Site-audit findings (open, 48h) — each finding is a recommendation to fix.
   const { data: audits } = await sb.from('agent_tasks')
@@ -2322,6 +2425,23 @@ async function harvestRecommendations(sb: SB): Promise<{ harvested: number }> {
       source_task_id: r.id as string,
       recommendation: `ממצא ביקורת-אתר: ${String(r.title || '').slice(0, 200)} — ${String(r.description || '').slice(0, 400)}`.slice(0, 900),
       context: { kind: 'site_audit_finding' },
+    });
+  }
+
+  // 3b) Security findings (2026-07-12, oren: "סוכן אבטחה מעיר שמשהו לא זמין —
+  //     מה אתם כמנהלים עושים עם זה? זה מופיע לי כל יום"). Open security tasks
+  //     become board recommendations so they get DECIDED (adopt/reject/escalate)
+  //     instead of nagging the report forever.
+  const { data: secTasks } = await sb.from('agent_tasks')
+    .select('id, title, description, created_at')
+    .eq('agent_id', 'security').in('status', ['backlog', 'pending', 'pending_approval'])
+    .gte('created_at', since).limit(4);
+  for (const r of (secTasks || []) as Array<Record<string, unknown>>) {
+    await tryInsert({
+      source_agent: 'security',
+      source_task_id: r.id as string,
+      recommendation: `ממצא אבטחה: ${String(r.title || '').slice(0, 200)} — ${String(r.description || '').slice(0, 400)}`.slice(0, 900),
+      context: { kind: 'security_finding' },
     });
   }
 
@@ -2436,16 +2556,21 @@ async function fetchManagementBoard(sb: SB): Promise<{ recent: MgmtDecisionRow[]
 // only if it's still OPEN — an escalation awaiting oren, or an adopted task
 // that hasn't been executed yet (stuck >48h gets a red flag). Executed items
 // show their outcome once (on the day it happened) and then disappear.
-function buildManagementBoardHtml(b: Awaited<ReturnType<typeof fetchManagementBoard>>): string {
+// 2026-07-12: returns hasNews so the daily report can SKIP the card entirely on
+// a quiet day (oren: "שולחן ההנהלה — דברים חוזרים על עצמם") instead of rendering
+// an empty-state paragraph every morning.
+function buildManagementBoardHtml(b: Awaited<ReturnType<typeof fetchManagementBoard>>): { html: string; hasNews: boolean } {
   if (!b || (b.recent.length === 0 && b.pending === 0)) {
-    return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right;margin:0">אין המלצות פתוחות על השולחן — הסוכנים לא העלו נושא להכרעה בשבוע האחרון.</p>';
+    return { html: '<p dir="rtl" style="font-size:13px;color:#888;text-align:right;margin:0">אין המלצות פתוחות על השולחן — הסוכנים לא העלו נושא להכרעה בשבוע האחרון.</p>', hasNews: false };
   }
   const H24 = Date.now() - 24 * 3600000;
   const isFresh = (r: MgmtDecisionRow) => r.status === 'pending' || (r.decided_at ? new Date(r.decided_at).getTime() > H24 : new Date(r.created_at).getTime() > H24) || Boolean(r.outcome && r.outcome.includes(new Date().toISOString().slice(0, 10)));
   const taskOf = (r: MgmtDecisionRow) => r.created_task_id ? (b.taskStatus[r.created_task_id] || 'backlog') : 'backlog';
+  // An outcome on the row = CLOSED, regardless of the task's final status
+  // (done/rejected/superseded) — closed items must never linger in "עדיין פתוח".
   const isOpen = (r: MgmtDecisionRow) =>
     (r.decision === 'escalate' && !r.outcome) ||
-    (r.decision === 'adopt' && taskOf(r) !== 'done');
+    (r.decision === 'adopt' && !r.outcome && taskOf(r) !== 'done');
   const badge = (r: MgmtDecisionRow) => {
     if (r.status === 'pending') return '<span style="background:#fdf3d7;color:#8a6d00;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">⏳ ממתין להכרעה</span>';
     if (r.decision === 'adopt') {
@@ -2453,17 +2578,26 @@ function buildManagementBoardHtml(b: Awaited<ReturnType<typeof fetchManagementBo
       const done = ts === 'done';
       const stuck = !done && (Date.now() - new Date(r.decided_at || r.created_at).getTime()) > 48 * 3600000;
       if (done) return '<span style="background:#e6f4e6;color:#1e6b1e;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">✅ אומץ ובוצע</span>';
-      if (stuck) return `<span style="background:#fdeaea;color:#a12020;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">🔴 אומץ אבל תקוע → ${esc(r.owner_agent || 'manual')} — יטופל בסשן /adam הקרוב</span>`;
+      if (stuck) {
+        // 2026-07-27: no promise badges ("יטופל בסשן הקרוב" was an empty promise
+        // — oren: "סתם מספר לי סיפורים"). State the fact + how long it sat.
+        const stuckDays = Math.floor((Date.now() - new Date(r.decided_at || r.created_at).getTime()) / 86400000);
+        return `<span style="background:#fdeaea;color:#a12020;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">🔴 אומץ לפני ${stuckDays} ימים ועדיין לא בוצע → ${esc(r.owner_agent || 'manual')}</span>`;
+      }
       return `<span style="background:#eaf3fb;color:#1f618d;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">✅ אומץ → ${esc(r.owner_agent || 'manual')} (${esc(ts)})</span>`;
     }
     if (r.decision === 'reject') return '<span style="background:#f4f4f4;color:#777;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">❌ נדחה</span>';
     return '<span style="background:#fdeaea;color:#a12020;border-radius:99px;padding:1px 8px;font-size:10.5px;font-weight:700">⬆️ להחלטת אורן</span>';
   };
   const card = (r: MgmtDecisionRow) => {
-    const subj = r.context && (r.context as Record<string, unknown>).subject ? ` <span style="color:#aaa">(${esc(String((r.context as Record<string, unknown>).subject).slice(0, 60))})</span>` : '';
+    const ctxSubject = r.context ? String((r.context as Record<string, unknown>).subject || '') : '';
+    // A recommendation that arrived as oren's email-reply to a report is HIS
+    // directive — mark it so he sees the loop closed (2026-07-12 reply loop).
+    const directiveMark = (r.source_agent === 'email_monitor' && /(^|\s)(re:|השב)|דוח/i.test(ctxSubject)) ? '<b style="color:#8a6d00">📩 הנחיה שלך במייל: </b>' : '';
+    const subj = ctxSubject ? ` <span style="color:#aaa">(${esc(ctxSubject.slice(0, 60))})</span>` : '';
     const outcomeLine = r.outcome ? `<div dir="rtl" style="font-size:11px;color:#1e6b1e;margin-top:2px;text-align:right">📌 ${esc(r.outcome.slice(0, 180))}</div>` : '';
     return `<div dir="rtl" style="background:#fcfbf7;border-right:3px solid ${r.decision === 'escalate' ? '#c0392b' : '#c8a96e'};border-radius:4px;padding:7px 10px;margin:4px 0;text-align:right">
-      <div dir="rtl" style="font-size:12px;color:#2c2c2c;text-align:right">${esc(r.recommendation.slice(0, 220))}${subj}</div>
+      <div dir="rtl" style="font-size:12px;color:#2c2c2c;text-align:right">${directiveMark}${esc(r.recommendation.slice(0, 220))}${subj}</div>
       <div dir="rtl" style="margin-top:3px;text-align:right">${badge(r)}${r.rationale ? ` <span style="font-size:11px;color:#666">— ${esc(r.rationale.slice(0, 160))}</span>` : ''}</div>${outcomeLine}
     </div>`;
   };
@@ -2477,7 +2611,8 @@ function buildManagementBoardHtml(b: Awaited<ReturnType<typeof fetchManagementBo
       }).join('')
     : '';
   const pendingNote = b.pending > 0 ? `<div dir="rtl" style="font-size:11px;color:#8a6d00;margin:4px 0;text-align:right">⏳ ${b.pending} המלצות עדיין ממתינות להכרעה (יוכרעו בריצה הבאה).</div>` : '';
-  return `<div dir="rtl" style="font-size:11px;color:#999;margin:0 0 6px;text-align:right">הכרעות חדשות בלבד; פריט חוזר רק אם הוא עדיין פתוח. אומץ → משימה עם בעלים · נדחה → סיבה · כסף/אסטרטגיה → אורן.</div>${pendingNote}${freshHtml}${olderHtml}`;
+  const hasNews = fresh.length > 0 || olderOpen.length > 0 || b.pending > 0;
+  return { html: `<div dir="rtl" style="font-size:11px;color:#999;margin:0 0 6px;text-align:right">הכרעות חדשות בלבד; פריט חוזר רק אם הוא עדיין פתוח. אומץ → משימה עם בעלים · נדחה → סיבה · כסף/אסטרטגיה → אורן.</div>${pendingNote}${freshHtml}${olderHtml}`, hasNews };
 }
 
 // =============================================================
@@ -2581,6 +2716,168 @@ function buildSparkline(snaps: Array<{ snapshot_date: string; revenue_usd: numbe
 }
 
 // =============================================================
+// 🦞 Agent-to-agent channel (2026-07-12, oren ask): what DUBIS-the-agent posted
+// on Moltbook (with links + engagement) + the Neo correspondence status.
+// Posts are recorded by agents?type=moltbook-post as agent_runs rows:
+//   agent_id='marketing', summary='moltbook-post <id> "<title>"'.
+// Engagement is fetched live from the Moltbook API (MOLTBOOK_API_KEY is a
+// project-wide Supabase secret, so it's readable here too). All parsing is
+// defensive — a missing key / API change degrades to links-only, never throws.
+// =============================================================
+type MoltbookPost = { id: string; title: string; url: string; upvotes: number | null; comments: number | null; topComments: Array<{ author: string; snippet: string }>; content: string; summaryHe: string | null };
+async function fetchMoltbookChannel(sb: SB, windowHours: number): Promise<{
+  posts: MoltbookPost[]; karma: number | null; neo: string | null; totalUp: number; totalCom: number; insightsHe: string | null;
+} | null> {
+  try {
+    const since = new Date(Date.now() - windowHours * 3600000).toISOString();
+    // NOTE: agent_runs has no started_at column — created_at is the timestamp.
+    const { data: runs } = await sb.from('agent_runs')
+      .select('summary, created_at, status')
+      .eq('agent_id', 'marketing').ilike('summary', 'moltbook-post%')
+      .gte('created_at', since).order('created_at', { ascending: false }).limit(12);
+    const posts: MoltbookPost[] = [];
+    for (const r of (runs || []) as Array<Record<string, unknown>>) {
+      const m = String(r.summary || '').match(/^moltbook-post\s+(\S+)\s+"([\s\S]*?)"/);
+      if (!m) continue;
+      posts.push({ id: m[1], title: m[2], url: `https://www.moltbook.com/post/${m[1]}`, upvotes: null, comments: null, topComments: [], content: '', summaryHe: null });
+    }
+    const mbKey = Deno.env.get('MOLTBOOK_API_KEY') ?? '';
+    let karma: number | null = null;
+    if (mbKey) {
+      const mbHeaders = { 'Authorization': `Bearer ${mbKey}` };
+      try {
+        const meRes = await fetch('https://www.moltbook.com/api/v1/agents/me', { headers: mbHeaders, signal: AbortSignal.timeout(8000) });
+        if (meRes.ok) { const me = await meRes.json() as Record<string, unknown>; const a = (me.agent as Record<string, unknown>) || me; karma = Number(a.karma ?? a.karma_score ?? NaN); if (Number.isNaN(karma)) karma = null; }
+      } catch (_) { /* karma stays null */ }
+      await Promise.all(posts.slice(0, 6).map(async (p) => {
+        try {
+          const r = await fetch(`https://www.moltbook.com/api/v1/posts/${p.id}`, { headers: mbHeaders, signal: AbortSignal.timeout(8000) });
+          if (!r.ok) return;
+          const j = await r.json() as Record<string, unknown>;
+          const post = (j.post as Record<string, unknown>) || j;
+          const up = Number(post.upvotes ?? post.score ?? post.karma ?? NaN);
+          p.upvotes = Number.isNaN(up) ? null : up;
+          p.content = String(post.content ?? post.body ?? '').replace(/\s+/g, ' ').slice(0, 900);
+          const rawComments = (post.comments ?? j.comments) as unknown;
+          const cc = Number(post.comment_count ?? post.comments_count ?? (Array.isArray(rawComments) ? (rawComments as unknown[]).length : NaN));
+          p.comments = Number.isNaN(cc) ? null : cc;
+          const mapComments = (arr: Array<Record<string, unknown>>) => arr.slice(0, 5).map(c => ({
+            author: String(((c.author as Record<string, unknown>)?.name) ?? c.author_name ?? c.agent_name ?? 'agent'),
+            snippet: String(c.content ?? c.body ?? '').replace(/\s+/g, ' ').slice(0, 220),
+          })).filter(c => c.snippet);
+          if (Array.isArray(rawComments)) p.topComments = mapComments(rawComments as Array<Record<string, unknown>>);
+          // The post payload often carries only a COUNT — fetch the actual
+          // comments so the Hebrew insights read real replies, not just numbers.
+          if (!p.topComments.length && (p.comments || 0) > 0) {
+            try {
+              const cr = await fetch(`https://www.moltbook.com/api/v1/posts/${p.id}/comments`, { headers: mbHeaders, signal: AbortSignal.timeout(8000) });
+              if (cr.ok) {
+                const cj = await cr.json() as Record<string, unknown>;
+                const list = (cj.comments ?? cj.data ?? cj) as unknown;
+                if (Array.isArray(list)) p.topComments = mapComments(list as Array<Record<string, unknown>>);
+              }
+            } catch (_) { /* counts-only fallback */ }
+          }
+        } catch (_) { /* leave nulls */ }
+      }));
+    }
+    // Neo correspondence — surfaces via the Gmail scanner (agents&me / neo@).
+    let neo: string | null = null;
+    try {
+      const { data: neoRows } = await sb.from('agent_tasks')
+        .select('title, created_at')
+        .eq('category', 'gmail_insight')
+        .or('title.ilike.%neo%,description.ilike.%agentsandme%')
+        .gte('created_at', since).order('created_at', { ascending: false }).limit(1);
+      if (neoRows && neoRows.length) neo = String((neoRows[0] as Record<string, unknown>).title || '').slice(0, 120);
+    } catch (_) { /* no neo signal */ }
+    const totalUp = posts.reduce((s, p) => s + (p.upvotes || 0), 0);
+    const totalCom = posts.reduce((s, p) => s + (p.comments || 0), 0);
+    if (!posts.length && !neo) return { posts: [], karma, neo: null, totalUp: 0, totalCom: 0, insightsHe: null };
+
+    // 🇮🇱 Hebrew digest (oren 2026-07-12: "תן תקציר בעברית מה הסוכן שלנו כתב
+    // ומה התובנות מהתגובות"). ONE Gemini call summarizes what we posted (per
+    // post, one Hebrew sentence) + what the other agents' comments reveal.
+    // Best-effort: on any failure the section falls back to titles + snippets.
+    let insightsHe: string | null = null;
+    const geminiKey = Deno.env.get('GEMINI_API_KEY') || '';
+    if (geminiKey && posts.length) {
+      try {
+        const postBlock = posts.slice(0, 6).map((p, i) =>
+          `${i + 1}. [${p.id}] כותרת: ${p.title}\n   תוכן: ${p.content || '(לא נשלף)'}\n   הצבעות: ${p.upvotes ?? '?'} · תגובות של סוכנים אחרים: ${p.topComments.length ? p.topComments.map(c => `"${c.author}: ${c.snippet}"`).join(' | ') : 'אין'}`
+        ).join('\n');
+        const prompt = `אתה העוזר של אורן, בעל מותג האופנה DUBIS. הסוכן שלנו (DUBIS) מפרסם פוסטים באנגלית ב-Moltbook — רשת חברתית של סוכני AI. לפניך הפוסטים האחרונים + תגובות של סוכנים אחרים. החזר אך ורק JSON תקין:
+{"posts":[{"id":"<id>","summary":"משפט אחד בעברית פשוטה — מה הפוסט שלנו אומר"}],"insights":"2-3 משפטים בעברית: מה עולה מהתגובות של הסוכנים האחרים — הטון, שאלות שחוזרות, והזדמנות אחת קונקרטית אם יש. אם אין תגובות — התייחס רק להיענות (הצבעות)."}
+בלי מקפים ארוכים, בלי ז'רגון.
+
+הפוסטים:
+${postBlock}`;
+        const gr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.3, responseMimeType: 'application/json' } }),
+          signal: AbortSignal.timeout(20000),
+        });
+        if (gr.ok) {
+          const gj = await gr.json() as Record<string, unknown>;
+          const text = (((((gj.candidates as unknown[]) || [])[0] as Record<string, unknown>)?.content as Record<string, unknown>)?.parts as Array<Record<string, unknown>>)?.[0]?.text as string || '';
+          const mjs = text.match(/\{[\s\S]*\}/);
+          if (mjs) {
+            const obj = JSON.parse(mjs[0]) as { posts?: Array<{ id?: string; summary?: string }>; insights?: string };
+            for (const s of (obj.posts || [])) {
+              const target = posts.find(p => p.id === String(s.id || ''));
+              if (target && s.summary) target.summaryHe = String(s.summary).slice(0, 220);
+            }
+            insightsHe = obj.insights ? String(obj.insights).slice(0, 600) : null;
+          }
+        }
+      } catch (_) { /* fall back to raw titles */ }
+    }
+    return { posts, karma, neo, totalUp, totalCom, insightsHe };
+  } catch (_) { return null; }
+}
+function buildMoltbookHtml(mb: Awaited<ReturnType<typeof fetchMoltbookChannel>>, isWeekly: boolean): string {
+  if (!mb) return '<p dir="rtl" style="font-size:13px;color:#888;text-align:right;margin:0">ערוץ הסוכנים — אין נתונים.</p>';
+  const winHe = isWeekly ? 'השבוע' : 'ב-24 השעות האחרונות';
+  const head = `<p dir="rtl" style="font-size:12.5px;color:#555;margin:0 0 8px;text-align:right">הסוכן שלנו (<a href="https://www.moltbook.com/u/dubis" style="color:#c8a96e;font-weight:600;text-decoration:none">u/dubis</a>) פרסם <b>${mb.posts.length}</b> פוסטים ${winHe}${mb.karma != null ? ` · קארמה כוללת: <b>${mb.karma}</b>` : ''}${(mb.totalUp || mb.totalCom) ? ` · ${mb.totalUp} הצבעות · ${mb.totalCom} תגובות` : ''}</p>`;
+  const postRows = mb.posts.slice(0, 6).map(p => {
+    const stats = (p.upvotes != null || p.comments != null)
+      ? `<span style="color:#999;font-size:11px">▲ ${p.upvotes ?? '?'} · 💬 ${p.comments ?? '?'} · </span>` : '';
+    // Lead with the HEBREW summary of what our agent wrote (oren 2026-07-12);
+    // the English title drops to a small secondary line.
+    const mainLine = p.summaryHe
+      ? `<div style="color:#2c2c2c;line-height:1.55">🦞 ${esc(p.summaryHe)}</div><div dir="ltr" style="font-size:10.5px;color:#aaa;text-align:left;margin-top:1px">${esc(p.title.slice(0, 90))}</div>`
+      : `<div>🦞 <span dir="ltr" style="display:inline-block">${esc(p.title.slice(0, 90))}</span></div>`;
+    const comments = p.topComments.length
+      ? p.topComments.slice(0, 2).map(c => `<div dir="ltr" style="font-size:11px;color:#777;padding:2px 8px;background:#fff;border-radius:4px;margin:2px 0;text-align:left">💬 <b>${esc(c.author)}</b>: ${esc(c.snippet.slice(0, 110))}</div>`).join('')
+      : '';
+    return `<div dir="rtl" style="padding:7px 10px;background:#fafafa;margin:4px 0;border-radius:6px;text-align:right;font-size:12.5px">
+      ${mainLine}<div style="margin-top:3px;font-size:11.5px">${stats}<a href="${esc(p.url)}" style="color:#c8a96e;font-weight:600;text-decoration:none">▶ לפוסט →</a></div>${comments}
+    </div>`;
+  }).join('');
+  // 🧠 What the other agents' replies tell us — Hebrew, computed per window.
+  const insightsBlock = mb.insightsHe
+    ? `<div dir="rtl" style="margin-top:8px;padding:10px 14px;background:#2c2c2c;color:#fff;border-radius:6px;text-align:right;font-size:12.5px;line-height:1.7">🧠 <b style="color:#c8a96e">תובנות מהתגובות:</b> ${esc(mb.insightsHe)}</div>`
+    : '';
+  const neoLine = mb.neo
+    ? `<div dir="rtl" style="margin-top:8px;padding:8px 12px;background:#f3eee2;border-radius:6px;text-align:right;font-size:12.5px;color:#5a4a2f">🤖 <b>ניאו (agents&me):</b> מייל חדש בשרשור — "${esc(mb.neo)}" · התשובה מנוהלת דרך שולחן ההנהלה.</div>`
+    : `<div dir="rtl" style="margin-top:8px;font-size:11.5px;color:#999;text-align:right">🤖 ניאו: אין מייל חדש בחלון הזה.</div>`;
+  const empty = mb.posts.length === 0 ? '<p dir="rtl" style="font-size:12.5px;color:#888;text-align:right;margin:0">לא פורסם פוסט בחלון הזה — המכונה רצה 3 פעמים ביום (06:10/11:10/17:10 UTC).</p>' : '';
+  return head + postRows + empty + insightsBlock + neoLine;
+}
+
+// 📊 $1,000 plan — ONE line for the daily routine digest (oren 2026-07-12:
+// "התוכנית לא מתקדמת — אל תעדכנו כל יום, רק מה השלב הבא ובמה זה תלוי").
+// The full card renders ONLY in the weekly report.
+function buildPlanNextStepLine(p: PlanStatus | null): string {
+  if (!p) return 'תוכנית $1,000: אין נתוני תוכנית זמינים.';
+  if (p.blocked_on_oren.length > 0) {
+    const b = p.blocked_on_oren[0];
+    return `תוכנית $1,000: הצעד הבא — "${b.title}" · תלוי בך${b.oren_action ? `: ${b.oren_action.slice(0, 90)}` : ''}${b.days_late > 0 ? ` (מחכה ${b.days_late} ימים)` : ''}.`;
+  }
+  return `תוכנית $1,000: שלב ${p.current_phase}${p.phase_name ? ` (${p.phase_name})` : ''} · ${p.done_count}/${p.total_actionable} הושלמו · אין חסם עליך כרגע.`;
+}
+
+// =============================================================
 // Main HTTP handler
 // =============================================================
 Deno.serve(async (req: Request) => {
@@ -2603,11 +2900,11 @@ Deno.serve(async (req: Request) => {
   // the live Meta campaign id is embedded in `notes` as "campaign_id: <digits>".
   // Prefer env override → most-recent ACTIVE row's id → most-recent row's id → legacy default.
   let campaignPaused = false; let campaignStatusKnown = false;
-  let dbCampSpend = 0; let dbCampClicks = 0;
+  let dbCampSpend = 0; let dbCampClicks = 0; let dbCampBudget = 0;
   let activeCampaignId = Deno.env.get('META_CAMPAIGN_ID') || '';
   try {
     const { data: campRows } = await sb.from('ad_campaigns')
-      .select('status, notes, created_at, spend_to_date, clicks')
+      .select('status, notes, created_at, spend_to_date, clicks, budget')
       .order('created_at', { ascending: false }).limit(50);
     const rows = (campRows || []) as Array<Record<string, unknown>>;
     const idOf = (r: Record<string, unknown>) => (String(r.notes || '').match(/campaign_id:\s*(\d+)/i) || [])[1] || '';
@@ -2621,9 +2918,12 @@ Deno.serve(async (req: Request) => {
     if (exact) {
       // Funnel reports on activeCampaignId → its own row decides paused/active.
       campaignStatusKnown = true;
-      campaignPaused = String(exact.status || '').toLowerCase() === 'paused';
+      // Anything that isn't 'active' (paused/completed/draft) = not running.
+      // The old ===  'paused' check let an ENDED campaign read as live (07-12).
+      campaignPaused = String(exact.status || '').toLowerCase() !== 'active';
       dbCampSpend = Number(exact.spend_to_date || 0);
       dbCampClicks = Number(exact.clicks || 0);
+      dbCampBudget = Number(exact.budget || 0); // daily budget per table convention (07-27)
     } else if (rows.length > 0) {
       // No row for the campaign. Use the fleet signal: if NO campaign is active,
       // the funnel can't be delivering — treat as paused (don't invent a delay).
@@ -2662,6 +2962,61 @@ Deno.serve(async (req: Request) => {
   } else {
     metaData.fetch_error = 'INSTAGRAM_ACCESS_TOKEN missing in env';
   }
+
+  // ---- 🚨 Delivery watchdog (2026-08-05): an ACTIVE campaign whose "yesterday"
+  // came back empty gets DIAGNOSED against Meta, never explained away. Root
+  // incident: 01-05.08 the US campaign delivered ~₪0.31 TOTAL (all 6 cold ads
+  // were manually OFF at the ad level since 27.07) while this report said
+  // "פער-דיווח — לא בהכרח בעיית delivery" four days straight. The watchdog asks
+  // Meta for campaign + ad effective_status and names the exact cause in red.
+  // Escalation: ads-all-active + empty yesterday = yellow once (reporting lag /
+  // learning); a SECOND consecutive empty day turns red (state persisted in
+  // boss_reports.assessment.delivery_alert).
+  let deliveryAlert: { red: boolean; cause: string; detail: string } | null = null;
+  try {
+    const yRaw = ((metaData.yesterday || {}) as Record<string, unknown>);
+    const yEmpty = num(yRaw.impressions) === 0 && num(yRaw.clicks) === 0;
+    const ySpend = num(yRaw.spend);
+    // Under-delivery is ALSO a failure state (01-04.08: ~₪0.5/day trickle from
+    // the near-empty remarketing audience while the ₪55/day cold adset sat with
+    // every ad manually OFF — impressions were >0 so an empty-check alone
+    // would never fire). Trigger when yesterday's spend < 30% of the daily budget.
+    const yUnder = !yEmpty && dbCampBudget >= 10 && ySpend < dbCampBudget * 0.3;
+    if (!isWeekly && !campaignPaused && metaData.ok && (yEmpty || yUnder) && IG_TOKEN) {
+      const cRes = await fetch(`https://graph.facebook.com/v19.0/${activeCampaignId}?fields=name,effective_status&access_token=${IG_TOKEN}`);
+      const cInfo = cRes.ok ? await cRes.json() : null;
+      const aRes = await fetch(`https://graph.facebook.com/v19.0/${activeCampaignId}/ads?fields=name,effective_status&limit=50&access_token=${IG_TOKEN}`);
+      const ads = aRes.ok ? ((((await aRes.json()).data) || []) as Array<{ name?: string; effective_status?: string }>) : [];
+      const by: Record<string, number> = {};
+      for (const a of ads) { const s = a.effective_status || '?'; by[s] = (by[s] || 0) + 1; }
+      const activeAds = by['ACTIVE'] || 0;
+      const STATUS_HE: Record<string, string> = { ACTIVE: 'דלוקות', PAUSED: 'כבויות ידנית', ADSET_PAUSED: 'קבוצת-המודעות שלהן כבויה', CAMPAIGN_PAUSED: 'הקמפיין שלהן כבוי', IN_PROCESS: 'בעיבוד אצל Meta', PENDING_REVIEW: 'בביקורת של Meta', DISAPPROVED: 'נפסלו ע"י Meta', WITH_ISSUES: 'עם בעיה בצד Meta' };
+      const breakdown = Object.entries(by).map(([s, n]) => `${n} ${STATUS_HE[s] || s}`).join(' · ');
+      const campStatus = String(cInfo?.effective_status || '');
+      if (campStatus && campStatus !== 'ACTIVE') {
+        deliveryAlert = { red: true, cause: `הקמפיין עצמו לא פעיל בצד Meta (סטטוס: ${campStatus})`, detail: breakdown || 'אין מודעות' };
+      } else if (ads.length > 0 && activeAds === 0) {
+        deliveryAlert = { red: true, cause: `אף מודעה לא רצה — יש ${ads.length} מודעות ואפס דלוקות`, detail: breakdown };
+      } else if (ads.length > 0 && yUnder) {
+        // Numbers exist and they're LOW — that's real data, not a reporting gap. Red now.
+        const offNote = activeAds < ads.length ? ` (רק ${activeAds} מתוך ${ads.length} מודעות דלוקות)` : '';
+        deliveryAlert = { red: true, cause: `הקמפיין הוציא אתמול רק ₪${ySpend.toFixed(0)} מתוך תקציב יומי של ₪${dbCampBudget.toFixed(0)}${offNote} — אספקה חלשה`, detail: breakdown };
+      } else if (ads.length > 0) {
+        // Ads are on but yesterday was EMPTY — reporting lag or learning phase.
+        // Red only if yesterday's report already saw the same state.
+        let secondDay = false;
+        try {
+          const yDate = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+          const { data: prevRep } = await sb.from('boss_reports').select('assessment').eq('report_date', yDate).limit(1);
+          const prevDa = (prevRep && prevRep[0] && (prevRep[0].assessment as Record<string, unknown>)?.delivery_alert) as Record<string, unknown> | undefined;
+          secondDay = !!prevDa;
+        } catch (_) { /* best-effort */ }
+        deliveryAlert = secondDay
+          ? { red: true, cause: `המודעות דלוקות (${activeAds}/${ads.length}) אבל זה היום השני ברצף בלי חשיפות — הקמפיין לא באמת מספק`, detail: breakdown }
+          : { red: false, cause: `כל המודעות שדלוקות (${activeAds}/${ads.length}) תקינות — כנראה עיכוב-דיווח של Meta או תחילת למידה`, detail: breakdown };
+      }
+    }
+  } catch (_) { /* best-effort — the funnel falls back to the generic gap copy */ }
 
   let igPosts7d = 0, dupes = 0;
   if (IG_TOKEN && IG_ACCOUNT) {
@@ -2739,7 +3094,7 @@ Deno.serve(async (req: Request) => {
   // ---- Opinions ----
   const rawOps = await Promise.all([
     opinionContent(sb, igPosts7d),
-    opinionMarketing(metaData, realOrders || []),
+    opinionMarketing(metaData, realOrders || [], !campaignPaused),
     opinionProduct(sb),
     opinionSupply(sb, ticketing.ticketsOpened),
     opinionDesign(sb, dupes),
@@ -2751,12 +3106,49 @@ Deno.serve(async (req: Request) => {
     opinionVideo(sb),
     opinionPlanner(sb),
     opinionCheckoutCanary(sb), // 2026-05-23 — Gelato ↔ orders.row diff
+    opinionSitcomCadence(sb), // 2026-07-27 — weekly episode drop-guard
+    opinionStandingCommitments(sb), // 2026-07-27 — the commitments ledger clock
   ]);
   const allOpinions: Opinion[] = rawOps.filter((o): o is Opinion => o !== null);
 
+  // 🚨 Delivery watchdog → leads the report as P0 when red (2026-08-05).
+  if (deliveryAlert && deliveryAlert.red) {
+    allOpinions.unshift({
+      agent: 'marketing', agent_he: 'קמפיין ממומן', priority: 'P0',
+      theme: 'campaign-not-delivering',
+      observation: `הקמפיין מסומן פעיל אבל לא הוציא שקל אתמול. הסיבה: ${deliveryAlert.cause}`,
+      recommendation: `לתקן היום ב-Ads Manager (מצב המודעות: ${deliveryAlert.detail}). כל יום כזה שורף את חלון-המבחן עד 07.09 בלי דאטה. קישור: https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=26201135546175057&selected_campaign_ids=${activeCampaignId}`,
+    });
+  }
+
   // ---- A.5: split into recurring vs main ----
   const { recurring: recurringFromHistory, nonRecurring } = await fetchRecurringIssues(sb, allOpinions);
-  const opinions = nonRecurring;
+  // 2026-07-12 (oren: "ממצאים חדשים חוזר כל יום"): "חדשים" = FIRST appearance
+  // only. A finding shown yesterday is not news — it either graduates to the
+  // recurring card (3+ days, demands a decision) or stays silent until it
+  // changes. Yesterday's themes come from the last report's assessment.
+  let prevThemes = new Set<string>();
+  try {
+    const { data: lastRep } = await sb.from('boss_reports').select('assessment').order('created_at', { ascending: false }).limit(1);
+    const arr = ((lastRep?.[0] as Record<string, unknown> | undefined)?.assessment as Record<string, unknown> | undefined)?.opinion_themes;
+    if (Array.isArray(arr)) prevThemes = new Set(arr.map(String));
+  } catch (_) { /* first run — everything is new */ }
+  // 2026-08-19 — STATE vs NEWS. Some themes are not "findings" that get stale;
+  // they are standing conditions that stay true until someone acts. Silencing
+  // those because "we said it yesterday" is exactly how the campaign, the
+  // ledger and the sitcom went dark for a week. These always render.
+  const ALWAYS_ON = new Set([
+    'commitments-overdue',      // the ledger clock — an agreement past due
+    'campaign-not-delivering',  // paid budget not spending = burning the test window
+    'campaign-conversion',      // the live US test's core signal
+    'checkout-ghost-orders',    // money captured with no DB row
+    'checkout-canary-error',
+    'sitcom-cadence',           // weekly episode drop-guard
+    'reel-bank-collapse',
+    'inventory-fully-oos',
+  ]);
+  const opinions = nonRecurring.filter(o =>
+    ALWAYS_ON.has(o.theme) || !prevThemes.has(`${o.theme}|${o.agent_he}`));
   const synth = synthesize(opinions);
 
   // 2026-05-26 — Auto-handle two recurring-task themes per oren's directive:
@@ -2811,7 +3203,7 @@ Deno.serve(async (req: Request) => {
     : { updated: 0, errors: ['no-real-metrics'] };
   // Resolve real TikTok post URLs (Late.com finalizes async) so marketing links point at the live post.
   await backfillTiktokUrls(sb).catch(() => {});
-  const [marketingToday, pending, agentHealth, dailySnaps, orderTracking, planStatus, weeklyMktg, autoProductHealth, newProductsWeek, emailDigest, contentPerf] = await Promise.all([
+  const [marketingToday, pending, agentHealth, dailySnaps, orderTracking, planStatus, weeklyMktg, autoProductHealth, newProductsWeek, emailDigest, contentPerf, moltbook, personaData, reelGaps] = await Promise.all([
     fetchMarketingToday(sb),
     fetchPendingApprovals(sb),
     fetchAgentHealth(sb),
@@ -2823,8 +3215,46 @@ Deno.serve(async (req: Request) => {
     fetchNewProductsThisWeek(sb).catch(() => []),
     fetchEmailDigest(sb).catch(() => null),
     fetchContentPerf(sb).catch(() => null),
+    fetchMoltbookChannel(sb, isWeekly ? 168 : 26).catch(() => null),
+    fetchPersonaSeries(sb).catch(() => null),
+    fetchReelBankGaps(sb).catch(() => null),
   ]);
   const managementBoard = await fetchManagementBoard(sb).catch(() => null);
+  const stockRun = await latestRun(sb, 'gelato_stock', 2).catch(() => null);
+
+  // 🔴 Reel-bank collapse guard (2026-07-14): on 07-13 the whole _pilot bank was
+  // wiped from storage and the news-only letter folded 19/21→0/21 into a "quiet
+  // day" while TikTok kept publishing dead URLs. A big DROP vs the previous
+  // report is an incident, not a gap list — red alert + subject flag + P0
+  // decision, and it keeps screaming every day until coverage returns.
+  let prevReelWith: number | null = null;
+  let prevReelMissing: number[] | null = null;
+  let prevEngines: { eng7?: number; clicks30?: number } | null = null;
+  try {
+    const { data: lastRepRb } = await sb.from('boss_reports').select('assessment').order('created_at', { ascending: false }).limit(1);
+    const prevAssess = (lastRepRb?.[0] as Record<string, unknown> | undefined)?.assessment as Record<string, unknown> | undefined;
+    const rb = prevAssess?.reel_bank as { withReel?: number; missing?: number[] } | undefined;
+    if (rb && typeof rb.withReel === 'number') prevReelWith = rb.withReel;
+    if (rb && Array.isArray(rb.missing)) prevReelMissing = rb.missing.map(Number);
+    const eng = prevAssess?.engines as { eng7?: number; clicks30?: number } | undefined;
+    if (eng && (typeof eng.eng7 === 'number' || typeof eng.clicks30 === 'number')) prevEngines = eng;
+  } catch (_) { /* no prior state — collapse still triggers on withReel===0 */ }
+  // A gap list is NEWS on first appearance / change only (oren 2026-07-15:
+  // "אני רואה כל פעם אותה הודעה") — an unchanged list folds to routine.
+  const reelGapsChanged = !!(reelGaps && reelGaps.missing.length > 0 &&
+    (prevReelMissing === null || JSON.stringify([...reelGaps.missing].sort((a, b) => a - b)) !== JSON.stringify([...prevReelMissing].sort((a, b) => a - b))));
+  const reelBankCollapsed = !!(reelGaps && reelGaps.total > 0 && (
+    reelGaps.withReel === 0 ||
+    (prevReelWith !== null && prevReelWith >= 4 && reelGaps.withReel <= Math.floor(prevReelWith / 2))
+  ));
+  if (reelBankCollapsed && reelGaps) {
+    allOpinions.push({
+      agent: 'video', agent_he: 'וידאו',
+      observation: `בנק הרילים קרס: ${reelGaps.withReel}/${reelGaps.total} מוצרים מכוסים${prevReelWith !== null ? ` (בדוח הקודם: ${prevReelWith})` : ''} — הקבצים נעלמו מה-storage, וטיקטוק/רילים מפרסמים מקישורים מתים.`,
+      recommendation: 'לעצור פרסום רילים/טיקטוק עד שחזור, לשחזר את הבנק מהעותקים המקומיים (runbook: supabase-go storage cp) ולאתר מי מחק.',
+      priority: 'P0', theme: 'reel-bank-collapse',
+    });
+  }
 
   let action_items_json: Opinion[] = synth.topActions.slice(0, isWeekly ? 5 : 3);
   let createdTaskIds: string[] = [];
@@ -2952,11 +3382,26 @@ Deno.serve(async (req: Request) => {
       const dbAnchor = dbCampSpend > 0
         ? ` לפי המונה המצטבר ב-DB הקמפיין כן רץ: <b>₪${dbCampSpend.toFixed(0)} · ${dbCampClicks} קליקים סה"כ</b>.`
         : '';
+      // 2026-08-05: when the campaign is supposed to be ACTIVE, an empty
+      // yesterday is DIAGNOSED (the watchdog above asked Meta why), never
+      // waved off as "not necessarily a delivery problem" — that line hid
+      // 4 days of a dead campaign (all cold ads OFF) in 08/2026.
+      if (deliveryAlert && deliveryAlert.red) {
+        return `<div dir="rtl" style="padding:12px;background:#fff5f5;border-right:4px solid #c0392b;border-radius:4px;font-size:13px;text-align:right;color:#c0392b">🔴 <b>הקמפיין מסומן פעיל אבל לא רץ בפועל.</b> הסיבה: ${esc(deliveryAlert.cause)}.<br><span style="color:#666;font-size:12px">מצב המודעות: ${esc(deliveryAlert.detail)}</span><br><a href="https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=26201135546175057&selected_campaign_ids=${activeCampaignId}" style="color:#c0392b;font-weight:700">▶ לפתוח את הקמפיין ב-Ads Manager ולתקן</a></div>`;
+      }
+      if (deliveryAlert) {
+        return `<p dir="rtl" style="color:#8a6d00;font-size:13px;margin:0">🟡 אתמול לא נרשמו חשיפות, אבל בדקתי מול Meta: ${esc(deliveryAlert.cause)} (${esc(deliveryAlert.detail)}). אם גם מחר יהיה ריק — זה יעלה באדום כבעיה אמיתית.${dbAnchor}</p>`;
+      }
       return campaignStatusKnown
         ? `<p dir="rtl" style="color:#888;font-size:13px;margin:0">⚠️ Meta לא החזיר נתוני-אתמול לקמפיין (פער-דיווח בצד Meta או שהשאילתה חזרה ריקה — לא בהכרח בעיית delivery).${dbAnchor}</p>`
         : '<p dir="rtl" style="color:#888;font-size:13px;margin:0">Meta לא החזיר נתוני-אתמול — סטטוס הקמפיין לא ידוע.</p>';
     }
-    return `<table dir="rtl" width="100%" style="margin-bottom:10px"><tr>
+    // 2026-08-05: an under-delivery diagnosis renders ABOVE the numbers table —
+    // tiny numbers alone read as "slow day", not as "the campaign is broken".
+    const underHtml = (deliveryAlert && deliveryAlert.red)
+      ? `<div dir="rtl" style="padding:12px;background:#fff5f5;border-right:4px solid #c0392b;border-radius:4px;font-size:13px;text-align:right;color:#c0392b;margin-bottom:10px">🔴 <b>הקמפיין לא מוציא את התקציב.</b> ${esc(deliveryAlert.cause)}.<br><span style="color:#666;font-size:12px">מצב המודעות: ${esc(deliveryAlert.detail)}</span><br><a href="https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=26201135546175057&selected_campaign_ids=${activeCampaignId}" style="color:#c0392b;font-weight:700">▶ לפתוח את הקמפיין ב-Ads Manager ולתקן</a></div>`
+      : '';
+    return `${underHtml}<table dir="rtl" width="100%" style="margin-bottom:10px"><tr>
         <td dir="rtl" align="center" style="width:20%;padding:6px"><div style="color:#3498db;font-size:16px;font-weight:700">${impY.toLocaleString()}</div><div style="color:#999;font-size:10px">חשיפות</div></td>
         <td dir="rtl" align="center" style="width:20%;padding:6px"><div style="color:#27ae60;font-size:16px;font-weight:700">${clicksY}</div><div style="color:#999;font-size:10px">קליקים</div></td>
         <td dir="rtl" align="center" style="width:20%;padding:6px"><div style="color:#9b59b6;font-size:16px;font-weight:700">${ctrY.toFixed(2)}%</div><div style="color:#999;font-size:10px">CTR</div></td>
@@ -3046,7 +3491,8 @@ Deno.serve(async (req: Request) => {
   // 📬 Email digest (24h) — summary + recommended actions, self-reports/marketing filtered out.
   const emailDigestHtml = buildEmailDigestHtml(emailDigest);
   // 🧭 Management decision board — recommendations DECIDED by the embedded-Adam pass.
-  const managementHtml = buildManagementBoardHtml(managementBoard);
+  const managementBuilt = buildManagementBoardHtml(managementBoard);
+  const managementHtml = managementBuilt.html;
 
   // Orders — new in window (last 24h or 7d)
   const todaysOrders = (realOrders || []).slice(0, 5);
@@ -3128,6 +3574,9 @@ Deno.serve(async (req: Request) => {
   // recency, and collect the agents that actually failed.
   const agentCounts = { ok_count: 0, amber_count: 0, red_count: 0, grey_count: 0 };
   const failedAgents: Array<{ id: string; he: string; reason: string; hours: number }> = [];
+  // 2026-07-12: the DAILY report shows only EXCEPTIONS (failed / stale scheduled
+  // agents) — a table of 14 "ran fine" rows every morning is noise (oren).
+  const exceptionAgentIds: string[] = [];
   // agent → its live opinion (first one wins) — feeds the per-agent conclusion line.
   const opinionByAgent = new Map<string, Opinion>();
   for (const o of allOpinions) if (!opinionByAgent.has(o.agent)) opinionByAgent.set(o.agent, o);
@@ -3145,6 +3594,7 @@ Deno.serve(async (req: Request) => {
     if (isFailed) {
       agentCounts.red_count++;
       failedAgents.push({ id, he: AGENT_ID_TO_HE[id] || id, reason: translateErrorPhrase(h.error || h.summary || 'unknown'), hours: hs });
+      exceptionAgentIds.push(id);
     } else if ((h.status === 'completed' || h.status === 'ok') && hs < 26) {
       agentCounts.ok_count++;
     } else if (ON_DEMAND_AGENTS.has(id)) {
@@ -3152,9 +3602,11 @@ Deno.serve(async (req: Request) => {
       agentCounts.ok_count++;
     } else if (hs < 72) {
       agentCounts.amber_count++;
+      exceptionAgentIds.push(id);
     } else {
       // scheduled agent that hasn't run in 3+ days → stale, flag amber-ish red.
       agentCounts.amber_count++;
+      exceptionAgentIds.push(id);
     }
   }
   // Header summary line so the watchdog is visible at a glance + a red banner
@@ -3165,13 +3617,13 @@ Deno.serve(async (req: Request) => {
       <b style="color:#c0392b;font-size:12px">🔴 סוכנים שנכשלו:</b>
       ${failedAgents.map(f => `<div style="font-size:11.5px;color:#333;margin-top:3px">• <b>${esc(f.he)}</b> — ${esc(f.reason)} <span style="color:#999">(לפני ${f.hours >= 24 ? Math.round(f.hours/24)+' ימים' : Math.round(f.hours)+' שעות'})</span></div>`).join('')}
     </div>`;
-  const agentHealthHtml = agentSummaryLine + agentFailBanner + `<table dir="rtl" width="100%" style="border-collapse:collapse;font-size:12px">
+  const buildAgentTable = (ids: string[]) => `<table dir="rtl" width="100%" style="border-collapse:collapse;font-size:12px">
     <tr style="background:#f0ebe0">
       <th dir="rtl" style="padding:6px 8px;text-align:right;font-size:11px;color:#666;font-weight:700;width:130px">סוכן</th>
       <th dir="rtl" style="padding:6px 8px;text-align:right;font-size:11px;color:#666;font-weight:700;width:70px">אחרון</th>
       <th dir="rtl" style="padding:6px 8px;text-align:right;font-size:11px;color:#666;font-weight:700">מה עשה</th>
     </tr>
-    ${allAgentIds.map(id => {
+    ${ids.map(id => {
       const h = agentHealth[id];
       const he = AGENT_ID_TO_HE[id] || id;
       let icon = '⚪', color = '#999', when = '—', actionText = 'לא הופעל היום';
@@ -3202,6 +3654,11 @@ Deno.serve(async (req: Request) => {
       </tr>`;
     }).join('')}
   </table>`;
+  // Weekly = the full 14-row table. Daily = summary line + failures banner +
+  // rows ONLY for agents that need attention (2026-07-12, oren).
+  const agentHealthFullHtml = agentSummaryLine + agentFailBanner + buildAgentTable(allAgentIds);
+  const agentHealthExceptionsHtml = agentSummaryLine + agentFailBanner + (exceptionAgentIds.length ? buildAgentTable(exceptionAgentIds) : '');
+  const agentsAllOk = exceptionAgentIds.length === 0;
 
   // A.4 — SVG sparkline
   const trendHtml = buildSparkline(dailySnaps);
@@ -3209,10 +3666,11 @@ Deno.serve(async (req: Request) => {
   // 📊 $1,000 Plan section — silently omitted if fetch failed or no data.
   const planSectionHtml = planStatus ? buildPlanSectionHtml(planStatus) : '';
   const weeklyMktgHtml = buildWeeklyMarketingHtml(weeklyMktg);
-  const personaHtml = buildPersonaSeriesHtml(await fetchPersonaSeries(sb).catch(() => null));
+  const personaHtml = buildPersonaSeriesHtml(personaData);
   const autoProductHealthHtml = buildAutoProductHealthHtml(autoProductHealth);
-  const reelBankGapsHtml = buildReelBankGapsHtml(await fetchReelBankGaps(sb).catch(() => null));
+  const reelBankGapsHtml = buildReelBankGapsHtml(reelGaps, reelBankCollapsed);
   const contentPerfHtml = buildContentPerfHtml(contentPerf);
+  const moltbookHtml = buildMoltbookHtml(moltbook, isWeekly);
   // 🎯 3 decisions — COMPUTED (manager-contract 2026-07-08): kill-switch gates +
   // open escalations + aging oren-blockers + live P0/P1 opinions, each with
   // cost-of-inaction; the card opens with the two-engines strip.
@@ -3223,41 +3681,186 @@ Deno.serve(async (req: Request) => {
     managementBoard,
     (planStatus?.blocked_on_oren || []).map(b => ({ title: b.title, days_late: b.days_late })),
   );
-  const topDecisionsHtml = buildTopDecisionsHtml(decisionItems, killSwitch, contentPerf);
+  const topDecisionsHtml = buildTopDecisionsHtml(decisionItems, killSwitch, contentPerf, prevEngines);
 
   const lastWeekSection = isWeekly && lastWeekCheck.total > 0
     ? `<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📊 מהשבוע הקודם</h2><p dir="rtl" style="font-size:13px;margin:0 0 10px"><b>${lastWeekCheck.done}/${lastWeekCheck.total} הושלמו (${Math.round(lastWeekCheck.done/lastWeekCheck.total*100)}%).</b></p>${lastWeekCheck.details.slice(0,5).map(d => { const ic = d.status === 'done' ? '✅' : d.status === 'open' ? '⏳' : '❌'; return `<div dir="rtl" style="padding:8px 12px;background:#fafafa;margin:4px 0;border-radius:4px;text-align:right;font-size:12px">${ic} <b>${esc(d.agent)}:</b> ${esc(d.rec.slice(0,100))}</div>`; }).join('')}</td></tr><tr><td style="height:14px"></td></tr>` : '';
 
-  const reportTypeLabel = isWeekly ? 'פגישה צוות שבועית' : 'דוח יומי';
+  const reportTypeLabel = isWeekly ? 'ישיבת הנהלה שבועית' : 'דוח יומי';
+
+  // ============================================================
+  // v13 ASSEMBLY (2026-07-12, oren: "קחו את הדוחות לרמה 1,000,000").
+  // DAILY = a manager's letter: a section renders ONLY when there is NEWS in it;
+  // everything routine collapses into one "שגרה" digest card at the bottom.
+  // WEEKLY = a real management meeting: week numbers, per-agent retrospective +
+  // recommendation, the board's adopt/reject/escalate record, and what oren is
+  // needed for — NO duplication of the daily layout.
+  // ============================================================
+  const sectionCard = (title: string, inner: string, border?: string) =>
+    `<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right${border ? ';border:2px solid ' + border : ''}"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">${title}</h2>${inner}</td></tr><tr><td style="height:14px"></td></tr>`;
+  const managerViewCard = `<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><div dir="rtl" style="background:#2c2c2c;color:#fff;padding:12px 16px;border-radius:6px;direction:rtl;text-align:right"><h3 dir="rtl" style="margin:0 0 6px;color:#c8a96e;font-size:13px">דעת המנהל</h3><p dir="rtl" style="margin:0;font-size:12.5px;line-height:1.7">${esc(synth.managerView)}</p></div></td></tr><tr><td style="height:14px"></td></tr>`;
+
+  const routine: string[] = [];
+  const freshProducts = newProductsWeek.filter(p => p.days_ago === 0);
+  // Fresh AND materially changed — an unchanged weekly read repeating the same
+  // numbers is routine, not news (oren 2026-07-12: "אותם מספרים כל הזמן").
+  const learningFresh = !!(contentPerf?.learning && hoursSince(contentPerf.learning.created_at) < 26
+    && ((contentPerf.learning as { directives?: Record<string, unknown> }).directives?.material_change !== false));
+  const snapsOrders = dailySnaps.reduce((s, d) => s + (d.orders_today || 0), 0);
+  const moltbookHasNews = !!(moltbook && (moltbook.posts.length > 0 || moltbook.neo));
+  // Reel gaps render as news only when the missing set CHANGED (first appearance
+  // or delta); an unchanged gap list folds to routine (oren 2026-07-15).
+  const autoNews = !!(autoProductHealth && (autoProductHealth.techFailures.length > 0 || freshProducts.some(p => p.auto))) || reelGapsChanged || reelBankCollapsed;
+
+  let sections = '';
+  if (!isWeekly) {
+    // ---------- DAILY ----------
+    sections += sectionCard('🎯 החלטות להיום', topDecisionsHtml, '#c8a96e');
+    sections += autoFixHtml;
+    sections += recurringHtml;
+    if (opinions.length > 0) sections += sectionCard(`🚨 ממצאים חדשים (${opinions.length})`, issuesHtml);
+    else routine.push('אין ממצאים חדשים מהסוכנים');
+    if (freshProducts.length > 0) sections += sectionCard('✨ מוצר חדש היום', newProductsHtml);
+    else {
+      const last = newProductsWeek[0];
+      routine.push(`מוצר חדש: אין היום${last ? ` (האחרון: #${last.numeric} לפני ${last.days_ago} ימים)` : ''} · הבא — שלישי/חמישי בבוקר, אוטומטי`);
+    }
+    if (totalPending > 0) sections += sectionCard(`✍️ מחכה לאישורך (${totalPending})`, pendingHtml);
+    else routine.push('אין מוצרים שמחכים לאישור שלך');
+    if (managementBuilt.hasNews) sections += sectionCard('🧭 שולחן ההנהלה — מה הוכרע', managementHtml);
+    else routine.push('שולחן ההנהלה: אין הכרעות חדשות ואין פריטים פתוחים');
+    if (emailDigest && emailDigest.kept > 0) sections += sectionCard('📬 מיילים שדורשים טיפול', emailDigestHtml);
+    else routine.push('מיילים: אין חדש שדורש טיפול');
+    if (moltbookHasNews) sections += sectionCard('🦞 ערוץ הסוכנים — Moltbook + ניאו', moltbookHtml);
+    else routine.push('ערוץ הסוכנים (Moltbook): אין פוסטים חדשים בחלון');
+    // What actually went up gets FULL detail (captions, links) — oren's ask.
+    sections += sectionCard(`📣 מה פורסם בפועל ב-24 שעות (${totalMarketing})`, marketingStatsHtml + marketingItemsHtml);
+    sections += sectionCard('📅 התוכנית השבועית', weeklyMktgHtml);
+    if (personaData && personaData.published.length > 0) sections += sectionCard('🐻 סדרת הסוכנים — עלה פרק/פוסט', personaHtml);
+    else routine.push(personaData?.next
+      ? `סדרת הסוכנים: אין פוסט חדש היום · הבא בתור — ${PERSONA_HE[personaData.next.persona] || personaData.next.persona}`
+      : 'סדרת הסוכנים: אין פוסט חדש היום · התור מתמלא אוטומטית ביום ראשון');
+    if ((realOrders || []).length > 0 || orderTracking.total > 0) {
+      const newPart = (realOrders || []).length ? `<div dir="rtl" style="margin-bottom:10px;text-align:right"><b style="font-size:12.5px">חדשות (24 שעות):</b>${ordersHtml}</div>` : '';
+      sections += sectionCard('🛒 הזמנות — חדשות ובתהליך', newPart + trackingHtml);
+    } else routine.push('הזמנות: אין חדשות ואין הזמנות בתהליך');
+    if (!campaignPaused) sections += sectionCard('📊 קמפיין ממומן — אתמול', funnelHtml);
+    else routine.push('קמפיין ממומן: מושהה בכוונה — אפס הוצאה');
+    if (snapsOrders > 0) sections += sectionCard('📈 הכנסות 14 הימים האחרונים', trendHtml);
+    else routine.push('הכנסות: אפס הזמנות ב-14 הימים האחרונים');
+    if (autoNews) sections += sectionCard('🤖 קו המוצרים האוטומטי — דורש מבט', autoProductHealthHtml + reelBankGapsHtml);
+    else routine.push(`קו המוצרים האוטומטי: תקין${reelGaps && reelGaps.missing.length ? ` · רילים בהפקה למוצרים #${reelGaps.missing.join(', #')}` : ''} · מוצר חדש — שלישי וחמישי בבוקר`);
+    // Gelato stock agent — oren 2026-07-15: "חסר לי בדיווח הסוכן שבודק כל יום מלאי".
+    // OOS/restock transitions = news; a clean sweep = an explicit routine line.
+    {
+      const stockSummary = String(stockRun?.summary || '');
+      const oosM = stockSummary.match(/(\d+)\s*עברו לאזל/); const backM = stockSummary.match(/(\d+)\s*חזרו למלאי/);
+      const oosN = oosM ? Number(oosM[1]) : 0; const backN = backM ? Number(backM[1]) : 0;
+      if (oosN > 0 || backN > 0) {
+        sections += sectionCard('🧵 מלאי Gelato — שינויים היום', `<p dir="rtl" style="font-size:12.5px;margin:0;text-align:right">${esc(stockSummary)}</p><p dir="rtl" style="font-size:11.5px;color:#666;margin:6px 0 0;text-align:right">מוצרים שכל הווריאציות שלהם אזלו מוסתרים מהאתר אוטומטית (auto-hide), וחוזרים כשיש מלאי.</p>`);
+      } else if (stockRun) {
+        routine.push(`מלאי Gelato: ${stockSummary.replace(/^בדיקת מלאי Gelato הסתיימה: /, '') || 'נבדק — אין שינויים'}`);
+      } else {
+        routine.push('מלאי Gelato: ⚠️ לא רץ ביומיים האחרונים — לבדוק את הקרון');
+      }
+    }
+    if (learningFresh) sections += sectionCard('📈 ביצועי תוכן — ניתוח שבועי טרי', contentPerfHtml);
+    else routine.push(`תוכן אורגני: ${contentPerf?.siteClicks.total ?? 0} כניסות לאתר ב-30 ימים · הניתוח השבועי הבא — יום ראשון`);
+    routine.push(buildPlanNextStepLine(planStatus));
+    sections += managerViewCard;
+    if (!agentsAllOk) sections += sectionCard('🤖 סוכנים שדורשים טיפול', agentHealthExceptionsHtml);
+    else routine.push(`הסוכנים: כולם רצו תקין (✅ ${agentCounts.ok_count})`);
+    const routineHtml = routine.map(l => `<div dir="rtl" style="font-size:12px;color:#666;padding:4px 0;text-align:right;border-bottom:1px dashed #f0ebe0">· ${esc(l)}</div>`).join('');
+    sections += sectionCard('💤 שגרה — רץ ותקין, בלי חדשות', routineHtml || '<p dir="rtl" style="font-size:12px;color:#888;margin:0;text-align:right">הכל למעלה — יום עמוס.</p>');
+  } else {
+    // ---------- WEEKLY ----------
+    const wb = (managementBoard?.recent || []);
+    const wkLines = [
+      `🛒 <b>${(realOrders || []).length}</b> הזמנות לקוח · <b>$${totalRevenue.toFixed(0)}</b> הכנסה`,
+      `🌐 <b>${realMetrics?.pageViews7d ?? '?'}</b> כניסות אמיתיות לאתר (7 ימים)`,
+      weeklyMktg ? `📣 פורסמו <b>${weeklyMktg.done + weeklyMktg.extra}</b> פריטי תוכן (${weeklyMktg.done} מהתוכנית + ${weeklyMktg.extra} מחוץ לה)` : '',
+      newProductsWeek.length ? `✨ <b>${newProductsWeek.length}</b> מוצרים חדשים עלו: ${newProductsWeek.map(p => `<a href="https://www.dubis.net/#product-${p.numeric}" style="color:#c8a96e;text-decoration:none">#${p.numeric}</a>`).join(', ')}` : '✨ לא עלו מוצרים חדשים השבוע',
+      moltbook && moltbook.posts.length ? `🦞 <b>${moltbook.posts.length}</b> פוסטים ב-Moltbook · ${moltbook.totalUp} הצבעות · ${moltbook.totalCom} תגובות${moltbook.karma != null ? ` · קארמה ${moltbook.karma}` : ''}` : '',
+    ].filter(Boolean).map(l => `<div dir="rtl" style="font-size:13px;margin:5px 0;text-align:right">${l}</div>`).join('');
+
+    const recOf = (id: string, fallback: string) => {
+      const o = opinionByAgent.get(id);
+      return o ? `${esc(o.observation)} ← ${esc(cleanRecommendationText(o.recommendation))}` : esc(fallback);
+    };
+    const retroRow = (name: string, what: string, recText: string) =>
+      `<div dir="rtl" style="padding:9px 12px;background:#fafafa;border-right:3px solid #c8a96e;border-radius:6px;margin:5px 0;text-align:right"><div style="font-size:12.5px;color:#2c2c2c"><b>${name}</b> — ${what}</div><div style="font-size:11.5px;color:#5a4a2f;margin-top:3px">🧠 המלצה: ${recText}</div></div>`;
+    const ks = killSwitch;
+    const secOp = opinionByAgent.get('security');
+    const weeklyRetroHtml = [
+      retroRow('שיווק ממומן',
+        ks && ks.active ? `הוצאה ${esc(ks.sym)}${ks.spend.toFixed(0)} · ${ks.clicks} קליקים · ${ks.carts} הוספות לסל · ${ks.purchases} רכישות. ${esc(ks.gateLine)}` : 'הקמפיין מושהה — אפס הוצאה השבוע.',
+        recOf('marketing', 'להשאיר מושהה עד שתיקוני-האמון יראו המרה אורגנית')),
+      retroRow('תוכן אורגני',
+        `${weeklyMktg ? `${weeklyMktg.done}/${weeklyMktg.total} מהתוכנית פורסם + ${weeklyMktg.extra} נוספים` : 'אין תוכנית פעילה'}${contentPerf ? ` · ${contentPerf.totalEng} מעורבות · ${contentPerf.siteClicks.total} כניסות לאתר (30 ימים)` : ''}`,
+        recOf('content', contentPerf?.learning ? contentPerf.learning.summary.slice(0, 160) : 'ממשיכים לפי התוכנית')),
+      retroRow('מוצר',
+        `${newProductsWeek.length} מוצרים חדשים השבוע${autoProductHealth ? ` · ${autoProductHealth.techFailures.length} כשלים טכניים · ${autoProductHealth.retries7d} תיקונים אוטומטיים` : ''}`,
+        recOf('product', 'הקו האוטומטי ממשיך — מוצר חדש כל שלישי')),
+      retroRow('הזמנות ואספקה',
+        `${(realOrders || []).length} חדשות · ${orderTracking.total} בתהליך · ${orderTracking.deliveredCount} נמסרו · ${orderTracking.cancelledCount} בוטלו`,
+        recOf('supply', 'אין חריגים — מעקב שוטף')),
+      retroRow('אבטחה',
+        secOp ? esc(secOp.observation) : 'הסריקה השבועית רצה — אין ממצאים פתוחים. (בדיקות RLS/npm/git רצות בשכבת GitHub, לא בענן — פער ידוע ומנוהל.)',
+        recOf('security', 'אין פעולה נדרשת')),
+      retroRow('וידאו וסדרת הסוכנים',
+        `${personaData ? `בתור הסדרה: ${personaData.remaining} פוסטים` : 'אין נתוני סדרה'}${reelGaps ? ` · בנק רילים: ${reelGaps.withReel}/${reelGaps.total} מוצרים מכוסים` : ''}`,
+        recOf('video', 'ממשיכים במנדט האוטונומי — פרק חדש כשיש אירוע אמיתי')),
+      retroRow('ערוץ הסוכנים (Moltbook + ניאו)',
+        moltbook ? `${moltbook.posts.length} פוסטים${moltbook.karma != null ? ` · קארמה ${moltbook.karma}` : ''}${moltbook.neo ? ' · מייל חדש מניאו' : ''}` : 'אין נתונים',
+        'ממשיכים 3 פוסטים ביום · עוקבים אחרי תגובות וקארמה'),
+    ].join('');
+
+    const bRow = (txt: string, color: string) => `<div dir="rtl" style="font-size:12px;color:#333;padding:6px 10px;background:#fcfbf7;border-right:3px solid ${color};border-radius:4px;margin:3px 0;text-align:right">${txt}</div>`;
+    const adopted = wb.filter(r => r.decision === 'adopt');
+    const rejected = wb.filter(r => r.decision === 'reject');
+    const escalated = wb.filter(r => r.decision === 'escalate');
+    const taskStatusHe: Record<string, string> = { done: 'בוצע ✅', backlog: 'בתור', pending: 'בתור', approved: 'בתור', in_progress: 'בעבודה' };
+    const weeklyBoardHtml = (adopted.length + rejected.length + escalated.length) === 0
+      ? '<p dir="rtl" style="font-size:12.5px;color:#888;margin:0;text-align:right">לא עלו המלצות חדשות להכרעה השבוע.</p>'
+      : [
+          adopted.length ? `<div dir="rtl" style="font-size:12.5px;font-weight:700;color:#1e6b1e;margin:4px 0;text-align:right">✅ אימצנו (${adopted.length}):</div>` + adopted.map(r => bRow(`${esc(r.recommendation.slice(0, 150))} ← <b>${esc(r.owner_agent || 'manual')}</b> (${taskStatusHe[r.created_task_id ? (managementBoard!.taskStatus[r.created_task_id] || 'backlog') : 'backlog'] || 'בתור'})`, '#27ae60')).join('') : '',
+          rejected.length ? `<div dir="rtl" style="font-size:12.5px;font-weight:700;color:#777;margin:8px 0 4px;text-align:right">❌ דחינו (${rejected.length}):</div>` + rejected.map(r => bRow(`${esc(r.recommendation.slice(0, 120))} — <span style="color:#888">${esc((r.rationale || '').slice(0, 120))}</span>`, '#bbb')).join('') : '',
+          escalated.length ? `<div dir="rtl" style="font-size:12.5px;font-weight:700;color:#a12020;margin:8px 0 4px;text-align:right">⬆️ העלינו אליך (${escalated.length}):</div>` + escalated.map(r => bRow(`${esc(r.recommendation.slice(0, 150))}${r.rationale ? ` — <span style="color:#888">${esc(r.rationale.slice(0, 100))}</span>` : ''}`, '#c0392b')).join('') : '',
+        ].filter(Boolean).join('');
+
+    const needsRows = [
+      ...escalated.filter(r => !r.outcome).map(r => `⬆️ ${esc(r.recommendation.slice(0, 140))}`),
+      ...(planStatus?.blocked_on_oren || []).map(b => `🚧 ${esc(b.title)}${b.oren_action ? ' — ' + esc(b.oren_action.slice(0, 100)) : ''}${b.days_late > 0 ? ` <span style="color:#c0392b">(מחכה ${b.days_late} ימים)</span>` : ''}`),
+    ];
+    const needsFromOrenHtml = needsRows.length
+      ? needsRows.map(t => `<div dir="rtl" style="font-size:12.5px;padding:7px 10px;background:#fff5f5;border-right:3px solid #c0392b;border-radius:4px;margin:4px 0;text-align:right">${t}</div>`).join('')
+      : '<p dir="rtl" style="font-size:12.5px;color:#27ae60;margin:0;text-align:right">✅ שום דבר לא מחכה לך השבוע.</p>';
+
+    sections += sectionCard('🎯 ההחלטות לשבוע הקרוב', topDecisionsHtml, '#c8a96e');
+    sections += sectionCard('🧭 מה קרה השבוע — במספרים', wkLines);
+    sections += sectionCard('🪑 סבב הסוכנים — מה קרה ומה כל אחד ממליץ', `<p dir="rtl" style="font-size:11px;color:#999;margin:0 0 8px;text-align:right">ההמלצות מוכרעות בשולחן ההנהלה (למטה) — אימוץ מקבל בעלים ומבוצע; רק כסף/אסטרטגיה עולים אליך.</p>` + weeklyRetroHtml);
+    sections += sectionCard('🧭 שולחן ההנהלה השבוע — אימצנו / דחינו / עולה אליך', weeklyBoardHtml);
+    sections += sectionCard('🚨 מה אנחנו צריכים ממך', needsFromOrenHtml);
+    sections += planSectionHtml;
+    if (moltbookHasNews) sections += sectionCard('🦞 ערוץ הסוכנים השבוע — Moltbook + ניאו', moltbookHtml);
+    sections += sectionCard('📈 התוכן החזק של השבוע', contentPerfHtml);
+    sections += lastWeekSection;
+    sections += sectionCard('📈 הכנסות 14 הימים האחרונים', trendHtml);
+    sections += managerViewCard;
+    sections += sectionCard('🤖 מצב כל הסוכנים (שבועי)', agentHealthFullHtml);
+  }
+
+  const replyNote = `<tr><td dir="rtl" align="center" style="padding-top:6px;text-align:center"><p dir="rtl" style="margin:0;color:#8a6d00;font-size:12px;background:#fdf7e3;border-radius:8px;padding:8px 14px;display:inline-block">📩 אפשר פשוט <b>להשיב למייל הזה</b> — סוכן המייל קורא את התשובה, היא נכנסת לשולחן ההנהלה ומבוצעת.</p></td></tr>`;
 
   const html = `<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"></head><body dir="rtl" style="margin:0;padding:0;background:#f5f0e8;font-family:Arial,sans-serif;direction:rtl;text-align:right;color:#2c2c2c"><table dir="rtl" align="center" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:24px 16px"><tr><td align="center"><table dir="rtl" align="center" width="720" cellpadding="0" cellspacing="0" style="max-width:720px;width:100%">
 <tr><td dir="rtl" align="center" style="padding-bottom:18px"><span style="font-size:30px;font-weight:700;letter-spacing:4px;color:#c8a96e;font-family:Georgia,serif">DUBIS</span><p style="margin:6px 0 0;color:#666;font-size:15px;text-align:center">${reportTypeLabel}</p><p style="margin:6px 0 0;color:#999;font-size:13px;text-align:center">${dateStr}</p></td></tr>
 <tr><td dir="rtl" style="background:#2c2c2c;border-radius:12px;padding:18px 22px;color:#fff;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 10px;font-size:16px;color:#c8a96e;direction:rtl;text-align:right">שורה תחתונה</h2>${heroStats}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right;border:2px solid #c8a96e"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🎯 3 החלטות להיום</h2>${topDecisionsHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📈 הכנסות 14 הימים האחרונים</h2>${trendHtml}</td></tr><tr><td style="height:14px"></td></tr>
-${autoFixHtml}
-${recurringHtml}
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🚨 ממצאים חדשים (${opinions.length})</h2>${issuesHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">✨ מוצר חדש היום</h2>${newProductsHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">✍️ מחכה לאישורך (${totalPending})</h2>${pendingHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🧭 שולחן ההנהלה — אדם והבוס הכריעו</h2>${managementHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📬 מיילים 24ש׳ — תקציר + המלצות</h2>${emailDigestHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📅 תוכנית שיווק שבועית — תכנון מול ביצוע</h2>${weeklyMktgHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🐻 סדרת הסוכנים — מאחורי הקוד</h2>${personaHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🤖 קו המוצרים האוטומטי</h2>${autoProductHealthHtml}${reelBankGapsHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📣 שיווק היום (${totalMarketing})</h2>${marketingStatsHtml}${marketingItemsHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📈 ביצועי תוכן אורגני</h2>${contentPerfHtml}</td></tr><tr><td style="height:14px"></td></tr>
-${lastWeekSection}
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📊 Meta Funnel — אתמול</h2>${funnelHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><div dir="rtl" style="background:#2c2c2c;color:#fff;padding:12px 16px;border-radius:6px;direction:rtl;text-align:right"><h3 dir="rtl" style="margin:0 0 6px;color:#c8a96e;font-size:13px">דעת המנהל</h3><p dir="rtl" style="margin:0;font-size:12.5px;line-height:1.7">${esc(synth.managerView)}</p></div></td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🛒 הזמנות חדשות ב-${isWeekly?'7 ימים':'24 שעות'} (${(realOrders || []).length})</h2>${ordersHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">📋 מעקב הזמנות פעילות (${orderTracking.total})</h2>${trackingHtml}</td></tr><tr><td style="height:14px"></td></tr>
-${planSectionHtml}
-<tr><td dir="rtl" style="background:#fff;border-radius:12px;padding:20px 22px;direction:rtl;text-align:right"><h2 dir="rtl" style="margin:0 0 12px;font-size:17px;direction:rtl;text-align:right">🤖 מצב הסוכנים (24 שעות)</h2>${agentHealthHtml}</td></tr><tr><td style="height:14px"></td></tr>
-<tr><td dir="rtl" align="center" style="padding-top:18px;text-align:center"><p style="margin:0;color:#aaa;font-size:11px">${reportTypeLabel} v12 · ${autoFixes.length > 0 ? `🔧 ${autoFixes.filter(f=>f.succeeded).length}/${autoFixes.length} תיקונים אוטומטיים · ` : ''}<a href="https://www.dubis.net/admin" style="color:#c8a96e">פתח Admin</a></p></td></tr>
+${sections}
+${replyNote}
+<tr><td dir="rtl" align="center" style="padding-top:14px;text-align:center"><p style="margin:0;color:#aaa;font-size:11px">${reportTypeLabel} v13 · ${autoFixes.length > 0 ? `🔧 ${autoFixes.filter(f=>f.succeeded).length}/${autoFixes.length} תיקונים אוטומטיים · ` : ''}<a href="https://www.dubis.net/admin" style="color:#c8a96e">פתח Admin</a></p></td></tr>
 </table></td></tr></table></body></html>`;
 
-  if (!summary_he) summary_he = `${reportTypeLabel} v12: ${(realOrders || []).length} הזמנות, $${totalRevenue.toFixed(0)}, ${opinions.length} תצפיות חדשות, ${recurring.length} חוזרות, ${autoFixes.filter(f=>f.succeeded).length} תיקונים אוטומטיים, ${totalPending} לאישור, ${totalMarketing} פעילויות שיווק.`;
+  if (!summary_he) summary_he = `${reportTypeLabel} v13: ${(realOrders || []).length} הזמנות, $${totalRevenue.toFixed(0)}, ${opinions.length} ממצאים חדשים, ${autoFixes.filter(f=>f.succeeded).length} תיקונים אוטומטיים, ${isWeekly ? '' : `${routine.length} סעיפי שגרה קופלו, `}${totalMarketing} פרסומים.`;
 
   const reportDate = new Date().toISOString().slice(0, 10);
 
@@ -3271,7 +3874,9 @@ ${planSectionHtml}
   }
   if (isPreview) {
     return json({
-      ok: true, preview: true, mode, version: 'v12-manager',
+      ok: true, preview: true, mode, version: 'v13-letter',
+      routine_lines: routine.length,
+      moltbook: moltbook ? { posts: moltbook.posts.length, karma: moltbook.karma, neo: !!moltbook.neo } : null,
       agent_counts: agentCounts,
       failed_agents: failedAgents.map(f => ({ id: f.id, reason: f.reason, hours: Math.round(f.hours) })),
       real_orders: (realOrders || []).length, real_revenue: totalRevenue,
@@ -3288,6 +3893,7 @@ ${planSectionHtml}
       // 🧭 Management board verification (2026-07-03)
       management: { ...mgmtDecide, board_recent: managementBoard?.recent.length ?? 0, board_pending: managementBoard?.pending ?? 0 },
       campaign_paused: campaignPaused, campaign_status_known: campaignStatusKnown,
+      delivery_alert: deliveryAlert,
       tiktok_placeholder_urls: (html.match(/v_pub_url/g) || []).length,
       html_bytes: html.length,
     });
@@ -3300,10 +3906,20 @@ ${planSectionHtml}
   if (useKey) {
     try {
       const autoFixCount = autoFixes.filter(f => f.succeeded).length;
+      // Subject carries only what's NON-ZERO — no noise counters (2026-07-12).
+      const subjBits = [
+        (deliveryAlert && deliveryAlert.red) ? '🔴 הקמפיין לא מוציא תקציב' : '',
+        reelBankCollapsed ? '🔴 בנק הרילים קרס' : '',
+        opinions.length ? `${opinions.length} חדש` : '',
+        autoFixCount ? `${autoFixCount} תוקן` : '',
+        totalPending ? `${totalPending} לאישור` : '',
+      ].filter(Boolean).join(' · ');
       const subj = isWeekly
-        ? `📅 DUBIS פגישה שבועית — ${dateStr}`
-        : `📊 DUBIS דוח יומי — ${opinions.length} חדש · ${recurring.length} חוזר · ${autoFixCount} תוקן · ${totalPending} לאישור · ${dateStr}`;
-      const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'Authorization': `Bearer ${useKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: 'DUBIS המנהל <orders@dubis.net>', to: useEmails, subject: subj, html }) });
+        ? `📅 DUBIS ישיבת הנהלה שבועית — ${dateStr}`
+        : `📊 DUBIS דוח יומי${subjBits ? ' — ' + subjBits : ' — יום שקט'} · ${dateStr}`;
+      // reply_to = the scanned inbox → oren can just hit Reply and the email
+      // monitor turns his answer into a management-board directive (v13 loop).
+      const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'Authorization': `Bearer ${useKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: 'DUBIS המנהל <orders@dubis.net>', to: useEmails, reply_to: 'dubis.brand@gmail.com', subject: subj, html }) });
       const data = await r.json();
       if (r.ok) resendId = data.id; else resendError = data.message || `HTTP ${r.status}`;
     } catch (e) { resendError = (e as Error).message; }
@@ -3317,7 +3933,15 @@ ${planSectionHtml}
     today_orders:(realOrders || []).length, today_revenue:totalRevenue, meta_alive:!!metaData.ok,
     resend_id:resendId, resend_error:resendError, full_html:html,
     assessment:{
-      mode, version:'v12-manager', summary_he,
+      mode, version:'v13-letter', summary_he,
+      // Yesterday-vs-today dedup source for "ממצאים חדשים" (2026-07-12).
+      opinion_themes: allOpinions.map(o => `${o.theme}|${o.agent_he}`),
+      // Reel-bank state for tomorrow's collapse-delta check (2026-07-14).
+      reel_bank: reelGaps ? { total: reelGaps.total, withReel: reelGaps.withReel, missing: reelGaps.missing, collapsed: reelBankCollapsed } : null,
+      // Organic-engine state for tomorrow's delta in the two-engines strip (2026-07-27).
+      engines: contentPerf ? { eng7: contentPerf.totalEng, clicks30: contentPerf.siteClicks.total } : null,
+      // Delivery-watchdog state — tomorrow's run escalates yellow→red on a 2nd empty day (2026-08-05).
+      delivery_alert: deliveryAlert,
       agent_counts: agentCounts,
       failed_agents: failedAgents.map(f => ({ id: f.id, reason: f.reason, hours: Math.round(f.hours) })),
       real_revenue: totalRevenue, internal_revenue: internalRevenue,
@@ -3336,9 +3960,9 @@ ${planSectionHtml}
   });
   await sb.from('agent_runs').insert({
     agent_id:'boss', run_date:reportDate, status:'completed',
-    summary:`${isWeekly ? 'weekly' : 'daily'} v12: ${opinions.length} new, ${recurring.length} recurring, ${autoFixes.filter(f=>f.succeeded).length} auto-fixed, ${totalPending} pending, ${totalMarketing} marketing · agents ${agentCounts.ok_count}ok/${agentCounts.red_count}red`,
+    summary:`${isWeekly ? 'weekly' : 'daily'} v13: ${opinions.length} new, ${recurring.length} recurring, ${autoFixes.filter(f=>f.succeeded).length} auto-fixed, ${totalPending} pending, ${totalMarketing} marketing · agents ${agentCounts.ok_count}ok/${agentCounts.red_count}red`,
     tasks_created:createdTaskIds.length, tasks_completed_ids:[],
-    side_effects:{ mode, resend_id:resendId, resend_error:resendError, version:'v12', opinion_count:opinions.length, recurring_count: recurring.length, auto_fix_count: autoFixes.filter(f=>f.succeeded).length, pending_count:totalPending, marketing_total:totalMarketing, created_task_ids:createdTaskIds, meta_error: metaData.fetch_error || null, plan_status: planStatus, agent_counts: agentCounts, net_profit: realMetrics?.netProfit ?? null, pageviews_7d: realMetrics?.pageViews7d ?? null },
+    side_effects:{ mode, resend_id:resendId, resend_error:resendError, version:'v13', opinion_count:opinions.length, recurring_count: recurring.length, auto_fix_count: autoFixes.filter(f=>f.succeeded).length, pending_count:totalPending, marketing_total:totalMarketing, created_task_ids:createdTaskIds, meta_error: metaData.fetch_error || null, plan_status: planStatus, agent_counts: agentCounts, net_profit: realMetrics?.netProfit ?? null, pageviews_7d: realMetrics?.pageViews7d ?? null },
   });
 
   // Best-effort: stash a plan_status snapshot into today's daily_snapshots.raw_data.
@@ -3359,7 +3983,7 @@ ${planSectionHtml}
   }
 
   return json({
-    ok:true, mode, version:'v12-manager', resend_id:resendId, resend_error:resendError,
+    ok:true, mode, version:'v13-letter', resend_id:resendId, resend_error:resendError,
     opinion_count:opinions.length, recurring_count: recurring.length,
     auto_fix_count: autoFixes.filter(f=>f.succeeded).length, auto_fixes: autoFixes,
     pending_count:totalPending, marketing_total:totalMarketing,
