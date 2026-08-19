@@ -1,0 +1,115 @@
+name: DUBIS Autonomous Reels
+
+# oren 2026-08-19: "אני רוצה שהרילים ירוצו לבד ללא תלות בי כולל יצירת תוכן חדש"
+#
+# The reel bank froze on 2026-07-14 because the only generator
+# (scripts/_build-new-reels.mjs) shells out to hf.exe — the Higgsfield CLI on
+# oren's Windows machine, whose session expires in minutes. Every reel published
+# for the three weeks after that was a re-publish of a July asset.
+#
+# This workflow removes oren from the loop entirely. Verified 2026-08-19: Veo 3.1
+# is reachable from the plain GEMINI_API_KEY via predictLongRunning (8s, 720x1280,
+# h264 + AAC with native spoken audio, ~60s per clip), and gemini-3-pro-image
+# produces the garment-locked hero frame from the product's real catalog mockup.
+# Nothing in the chain needs a desktop.
+#
+# Output lands at video-assets/_pilot/product-{pid}-FINAL-EN.mp4 — the exact path
+# the existing daily TikTok publisher (dubis-tiktok-daily.yml) already rotates
+# over, so new reels enter circulation with no consumer change.
+#
+# Cadence: Sunday + Wednesday 03:00 UTC, 2 reels each = ~4 fresh reels/week.
+# The bank has 31 active products, so the rotation stops repeating within ~8 weeks
+# and the 9 products that never had a reel (44-52) get filled first.
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'   # Sunday 03:00 UTC — lands before the weekly plan (04:00)
+    - cron: '0 3 * * 3'   # Wednesday 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      product:
+        description: 'Force one product id (e.g. 52) — blank = auto-pick missing-first, then oldest'
+        required: false
+        default: ''
+      count:
+        description: 'How many reels to generate this run'
+        required: false
+        default: '2'
+      dry_run:
+        description: 'Set to 1 to plan + write the script only, no image/video spend'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dubis-reels-autonomous
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    name: Generate fresh reels (Veo 3.1, headless)
+    runs-on: ubuntu-latest
+    # Each reel is ~2 min of Veo polling plus image + ffmpeg. 2 reels fit easily;
+    # the ceiling protects against a hung poll rather than normal runtime.
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install deps
+        run: npm install --no-audit --no-fund @supabase/supabase-js
+
+      - name: ffmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -1
+
+      - name: 🎬 Generate reels
+        id: gen
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -o pipefail
+          ARGS=""
+          if [ -n "${{ github.event.inputs.product }}" ]; then ARGS="$ARGS --product=${{ github.event.inputs.product }}"; fi
+          if [ -n "${{ github.event.inputs.count }}" ]; then ARGS="$ARGS --count=${{ github.event.inputs.count }}"; else ARGS="$ARGS --count=2"; fi
+          if [ -n "${{ github.event.inputs.dry_run }}" ]; then ARGS="$ARGS --dry-run"; fi
+          echo "args:$ARGS"
+          node scripts/generate-reel-autonomous.mjs $ARGS 2>&1 | tee /tmp/reels.log
+          awk '/===REEL_MANIFEST===/{f=1;next}/===END_REEL_MANIFEST===/{f=0}f' /tmp/reels.log > /tmp/manifest.json
+          cat /tmp/manifest.json
+
+      # A failure must be VISIBLE, not silent — the whole reason this workflow
+      # exists is that a muted drop-guard let the bank rot unnoticed for 3 weeks
+      # (M-memory/troubleshooting.md §"The silence bug"). On failure we write a
+      # red agent_runs row so the Boss daily report surfaces it the same evening.
+      - name: ❌ On failure — record a red run so the daily report screams
+        if: failure()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node -e "
+          const { createClient } = require('@supabase/supabase-js');
+          const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth:{persistSession:false} });
+          sb.from('agent_runs').insert({
+            agent_id: 'video',
+            run_date: new Date().toISOString().slice(0,10),
+            status: 'failed',
+            summary: 'autonomous reel generation FAILED — bank not refreshed',
+            error_message: 'GHA dubis-reels-autonomous failed: ' + process.env.RUN_URL,
+            side_effects: { run_url: process.env.RUN_URL }
+          }).then(({error}) => { if (error) { console.error(error.message); process.exit(1); } console.log('red run recorded'); });
+          "
