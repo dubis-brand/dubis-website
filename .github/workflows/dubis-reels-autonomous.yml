@@ -83,9 +83,17 @@ jobs:
 
       - name: ffmpeg
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg
-          ffmpeg -version | head -1
+          # GitHub's ubuntu-latest image already ships ffmpeg. Run 32293432204
+          # hung 18 minutes inside `apt-get update` and had to be cancelled, so
+          # only reach for apt when the binary is genuinely absent — and cap it.
+          if command -v ffmpeg >/dev/null 2>&1; then
+            echo "ffmpeg preinstalled: $(ffmpeg -version | head -1)"
+          else
+            echo "ffmpeg missing — installing (5 min cap)"
+            timeout 150 sudo apt-get update -qq || echo "apt update slow/failed — continuing"
+            timeout 150 sudo apt-get install -y -qq ffmpeg
+            ffmpeg -version | head -1
+          fi
 
       # Written outside the workspace so it can never be committed by accident.
       - name: 🔐 Restore Higgsfield credentials
