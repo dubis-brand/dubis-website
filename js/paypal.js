@@ -507,21 +507,48 @@ function renderWebViewExternalHandoff() {
                       '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=' +
                       encodeURIComponent(externalUrl) + ';end';
 
+    // 2026-08-19 — this surface was hardcoded Hebrew (dir="rtl", HE copy, an
+    // Israeli WhatsApp number) while EVERY visitor who actually reached it in the
+    // last 7 days was in the US. It is the last screen before money changes
+    // hands; showing it in the wrong language is a guaranteed abandon. Same
+    // window.currentLang convention already used by the neighbouring renderers.
+    const he  = (window.currentLang || 'en') === 'he';
+    const dir = he ? 'rtl' : 'ltr';
+    const T = he ? {
+        title:    'תשלום מאובטח — כרטיס אשראי או PayPal',
+        body:     'לחיצה על הכפתור פותחת דף תשלום מאובטח. שם בוחרים <b>"Debit or Credit Card"</b> ומשלמים בכרטיס רגיל — בלי חשבון PayPal — וחוזרים לכאן בסיום.',
+        cta:      'המשך לתשלום מאובטח →',
+        summary:  'התשלום לא נפתח? פתח בדפדפן חיצוני',
+        hint:     'פתח את האתר ב-Chrome / Safari והשלם שם את ההזמנה.',
+        chrome:   'פתח ב-Chrome',
+        deflt:    'פתח בדפדפן ברירת מחדל',
+        copy:     'העתק קישור',
+    } : {
+        title:    'Secure checkout — credit card or PayPal',
+        body:     'This opens a secure payment page. Choose <b>"Debit or Credit Card"</b> to pay with a normal card, no PayPal account needed, and you will come straight back here when it is done.',
+        cta:      'Continue to secure checkout →',
+        summary:  "Payment didn't open? Use an external browser",
+        hint:     'Open the site in Chrome or Safari and finish the order there.',
+        chrome:   'Open in Chrome',
+        deflt:    'Open in default browser',
+        copy:     'Copy link',
+    };
+
     container.innerHTML = `
-        <div class="fb-webview-notice" dir="rtl">
-            <h4>תשלום מאובטח — כרטיס אשראי או PayPal</h4>
-            <p>לחיצה על הכפתור פותחת דף תשלום מאובטח. שם בוחרים <b>"Debit or Credit Card"</b> ומשלמים בכרטיס רגיל — בלי חשבון PayPal — וחוזרים לכאן בסיום.</p>
+        <div class="fb-webview-notice" dir="${dir}">
+            <h4>${T.title}</h4>
+            <p>${T.body}</p>
             <div class="fb-webview-actions">
-                <button type="button" id="fbia-paypal-redirect-btn" class="fb-webview-btn">המשך לתשלום מאובטח →</button>
+                <button type="button" id="fbia-paypal-redirect-btn" class="fb-webview-btn">${T.cta}</button>
             </div>
             <p id="fbia-paypal-error" class="fb-webview-hint" style="display:none;color:#b00020"></p>
             <details class="fb-webview-fallback" style="margin-top:14px">
-                <summary style="cursor:pointer;font-size:.9em;opacity:.8">התשלום לא נפתח? פתח בדפדפן חיצוני</summary>
-                <p class="fb-webview-hint" style="margin-top:8px">פתח את האתר ב-Chrome / Safari והשלם שם את ההזמנה.</p>
+                <summary style="cursor:pointer;font-size:.9em;opacity:.8">${T.summary}</summary>
+                <p class="fb-webview-hint" style="margin-top:8px">${T.hint}</p>
                 <div class="fb-webview-actions">
-                    ${isAndroid ? `<a class="fb-webview-btn secondary" href="${intentUrl}">פתח ב-Chrome</a>` : ''}
-                    <a class="fb-webview-btn secondary" href="${externalUrl}" target="_blank" rel="noopener noreferrer">פתח בדפדפן ברירת מחדל</a>
-                    <button type="button" class="fb-webview-btn secondary" onclick="dubisCopyCheckoutLink(this)">העתק קישור</button>
+                    ${isAndroid ? `<a class="fb-webview-btn secondary" href="${intentUrl}">${T.chrome}</a>` : ''}
+                    <a class="fb-webview-btn secondary" href="${externalUrl}" target="_blank" rel="noopener noreferrer">${T.deflt}</a>
+                    <button type="button" class="fb-webview-btn secondary" onclick="dubisCopyCheckoutLink(this)">${T.copy}</button>
                 </div>
             </details>
         </div>
@@ -592,9 +619,13 @@ function renderWebViewExternalHandoff() {
         } catch (e) {
             btn.disabled = false;
             btn.textContent = originalLabel;
+            // The Israeli WhatsApp number is useless to a US shopper — offer the
+            // brand inbox instead when the UI is English.
             const msg = (e && e.message === 'empty_cart')
-                ? 'העגלה ריקה.'
-                : 'לא הצלחנו לפתוח את התשלום. נסה שוב, פתח את האתר בדפדפן חיצוני — או פשוט כתוב לנו בוואטסאפ 052-366-2526 ונסגור את ההזמנה ביחד.';
+                ? (he ? 'העגלה ריקה.' : 'Your cart is empty.')
+                : (he
+                    ? 'לא הצלחנו לפתוח את התשלום. נסה שוב, פתח את האתר בדפדפן חיצוני — או פשוט כתוב לנו בוואטסאפ 052-366-2526 ונסגור את ההזמנה ביחד.'
+                    : "We couldn't open the payment page. Try again, or open the site in Chrome or Safari — or just email dubis.brand@gmail.com and we'll finish the order with you.");
             if (errEl) { errEl.textContent = msg; errEl.style.display = ''; }
         }
     });
@@ -603,10 +634,13 @@ function renderWebViewExternalHandoff() {
 window.dubisCopyCheckoutLink = function(btn) {
     try {
         const url = window.location.origin + window.location.pathname + '?ext=1#shop';
+        const he  = (window.currentLang || 'en') === 'he';
         const done = (ok) => {
             if (!btn) return;
             const original = btn.textContent;
-            btn.textContent = ok ? '✓ הקישור הועתק' : '⚠ העתק ידנית';
+            btn.textContent = ok
+                ? (he ? '✓ הקישור הועתק' : '✓ Link copied')
+                : (he ? '⚠ העתק ידנית' : '⚠ Copy manually');
             setTimeout(() => { btn.textContent = original; }, 2500);
         };
         if (navigator.clipboard && navigator.clipboard.writeText) {
