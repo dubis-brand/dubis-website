@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// generate-reel-autonomous.mjs — HEADLESS reel generation. No Higgsfield, no oren's machine.
+// generate-reel-autonomous.mjs — HEADLESS reel generation THROUGH HIGGSFIELD.
 //
 // ─── Why this exists (oren, 2026-08-19) ──────────────────────────────────────
 //   "אני רוצה שהרילים ירוצו לבד ללא תלות בי כולל יצירת תוכן חדש"
@@ -11,12 +11,23 @@
 //   re-publish of a July asset (see M-memory/troubleshooting.md
 //   §"The silence bug" for how that stayed invisible).
 //
-//   The unlock, verified 2026-08-19: Veo 3.1 is reachable from the plain
-//   GEMINI_API_KEY we already hold, via predictLongRunning — 8s, 720x1280,
-//   h264 + AAC with NATIVE SPOKEN AUDIO, ~60s per generation. Combined with
-//   gemini-3-pro-image for the garment-locked hero frame, the whole chain runs
-//   on ubuntu-latest with nothing but env vars. See
-//   .github/workflows/dubis-reels-autonomous.yml.
+//   oren on the engine: "רוצה דרך היגספילד אבל שתמצא דרך שזה יהיה אוטמטי בלעדי".
+//   So: Higgsfield, headless.
+//
+//   Our docs recorded "no headless token exists — the session expires in minutes".
+//   That was WRONG, and it is what kept the bank frozen for a month. The
+//   short-lived thing is the ACCESS token, which is normal and irrelevant: the
+//   credentials also carry a refresh_token and the CLI self-heals through
+//   /auth/refresh with no human. Proven 2026-08-19 by deliberately corrupting the
+//   access token and watching `hf model list --video` succeed while the
+//   credentials file rewrote itself.
+//
+//   THE ONE REAL CONSTRAINT: the refresh token is SINGLE-USE and ROTATES on every
+//   refresh, so it cannot be a static secret. This script therefore treats the
+//   credentials file as STATE and prints the rotated value back inside markers so
+//   the workflow can persist it for the next run. Running `hf` manually on a
+//   machine sharing the same chain will break CI auth — re-run `hf auth login`
+//   there to get an independent chain. See the workflow for the write-back.
 //
 // ─── Contract (do not break) ─────────────────────────────────────────────────
 //   Output path  video-assets/_pilot/product-{pid}-FINAL-EN.mp4  (+ -HE copy)
@@ -45,10 +56,13 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_KEY = process.env.GEMINI_API_KEY || '';   // script text only — never video
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://ntzwvqtpdmvvavbhuyeb.supabase.co';
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const FFMPEG = process.env.FFMPEG || 'ffmpeg';
+const HF = process.env.HF || 'hf';
+const CREDS_PATH = process.env.HIGGSFIELD_CREDENTIALS_PATH
+  || path.join(os.homedir(), '.config', 'higgsfield', 'credentials.json');
 
 const args = process.argv.slice(2);
 const argVal = (k) => { const a = args.find(x => x.startsWith(`--${k}=`)); return a ? a.split('=')[1] : null; };
@@ -56,7 +70,6 @@ const DRY_RUN = args.includes('--dry-run');
 const FORCE_PID = argVal('product') ? Number(argVal('product')) : null;
 const COUNT = Number(argVal('count') || 1);
 
-if (!GEMINI_KEY) throw new Error('GEMINI_API_KEY missing');
 if (!SERVICE_ROLE && !DRY_RUN) throw new Error('SUPABASE_SERVICE_ROLE_KEY missing');
 
 const sb = createClient(SUPABASE_URL, SERVICE_ROLE || 'anon', { auth: { persistSession: false } });
@@ -65,8 +78,7 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 const GEN = 'https://generativelanguage.googleapis.com/v1beta';
 const TEXT_MODEL = 'gemini-2.5-flash';
-const IMAGE_MODEL = 'gemini-3-pro-image';
-const VIDEO_MODEL = 'veo-3.1-generate-preview';   // full model — the fast one rejects audio
+const HF_VIDEO_MODEL = 'veo3_1';   // Google Veo 3.1 via Higgsfield — 22 credits @ 9:16/8s/high
 
 // Products that are not worn. A try-on prompt on a mug produces nonsense.
 const NON_APPAREL = new Set(['mug', 'bottle', 'tote']);
@@ -115,6 +127,33 @@ function ff(fargs, label) {
   }
 }
 
+function hf(hfArgs, label) {
+  const r = spawnSync(HF, hfArgs, {
+    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, HIGGSFIELD_CREDENTIALS_PATH: CREDS_PATH },
+  });
+  if (r.status !== 0) throw new Error(`hf ${label} (exit ${r.status}): ${(r.stderr || r.stdout || '').slice(0, 500)}`);
+  return r.stdout || '';
+}
+
+// hf --json shapes vary per command; pull the first media URL out of whatever came back.
+function firstUrl(stdout) {
+  try {
+    const seen = [];
+    (function walk(v) {
+      if (typeof v === 'string' && /^https?:\/\//.test(v)) seen.push(v);
+      else if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+    })(JSON.parse(stdout));
+    const media = seen.find(u => /\.(mp4|mov|webm|png|jpe?g|webp)(\?|$)/i.test(u));
+    if (media) return media;
+    if (seen.length) return seen[0];
+  } catch { /* not json */ }
+  const line = stdout.split(String.fromCharCode(10)).map(x => x.trim()).find(x => x.startsWith('http'));
+  if (line) return line;
+  throw new Error(`no URL in hf output: ${stdout.slice(0, 300)}`);
+}
+
 async function download(url, out) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`download ${r.status} ${url.slice(0, 90)}`);
@@ -153,7 +192,26 @@ async function pickTargets(n) {
 }
 
 // ── 2 · write the script (brand voice, grounded in the real slogan) ──────────
+const SCENES = [
+  'in a sunlit kitchen mid-morning', 'on a small balcony at golden hour',
+  'in a cluttered home office at the end of the day', 'in a doorway with the afternoon light behind them',
+  'on a couch with the TV off', 'in a hallway holding car keys',
+];
+function fallbackScript(p) {
+  const n = Number(p.product_id_numeric) || 1;
+  return {
+    age: 38 + (n * 7) % 15,
+    person: p.gender === 'women' ? 'woman' : p.gender === 'men' ? 'man' : (n % 2 ? 'woman' : 'man'),
+    scene: SCENES[n % SCENES.length],
+    narration: `Somewhere along the way this stopped being about looking right. ${String(p.slogan).replace(/\.$/, '')}. That is the whole message.`,
+    caption_he: `${p.slogan}\nלשאר המין האנושי 👇`,
+    caption_en: `${p.slogan}\nFor the rest of us 👇`,
+    _fallback: true,
+  };
+}
+
 async function writeScript(p) {
+  if (!GEMINI_KEY) { log('    (no GEMINI_API_KEY — slogan-derived script)'); return fallbackScript(p); }
   const worn = !NON_APPAREL.has(p.clothing_type);
   const prompt = `${VOICE_RULES}
 
@@ -176,6 +234,7 @@ Return STRICT JSON, no markdown fence, with exactly these keys:
 The narration must sound spoken, not written. No hashtags inside narration.
 ${worn ? 'The person is WEARING the product.' : `The person is USING the ${p.clothing_type}, holding it naturally in the scene.`}`;
 
+  try {
   const j = await gJSON(
     `${GEN}/models/${TEXT_MODEL}:generateContent?key=${GEMINI_KEY}`,
     { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 1.0, responseMimeType: 'application/json' } },
@@ -192,80 +251,42 @@ ${worn ? 'The person is WEARING the product.' : `The person is USING the ${p.clo
   const words = String(s.narration).trim().split(/\s+/).length;
   if (words > 34) throw new Error(`narration too long for 8s: ${words} words`);
   return s;
+  } catch (e) { log(`    (script fallback: ${e.message.slice(0, 90)})`); return fallbackScript(p); }
 }
 
 // ── 3 · hero frame with the REAL garment (WARDROBE LOCK) ────────────────────
+// Higgsfield product-photoshoot, mode virtual_model_tryout, with the product's
+// real catalog mockup as the reference so the person wears the EXACT garment.
 async function makeHero(p, s) {
-  const worn = !NON_APPAREL.has(p.clothing_type);
+  if (!p.image_url) throw new Error(`product ${p.product_id_numeric} has no image_url to lock the garment against`);
   const color = (p.colors && p.colors[0]) || 'Black';
-  const mockUrl = p.image_url;
-  if (!mockUrl) throw new Error(`product ${p.product_id_numeric} has no image_url to lock the garment against`);
+  const worn  = !NON_APPAREL.has(p.clothing_type);
+  const mock  = await download(p.image_url, path.join(TMP, `mock-${p.product_id_numeric}.jpg`));
 
-  const mockPath = await download(mockUrl, path.join(TMP, `mock-${p.product_id_numeric}.jpg`));
-  const b64 = fs.readFileSync(mockPath).toString('base64');
-  const mime = mockUrl.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+  const prompt = worn
+    ? `A ${s.age}-year-old ${s.person} with an ordinary, real, non-model body, ${s.scene}. Wearing the EXACT ${color} ${p.clothing_type} shown in the reference image — same colour, same cut, same printed chest design, reproduced faithfully. Do NOT redesign, re-letter or move the print. Do NOT slim the person. The ${p.clothing_type} is the OUTERMOST layer and fully visible from shoulders to waist: no jacket, cardigan or coat over it, nothing held in front of the chest. Front-facing, three-quarter framing, fully and modestly clothed. Soft natural window light, candid documentary portrait, 85mm f/1.8, Kodak Portra 400 grain.`
+    : `A ${s.age}-year-old ${s.person} with an ordinary, real body, ${s.scene}, holding and using the EXACT ${color} ${p.clothing_type} from the reference image — same colour, same shape, same printed design reproduced faithfully. Natural candid framing, soft window light, 85mm f/1.8, Kodak Portra 400 grain.`;
 
-  const instruction = worn
-    ? `Photorealistic vertical 9:16 portrait. A ${s.age}-year-old ${s.person} with an ordinary, real, non-model body, ${s.scene}.
-They are wearing the EXACT ${color} ${p.clothing_type} shown in the reference image — same colour, same cut, and the same printed chest design, reproduced faithfully. Do NOT redesign, restyle, re-letter or move the print. Do NOT slim the person.
-The ${p.clothing_type} must be the OUTERMOST layer and fully visible from shoulders to waist: no jacket, cardigan, coat, scarf, apron or open shirt over it, and nothing held in front of the chest. The person is standing or seated upright with the chest unobstructed and facing camera.
-Front-facing, three-quarter framing from mid-thigh up, fully and modestly clothed. Soft natural window light, late afternoon, natural skin texture and real pores, candid documentary portrait, 85mm f/1.8, Kodak Portra 400 grain.`
-    : `Photorealistic vertical 9:16 portrait. A ${s.age}-year-old ${s.person} with an ordinary, real body, ${s.scene}.
-They are holding and using the EXACT ${color} ${p.clothing_type} shown in the reference image — same colour, same shape, and the same printed design reproduced faithfully. Do NOT redesign or re-letter the print.
-Natural candid framing, soft window light, 85mm f/1.8, Kodak Portra 400 grain.`;
-
-  const j = await gJSON(
-    `${GEN}/models/${IMAGE_MODEL}:generateContent?key=${GEMINI_KEY}`,
-    { contents: [{ parts: [{ text: instruction }, { inline_data: { mime_type: mime, data: b64 } }] }] },
-    'hero',
-  );
-  const parts = j.candidates?.[0]?.content?.parts || [];
-  const img = parts.find(x => x.inlineData || x.inline_data);
-  if (!img) throw new Error(`hero: model returned no image (${JSON.stringify(parts).slice(0, 200)})`);
-  const data = (img.inlineData || img.inline_data).data;
-  const out = path.join(TMP, `hero-${p.product_id_numeric}.png`);
-  fs.writeFileSync(out, Buffer.from(data, 'base64'));
-  return out;
+  const out = hf(['product-photoshoot', 'create', '--mode', 'virtual_model_tryout',
+    '--prompt', prompt, '--image', mock, '--count', '1', '--aspect_ratio', '3:4',
+    '--timeout', '10m', '--json'], 'product-photoshoot');
+  return download(firstUrl(out), path.join(TMP, `hero-${p.product_id_numeric}.jpg`));
 }
 
-// ── 4 · Veo 3.1 image-to-video with native spoken audio ─────────────────────
-async function makeVideo(p, s, heroPath) {
+// ── 4 · Veo 3.1 THROUGH HIGGSFIELD ──────────────────────────────────────────
+async function makeVideo(p, s, hero) {
   const color = (p.colors && p.colors[0]) || 'Black';
-  const worn = !NON_APPAREL.has(p.clothing_type);
-  const prompt = `Cinematic intimate documentary 9:16 vertical portrait. The person from the start frame, unchanged: a ${s.age}-year-old ${s.person}, ${s.scene}.
-${worn
-      ? `They are wearing a ${color} ${p.clothing_type}. The garment MUST remain the same ${color} ${p.clothing_type} for the entire clip — it must not morph into a different garment, and the printed chest design must not change or re-letter.`
-      : `They are holding the ${color} ${p.clothing_type}. The object must not morph or change its printed design.`}
-They speak directly to camera in a warm, dry, slightly sardonic voice, at a relaxed conversational pace.
-Spoken words: "${s.narration}"
-Subtle natural gestures, a small knowing half-smile at the end. Stays front-facing throughout. Soft golden afternoon light, Kodak Portra grain. No on-screen text, no captions, no subtitles.`;
+  const worn  = !NON_APPAREL.has(p.clothing_type);
+  const prompt = `Cinematic intimate documentary 9:16 vertical portrait. The person from the start frame, unchanged: a ${s.age}-year-old ${s.person}, ${s.scene}. ${
+    worn
+      ? `Wearing a ${color} ${p.clothing_type}. The garment MUST remain the same ${color} ${p.clothing_type} for the entire clip — it must not morph into a different garment and the printed chest design must not change or re-letter.`
+      : `Holding the ${color} ${p.clothing_type}. The object must not morph and its printed design must not change.`
+  } They speak directly to camera in a warm, dry, slightly sardonic voice at a relaxed conversational pace. Spoken words: "${s.narration}" Subtle natural gestures, a small knowing half-smile at the end. Stays front-facing. Soft golden afternoon light, Kodak Portra grain. No on-screen text, no captions, no subtitles.`;
 
-  const b64 = fs.readFileSync(heroPath).toString('base64');
-  const op = await gJSON(
-    `${GEN}/models/${VIDEO_MODEL}:predictLongRunning?key=${GEMINI_KEY}`,
-    { instances: [{ prompt, image: { bytesBase64Encoded: b64, mimeType: 'image/png' } }],
-      parameters: { aspectRatio: '9:16' } },
-    'veo-start',
-  );
-  const name = op.name;
-  if (!name) throw new Error(`veo: no operation name`);
-
-  // ~60s typical, 6 min ceiling. A silent retry cap is a drop-guard violation
-  // (feedback-system 2026-08-08) — on timeout we THROW so the workflow goes red
-  // and the daily report shows it, rather than skipping quietly.
-  for (let i = 0; i < 40; i++) {
-    await sleep(15000);
-    const r = await fetch(`${GEN}/${name}?key=${GEMINI_KEY}`);
-    const j = await r.json();
-    if (j.error) throw new Error(`veo-poll: ${JSON.stringify(j.error).slice(0, 300)}`);
-    if (j.done) {
-      const uri = j.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri;
-      if (!uri) throw new Error(`veo finished with no video: ${JSON.stringify(j).slice(0, 300)}`);
-      return download(`${uri}${uri.includes('?') ? '&' : '?'}key=${GEMINI_KEY}`, path.join(TMP, `veo-${p.product_id_numeric}.mp4`));
-    }
-    if (i % 4 === 0) log(`    …veo ${(i + 1) * 15}s`);
-  }
-  throw new Error('veo timed out after 10 minutes');
+  const out = hf(['generate', 'create', HF_VIDEO_MODEL, '--aspect_ratio', '9:16', '--duration', '8',
+    '--quality', 'high', '--image', hero, '--prompt', prompt,
+    '--wait', '--wait-timeout', '20m', '--json'], HF_VIDEO_MODEL);
+  return download(firstUrl(out), path.join(TMP, `veo-${p.product_id_numeric}.mp4`));
 }
 
 // ── 5 · compose: upscale + the back-reveal product beat ─────────────────────
@@ -342,7 +363,7 @@ async function publish(p, finalPath, s) {
     agent_id: 'video', run_date: new Date().toISOString().slice(0, 10), status: 'completed',
     summary: `autonomous reel generated for product ${pid} — "${String(p.slogan).slice(0, 40)}" (Veo 3.1, headless)`,
     tasks_created: 0,
-    side_effects: { product_id: pid, video_url: url, narration: s.narration, caption_he: s.caption_he, caption_en: s.caption_en, engine: 'veo-3.1-generate-preview', bytes: buf.length },
+    side_effects: { product_id: pid, video_url: url, narration: s.narration, caption_he: s.caption_he, caption_en: s.caption_en, engine: 'higgsfield:veo3_1', bytes: buf.length },
   });
 
   return url;
@@ -350,6 +371,11 @@ async function publish(p, finalPath, s) {
 
 // ── main ─────────────────────────────────────────────────────────────────────
 (async () => {
+  // Fail loudly and EARLY if the Higgsfield auth chain is broken — never spend
+  // credits on a half-run, and never fail silently the way the bank did.
+  const who = hf(['account', 'status'], 'account status').trim();
+  log('higgsfield: ' + who.split(String.fromCharCode(10))[0]);
+
   const targets = await pickTargets(COUNT);
   log(`targets: ${targets.map(t => `#${t.product_id_numeric}${t._age === -1 ? ' (MISSING)' : ''}`).join(', ')}`);
 
@@ -378,6 +404,14 @@ async function publish(p, finalPath, s) {
   console.log('===REEL_MANIFEST===');
   console.log(JSON.stringify({ generated: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length, results }, null, 2));
   console.log('===END_REEL_MANIFEST===');
+
+  // The refresh token rotated during this run (single-use). Emit the new
+  // credentials so the workflow can store them for next time.
+  try {
+    console.log('===HF_CREDENTIALS===');
+    console.log(fs.readFileSync(CREDS_PATH, 'utf8').trim());
+    console.log('===END_HF_CREDENTIALS===');
+  } catch (e) { log(`⚠ could not read back credentials: ${e.message}`); }
 
   try { fs.rmSync(TMP, { recursive: true, force: true }); } catch { /* best effort */ }
   if (results.every(r => !r.ok)) process.exit(1);
