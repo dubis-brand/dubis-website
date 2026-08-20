@@ -39,11 +39,13 @@ OK "runner: $uv"
 $paused = Get-ChildItem -Path $Root -Recurse -Filter "PAUSED*" -File -ErrorAction SilentlyContinue
 if ($paused) {
   Say ""
-  Warn "a PAUSED file exists - the bot will stay silent until it is deleted:"
-  foreach ($f in $paused) { Warn "   $($f.FullName)" }
-  $ans = Read-Host "delete it and let the bot answer again? (yes/no)"
-  if ($ans -eq 'yes') { if (-not $WhatIf) { $paused | Remove-Item -Force }; OK "PAUSED removed" }
-  else { Warn "left in place - the bot will NOT answer" }
+  Warn "PAUSED kill-switch found - THIS ALONE keeps the bot silent. removing it:"
+  foreach ($f in $paused) {
+    Warn "   $($f.FullName)  (written $($f.LastWriteTime))"
+    if (-not $WhatIf) { Remove-Item $f.FullName -Force }
+  }
+  OK "PAUSED removed - the bot is allowed to answer again"
+  Say "   (to silence it again later: create an empty file named PAUSED in the bot folder)"
 }
 
 # ── ANTHROPIC_API_KEY ─────────────────────────────────────────────────────────
@@ -93,14 +95,42 @@ foreach ($p in $plan) {
 
 if ($WhatIf) { Say ""; Warn "-WhatIf: nothing was changed."; exit 0 }
 
-Start-Sleep -Seconds 6
+Say ""
+Say "waiting 10s for both to come up..."
+Start-Sleep -Seconds 10
+
 Say ""
 Say "=== state after fix ==="
 foreach ($p in $plan) {
   $i = Get-ScheduledTask -TaskName $p.Name | Get-ScheduledTaskInfo
   Say "  $($p.Name): lastRun=$($i.LastRunTime) result=$($i.LastTaskResult)"
 }
+
+$alive = $true
+
+$bridgeUp = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match [regex]::Escape($bridgeExe.FullName) }
+if ($bridgeUp) { OK "bridge process is alive (PID $($bridgeUp.ProcessId -join ','))" }
+else { Bad "bridge did NOT come up"; $alive = $false }
+
+$botUp = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'bot\.py' }
+if ($botUp) { OK "bot.py is alive (PID $($botUp.ProcessId -join ','))" }
+else { Bad "bot.py did NOT come up"; $alive = $false }
+
+$portUp = $false
+foreach ($port in 8080,8081,3000,5000) {
+  $c = New-Object Net.Sockets.TcpClient
+  try { $c.Connect("127.0.0.1", $port); if ($c.Connected) { OK "bridge REST is answering on port $port"; $portUp = $true } } catch {}
+  finally { $c.Close() }
+}
+if (-not $portUp) { Bad "no bridge port is answering - it may be waiting for a QR scan (WhatsApp logged the device out)"; $alive = $false }
+
 Say ""
-Say "now send yourself a WhatsApp from ANOTHER phone (the bot never answers itself)."
-Say "still silent? run whatsapp-bot-doctor.bat and read the VERDICT."
+if ($alive) {
+  Write-Host "=== LIVE. both survive a restart from now on. ===" -ForegroundColor Green
+  Say "send a WhatsApp from ANOTHER phone to test - the bot never answers itself."
+} else {
+  Write-Host "=== NOT fully up - run whatsapp-bot-doctor.bat and read the VERDICT ===" -ForegroundColor Red
+  Say "the most common cause at this point is a dead WhatsApp pairing: run the bridge in a"
+  Say "visible window, scan the QR from the phone, then run this script again."
+}
 Say ""
