@@ -1,0 +1,7 @@
+DUBIS - WhatsApp bot: emergency one-liner (no repo needed)
+Paste the single line below into a normal PowerShell window on the PC.
+It: removes any PAUSED kill-switch, registers BOTH the bridge and bot.py as
+AtLogOn scheduled tasks (auto-restart every 2 min), starts them now, and prints
+the live PIDs. Same as whatsapp-bot-fix.bat, without needing this repo.
+
+
