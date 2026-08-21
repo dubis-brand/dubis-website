@@ -69,9 +69,19 @@ async function call(method, p, body, label) {
   // models — the catalog with, hopefully, per-model param schemas
   const models = await call('GET', '/agents/models');
   if (models.json && Array.isArray(models.json)) {
-    const veo = models.json.find(m => JSON.stringify(m).includes('veo3_1'));
-    log('\n### veo3_1 catalog entry:');
-    log(JSON.stringify(veo, null, 1).slice(0, 1500));
+    const veo = models.json.find(m => m.job_set_type === 'veo3_1');
+    if (veo) {
+      const props = veo.params && veo.params.properties;
+      log('\n### veo3_1 required: ' + JSON.stringify(veo.params && veo.params.required));
+      log('### veo3_1 properties (full):');
+      log(JSON.stringify(props, null, 0));
+      const defs = veo.params && veo.params.$defs;
+      if (defs) log('### veo3_1 $defs keys: ' + Object.keys(defs).join(', '));
+    } else {
+      log('\n### veo3_1 NOT in catalog; types present: ' + models.json.map(m => m.job_set_type).join(','));
+    }
+    const soul = models.json.find(m => m.job_set_type === 'text2image_soul_v2');
+    if (soul) log('\n### soul_v2 required: ' + JSON.stringify(soul.params && soul.params.required));
   }
 
   // cost — the schema oracle. Empty body first: the 422 names every field.
@@ -87,8 +97,19 @@ async function call(method, p, body, label) {
   await call('POST', '/agents/product-photoshoot/enhance',
     { mode: 'virtual_model_tryout', prompt: 'probe' }, 'enhance {mode,prompt}');
 
-  // uploads — GET to learn the contract (may be POST-only; the 405/422 tells us)
-  await call('GET', '/agents/uploads');
+  // uploads — learn the contract from 422s (nothing is stored by an invalid call)
+  await call('GET', '/agents/uploads?type=image');
+  await call('POST', '/agents/uploads', {}, 'upload POST {}');
+  await call('POST', '/agents/uploads?type=image', {}, 'upload POST ?type=image {}');
+  // cost with a media reference — validates the input-image field name end-to-end
+  await call('POST', '/agents/jobs/cost',
+    { job_set_type: 'veo3_1', params: { prompt: 'probe', aspect_ratio: '9:16', duration: 8, quality: 'high',
+      media: [{ role: 'start_image', data: { id: '00000000-0000-0000-0000-000000000000', type: 'media_input' } }] } },
+    'cost veo3_1 + media[start_image]');
+  await call('POST', '/agents/jobs/cost',
+    { job_set_type: 'veo3_1', params: { prompt: 'probe', aspect_ratio: '9:16', duration: 8, quality: 'high',
+      input_images: [{ id: '00000000-0000-0000-0000-000000000000', type: 'media_input' }] } },
+    'cost veo3_1 + input_images[]');
 
   // hand the rotated chain back to the workflow
   console.log('===HF_CREDENTIALS===');
