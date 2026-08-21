@@ -317,7 +317,8 @@ async function makeHero(p, s) {
   const params = { prompt };
   if (props.aspect_ratio) params.aspect_ratio = '9:16';
   const imgRef = { id: mediaId, type: 'media_input' };
-  if (props.media) params.media = [{ role: 'image', data: imgRef }];
+  if (props.medias) params.medias = [{ role: 'image', data: imgRef }];
+  else if (props.media) params.media = [{ role: 'image', data: imgRef }];
   else if (props.input_images) params.input_images = [imgRef];
   else if (props.input_image) params.input_image = imgRef;
   else throw new Error(`no image-reference field on ${nb.job_set_type}: ${Object.keys(props).join(',')}`);
