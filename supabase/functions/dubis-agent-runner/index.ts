@@ -146,37 +146,37 @@ const EMAIL_DENY_SUBJECT_RX = /(receipt|invoice|payment (received|sent|confirmat
 // Self-ingest: our own daily/weekly reports bouncing back into the inbox.
 const EMAIL_SELF_RX = /(DUBIS\s*דוח|DUBIS\s*פגישה|דוח יומי|פגישה שבועית|daily report|weekly report|boss agent|orders@dubis\.net)/i;
 
-// 2026-08-08 FIX (oren: "אני עושה השב למיילים ואתם לא מבצעים"): a REPLY to one
-// of our own reports is a DIRECTIVE from oren, not a self-report. The 2026-07-12
-// reply-loop exemption was implemented ONLY in the boss digest (downstream) —
-// this scanner still killed every "Re: DUBIS דוח יומי" at the self-ingest filter
-// BEFORE the sender check, so no gmail_insight row was ever created and the
-// board never saw his instructions. Note oren replies FROM dubis.brand@gmail.com
-// itself (he owns the inbox), so the brand address counts as an oren sender here.
-function isOrenReportReply(from: string, subject: string): boolean {
-  const f = from.toLowerCase();
-  const isReply = /^(re|השב|תגובה|fwd?)[:\s]/i.test(subject.trim());
-  const aboutReport = EMAIL_SELF_RX.test(subject);
-  const fromOrenSide = EMAIL_SIGNAL_SENDERS.some(addr => f.includes(addr)) || f.includes('dubis.brand@gmail.com');
-  return isReply && aboutReport && fromOrenSide;
-}
+// Content newsletters (marketing tips, AI, e-commerce) are NOT noise — oren
+// 2026-08-21: "אנחנו מקבלים ניוזלטר על שיפור השיווק אתה בכלל לא מתייחס". They get
+// a LIGHT summary line in the digest instead of a full 4-part analysis.
+const EMAIL_NEWSLETTER_RX = /(newsletter|digest|weekly (update|roundup)|webinar|grow your business|run your business|growth tips|marketing tips|ניוזלטר|טיפים)/i;
 
-function isSignalEmail(from: string, subject: string): boolean {
+type EmailClass = 'signal' | 'newsletter' | 'noise';
+function classifyEmail(from: string, subject: string): EmailClass {
   const f = from.toLowerCase();
   const s = `${from} ${subject}`;
-  // oren replying to a report = a directive that MUST survive the self-report filter.
-  if (isOrenReportReply(from, subject)) return true;
-  // Self-ingested reports are always noise.
-  if (EMAIL_SELF_RX.test(s)) return false;
-  // Mail FROM oren/hila is always signal (overrides denylists — he forwards a
-  // vendor email on purpose to ask "what do we do with this").
-  if (EMAIL_SIGNAL_SENDERS.some(addr => f.includes(addr))) return true;
-  // Otherwise apply the vendor/transactional denylists.
-  if (EMAIL_DENY_RX.test(f)) return false;
-  if (EMAIL_DENY_DOMAIN_RX.test(f)) return false;
-  if (EMAIL_DENY_SUBJECT_RX.test(subject)) return false;
-  // Anything else addressed to the brand inbox by a human → treat as signal.
-  return true;
+  // ORDER MATTERS — the 2026-08-21 bug: the self-ingest kill ran before the
+  // sender override, so oren's replies to the daily report ("Re: … דוח יומי")
+  // were unconditionally dropped. Sender identity is checked FIRST, always.
+  if (EMAIL_SIGNAL_SENDERS.some(addr => f.includes(addr))) return 'signal';
+  // Self-ingested reports (from the system itself) are noise.
+  if (EMAIL_SELF_RX.test(s)) return 'noise';
+  // Newsletter PLATFORMS are newsletter-class by definition — checked BEFORE
+  // the vendor-domain denylist, which used to kill substack content oren
+  // wanted read (live run 2026-08-21 09:53: Tom's Marketing Ideas + Rachel
+  // Karten dropped at the domain check).
+  if (/@(substack\.com|beehiiv\.com|convertkit|buttondown|ghost\.io)/i.test(f)) return 'newsletter';
+  if (EMAIL_NEWSLETTER_RX.test(subject)) return 'newsletter';
+  // Transactional / account noise.
+  if (EMAIL_DENY_RX.test(f)) return 'noise';
+  if (EMAIL_DENY_DOMAIN_RX.test(f)) return 'noise';
+  if (EMAIL_DENY_SUBJECT_RX.test(subject)) return 'noise';
+  // Anything else addressed to the brand inbox by a human → signal.
+  return 'signal';
+}
+// Back-compat shim for any other call site.
+function isSignalEmail(from: string, subject: string): boolean {
+  return classifyEmail(from, subject) === 'signal';
 }
 
 // Recursively pull text/plain (preferred) or text/html out of a Gmail payload.
@@ -315,7 +315,9 @@ async function runEmailMonitor(sb: SB): Promise<Record<string, unknown>> {
     const q = encodeURIComponent(
       'newer_than:2d (from:(teharlev1976@gmail.com OR hilateharlev@gmail.com OR steharlev@gmail.com) ' +
       'OR to:(dubis.brand@gmail.com)) ' +
-      '-from:(orders@dubis.net) -category:promotions -category:social',
+      // -category:promotions removed 2026-08-21: it hid content newsletters from
+      // the code entirely, so the newsletter class below could never fire.
+      '-from:(orders@dubis.net) -category:social',
     );
     const listRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=20`, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (!listRes.ok) return { ok: false, error: `Gmail list HTTP ${listRes.status}` };
@@ -335,9 +337,16 @@ async function runEmailMonitor(sb: SB): Promise<Record<string, unknown>> {
       const subject = headers.find(h => h.name === 'Subject')?.value || '(no subject)';
       const from = headers.find(h => h.name === 'From')?.value || '';
 
-      if (!isSignalEmail(from, subject)) { filtered++; continue; }
+      const emailClass = classifyEmail(from, subject);
+      if (emailClass === 'noise') {
+        filtered++;
+        // A filter with an invisible discard pile is how oren's replies vanished
+        // for weeks. Every dropped mail is named in side_effects.
+        insightDetails.push({ dropped: true, from: from.slice(0, 80), subject: subject.slice(0, 100) });
+        continue;
+      }
 
-      const title = `📧 ${subject}`.slice(0, 200);
+      const title = (emailClass === 'newsletter' ? `📰 ${subject}` : `📧 ${subject}`).slice(0, 200);
       // Dedup by title within 48h.
       const { data: dup } = await sb.from('agent_tasks').select('id').eq('title', title).gte('created_at', new Date(Date.now() - 48 * 3600000).toISOString()).limit(1);
       if (dup && dup.length > 0) continue;
@@ -345,8 +354,13 @@ async function runEmailMonitor(sb: SB): Promise<Record<string, unknown>> {
       const body = extractBodyFromPayload(m.payload) || (m.snippet || '');
       const urls = extractUrls(body);
       const urlContexts: Array<{ url: string; ctx: string }> = [];
-      for (const u of urls.slice(0, 3)) {
-        urlContexts.push({ url: u, ctx: await fetchUrlContext(u) });
+      // Newsletters get the light path: no URL crawling, capped per run.
+      const newsletterCount = insightDetails.filter(d => (d as Record<string, unknown>).newsletter).length;
+      if (emailClass === 'newsletter' && newsletterCount >= 3) { filtered++; insightDetails.push({ dropped: true, reason: 'newsletter-cap', subject: subject.slice(0, 100) }); continue; }
+      if (emailClass === 'signal') {
+        for (const u of urls.slice(0, 3)) {
+          urlContexts.push({ url: u, ctx: await fetchUrlContext(u) });
+        }
       }
 
       const analysis = await analyzeIdeaEmail(subject, from, body, urlContexts);
@@ -390,7 +404,7 @@ async function runEmailMonitor(sb: SB): Promise<Record<string, unknown>> {
       });
       if (insErr) { insightDetails.push({ subject, from, insert_error: insErr.message }); continue; }
       saved++;
-      insightDetails.push({ subject, from, has_analysis: !!analysis, urls: urls.length });
+      insightDetails.push({ subject, from, has_analysis: !!analysis, urls: urls.length, newsletter: emailClass === 'newsletter' });
     }
 
     return { ok: true, scanned, saved, filtered, analyzed, details: insightDetails };

@@ -467,7 +467,7 @@ async function opinionMarketing(meta: Record<string, unknown>, realOrders: unkno
   const cur = (meta.currency as string) || 'ILS'; const sym = cur === 'ILS' ? '₪' : '$';
   const spend = num(cw7.spend), clicks = num(cw7.clicks), cpc = num(cw7.cpc), ctr = num(cw7.ctr);
   if (spend === 0 && clicks === 0) return null;
-  if (realOrders.length === 0 && clicks > 50) return { agent:'marketing', agent_he:'מנהל השיווק', observation:`7ימ: ${sym}${spend.toFixed(0)} הוצאה, ${clicks} קליקים, 0 ממירות מ-Meta.`, recommendation:'לבדוק אם הקמפיין Sales ו-Conversion Event=Purchase', priority:'P0', theme:'campaign-conversion' };
+  if (realOrders.length === 0 && clicks > 50) return { agent:'marketing', agent_he:'מנהל השיווק', observation:`7ימ: ${sym}${spend.toFixed(0)} הוצאה, ${clicks} קליקים, 0 ממירות מ-Meta.`, recommendation:'תיקון-הצ׳קאאוט (WebView) חי מ-19.08 — כל מדידת-רכישות לפניו הייתה על כפתור מת. לקרוא checkout_start→רכישה רק מ-19.08 והלאה; אם יש התחלות-צ׳קאאוט ועדיין אפס רכישות, לבדוק בתוך דף-התשלום של PayPal', priority:'P0', theme:'campaign-conversion' };
   if (ctr < 1) return { agent:'marketing', agent_he:'מנהל השיווק', observation:`CTR ${ctr.toFixed(2)}% — מתחת ל-benchmark.`, recommendation:'להחליף יצירתיות', priority:'P1', theme:'campaign-creative' };
   if (ctr > 2 && cpc > 2.5) return { agent:'marketing', agent_he:'מנהל השיווק', observation:`CTR ${ctr.toFixed(2)}% טוב אבל CPC ${sym}${cpc.toFixed(2)} גבוה.`, recommendation:'לצמצם טארגטינג', priority:'P2', theme:'campaign-targeting' };
   return null;
@@ -519,6 +519,34 @@ async function opinionStandingCommitments(sb: SB): Promise<Opinion | null> {
 // episode has NO cron (Higgsfield is main-session-only), so the only guard is
 // this report line — if the newest published episode is older than 7 days,
 // scream. The episode itself gets produced in the next /dubis session.
+async function fetchLedgerDeltaHtml(sb: SB): Promise<string> {
+  try {
+    const since = new Date(Date.now() - 36 * 3600000).toISOString();
+    const { data: closed } = await sb.from('standing_commitments')
+      .select('title, last_done_at, last_proof')
+      .gte('last_done_at', since).order('last_done_at', { ascending: false }).limit(6);
+    const { data: opened } = await sb.from('standing_commitments')
+      .select('title, due_date, owner').eq('active', true)
+      .gte('created_at', since).order('created_at', { ascending: false }).limit(6);
+    const c = (closed || []) as Array<{ title: string; last_proof: string | null }>;
+    const o = (opened || []) as Array<{ title: string; due_date: string; owner: string }>;
+    if (!c.length && !o.length) return '';
+    const rows: string[] = [];
+    for (const r of c) {
+      const proof = String(r.last_proof || '');
+      const m = proof.match(/https?:\/\/[^\s"']+/);
+      const proofBit = m
+        ? ` · <a href="${esc(m[0])}" style="color:#2f7a45">הוכחה →</a>`
+        : (proof ? ` · <span style="color:#888">${esc(proof.slice(0, 90))}</span>` : '');
+      rows.push(`<div dir="rtl" style="padding:6px 10px;background:#f2f8f3;margin:4px 0;border-radius:4px;border-right:3px solid #2f7a45;font-size:12.5px;text-align:right">✅ <b>בוצע:</b> ${esc(r.title.slice(0, 90))}${proofBit}</div>`);
+    }
+    for (const r of o) {
+      rows.push(`<div dir="rtl" style="padding:6px 10px;background:#f8f6f0;margin:4px 0;border-radius:4px;border-right:3px solid #c8a96e;font-size:12.5px;text-align:right">📌 <b>נרשם:</b> ${esc(r.title.slice(0, 90))} · יעד ${esc(String(r.due_date))} · ${r.owner === 'oren' ? 'אורן' : 'סשן-הניהול'}</div>`);
+    }
+    return rows.join('');
+  } catch (_) { return ''; }
+}
+
 async function opinionSitcomCadence(sb: SB): Promise<Opinion | null> {
   try {
     const { data } = await sb.from('agent_tasks').select('updated_at')
@@ -762,8 +790,22 @@ async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
         const n = String((e as Record<string, unknown>).event);
         if (n === 'add_to_cart') carts++;
         else if (n === 'checkout_start') checkouts++;
-        else if (n === 'purchase') purchases++;
       }
+      // 2026-08-21 — purchases come from ORDERS, not pixel events. The 20.08
+      // report showed "CAC ₪1219" off oren's friend's order; the verdict counter
+      // (status.md watchlist) excludes is_test, ostrovsky.vlad@gmail.com and
+      // PALRAM15 — the same exclusions apply here so the two never disagree.
+      const { data: ord } = await sb.from('orders')
+        .select('buyer_email, is_test, coupon_code, refund_id')
+        .gte('created_at', `${start}T00:00:00Z`).limit(500);
+      purchases = (ord || []).filter(o => {
+        const r = o as Record<string, unknown>;
+        if (r.is_test) return false;
+        if (r.refund_id) return false;
+        if (String(r.buyer_email || '').toLowerCase() === 'ostrovsky.vlad@gmail.com') return false;
+        if (String(r.coupon_code || '').toUpperCase() === 'PALRAM15') return false;
+        return true;
+      }).length;
     }
     let gate: KillSwitchRead['gate'] = 'none'; let gateLine = '';
     // 2026-07-27 (oren: "החלק העליון חוזר בדיוק אותו דבר"): a campaign that was
@@ -3716,6 +3758,10 @@ Deno.serve(async (req: Request) => {
   if (!isWeekly) {
     // ---------- DAILY ----------
     sections += sectionCard('🎯 החלטות להיום', topDecisionsHtml, '#c8a96e');
+    // 2026-08-21 (oren: "כאילו לא דיברנו ותחקרנו כלום") — the ledger delta:
+    // what got CLOSED with proof and what got AGREED since the last report.
+    const ledgerDeltaHtml = await fetchLedgerDeltaHtml(sb);
+    if (ledgerDeltaHtml) sections += sectionCard('🤝 מה סיכמנו — ומה כבר בוצע (36 שעות)', ledgerDeltaHtml, '#2f7a45');
     sections += autoFixHtml;
     sections += recurringHtml;
     if (opinions.length > 0) sections += sectionCard(`🚨 ממצאים חדשים (${opinions.length})`, issuesHtml);

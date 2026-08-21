@@ -47,6 +47,10 @@ on:
         description: 'Set to 1 to plan + write the script only, no Higgsfield spend'
         required: false
         default: ''
+      probe:
+        description: 'Set to 1 to run the REST schema probe instead of generation (spends nothing)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -135,7 +139,11 @@ jobs:
           if [ -n "${{ github.event.inputs.count }}" ]; then ARGS="$ARGS --count=${{ github.event.inputs.count }}"; else ARGS="$ARGS --count=2"; fi
           if [ -n "${{ github.event.inputs.dry_run }}" ]; then ARGS="$ARGS --dry-run"; fi
           echo "args:$ARGS"
-          node scripts/generate-reel-autonomous.mjs $ARGS 2>&1 | tee /tmp/reels.log
+          if [ "${{ github.event.inputs.probe }}" = "1" ]; then
+            node scripts/probe-hf-api.mjs 2>&1 | tee /tmp/reels.log
+          else
+            node scripts/generate-reel-autonomous.mjs $ARGS 2>&1 | tee /tmp/reels.log
+          fi
           awk '/===REEL_MANIFEST===/{f=1;next}/===END_REEL_MANIFEST===/{f=0}f' /tmp/reels.log > /tmp/manifest.json
           cat /tmp/manifest.json
 
