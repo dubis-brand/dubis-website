@@ -45,17 +45,21 @@ for (const clip of CUES) {
   const nD = clip.dubs.length;
   // video: scale + freeze-pad the last frame so the dubbed dialogue fits
   let fc = `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,fps=25,tpad=stop_mode=clone:stop_duration=${clip.pad || 0}[v0]`;
-  // audio: dub track ONLY (original speech dropped — phonetic gibberish)
-  const mixIns = [];
-  clip.dubs.forEach((d, i) => {
-    const ms = Math.round(d.at * 1000);
-    fc += `;[${i + 1}:a]adelay=${ms}|${ms}[ad${i}]`;
-    mixIns.push(`[ad${i}]`);
-  });
-  // Bounded apad: infinite apad + -shortest overflows the mux queue and dies
-  // with a misleading "No space left on device". Pad exactly to video length.
+  // v2 (oren 21.08: the Hebrew dub "נשמע רע" — sitcom speaks ENGLISH like the
+  // reels, HE subtitles carry the story): when dubs is empty, keep the clip's
+  // own English audio; the dub path stays for any future clip that needs it.
   const vDur = (8.06 + (clip.pad || 0)).toFixed(2);
-  fc += `;${mixIns.join('')}amix=inputs=${nD}:normalize=0,apad=whole_dur=${vDur}[aud]`;
+  if (nD === 0) {
+    fc += `;[0:a]apad=whole_dur=${vDur}[aud]`;
+  } else {
+    const mixIns = [];
+    clip.dubs.forEach((d, i) => {
+      const ms = Math.round(d.at * 1000);
+      fc += `;[${i + 1}:a]adelay=${ms}|${ms}[ad${i}]`;
+      mixIns.push(`[ad${i}]`);
+    });
+    fc += `;${mixIns.join('')}amix=inputs=${nD}:normalize=0,apad=whole_dur=${vDur}[aud]`;
+  }
   let prev = '[v0]';
   clip.cues.forEach((c, i) => {
     const fi = 1 + nD + i;
