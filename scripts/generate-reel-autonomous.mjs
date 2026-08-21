@@ -172,7 +172,8 @@ let POLL_STYLE = null;
 async function pollJob(created, label, budgetMs) {
   const ids = [];
   (function collect(v) {
-    if (Array.isArray(v)) v.forEach(collect);
+    if (typeof v === 'string' && /^[0-9a-f-]{36}$/.test(v)) ids.push(v);
+    else if (Array.isArray(v)) v.forEach(collect);
     else if (v && typeof v === 'object') {
       if (typeof v.id === 'string' && /^[0-9a-f-]{36}$/.test(v.id)) ids.push(v.id);
       Object.values(v).forEach(collect);
