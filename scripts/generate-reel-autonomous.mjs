@@ -134,10 +134,20 @@ async function api(method, p, body, label, { retries = 2 } = {}) {
 async function uploadImage(filePath) {
   const meta = await api('POST', '/agents/uploads?type=image', {}, 'upload-init');
   if (!meta.id || !meta.upload_url) throw new Error(`upload-init: unexpected shape ${JSON.stringify(meta).slice(0, 150)}`);
-  const buf = fs.readFileSync(filePath);
-  const ct = filePath.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-  const put = await fetch(meta.upload_url, { method: 'PUT', headers: { 'Content-Type': ct }, body: buf });
-  if (!put.ok) throw new Error(`upload PUT ${put.status}`);
+  let buf = fs.readFileSync(filePath);
+  // Run 32471925271 died here with PUT 403: the presigned URL's SIGNED headers
+  // include content-type, and the object key is always .png — the signature is
+  // for image/png regardless of what we hold. Convert real JPEGs to PNG when
+  // ffmpeg is around; otherwise send the bytes under the signed type (decoders
+  // sniff magic bytes, but converted-PNG is the honest path).
+  const isPng = buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50;
+  if (!isPng && ffmpegAvailable()) {
+    const pngPath = filePath.replace(/\.[a-z]+$/i, '') + '.conv.png';
+    ff(['-y', '-i', filePath, pngPath], 'jpg->png');
+    buf = fs.readFileSync(pngPath);
+  }
+  const put = await fetch(meta.upload_url, { method: 'PUT', headers: { 'Content-Type': 'image/png' }, body: buf });
+  if (!put.ok) throw new Error(`upload PUT ${put.status}: ${(await put.text().catch(() => '')).slice(0, 150)}`);
   return meta.id;
 }
 
