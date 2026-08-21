@@ -161,8 +161,29 @@ function hf(hfArgs, label, { retries = 0 } = {}) {
 
 // Reachability probe — turns "no response received" into a diagnosis instead of
 // a mystery. Called only when the preflight fails.
+async function directRefresh() {
+  try {
+    const creds = JSON.parse(fs.readFileSync(CREDS_PATH, 'utf8'));
+    if (!creds.refresh_token) { log('    direct refresh: no refresh_token in creds'); return false; }
+    const c = new AbortController(); const t = setTimeout(() => c.abort(), 25000);
+    const r = await fetch('https://fnf-device-auth.higgsfield.ai/refresh', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: creds.refresh_token }), signal: c.signal,
+    });
+    clearTimeout(t);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.access_token) { log(`    direct refresh -> HTTP ${r.status}: ${JSON.stringify(j).slice(0, 140)}`); return false; }
+    fs.writeFileSync(CREDS_PATH, JSON.stringify({
+      access_token: j.access_token,
+      refresh_token: j.refresh_token || creds.refresh_token,
+    }));
+    log('    direct refresh OK — credentials rewritten with a fresh access token');
+    return true;
+  } catch (e) { log(`    direct refresh UNREACHABLE: ${e.name}: ${String(e.message).slice(0, 100)}`); return false; }
+}
+
 async function diagnoseNetwork() {
-  const hosts = ['https://fnf.higgsfield.ai', 'https://higgsfield.ai', 'https://api.github.com'];
+  const hosts = ['https://fnf.higgsfield.ai', 'https://fnf-device-auth.higgsfield.ai', 'https://higgsfield.ai', 'https://api.github.com'];
   for (const h of hosts) {
     try {
       const c = new AbortController();
@@ -432,7 +453,14 @@ async function publish(p, finalPath, s) {
   } catch (e) {
     log(`preflight failed: ${e.message.slice(0, 200)}`);
     await diagnoseNetwork();
-    throw e;
+    // The CLI's own refresh may be what is failing — refresh for it directly
+    // (endpoint found + verified 2026-08-19) and give it one more chance.
+    if (await directRefresh()) {
+      hf(['workspace', 'set', WORKSPACE_ID], 'workspace set (post-refresh)', { retries: 1 });
+      who = hf(['account', 'status'], 'account status (post-refresh)', { retries: 1 }).trim();
+    } else {
+      throw e;
+    }
   }
   log('higgsfield: ' + who.split(String.fromCharCode(10))[0]);
 
