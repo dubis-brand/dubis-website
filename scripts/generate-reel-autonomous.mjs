@@ -1,54 +1,39 @@
 #!/usr/bin/env node
-// generate-reel-autonomous.mjs — HEADLESS reel generation THROUGH HIGGSFIELD.
+// generate-reel-autonomous.mjs — HEADLESS reel generation on HIGGSFIELD, direct REST.
 //
-// ─── Why this exists (oren, 2026-08-19) ──────────────────────────────────────
-//   "אני רוצה שהרילים ירוצו לבד ללא תלות בי כולל יצירת תוכן חדש"
+// ─── Why REST and not the CLI (2026-08-21) ───────────────────────────────────
+//   oren: "רוצה דרך היגספילד אבל שתמצא דרך שזה יהיה אוטמטי בלעדי".
+//   8 CI runs proved the `higgsfield` CLI binary cannot make requests from
+//   GitHub runners ("no response received") while plain fetch to the SAME hosts
+//   works — including token refresh AND every API call. Schema was farmed from
+//   FastAPI 422s + /agents/models (probe runs 32470823556, 32471381971):
+//     auth    POST fnf-device-auth.higgsfield.ai/refresh {refresh_token}
+//             → {access_token, refresh_token}   (single-use — rotates!)
+//     select  POST /agents/workspaces/select {workspace_id}      → 200
+//     models  GET  /agents/models          → full JSON schema per job_set_type
+//     upload  POST /agents/uploads?type=image → {id, upload_url} (presigned PUT)
+//     cost    POST /agents/jobs/cost {job_set_type, params}      → {credits}
+//             veo3_1 @ 9:16/8s/high = 22 credits (verified from the runner)
+//     create  POST /agents/jobs {job_set_type, params}
+//     veo3_1 params: prompt (req) · aspect_ratio · duration · quality · model ·
+//             input_image: {id, type:'media_input'}   ← the WARDROBE-LOCK hook
 //
-//   The old pipeline (scripts/_build-new-reels.mjs) shells out to
-//   C:/Users/tehar/bin/hf.exe — the Higgsfield CLI, whose session expires in
-//   minutes and only exists on oren's Windows box. That is why the reel bank
-//   froze on 2026-07-14 and every published reel for three weeks was a
-//   re-publish of a July asset (see M-memory/troubleshooting.md
-//   §"The silence bug" for how that stayed invisible).
+// ─── Rotation contract ───────────────────────────────────────────────────────
+//   The refresh token is SINGLE-USE. This script refreshes once at start,
+//   rewrites CREDS_PATH, and prints the file between ===HF_CREDENTIALS===
+//   markers at exit; the workflow persists it back to the GitHub secret
+//   (if: always()). Running `hf auth login` on a laptop creates an independent
+//   chain and does NOT break this one.
 //
-//   oren on the engine: "רוצה דרך היגספילד אבל שתמצא דרך שזה יהיה אוטמטי בלעדי".
-//   So: Higgsfield, headless.
+// ─── Chain ───────────────────────────────────────────────────────────────────
+//   pick (never-had-a-reel first) → script (Gemini text, slogan fallback) →
+//   hero (nano_banana_flash + product mockup reference = WARDROBE LOCK) →
+//   video (veo3_1 image-to-video, native speech) → compose (ffmpeg optional) →
+//   publish to video-assets/_pilot/product-{pid}-FINAL-EN.mp4 (the exact path
+//   the daily TikTok publisher rotates over) → agent_runs row.
 //
-//   Our docs recorded "no headless token exists — the session expires in minutes".
-//   That was WRONG, and it is what kept the bank frozen for a month. The
-//   short-lived thing is the ACCESS token, which is normal and irrelevant: the
-//   credentials also carry a refresh_token and the CLI self-heals through
-//   /auth/refresh with no human. Proven 2026-08-19 by deliberately corrupting the
-//   access token and watching `hf model list --video` succeed while the
-//   credentials file rewrote itself.
-//
-//   THE ONE REAL CONSTRAINT: the refresh token is SINGLE-USE and ROTATES on every
-//   refresh, so it cannot be a static secret. This script therefore treats the
-//   credentials file as STATE and prints the rotated value back inside markers so
-//   the workflow can persist it for the next run. Running `hf` manually on a
-//   machine sharing the same chain will break CI auth — re-run `hf auth login`
-//   there to get an independent chain. See the workflow for the write-back.
-//
-// ─── Contract (do not break) ─────────────────────────────────────────────────
-//   Output path  video-assets/_pilot/product-{pid}-FINAL-EN.mp4  (+ -HE copy)
-//   That is the exact path scripts/tiktok-from-reel-bank.mjs rotates over, so a
-//   new reel is picked up by the existing daily publisher with ZERO consumer
-//   changes. The previous asset is archived to video-assets/archive/ first —
-//   never destroy a reel we might want to compare against.
-//
-//   WARDROBE LOCK: the person must wear the EXACT active product, front print
-//   intact. The product's real catalog mockup is passed to the image model as a
-//   reference and the prompt forbids morphing. Non-apparel products (mug /
-//   bottle / tote) get a "person using the object" treatment instead of try-on.
-//
-// ─── Usage ───────────────────────────────────────────────────────────────────
-//   node scripts/generate-reel-autonomous.mjs                 # auto-pick 1
-//   node scripts/generate-reel-autonomous.mjs --product=52
-//   node scripts/generate-reel-autonomous.mjs --count=3
-//   node scripts/generate-reel-autonomous.mjs --dry-run       # plan only, no spend
-//
-// Env: GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-//      FFMPEG (optional path override, default "ffmpeg")
+// Env: HIGGSFIELD_CREDENTIALS_PATH, HIGGSFIELD_WORKSPACE_ID, SUPABASE_URL,
+//      SUPABASE_SERVICE_ROLE_KEY, GEMINI_API_KEY (script text only), FFMPEG
 
 import { createClient } from '@supabase/supabase-js';
 import { spawnSync } from 'child_process';
@@ -56,43 +41,32 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-const GEMINI_KEY = process.env.GEMINI_API_KEY || '';   // script text only — never video
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://ntzwvqtpdmvvavbhuyeb.supabase.co';
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const FFMPEG = process.env.FFMPEG || 'ffmpeg';
-const HF = process.env.HF || 'hf';
-const CREDS_PATH = process.env.HIGGSFIELD_CREDENTIALS_PATH
+const GEMINI_KEY   = process.env.GEMINI_API_KEY || '';
+const FFMPEG       = process.env.FFMPEG || 'ffmpeg';
+const CREDS_PATH   = process.env.HIGGSFIELD_CREDENTIALS_PATH
   || path.join(os.homedir(), '.config', 'higgsfield', 'credentials.json');
-// The workspace selection lives OUTSIDE credentials.json, so a restored
-// credentials secret alone leaves the CLI with "No workspace selected". This is
-// the DUBIS paid workspace (dubis.brand@gmail.com, plus plan) — the same one the
-// Higgsfield MCP bills against. Overridable for a future team workspace.
 const WORKSPACE_ID = process.env.HIGGSFIELD_WORKSPACE_ID || '52a7bfe8-e226-42cf-856a-6d5ccbba0f7f';
+const API  = 'https://fnf.higgsfield.ai';
+const AUTH = 'https://fnf-device-auth.higgsfield.ai';
 
 const args = process.argv.slice(2);
 const argVal = (k) => { const a = args.find(x => x.startsWith(`--${k}=`)); return a ? a.split('=')[1] : null; };
-const DRY_RUN = args.includes('--dry-run');
+const DRY_RUN   = args.includes('--dry-run');
 const FORCE_PID = argVal('product') ? Number(argVal('product')) : null;
-const COUNT = Number(argVal('count') || 1);
+const COUNT     = Number(argVal('count') || 1);
 
-if (!SERVICE_ROLE && !DRY_RUN) throw new Error('SUPABASE_SERVICE_ROLE_KEY missing');
+if (!SERVICE_ROLE) throw new Error('SUPABASE_SERVICE_ROLE_KEY missing');
 
-const sb = createClient(SUPABASE_URL, SERVICE_ROLE || 'anon', { auth: { persistSession: false } });
+const sb  = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'dubis-reel-'));
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-const GEN = 'https://generativelanguage.googleapis.com/v1beta';
-const TEXT_MODEL = 'gemini-2.5-flash';
-const HF_VIDEO_MODEL = 'veo3_1';   // Google Veo 3.1 via Higgsfield — 22 credits @ 9:16/8s/high
-
-// Products that are not worn. A try-on prompt on a mug produces nonsense.
 const NON_APPAREL = new Set(['mug', 'bottle', 'tote']);
 
-// ── The DUBIS voice, inlined ────────────────────────────────────────────────
-// The cloud cannot read C-core/voice-dna.md (repo files are invisible to
-// non-repo runtimes). This block is a GENERATED COPY of the brand rules and must
-// be regenerated whenever C-core/voice-dna.md or company-glossary.md changes —
-// same contract as the copy-qa string in agents/index.ts.
+// ── The DUBIS voice, inlined (generated copy of C-core/voice-dna.md) ─────────
 const VOICE_RULES = `You write for DUBIS, a D2C apparel brand for real bodies, men and women 38-52.
 Tagline: "Built for the body you actually live in."
 
@@ -104,155 +78,171 @@ STRUCTURE — the 3-beat formula, mandatory:
 VOICE: a sharp friend over a beer, not an ad. Dry, warm, a little sardonic.
 Humour comes from STRENGTH, never from self-deprecation about the body.
 
-BANNED, never write these or anything like them:
-  "don't miss this sale", "20% off", "buy now", "perfect", "stunning",
-  "lifestyle", "plus-size", any fat-joke or "big but cute" framing,
-  any apology for the reader's body.
+BANNED: "don't miss this sale", "20% off", "buy now", "perfect", "stunning",
+"lifestyle", "plus-size", any fat-joke framing, any apology for the reader's body.
 
-CTA is identity, not transaction: belonging ("For the rest of us"), never "shop now".
+CTA is identity, not transaction. READ-ALOUD TEST: sounds like a TV ad → delete.`;
 
-READ-ALOUD TEST: if it sounds like a TV commercial, delete it and start again.`;
+// ── auth ─────────────────────────────────────────────────────────────────────
+let TOKEN = '';
 
-// ── small helpers ────────────────────────────────────────────────────────────
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-async function gJSON(url, body, label) {
-  const r = await fetch(url, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+async function refreshAuth() {
+  const creds = JSON.parse(fs.readFileSync(CREDS_PATH, 'utf8'));
+  if (!creds.refresh_token) throw new Error('credentials file has no refresh_token');
+  const r = await fetch(`${AUTH}/refresh`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: creds.refresh_token }),
   });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok || j.error) throw new Error(`${label} ${r.status}: ${JSON.stringify(j.error || j).slice(0, 400)}`);
-  return j;
+  if (!r.ok || !j.access_token) throw new Error(`auth refresh ${r.status}: ${JSON.stringify(j).slice(0, 200)}`);
+  TOKEN = j.access_token;
+  fs.writeFileSync(CREDS_PATH, JSON.stringify({
+    access_token: j.access_token, refresh_token: j.refresh_token || creds.refresh_token,
+  }));
+  log('auth: refreshed (chain rotated + written back)');
 }
 
-function ff(fargs, label) {
-  const r = spawnSync(FFMPEG, fargs, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  if (r.status !== 0) {
-    throw new Error(`ffmpeg ${label} (${r.status}): ${(r.stderr || r.stdout || '').split('\n').slice(-8).join('\n')}`);
-  }
-}
+const TRANSIENT = /timeout|timed out|EOF|reset|temporarily|502|503|504|fetch failed|network/i;
 
-// A scheduled job must survive a blip. Run 32296969148 died on the very first
-// API call with "request failed (no response received)" — a network-level error,
-// not an auth one. Retry those; never retry a real rejection (auth, bad params,
-// insufficient credits), and never retry a generation that may already have been
-// billed.
-const TRANSIENT = /no response received|timeout|timed out|EOF|connection reset|temporarily|502|503|504|dial tcp|i\/o timeout/i;
-
-function hf(hfArgs, label, { retries = 0 } = {}) {
-  let last = '';
+async function api(method, p, body, label, { retries = 2 } = {}) {
+  let lastErr = '';
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const r = spawnSync(HF, hfArgs, {
-      encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-      env: { ...process.env, HIGGSFIELD_CREDENTIALS_PATH: CREDS_PATH },
-    });
-    if (r.status === 0) return r.stdout || '';
-    last = (r.stderr || r.stdout || '').slice(0, 500);
-    const transient = TRANSIENT.test(last) || r.status === null;
-    if (!transient || attempt === retries) {
-      throw new Error(`hf ${label} (exit ${r.status}): ${last}`);
-    }
-    const waitMs = 5000 * (attempt + 1);
-    log(`    hf ${label} transient failure, retry ${attempt + 1}/${retries} in ${waitMs / 1000}s: ${last.slice(0, 120)}`);
-    spawnSync(process.execPath, ['-e', `setTimeout(()=>{}, ${waitMs})`]);
-  }
-  throw new Error(`hf ${label}: exhausted retries: ${last}`);
-}
-
-// Reachability probe — turns "no response received" into a diagnosis instead of
-// a mystery. Called only when the preflight fails.
-async function directRefresh() {
-  try {
-    const creds = JSON.parse(fs.readFileSync(CREDS_PATH, 'utf8'));
-    if (!creds.refresh_token) { log('    direct refresh: no refresh_token in creds'); return false; }
-    const c = new AbortController(); const t = setTimeout(() => c.abort(), 25000);
-    const r = await fetch('https://fnf-device-auth.higgsfield.ai/refresh', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: creds.refresh_token }), signal: c.signal,
-    });
-    clearTimeout(t);
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j.access_token) { log(`    direct refresh -> HTTP ${r.status}: ${JSON.stringify(j).slice(0, 140)}`); return false; }
-    fs.writeFileSync(CREDS_PATH, JSON.stringify({
-      access_token: j.access_token,
-      refresh_token: j.refresh_token || creds.refresh_token,
-    }));
-    log('    direct refresh OK — credentials rewritten with a fresh access token');
-    return true;
-  } catch (e) { log(`    direct refresh UNREACHABLE: ${e.name}: ${String(e.message).slice(0, 100)}`); return false; }
-}
-
-async function diagnoseNetwork() {
-  const hosts = ['https://fnf.higgsfield.ai', 'https://fnf-device-auth.higgsfield.ai', 'https://higgsfield.ai', 'https://api.github.com'];
-  for (const h of hosts) {
     try {
-      const c = new AbortController();
-      const t = setTimeout(() => c.abort(), 15000);
-      const r = await fetch(h, { signal: c.signal });
-      clearTimeout(t);
-      log(`    probe ${h} -> HTTP ${r.status}`);
+      const r = await fetch(`${API}${p}`, {
+        method,
+        headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const text = await r.text();
+      if (r.status === 401 && attempt < retries) { log(`  ${label}: 401 — re-refreshing token`); await refreshAuth(); continue; }
+      if (!r.ok) {
+        lastErr = `${label} HTTP ${r.status}: ${text.slice(0, 300)}`;
+        if (r.status >= 500 && attempt < retries) { await sleep(5000 * (attempt + 1)); continue; }
+        throw new Error(lastErr);
+      }
+      try { return JSON.parse(text); } catch { return text; }
     } catch (e) {
-      log(`    probe ${h} -> UNREACHABLE (${e.name}: ${String(e.message).slice(0, 80)})`);
+      lastErr = e.message;
+      if (!TRANSIENT.test(lastErr) || attempt === retries) throw new Error(`${label}: ${lastErr.slice(0, 300)}`);
+      await sleep(5000 * (attempt + 1));
     }
   }
+  throw new Error(`${label}: ${lastErr.slice(0, 300)}`);
 }
 
-// hf --json shapes vary per command; pull the first media URL out of whatever came back.
-function firstUrl(stdout) {
-  try {
-    const seen = [];
-    (function walk(v) {
-      if (typeof v === 'string' && /^https?:\/\//.test(v)) seen.push(v);
-      else if (Array.isArray(v)) v.forEach(walk);
-      else if (v && typeof v === 'object') Object.values(v).forEach(walk);
-    })(JSON.parse(stdout));
-    const media = seen.find(u => /\.(mp4|mov|webm|png|jpe?g|webp)(\?|$)/i.test(u));
-    if (media) return media;
-    if (seen.length) return seen[0];
-  } catch { /* not json */ }
-  const line = stdout.split(String.fromCharCode(10)).map(x => x.trim()).find(x => x.startsWith('http'));
-  if (line) return line;
-  throw new Error(`no URL in hf output: ${stdout.slice(0, 300)}`);
+// ── media upload (presigned S3 PUT) ─────────────────────────────────────────
+async function uploadImage(filePath) {
+  const meta = await api('POST', '/agents/uploads?type=image', {}, 'upload-init');
+  if (!meta.id || !meta.upload_url) throw new Error(`upload-init: unexpected shape ${JSON.stringify(meta).slice(0, 150)}`);
+  const buf = fs.readFileSync(filePath);
+  const ct = filePath.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+  const put = await fetch(meta.upload_url, { method: 'PUT', headers: { 'Content-Type': ct }, body: buf });
+  if (!put.ok) throw new Error(`upload PUT ${put.status}`);
+  return meta.id;
+}
+
+// ── job create + poll ────────────────────────────────────────────────────────
+function findMediaUrl(v, out = []) {
+  if (typeof v === 'string' && /^https?:\/\//.test(v) && /\.(mp4|mov|webm|png|jpe?g|webp)(\?|$)/i.test(v)) out.push(v);
+  else if (Array.isArray(v)) v.forEach(x => findMediaUrl(x, out));
+  else if (v && typeof v === 'object') Object.values(v).forEach(x => findMediaUrl(x, out));
+  return out;
+}
+function findStatuses(v, out = []) {
+  if (v && typeof v === 'object') {
+    if (typeof v.status === 'string') out.push(v.status);
+    Object.values(v).forEach(x => { if (x && typeof x === 'object') findStatuses(x, out); });
+  }
+  return out;
+}
+
+// Poll contract is the one thing the probes could not fully pin down, so try
+// the plausible shapes in order and remember the first that answers.
+let POLL_STYLE = null;
+async function pollJob(created, label, budgetMs) {
+  const ids = [];
+  (function collect(v) {
+    if (Array.isArray(v)) v.forEach(collect);
+    else if (v && typeof v === 'object') {
+      if (typeof v.id === 'string' && /^[0-9a-f-]{36}$/.test(v.id)) ids.push(v.id);
+      Object.values(v).forEach(collect);
+    }
+  })(created);
+  const primary = ids[0];
+  if (!primary) throw new Error(`${label}: no job id in create response: ${JSON.stringify(created).slice(0, 200)}`);
+
+  const candidates = [
+    { name: 'get-by-id',   fn: () => api('GET', `/agents/jobs/${primary}`, undefined, `${label}-poll`, { retries: 0 }) },
+    { name: 'post-ids',    fn: () => api('POST', '/agents/jobs/poll', { ids }, `${label}-poll`, { retries: 0 }) },
+    { name: 'post-jobset', fn: () => api('POST', '/agents/jobs/poll', { job_set_ids: [primary] }, `${label}-poll`, { retries: 0 }) },
+    { name: 'get-query',   fn: () => api('GET', `/agents/jobs/poll?ids=${ids.join(',')}`, undefined, `${label}-poll`, { retries: 0 }) },
+  ];
+
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    let state = null;
+    if (POLL_STYLE) {
+      try { state = await candidates.find(c => c.name === POLL_STYLE).fn(); } catch { state = null; }
+    } else {
+      for (const c of candidates) {
+        try { state = await c.fn(); POLL_STYLE = c.name; log(`  poll style: ${c.name}`); break; }
+        catch { /* try next */ }
+      }
+      if (!POLL_STYLE) throw new Error(`${label}: no poll endpoint variant answered`);
+    }
+    if (state) {
+      const statuses = findStatuses(state);
+      const urls = findMediaUrl(state);
+      const failed = statuses.find(x => /fail|error|nsfw|reject|cancel/i.test(x));
+      if (failed) throw new Error(`${label}: job ${failed}: ${JSON.stringify(state).slice(0, 250)}`);
+      const done = statuses.length && statuses.every(x => /complete|succeed|done|finished/i.test(x));
+      if (urls.length && (done || statuses.length === 0)) return urls[0];
+      if (done && !urls.length) throw new Error(`${label}: completed but no media URL: ${JSON.stringify(state).slice(0, 300)}`);
+    }
+    await sleep(12000);
+  }
+  throw new Error(`${label}: poll timed out after ${Math.round(budgetMs / 60000)}m`);
+}
+
+async function createJob(job_set_type, params, label, budgetMs) {
+  const cost = await api('POST', '/agents/jobs/cost', { job_set_type, params }, `${label}-cost`);
+  log(`  ${label}: ${cost.credits} credits`);
+  const created = await api('POST', '/agents/jobs', { job_set_type, params }, `${label}-create`);
+  return pollJob(created, label, budgetMs);
 }
 
 async function download(url, out) {
   const r = await fetch(url);
-  if (!r.ok) throw new Error(`download ${r.status} ${url.slice(0, 90)}`);
+  if (!r.ok) throw new Error(`download ${r.status} ${String(url).slice(0, 90)}`);
   fs.writeFileSync(out, Buffer.from(await r.arrayBuffer()));
   return out;
 }
 
-// ── 1 · pick the target product ──────────────────────────────────────────────
-// Missing-from-bank first (a product with NO reel is a hole, not a rotation),
-// then oldest reel. This is why the bank grows instead of cycling the same
-// July assets forever.
+// ── 1 · pick ────────────────────────────────────────────────────────────────
 async function pickTargets(n) {
   const { data: products, error } = await sb
     .from('dubis_products')
     .select('product_id_numeric, slogan, clothing_type, gender, colors, image_url')
     .eq('active', true);
   if (error) throw new Error(`products: ${error.message}`);
-
   const { data: objects } = await sb.storage.from('video-assets').list('_pilot', { limit: 1000 });
   const bankAge = new Map();
   for (const o of objects || []) {
     const m = /^product-(\d+)-FINAL-EN\.mp4$/.exec(o.name);
     if (m) bankAge.set(Number(m[1]), Date.parse(o.created_at || o.updated_at || 0) || 0);
   }
-
   if (FORCE_PID) {
     const p = products.find(x => Number(x.product_id_numeric) === FORCE_PID);
     if (!p) throw new Error(`product ${FORCE_PID} not found or not active`);
-    return [p];
+    return [{ ...p, _age: bankAge.has(FORCE_PID) ? bankAge.get(FORCE_PID) : -1 }];
   }
-
   return products
     .map(p => ({ ...p, _age: bankAge.has(Number(p.product_id_numeric)) ? bankAge.get(Number(p.product_id_numeric)) : -1 }))
-    .sort((a, b) => a._age - b._age)     // -1 (missing) first, then oldest timestamp
+    .sort((a, b) => a._age - b._age)
     .slice(0, n);
 }
 
-// ── 2 · write the script (brand voice, grounded in the real slogan) ──────────
+// ── 2 · script ──────────────────────────────────────────────────────────────
 const SCENES = [
   'in a sunlit kitchen mid-morning', 'on a small balcony at golden hour',
   'in a cluttered home office at the end of the day', 'in a doorway with the afternoon light behind them',
@@ -270,202 +260,154 @@ function fallbackScript(p) {
     _fallback: true,
   };
 }
-
 async function writeScript(p) {
   if (!GEMINI_KEY) { log('    (no GEMINI_API_KEY — slogan-derived script)'); return fallbackScript(p); }
   const worn = !NON_APPAREL.has(p.clothing_type);
-  const prompt = `${VOICE_RULES}
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `${VOICE_RULES}
 
 Write ONE 8-second vertical reel for this real DUBIS product.
-
-Product: ${p.clothing_type}
-Printed slogan (verbatim, on the garment): "${p.slogan}"
-Audience gender for casting: ${p.gender === 'women' ? 'a woman' : p.gender === 'men' ? 'a man' : 'either a man or a woman'}
-
-Return STRICT JSON, no markdown fence, with exactly these keys:
-{
-  "age": <integer 38-52>,
-  "person": "man" | "woman",
-  "scene": "<short physical setting, an ordinary Israeli or American everyday place, e.g. 'a sunlit kitchen mid-morning' — no studio, no runway>",
-  "narration": "<what they say to camera, ENGLISH, 2 short sentences, MUST be speakable in under 8 seconds (max 32 words), follows the 3-beat formula, ends on the DUBIS drop>",
-  "caption_he": "<Hebrew caption for the post, rooted-local Israeli — NOT a translation of the narration. 2-3 short lines. Anchors like נתיבי איילון / הקפה השני / שישי are welcome.>",
-  "caption_en": "<English caption, original, 2-3 short lines>"
-}
-
-The narration must sound spoken, not written. No hashtags inside narration.
-${worn ? 'The person is WEARING the product.' : `The person is USING the ${p.clothing_type}, holding it naturally in the scene.`}`;
-
-  try {
-  const j = await gJSON(
-    `${GEN}/models/${TEXT_MODEL}:generateContent?key=${GEMINI_KEY}`,
-    { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 1.0, responseMimeType: 'application/json' } },
-    'script',
-  );
-  const raw = j.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  let s;
-  try { s = JSON.parse(raw); } catch { throw new Error(`script not JSON: ${raw.slice(0, 200)}`); }
-  for (const k of ['age', 'person', 'scene', 'narration', 'caption_he', 'caption_en']) {
-    if (!s[k]) throw new Error(`script missing "${k}"`);
-  }
-  // 8s of natural speech is ~30 words. Longer and Veo compresses it into gibberish
-  // (the failure mode that killed the Hebrew narration attempts in June).
-  const words = String(s.narration).trim().split(/\s+/).length;
-  if (words > 34) throw new Error(`narration too long for 8s: ${words} words`);
-  return s;
+Product: ${p.clothing_type} · printed slogan (verbatim): "${p.slogan}"
+Casting: ${p.gender === 'women' ? 'a woman' : p.gender === 'men' ? 'a man' : 'either'}
+Return STRICT JSON: {"age":<38-52>,"person":"man"|"woman","scene":"<ordinary everyday place>","narration":"<ENGLISH, 2 short sentences, MAX 32 words, 3-beat, speakable in 8s>","caption_he":"<rooted Hebrew, not a translation, 2-3 lines>","caption_en":"<original English, 2-3 lines>"}
+${worn ? 'The person WEARS the product.' : `The person USES the ${p.clothing_type}.`}` }] }],
+        generationConfig: { temperature: 1.0, responseMimeType: 'application/json' },
+      }),
+    });
+    const j = await r.json();
+    if (j.error) throw new Error(JSON.stringify(j.error).slice(0, 150));
+    const s = JSON.parse(j.candidates[0].content.parts[0].text);
+    for (const k of ['age', 'person', 'scene', 'narration']) if (!s[k]) throw new Error(`missing ${k}`);
+    if (String(s.narration).trim().split(/\s+/).length > 34) throw new Error('narration too long for 8s');
+    return s;
   } catch (e) { log(`    (script fallback: ${e.message.slice(0, 90)})`); return fallbackScript(p); }
 }
 
-// ── 3 · hero frame with the REAL garment (WARDROBE LOCK) ────────────────────
-// Higgsfield product-photoshoot, mode virtual_model_tryout, with the product's
-// real catalog mockup as the reference so the person wears the EXACT garment.
+// ── 3 · hero (WARDROBE LOCK via nano_banana_flash + mockup reference) ───────
 async function makeHero(p, s) {
   if (!p.image_url) throw new Error(`product ${p.product_id_numeric} has no image_url to lock the garment against`);
   const color = (p.colors && p.colors[0]) || 'Black';
-  const worn  = !NON_APPAREL.has(p.clothing_type);
-  const mock  = await download(p.image_url, path.join(TMP, `mock-${p.product_id_numeric}.jpg`));
+  const worn = !NON_APPAREL.has(p.clothing_type);
+  const mock = await download(p.image_url, path.join(TMP, `mock-${p.product_id_numeric}.jpg`));
+  const mediaId = await uploadImage(mock);
+  log(`  mockup uploaded: ${mediaId}`);
 
   const prompt = worn
-    ? `A ${s.age}-year-old ${s.person} with an ordinary, real, non-model body, ${s.scene}. Wearing the EXACT ${color} ${p.clothing_type} shown in the reference image — same colour, same cut, same printed chest design, reproduced faithfully. Do NOT redesign, re-letter or move the print. Do NOT slim the person. The ${p.clothing_type} is the OUTERMOST layer and fully visible from shoulders to waist: no jacket, cardigan or coat over it, nothing held in front of the chest. Front-facing, three-quarter framing, fully and modestly clothed. Soft natural window light, candid documentary portrait, 85mm f/1.8, Kodak Portra 400 grain.`
-    : `A ${s.age}-year-old ${s.person} with an ordinary, real body, ${s.scene}, holding and using the EXACT ${color} ${p.clothing_type} from the reference image — same colour, same shape, same printed design reproduced faithfully. Natural candid framing, soft window light, 85mm f/1.8, Kodak Portra 400 grain.`;
+    ? `A ${s.age}-year-old ${s.person} with an ordinary, real, non-model body, ${s.scene}. Wearing the EXACT ${color} ${p.clothing_type} shown in the reference image — same colour, same cut, same printed chest design, reproduced faithfully. Do NOT redesign, re-letter or move the print. Do NOT slim the person. The ${p.clothing_type} is the OUTERMOST layer and fully visible from shoulders to waist: no jacket, cardigan or coat over it, nothing held in front of the chest. Front-facing, three-quarter framing, fully and modestly clothed. Vertical 9:16 composition. Soft natural window light, candid documentary portrait, 85mm f/1.8, Kodak Portra 400 grain.`
+    : `A ${s.age}-year-old ${s.person} with an ordinary, real body, ${s.scene}, holding and using the EXACT ${color} ${p.clothing_type} from the reference image — same colour, same shape, same printed design reproduced faithfully. Vertical 9:16 composition, natural candid framing, soft window light, Kodak Portra 400 grain.`;
 
-  const out = hf(['product-photoshoot', 'create', '--mode', 'virtual_model_tryout',
-    '--prompt', prompt, '--image', mock, '--count', '1', '--aspect_ratio', '3:4',
-    '--timeout', '10m', '--json'], 'product-photoshoot', { retries: 1 });
-  return download(firstUrl(out), path.join(TMP, `hero-${p.product_id_numeric}.jpg`));
+  // Read the image-reference field name from the live schema — never guess.
+  const models = await api('GET', '/agents/models', undefined, 'models');
+  const nb = models.find(m => m.job_set_type === 'nano_banana_flash') || models.find(m => m.job_set_type === 'nano_banana');
+  if (!nb) throw new Error('no nano_banana model in catalog');
+  const props = (nb.params && nb.params.properties) || {};
+  const params = { prompt };
+  if (props.aspect_ratio) params.aspect_ratio = '9:16';
+  const imgRef = { id: mediaId, type: 'media_input' };
+  if (props.media) params.media = [{ role: 'image', data: imgRef }];
+  else if (props.input_images) params.input_images = [imgRef];
+  else if (props.input_image) params.input_image = imgRef;
+  else throw new Error(`no image-reference field on ${nb.job_set_type}: ${Object.keys(props).join(',')}`);
+
+  const url = await createJob(nb.job_set_type, params, 'hero', 8 * 60000);
+  return download(url, path.join(TMP, `hero-${p.product_id_numeric}.png`));
 }
 
-// ── 4 · Veo 3.1 THROUGH HIGGSFIELD ──────────────────────────────────────────
-async function makeVideo(p, s, hero) {
+// ── 4 · video (veo3_1 image-to-video, native speech) ────────────────────────
+async function makeVideo(p, s, heroPath) {
   const color = (p.colors && p.colors[0]) || 'Black';
-  const worn  = !NON_APPAREL.has(p.clothing_type);
+  const worn = !NON_APPAREL.has(p.clothing_type);
+  const heroId = await uploadImage(heroPath);
+  log(`  hero uploaded: ${heroId}`);
   const prompt = `Cinematic intimate documentary 9:16 vertical portrait. The person from the start frame, unchanged: a ${s.age}-year-old ${s.person}, ${s.scene}. ${
     worn
-      ? `Wearing a ${color} ${p.clothing_type}. The garment MUST remain the same ${color} ${p.clothing_type} for the entire clip — it must not morph into a different garment and the printed chest design must not change or re-letter.`
+      ? `Wearing a ${color} ${p.clothing_type}. The garment MUST remain the same ${color} ${p.clothing_type} for the entire clip — it must not morph and the printed chest design must not change or re-letter.`
       : `Holding the ${color} ${p.clothing_type}. The object must not morph and its printed design must not change.`
   } They speak directly to camera in a warm, dry, slightly sardonic voice at a relaxed conversational pace. Spoken words: "${s.narration}" Subtle natural gestures, a small knowing half-smile at the end. Stays front-facing. Soft golden afternoon light, Kodak Portra grain. No on-screen text, no captions, no subtitles.`;
 
-  const out = hf(['generate', 'create', HF_VIDEO_MODEL, '--aspect_ratio', '9:16', '--duration', '8',
-    '--quality', 'high', '--image', hero, '--prompt', prompt,
-    '--wait', '--wait-timeout', '20m', '--json'], HF_VIDEO_MODEL, { retries: 1 });
-  return download(firstUrl(out), path.join(TMP, `veo-${p.product_id_numeric}.mp4`));
+  const params = {
+    prompt, aspect_ratio: '9:16', duration: 8, quality: 'high',
+    input_image: { id: heroId, type: 'media_input' },
+  };
+  const url = await createJob('veo3_1', params, 'veo3_1', 25 * 60000);
+  return download(url, path.join(TMP, `veo-${p.product_id_numeric}.mp4`));
 }
 
-// ── 5 · compose: upscale + the back-reveal product beat ─────────────────────
-// The reveal beat is what makes it an AD and not just a talking head — it puts
-// the actual purchasable garment on screen with its slogan, matching the
-// product-link rule (every asset ties to one real active product).
-// ffmpeg only adds polish (upscale + product tail beat). The Higgsfield clip is
-// already 9:16 h264+AAC and is a perfectly shippable reel on its own, so a
-// missing ffmpeg must never cost us the reel we already paid 22 credits for.
+// ── 5 · compose (ffmpeg optional — never lose a paid clip to a tooling gap) ──
 function ffmpegAvailable() {
   try { return spawnSync(FFMPEG, ['-version'], { encoding: 'utf8' }).status === 0; }
   catch { return false; }
 }
-
+function ff(fargs, label) {
+  const r = spawnSync(FFMPEG, fargs, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (r.status !== 0) throw new Error(`ffmpeg ${label} (${r.status}): ${(r.stderr || '').split('\n').slice(-6).join('\n')}`);
+}
 async function compose(p, veoPath) {
-  if (!ffmpegAvailable()) {
-    log('    (no ffmpeg — publishing the raw Higgsfield clip, no tail beat)');
-    return veoPath;
-  }
+  if (!ffmpegAvailable()) { log('    (no ffmpeg — publishing the raw clip)'); return veoPath; }
   const out = path.join(TMP, `final-${p.product_id_numeric}.mp4`);
   const scaled = path.join(TMP, `scaled-${p.product_id_numeric}.mp4`);
   const beat = path.join(TMP, `beat-${p.product_id_numeric}.mp4`);
-
   ff(['-y', '-i', veoPath, '-vf', 'scale=1080:1920:flags=lanczos', '-c:v', 'libx264', '-preset', 'medium',
     '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', scaled], 'scale');
-
-  // 2.2s product still on brand cream, silent — becomes the tail card.
   let beatSrc = null;
-  try {
-    if (p.image_url) beatSrc = await download(p.image_url, path.join(TMP, `beatimg-${p.product_id_numeric}.jpg`));
-  } catch (e) { log(`    (no beat image: ${e.message.slice(0, 80)})`); }
-
-  if (!beatSrc) {
-    ff(['-y', '-i', scaled, '-c', 'copy', out], 'passthrough');
-    return out;
-  }
-
+  try { if (p.image_url) beatSrc = await download(p.image_url, path.join(TMP, `beatimg-${p.product_id_numeric}.jpg`)); }
+  catch { /* no beat */ }
+  if (!beatSrc) { ff(['-y', '-i', scaled, '-c', 'copy', out], 'copy'); return out; }
   ff(['-y', '-loop', '1', '-t', '2.2', '-i', beatSrc,
     '-f', 'lavfi', '-t', '2.2', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
     '-vf', 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0xF5F0E8,format=yuv420p',
     '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-r', '24',
     '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-shortest', beat], 'beat');
-
   const list = path.join(TMP, `concat-${p.product_id_numeric}.txt`);
   fs.writeFileSync(list, `file '${scaled.replace(/\\/g, '/')}'\nfile '${beat.replace(/\\/g, '/')}'\n`);
   ff(['-y', '-f', 'concat', '-safe', '0', '-i', list, '-c:v', 'libx264', '-preset', 'medium',
     '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', out], 'concat');
-
   const mb = fs.statSync(out).size / 1048576;
-  if (mb > 25) throw new Error(`final reel ${mb.toFixed(1)}MB exceeds the 25MB platform cap`);
+  if (mb > 25) throw new Error(`final reel ${mb.toFixed(1)}MB exceeds the 25MB cap`);
   return out;
 }
 
-// ── 6 · publish into the bank the daily publisher already reads ─────────────
+// ── 6 · publish ─────────────────────────────────────────────────────────────
 async function publish(p, finalPath, s) {
   const pid = p.product_id_numeric;
   const buf = fs.readFileSync(finalPath);
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-
-  // Archive the outgoing asset before overwriting. Never destroy a reel.
-  for (const lang of ['EN']) {
-    const key = `_pilot/product-${pid}-FINAL-${lang}.mp4`;
-    const { data: old } = await sb.storage.from('video-assets').download(key);
-    if (old) {
-      await sb.storage.from('video-assets')
-        .upload(`archive/product-${pid}-${stamp}-${lang}.mp4`, await old.arrayBuffer(),
-          { contentType: 'video/mp4', upsert: true });
-      log(`    archived previous ${lang}`);
-    }
+  const { data: old } = await sb.storage.from('video-assets').download(`_pilot/product-${pid}-FINAL-EN.mp4`);
+  if (old) {
+    await sb.storage.from('video-assets')
+      .upload(`archive/product-${pid}-${stamp}.mp4`, await old.arrayBuffer(), { contentType: 'video/mp4', upsert: true });
+    log('    archived previous reel');
   }
-
   for (const lang of ['EN', 'HE']) {
     const { error } = await sb.storage.from('video-assets')
       .upload(`_pilot/product-${pid}-FINAL-${lang}.mp4`, buf, { contentType: 'video/mp4', upsert: true });
     if (error) throw new Error(`upload ${lang}: ${error.message}`);
   }
-
   const url = `${SUPABASE_URL}/storage/v1/object/public/video-assets/_pilot/product-${pid}-FINAL-EN.mp4`;
-
-  // HEAD-verify the constructed URL before we call this done (feedback-system
-  // 2026-08-08: every constructed asset URL gets HEAD-verified before use).
   const head = await fetch(url, { method: 'HEAD' });
-  if (!head.ok) throw new Error(`published reel not reachable: HTTP ${head.status} ${url}`);
-
+  if (!head.ok) throw new Error(`published reel not reachable: HTTP ${head.status}`);
   await sb.from('agent_runs').insert({
     agent_id: 'video', run_date: new Date().toISOString().slice(0, 10), status: 'completed',
-    summary: `autonomous reel generated for product ${pid} — "${String(p.slogan).slice(0, 40)}" (Veo 3.1, headless)`,
+    summary: `autonomous reel for product ${pid} — "${String(p.slogan).slice(0, 40)}" (Higgsfield REST veo3_1, headless)`,
     tasks_created: 0,
-    side_effects: { product_id: pid, video_url: url, narration: s.narration, caption_he: s.caption_he, caption_en: s.caption_en, engine: 'higgsfield:veo3_1', bytes: buf.length },
+    side_effects: { product_id: pid, video_url: url, narration: s.narration, caption_he: s.caption_he,
+                    caption_en: s.caption_en, engine: 'higgsfield-rest:veo3_1', script_fallback: !!s._fallback, bytes: buf.length },
   });
-
   return url;
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
 (async () => {
-  // Fail loudly and EARLY if the Higgsfield auth chain is broken — never spend
-  // credits on a half-run, and never fail silently the way the bank did.
-  hf(['workspace', 'set', WORKSPACE_ID], 'workspace set', { retries: 2 });
-  let who;
-  try {
-    who = hf(['account', 'status'], 'account status', { retries: 3 }).trim();
-  } catch (e) {
-    log(`preflight failed: ${e.message.slice(0, 200)}`);
-    await diagnoseNetwork();
-    // The CLI's own refresh may be what is failing — refresh for it directly
-    // (endpoint found + verified 2026-08-19) and give it one more chance.
-    if (await directRefresh()) {
-      hf(['workspace', 'set', WORKSPACE_ID], 'workspace set (post-refresh)', { retries: 1 });
-      who = hf(['account', 'status'], 'account status (post-refresh)', { retries: 1 }).trim();
-    } else {
-      throw e;
-    }
-  }
-  log('higgsfield: ' + who.split(String.fromCharCode(10))[0]);
+  await refreshAuth();
+  await api('POST', '/agents/workspaces/select', { workspace_id: WORKSPACE_ID }, 'workspace-select');
+  const bal = await api('GET', '/agents/balance', undefined, 'balance');
+  log(`higgsfield: ${bal.email} — ${bal.subscription_plan_type}, ${bal.credits} credits`);
 
   const targets = await pickTargets(COUNT);
-  log(`targets: ${targets.map(t => `#${t.product_id_numeric}${t._age === -1 ? ' (MISSING)' : ''}`).join(', ')}`);
+  log(`targets: ${targets.map(t => `#${t.product_id_numeric}${t._age === -1 ? ' (no reel yet)' : ''}`).join(', ')}`);
 
   const results = [];
   for (const p of targets) {
@@ -473,14 +415,13 @@ async function publish(p, finalPath, s) {
     try {
       log(`▶ #${pid} "${String(p.slogan).slice(0, 46)}" (${p.clothing_type})`);
       const s = await writeScript(p);
-      log(`  script: ${s.person} ${s.age}, ${s.scene}`);
+      log(`  ${s.person} ${s.age}, ${s.scene}`);
       log(`  says: "${s.narration}"`);
       if (DRY_RUN) { results.push({ pid, ok: true, dry: true, script: s }); continue; }
-
-      const hero = await makeHero(p, s);   log('  hero ok');
-      const veo = await makeVideo(p, s, hero); log('  video ok');
-      const fin = await compose(p, veo);   log(`  composed ${(fs.statSync(fin).size / 1048576).toFixed(1)}MB`);
-      const url = await publish(p, fin, s);
+      const hero = await makeHero(p, s);        log('  hero ok (wardrobe-locked)');
+      const veo  = await makeVideo(p, s, hero); log('  veo3_1 ok');
+      const fin  = await compose(p, veo);       log(`  composed ${(fs.statSync(fin).size / 1048576).toFixed(1)}MB`);
+      const url  = await publish(p, fin, s);
       log(`✅ #${pid} → ${url}`);
       results.push({ pid, ok: true, url, script: s });
     } catch (e) {
@@ -492,15 +433,11 @@ async function publish(p, finalPath, s) {
   console.log('===REEL_MANIFEST===');
   console.log(JSON.stringify({ generated: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length, results }, null, 2));
   console.log('===END_REEL_MANIFEST===');
-
-  // The refresh token rotated during this run (single-use). Emit the new
-  // credentials so the workflow can store them for next time.
   try {
     console.log('===HF_CREDENTIALS===');
     console.log(fs.readFileSync(CREDS_PATH, 'utf8').trim());
     console.log('===END_HF_CREDENTIALS===');
   } catch (e) { log(`⚠ could not read back credentials: ${e.message}`); }
-
   try { fs.rmSync(TMP, { recursive: true, force: true }); } catch { /* best effort */ }
   if (results.every(r => !r.ok)) process.exit(1);
 })();
