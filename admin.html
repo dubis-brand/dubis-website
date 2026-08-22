@@ -2494,8 +2494,13 @@
     </div>
 
     <div style="background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:1rem;margin-top:1rem">
+      <h3 style="margin:0 0 .6rem;font-size:1rem">👥 קבוצות ושיחות שהסוכן חבר בהן</h3>
+      <div id="wa-chats" style="display:flex;flex-wrap:wrap;gap:.5rem"></div>
+    </div>
+
+    <div style="background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:1rem;margin-top:1rem">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem">
-        <h3 style="margin:0;font-size:1rem">💬 שיחות אחרונות</h3>
+        <h3 style="margin:0;font-size:1rem">💬 שיחות אחרונות <span id="wa-filter-label" style="font-size:.75rem;color:#C17E3A"></span></h3>
         <button onclick="waLoadEvents()" style="padding:.3rem .8rem;border-radius:6px;border:1px solid #555;background:#222;color:#e8e0d5;cursor:pointer">רענן</button>
       </div>
       <div id="wa-events" style="max-height:480px;overflow-y:auto;display:flex;flex-direction:column;gap:.35rem"></div>
@@ -7858,6 +7863,36 @@ function waCard(title, value, ok) {
     <div style="font-size:1.05rem;font-weight:700;color:${color};margin-top:.2rem">${value}</div></div>`;
 }
 
+window._waChatFilter = null;
+window._waChatNames = {};
+
+function waRenderChats(chats) {
+  const box = document.getElementById('wa-chats');
+  if (!box) return;
+  if (!chats?.length) { box.innerHTML = '<span style="color:#888;font-size:.85rem">הרשימה תופיע בפעימה הבאה של הסוכן (עד דקה)</span>'; return; }
+  window._waChatNames = {};
+  chats.forEach(c => { window._waChatNames[c.jid] = c.name; });
+  const groups = chats.filter(c => c.is_group);
+  const directs = chats.filter(c => !c.is_group).slice(0, 12);
+  const chip = (c) => {
+    const active = window._waChatFilter === c.jid;
+    const last = c.last ? c.last.slice(5, 16).replace('T', ' ') : '';
+    return `<button onclick="waFilterChat('${c.jid.replace(/'/g, '')}', this)" style="display:flex;flex-direction:column;align-items:flex-start;gap:.1rem;padding:.4rem .7rem;border-radius:8px;cursor:pointer;border:1px solid ${active ? '#C17E3A' : '#444'};background:${active ? '#3a2c18' : '#222'};color:#e8e0d5">
+      <span style="font-size:.85rem;font-weight:600">${c.is_group ? '👥' : '👤'} ${waEsc(c.name || c.jid)}</span>
+      <span style="font-size:.65rem;color:#888">${waEsc(last)}</span></button>`;
+  };
+  box.innerHTML =
+    `<button onclick="waFilterChat(null, this)" style="padding:.4rem .7rem;border-radius:8px;cursor:pointer;border:1px solid ${window._waChatFilter ? '#444' : '#C17E3A'};background:${window._waChatFilter ? '#222' : '#3a2c18'};color:#e8e0d5;font-size:.85rem">🌐 הכל</button>`
+    + groups.map(chip).join('') + directs.map(chip).join('');
+}
+
+function waFilterChat(jid) {
+  window._waChatFilter = jid;
+  document.getElementById('wa-filter-label').textContent = jid ? '· מסונן: ' + (window._waChatNames[jid] || jid) : '';
+  waLoadStatus();
+  waLoadEvents();
+}
+
 async function waLoadStatus() {
   const { data, error } = await _sb.from('wa_bot_state').select('*').eq('id', 1).single();
   const row = document.getElementById('wa-status-row');
@@ -7867,6 +7902,7 @@ async function waLoadStatus() {
   const ageSec = hb ? Math.round((Date.now() - hb.getTime()) / 1000) : null;
   const alive = ageSec !== null && ageSec < 150;
   const hbTxt = hb ? (alive ? `חי (לפני ${ageSec} שנ')` : `מנותק (${Math.round(ageSec/60)} דק' בלי דופק)`) : 'אין דופק';
+  waRenderChats(p.chats || []);
   row.innerHTML =
     waCard('הסוכן', hbTxt, alive) +
     waCard('גשר וואטסאפ', p.bridge_ok ? 'מחובר' : 'מנותק', !!p.bridge_ok && alive) +
@@ -7906,13 +7942,16 @@ function waSaveInstructions() { _waUpdate({ extra_instructions: document.getElem
 function waEsc(t) { const d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
 
 async function waLoadEvents() {
-  const { data, error } = await _sb.from('wa_bot_events').select('*').order('ts', { ascending: false }).limit(100);
+  let q = _sb.from('wa_bot_events').select('*').order('ts', { ascending: false }).limit(100);
+  if (window._waChatFilter) q = q.eq('chat_jid', window._waChatFilter);
+  const { data, error } = await q;
   const box = document.getElementById('wa-events');
   if (error) { box.innerHTML = '<div style="color:#ff7b6b">שגיאת קריאה: ' + waEsc(error.message) + '</div>'; return; }
   if (!data?.length) { box.innerHTML = '<div style="color:#888">אין אירועים עדיין - הסוכן ידווח לכאן על כל הודעה מהרגע שהעדכון רץ.</div>'; return; }
   box.innerHTML = data.map(ev => {
     const t = new Date(ev.ts).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    const chat = waEsc((ev.chat_jid || '').replace('@s.whatsapp.net', '').replace('@g.us', ' (קבוצה)').replace('@lid', ''));
+    const known = window._waChatNames[ev.chat_jid];
+    const chat = waEsc(known ? (known + (ev.chat_jid.endsWith('@g.us') ? ' 👥' : '')) : (ev.chat_jid || '').replace('@s.whatsapp.net', '').replace('@g.us', ' (קבוצה)').replace('@lid', ''));
     if (ev.kind === 'reply') {
       return `<div style="align-self:flex-start;max-width:75%;background:#3a2c18;border:1px solid #C17E3A55;border-radius:12px 12px 12px 2px;padding:.45rem .7rem">
         <div style="font-size:.68rem;color:#C17E3A">🤖 הסוכן ענה · ${t}</div><div style="font-size:.88rem">${waEsc(ev.content)}</div></div>`;
