@@ -1,0 +1,198 @@
+name: DUBIS Autonomous Reels
+
+# oren 2026-08-19: "אני רוצה שהרילים ירוצו לבד ללא תלות בי כולל יצירת תוכן חדש",
+# and on the engine: "רוצה דרך היגספילד אבל שתמצא דרך שזה יהיה אוטמטי בלעדי".
+# So: Higgsfield, headless.
+#
+# The reel bank froze on 2026-07-14 because the only generator ran hf.exe on
+# oren's Windows box, and our own docs recorded that as "no headless token exists
+# — the session expires in minutes". That claim is what kept the bank frozen for
+# a month, and it was wrong. The short-lived thing is the ACCESS token, which is
+# normal. The credentials also carry a refresh_token and the CLI self-heals via
+# /auth/refresh with no human — proven 2026-08-19 by deliberately corrupting the
+# access token and watching `hf model list --video` succeed while the credentials
+# file rewrote itself.
+#
+# THE ONE REAL CONSTRAINT: that refresh token is SINGLE-USE and rotates on every
+# refresh, so it cannot live as a static secret — it would die after one run.
+# This workflow therefore treats the credentials as STATE: restore before, write
+# the rotated value back after (if: always(), because rotation can happen even on
+# a partial failure). If the write-back ever fails, the next run dies at the
+# `hf account status` preflight and the failure step turns that into a RED
+# agent_runs row the Boss report surfaces the same evening. Never silence.
+#
+# Known trade-off: running `hf` manually on a machine sharing this token chain
+# breaks CI auth. Run `hf auth login` there to get an independent chain.
+#
+# Cost: veo3_1 at 9:16 / 8s / high = 22 credits. 2 reels per run, 2 runs a week
+# = 88 credits/week against a 2,557-credit balance ≈ 29 weeks of runway.
+# Gemini is used ONLY to write the spoken script; video is 100% Higgsfield, and a
+# missing Gemini key degrades to a slogan-derived script rather than blocking.
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'   # Sunday 03:00 UTC — lands before the weekly plan (04:00)
+    - cron: '0 3 * * 3'   # Wednesday 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      product:
+        description: 'Force one product id (e.g. 52) — blank = auto-pick, never-had-a-reel first then oldest'
+        required: false
+        default: ''
+      count:
+        description: 'How many reels to generate this run'
+        required: false
+        default: '2'
+      dry_run:
+        description: 'Set to 1 to plan + write the script only, no Higgsfield spend'
+        required: false
+        default: ''
+      probe:
+        description: 'Set to 1 to run the REST schema probe instead of generation (spends nothing)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# Two concurrent runs would fight over the single-use token chain.
+concurrency:
+  group: dubis-reels-autonomous
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    name: Generate fresh reels (Higgsfield veo3_1, headless)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install deps + Higgsfield CLI
+        run: |
+          npm install --no-audit --no-fund @supabase/supabase-js libsodium-wrappers
+          npm install -g @higgsfield/cli@latest
+          # The package installs bins named "higgsfield" and "higgs" — there is no
+          # "hf" on PATH (that is only the local Windows filename). Assert it now
+          # instead of failing deep inside the run.
+          which higgsfield || { echo "higgsfield CLI not on PATH after install"; exit 1; }
+          higgsfield version
+
+      # ffmpeg is a NICE-TO-HAVE, not a dependency. It only adds the product tail
+      # beat and an upscale; the Higgsfield clip is already 9:16 h264+AAC and
+      # ships fine on its own. Run 32293432204 hung 18 min in apt-get, and
+      # 32295891419 failed it outright (exit 124) — apt is unreliable on this
+      # image and ffmpeg is NOT preinstalled. So: try a fast static download,
+      # fall back to apt, and if both fail just carry on. The generator detects
+      # a missing/broken ffmpeg and publishes the raw clip instead of dying.
+      - name: ffmpeg (optional — pipeline degrades gracefully without it)
+        continue-on-error: true
+        run: |
+          if command -v ffmpeg >/dev/null 2>&1; then
+            echo "ffmpeg preinstalled: $(ffmpeg -version | head -1)"; exit 0
+          fi
+          echo "ffmpeg missing — trying static build"
+          if curl -fsSL --max-time 180 -o /tmp/ff.tar.xz \
+               https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz; then
+            mkdir -p /tmp/ffx && tar -xJf /tmp/ff.tar.xz -C /tmp/ffx --strip-components=1 \
+              && sudo install -m755 /tmp/ffx/ffmpeg /usr/local/bin/ffmpeg \
+              && echo "static ffmpeg installed: $(ffmpeg -version | head -1)" && exit 0
+          fi
+          echo "static download failed — trying apt (capped)"
+          timeout 120 sudo apt-get update -qq || true
+          timeout 180 sudo apt-get install -y -qq ffmpeg || true
+          command -v ffmpeg >/dev/null 2>&1 \
+            && echo "apt ffmpeg: $(ffmpeg -version | head -1)" \
+            || echo "NO ffmpeg — the generator will publish the raw clip (still 9:16, still valid)"
+
+      # Written outside the workspace so it can never be committed by accident.
+      - name: 🔐 Restore Higgsfield credentials
+        env:
+          HF_CREDS: ${{ secrets.HIGGSFIELD_CREDENTIALS }}
+        run: |
+          mkdir -p "$HOME/.hfstate"
+          printf '%s' "$HF_CREDS" > "$HOME/.hfstate/credentials.json"
+          chmod 600 "$HOME/.hfstate/credentials.json"
+          node -e "const d=require(process.env.HOME+'/.hfstate/credentials.json');
+            if(!d.refresh_token){console.error('credentials secret has no refresh_token');process.exit(1);}
+            console.log('credentials restored; keys =', Object.keys(d).join(','));"
+
+      - name: 🎬 Generate reels
+        id: gen
+        env:
+          HF: higgsfield
+          HIGGSFIELD_CREDENTIALS_PATH: /home/runner/.hfstate/credentials.json
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -o pipefail
+          ARGS=""
+          if [ -n "${{ github.event.inputs.product }}" ]; then ARGS="$ARGS --product=${{ github.event.inputs.product }}"; fi
+          if [ -n "${{ github.event.inputs.count }}" ]; then ARGS="$ARGS --count=${{ github.event.inputs.count }}"; else ARGS="$ARGS --count=2"; fi
+          if [ -n "${{ github.event.inputs.dry_run }}" ]; then ARGS="$ARGS --dry-run"; fi
+          echo "args:$ARGS"
+          if [ "${{ github.event.inputs.probe }}" = "1" ]; then
+            node scripts/probe-hf-api.mjs 2>&1 | tee /tmp/reels.log
+          else
+            node scripts/generate-reel-autonomous.mjs $ARGS 2>&1 | tee /tmp/reels.log
+          fi
+          awk '/===REEL_MANIFEST===/{f=1;next}/===END_REEL_MANIFEST===/{f=0}f' /tmp/reels.log > /tmp/manifest.json
+          cat /tmp/manifest.json
+
+      # CRITICAL. The refresh token is single-use; losing the rotated value breaks
+      # every future run. always() because rotation can occur even on failure.
+      - name: 🔁 Persist rotated Higgsfield credentials
+        if: always()
+        env:
+          GH_PAT: ${{ secrets.GH_SECRETS_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          awk '/===HF_CREDENTIALS===/{f=1;next}/===END_HF_CREDENTIALS===/{f=0}f' /tmp/reels.log 2>/dev/null > /tmp/newcreds.json || true
+          if [ ! -s /tmp/newcreds.json ]; then cp "$HOME/.hfstate/credentials.json" /tmp/newcreds.json 2>/dev/null || true; fi
+          if [ ! -s /tmp/newcreds.json ]; then echo "no credentials to persist — skipping"; exit 0; fi
+          node -e "
+          const sodium=require('libsodium-wrappers'), fs=require('fs');
+          const H={Authorization:'Bearer '+process.env.GH_PAT,'User-Agent':'dubis-reels',Accept:'application/vnd.github+json'};
+          (async()=>{
+            await sodium.ready;
+            const val=fs.readFileSync('/tmp/newcreds.json','utf8').trim();
+            const parsed=JSON.parse(val);
+            if(!parsed.refresh_token) throw new Error('refusing to store credentials without a refresh_token');
+            const kr=await fetch('https://api.github.com/repos/'+process.env.REPO+'/actions/secrets/public-key',{headers:H});
+            if(!kr.ok) throw new Error('public-key '+kr.status);
+            const {key,key_id}=await kr.json();
+            const sealed=sodium.crypto_box_seal(sodium.from_string(val),sodium.from_base64(key,sodium.base64_variants.ORIGINAL));
+            const r=await fetch('https://api.github.com/repos/'+process.env.REPO+'/actions/secrets/HIGGSFIELD_CREDENTIALS',{
+              method:'PUT',headers:{...H,'Content-Type':'application/json'},
+              body:JSON.stringify({encrypted_value:sodium.to_base64(sealed,sodium.base64_variants.ORIGINAL),key_id})});
+            if(r.status!==201&&r.status!==204) throw new Error('put secret '+r.status+' '+(await r.text()).slice(0,200));
+            console.log('rotated credentials persisted (HTTP '+r.status+')');
+          })().catch(e=>{console.error(e.message);process.exit(1);});
+          "
+
+      # A silent failure is exactly what let the bank rot for three weeks.
+      - name: ❌ On failure — record a red run so the daily report screams
+        if: failure()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node -e "
+          const { createClient } = require('@supabase/supabase-js');
+          const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth:{persistSession:false} });
+          sb.from('agent_runs').insert({
+            agent_id:'video', run_date:new Date().toISOString().slice(0,10), status:'failed',
+            summary:'autonomous reel generation FAILED — bank not refreshed (check the Higgsfield auth chain)',
+            error_message:'GHA dubis-reels-autonomous failed: '+process.env.RUN_URL,
+            side_effects:{ run_url: process.env.RUN_URL }
+          }).then(({error})=>{ if(error){console.error(error.message);process.exit(1);} console.log('red run recorded'); });
+          "

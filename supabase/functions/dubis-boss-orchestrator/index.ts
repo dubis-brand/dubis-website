@@ -467,7 +467,7 @@ async function opinionMarketing(meta: Record<string, unknown>, realOrders: unkno
   const cur = (meta.currency as string) || 'ILS'; const sym = cur === 'ILS' ? '₪' : '$';
   const spend = num(cw7.spend), clicks = num(cw7.clicks), cpc = num(cw7.cpc), ctr = num(cw7.ctr);
   if (spend === 0 && clicks === 0) return null;
-  if (realOrders.length === 0 && clicks > 50) return { agent:'marketing', agent_he:'מנהל השיווק', observation:`7ימ: ${sym}${spend.toFixed(0)} הוצאה, ${clicks} קליקים, 0 ממירות מ-Meta.`, recommendation:'לבדוק אם הקמפיין Sales ו-Conversion Event=Purchase', priority:'P0', theme:'campaign-conversion' };
+  if (realOrders.length === 0 && clicks > 50) return { agent:'marketing', agent_he:'מנהל השיווק', observation:`7ימ: ${sym}${spend.toFixed(0)} הוצאה, ${clicks} קליקים, 0 ממירות מ-Meta.`, recommendation:'תיקון-הצ׳קאאוט (WebView) חי מ-19.08 — כל מדידת-רכישות לפניו הייתה על כפתור מת. לקרוא checkout_start→רכישה רק מ-19.08 והלאה; אם יש התחלות-צ׳קאאוט ועדיין אפס רכישות, לבדוק בתוך דף-התשלום של PayPal', priority:'P0', theme:'campaign-conversion' };
   if (ctr < 1) return { agent:'marketing', agent_he:'מנהל השיווק', observation:`CTR ${ctr.toFixed(2)}% — מתחת ל-benchmark.`, recommendation:'להחליף יצירתיות', priority:'P1', theme:'campaign-creative' };
   if (ctr > 2 && cpc > 2.5) return { agent:'marketing', agent_he:'מנהל השיווק', observation:`CTR ${ctr.toFixed(2)}% טוב אבל CPC ${sym}${cpc.toFixed(2)} גבוה.`, recommendation:'לצמצם טארגטינג', priority:'P2', theme:'campaign-targeting' };
   return null;
@@ -519,6 +519,34 @@ async function opinionStandingCommitments(sb: SB): Promise<Opinion | null> {
 // episode has NO cron (Higgsfield is main-session-only), so the only guard is
 // this report line — if the newest published episode is older than 7 days,
 // scream. The episode itself gets produced in the next /dubis session.
+async function fetchLedgerDeltaHtml(sb: SB): Promise<string> {
+  try {
+    const since = new Date(Date.now() - 36 * 3600000).toISOString();
+    const { data: closed } = await sb.from('standing_commitments')
+      .select('title, last_done_at, last_proof')
+      .gte('last_done_at', since).order('last_done_at', { ascending: false }).limit(6);
+    const { data: opened } = await sb.from('standing_commitments')
+      .select('title, due_date, owner').eq('active', true)
+      .gte('created_at', since).order('created_at', { ascending: false }).limit(6);
+    const c = (closed || []) as Array<{ title: string; last_proof: string | null }>;
+    const o = (opened || []) as Array<{ title: string; due_date: string; owner: string }>;
+    if (!c.length && !o.length) return '';
+    const rows: string[] = [];
+    for (const r of c) {
+      const proof = String(r.last_proof || '');
+      const m = proof.match(/https?:\/\/[^\s"']+/);
+      const proofBit = m
+        ? ` · <a href="${esc(m[0])}" style="color:#2f7a45">הוכחה →</a>`
+        : (proof ? ` · <span style="color:#888">${esc(proof.slice(0, 90))}</span>` : '');
+      rows.push(`<div dir="rtl" style="padding:6px 10px;background:#f2f8f3;margin:4px 0;border-radius:4px;border-right:3px solid #2f7a45;font-size:12.5px;text-align:right">✅ <b>בוצע:</b> ${esc(r.title.slice(0, 90))}${proofBit}</div>`);
+    }
+    for (const r of o) {
+      rows.push(`<div dir="rtl" style="padding:6px 10px;background:#f8f6f0;margin:4px 0;border-radius:4px;border-right:3px solid #c8a96e;font-size:12.5px;text-align:right">📌 <b>נרשם:</b> ${esc(r.title.slice(0, 90))} · יעד ${esc(String(r.due_date))} · ${r.owner === 'oren' ? 'אורן' : 'סשן-הניהול'}</div>`);
+    }
+    return rows.join('');
+  } catch (_) { return ''; }
+}
+
 async function opinionSitcomCadence(sb: SB): Promise<Opinion | null> {
   try {
     const { data } = await sb.from('agent_tasks').select('updated_at')
@@ -752,9 +780,16 @@ async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
     // false OR null; the 2026-07-08 team review caught internal tests polluting
     // the funnel, so never count is_internal=true).
     let carts = 0, checkouts = 0, purchases = 0;
+    // 2026-08-22 — FUNNEL RESET AT THE CHECKOUT FIX (recorded decision 19.08):
+    // before 4ce90f7 went live, 67% of traffic hit a PayPal button whose popup
+    // died in the WebView, so pre-fix carts/checkouts measure a dead machine.
+    // Counting them fired the stop-the-budget gate on 21.08 against the signed
+    // verdict framework. Real data starts 2026-08-19.
+    const FUNNEL_RESET = '2026-08-19';
+    const funnelFrom = start && start > FUNNEL_RESET ? start : FUNNEL_RESET;
     if (start) {
       const { data: ev } = await sb.from('page_views').select('event')
-        .gte('created_at', `${start}T00:00:00Z`)
+        .gte('created_at', `${funnelFrom}T00:00:00Z`)
         .or('is_internal.is.null,is_internal.eq.false')
         .in('event', ['add_to_cart', 'checkout_start', 'purchase'])
         .limit(1000);
@@ -762,8 +797,22 @@ async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
         const n = String((e as Record<string, unknown>).event);
         if (n === 'add_to_cart') carts++;
         else if (n === 'checkout_start') checkouts++;
-        else if (n === 'purchase') purchases++;
       }
+      // 2026-08-21 — purchases come from ORDERS, not pixel events. The 20.08
+      // report showed "CAC ₪1219" off oren's friend's order; the verdict counter
+      // (status.md watchlist) excludes is_test, ostrovsky.vlad@gmail.com and
+      // PALRAM15 — the same exclusions apply here so the two never disagree.
+      const { data: ord } = await sb.from('orders')
+        .select('buyer_email, is_test, coupon_code, refund_id')
+        .gte('created_at', `${funnelFrom}T00:00:00Z`).limit(500);
+      purchases = (ord || []).filter(o => {
+        const r = o as Record<string, unknown>;
+        if (r.is_test) return false;
+        if (r.refund_id) return false;
+        if (String(r.buyer_email || '').toLowerCase() === 'ostrovsky.vlad@gmail.com') return false;
+        if (String(r.coupon_code || '').toUpperCase() === 'PALRAM15') return false;
+        return true;
+      }).length;
     }
     let gate: KillSwitchRead['gate'] = 'none'; let gateLine = '';
     // 2026-07-27 (oren: "החלק העליון חוזר בדיוק אותו דבר"): a campaign that was
@@ -794,7 +843,7 @@ async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
       gateLine = `עברנו את קו-העצירה שסיכמנו: ${sym}${spend.toFixed(0)} הוצאו ואף אחד לא הוסיף לסל — המסר או הקהל לא עובדים`;
     } else if (spend >= 600) {
       gate = 'checkout';
-      gateLine = `עברנו את קו-העצירה השני: ${sym}${spend.toFixed(0)} הוצאו · ${carts} סלים · ${checkouts} התחלות-תשלום · 0 רכישות — אנשים רוצים אבל לא סוגרים, הבעיה בקופה/אמון`;
+      gateLine = `מאז תיקון-הצ׳קאאוט (19.08): ${carts} סלים · ${checkouts} התחלות-תשלום · 0 רכישות. סה"כ הוצא ${sym}${spend.toFixed(0)} — ההחלטה מ-19.08 בתוקף: רצים עד פסק-הדין 08-09.09 על נתוני-אמת בלבד`;
     } else {
       gateLine = active ? `הכל בתוך הכללים שקבענו: ${sym}${spend.toFixed(0)}${budgetTotal ? ` מתוך ${sym}${budgetTotal.toFixed(0)}` : ''} · ${carts} סלים · ${purchases} רכישות` : 'הקמפיין לא פעיל';
     }
@@ -812,12 +861,16 @@ function deriveDecisions(
 ): DecisionItem[] {
   const items: DecisionItem[] = [];
   if (ks && ks.active && ks.gate === 'checkout') {
+    // 2026-08-22: this used to demand "לעצור את יתרת התקציב" off pre-fix funnel
+    // data — re-litigating the RECORDED 19.08 decision (funnel reset at the
+    // checkout fix; verdict 08-09.09 stands). The decision item now presents the
+    // post-fix read inside the agreed frame instead of reopening it.
     items.push({
-      pr: 'P0',
-      title: 'לעצור את יתרת תקציב-הקמפיין — ולתקן קופה/אמון לפני שקל-תנועה נוסף',
-      why: `${ks.gateLine} · ${ks.clicks} קליקים הגיעו ולא קנו`,
-      cost: `כל יום נוסף שורף ~${ks.sym}${ks.dailyBudget.toFixed(0)}${ks.remaining !== null ? `; נותרו ~${ks.sym}${ks.remaining.toFixed(0)}${ks.endDate ? ` עד ${ks.endDate}` : ''}` : ''} על תנועה שנוחתת על הצעה שוברת`,
-      owner: 'אורן (המתג) · Marketing (אבחון המשפך)',
+      pr: 'P1',
+      title: 'לקרוא את המשפך של אחרי-התיקון — פסק-הדין 08-09.09 בתוקף',
+      why: `${ks.gateLine}`,
+      cost: `אם עד פסק-הדין הנתונים-מ-19.08 יישארו על 0 רכישות — זו התשובה של המבחן, לפי המסגרת שנחתמה מראש`,
+      owner: 'Marketing (קריאת-משפך) · אורן מכריע רק ב-08-09.09',
     });
   } else if (ks && ks.active && ks.gate === 'desire') {
     items.push({
@@ -1500,15 +1553,22 @@ async function fetchRecurringIssues(sb: SB, todayOpinions: Opinion[]): Promise<{
     const key = `${o.theme}|${o.agent_he}`;
     themeCount[key] = { days: 1, rec: o.recommendation, agent_he: o.agent_he, priority: o.priority, theme: o.theme };
   }
-  // walk historical reports
+  // walk historical reports.
+  // 2026-08-19 (oren: "מה היה כתוב בכל הדוחות היומיים מאז אותה סגירה כאילו לא
+  // דיברנו בכלל") — THE SILENCE BUG. This used to count from `action_items`,
+  // which holds only the opinions that SURVIVED the yesterday-dedup filter
+  // below. So a chronic problem was shown once on day 1, dedup-silenced from
+  // day 2 on, and its action_items history stayed empty forever — meaning the
+  // 3-day counter never reached 3 and it NEVER graduated to the recurring
+  // card. The two mechanisms cancelled each other out and every ongoing issue
+  // went permanently dark after one appearance. `opinion_themes` is persisted
+  // from allOpinions every single day (shown or not), so it is the honest
+  // recurrence source.
   for (const row of (history || [])) {
     const a = (row as Record<string, unknown>).assessment as Record<string, unknown> | null;
-    const items = (a?.action_items as Array<Record<string, unknown>>) || [];
+    const themes = (a?.opinion_themes as string[]) || [];
     const seenInRow = new Set<string>();
-    for (const it of items) {
-      const theme = (it.theme as string) || '';
-      const agent_he = (it.agent_he as string) || '';
-      const key = `${theme}|${agent_he}`;
+    for (const key of themes) {
       if (!key || seenInRow.has(key)) continue;
       seenInRow.add(key);
       if (themeCount[key]) themeCount[key].days++;
@@ -2383,12 +2443,35 @@ async function harvestRecommendations(sb: SB): Promise<{ harvested: number }> {
   };
 
   // 1) Email-monitor idea analyses (48h)
+  // 2026-08-22 (oren: "נושאים כאילו לא סיכמנו אותם") — two skip rules:
+  //   (a) NEWSLETTER-class insights (substack marketing tips etc.) stay in the
+  //       email digest; they are reading material, not decisions. On 21.08 two
+  //       substack promos became "צריך תשובה שלך" board items with the same
+  //       visual weight as real strategy.
+  //   (b) insights whose task a session already marked DONE are handled — the
+  //       flower test email became a board decision + ledger commitment a full
+  //       day AFTER the flower was drawn and delivered.
+  //   (c) titles matching app_config.acknowledged_alerts (oren declared them
+  //       resolved) are suppressed — e.g. the IG unknown-login alert he closed
+  //       on 14.08 that kept resurfacing as a "critical security event".
+  let ackList: string[] = [];
+  try {
+    const { data: ack } = await sb.from('app_config').select('value').eq('key', 'acknowledged_alerts').limit(1);
+    const v = ack && ack[0] && (ack[0] as Record<string, unknown>).value;
+    if (Array.isArray(v)) ackList = v.map(String);
+    else if (typeof v === 'string') ackList = JSON.parse(v);
+  } catch (_) { /* no list — nothing suppressed */ }
+  const isAcked = (txt: string) => ackList.some(pat => { try { return new RegExp(pat, 'i').test(txt); } catch { return txt.includes(pat); } });
+
   const { data: mails } = await sb.from('agent_tasks')
-    .select('id, title, content_data, created_at')
+    .select('id, title, content_data, created_at, status')
     .eq('category', 'gmail_insight').gte('created_at', since)
     .order('created_at', { ascending: false }).limit(20);
   for (const r of (mails || []) as Array<Record<string, unknown>>) {
     const cd = (r.content_data || {}) as Record<string, unknown>;
+    if (cd.newsletter === true) continue;                 // (a)
+    if (String(r.status) === 'done') continue;            // (b)
+    if (isAcked(String(cd.subject || r.title || ''))) continue; // (c)
     const a = (cd.dubis_analysis || null) as { idea?: string; relevance?: string; recommendation?: string; next_step?: string; agent?: string } | null;
     if (!a || !a.recommendation) continue;
     await tryInsert({
@@ -3126,7 +3209,22 @@ Deno.serve(async (req: Request) => {
     const arr = ((lastRep?.[0] as Record<string, unknown> | undefined)?.assessment as Record<string, unknown> | undefined)?.opinion_themes;
     if (Array.isArray(arr)) prevThemes = new Set(arr.map(String));
   } catch (_) { /* first run — everything is new */ }
-  const opinions = nonRecurring.filter(o => !prevThemes.has(`${o.theme}|${o.agent_he}`));
+  // 2026-08-19 — STATE vs NEWS. Some themes are not "findings" that get stale;
+  // they are standing conditions that stay true until someone acts. Silencing
+  // those because "we said it yesterday" is exactly how the campaign, the
+  // ledger and the sitcom went dark for a week. These always render.
+  const ALWAYS_ON = new Set([
+    'commitments-overdue',      // the ledger clock — an agreement past due
+    'campaign-not-delivering',  // paid budget not spending = burning the test window
+    'campaign-conversion',      // the live US test's core signal
+    'checkout-ghost-orders',    // money captured with no DB row
+    'checkout-canary-error',
+    'sitcom-cadence',           // weekly episode drop-guard
+    'reel-bank-collapse',
+    'inventory-fully-oos',
+  ]);
+  const opinions = nonRecurring.filter(o =>
+    ALWAYS_ON.has(o.theme) || !prevThemes.has(`${o.theme}|${o.agent_he}`));
   const synth = synthesize(opinions);
 
   // 2026-05-26 — Auto-handle two recurring-task themes per oren's directive:
@@ -3694,6 +3792,10 @@ Deno.serve(async (req: Request) => {
   if (!isWeekly) {
     // ---------- DAILY ----------
     sections += sectionCard('🎯 החלטות להיום', topDecisionsHtml, '#c8a96e');
+    // 2026-08-21 (oren: "כאילו לא דיברנו ותחקרנו כלום") — the ledger delta:
+    // what got CLOSED with proof and what got AGREED since the last report.
+    const ledgerDeltaHtml = await fetchLedgerDeltaHtml(sb);
+    if (ledgerDeltaHtml) sections += sectionCard('🤝 מה סיכמנו — ומה כבר בוצע (36 שעות)', ledgerDeltaHtml, '#2f7a45');
     sections += autoFixHtml;
     sections += recurringHtml;
     if (opinions.length > 0) sections += sectionCard(`🚨 ממצאים חדשים (${opinions.length})`, issuesHtml);
