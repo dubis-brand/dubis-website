@@ -973,6 +973,7 @@
       <button class="nav-tab" id="nav-content-approval" onclick="showSection('content-approval',this)">✅ תוכן לאישור</button>
       <button class="nav-tab" id="nav-gelato-tools" onclick="showSection('gelato-tools',this)">🧪 Gelato Tools</button>
       <button class="nav-tab" id="nav-funnel" onclick="showSection('funnel',this)">📊 Funnel</button>
+      <button class="nav-tab" id="nav-wa-bot" onclick="showSection('wa-bot',this)">💬 סוכן וואטסאפ</button>
     </nav>
     <div class="topbar-right">
       <span class="topbar-email" id="admin-user-email"></span>
@@ -2463,6 +2464,44 @@
   
 
   <!-- ══ FUNNEL SECTION (5-step conversion funnel, last 30 days, external traffic only) ═══ -->
+  <div id="section-wa-bot" style="display:none;padding:1.5rem" dir="rtl">
+    <h2 style="margin:0 0 1rem">💬 סוכן הוואטסאפ (DNS)</h2>
+    <div id="wa-status-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.8rem;margin-bottom:1.2rem"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start">
+      <div style="background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:1rem">
+        <h3 style="margin:0 0 .6rem;font-size:1rem">🎛 שליטה</h3>
+        <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.8rem">
+          <button id="wa-pause-btn" onclick="waTogglePause()" style="padding:.5rem 1rem;border-radius:8px;border:none;cursor:pointer;font-weight:600">…</button>
+          <button id="wa-group-btn" onclick="waToggleGroups()" style="padding:.5rem 1rem;border-radius:8px;border:1px solid #555;background:#222;color:#e8e0d5;cursor:pointer">…</button>
+        </div>
+        <label style="font-size:.85rem;color:#aaa">תקרת תשובות יומית:
+          <input id="wa-cap" type="number" min="1" max="500" style="width:70px;background:#111;color:#e8e0d5;border:1px solid #444;border-radius:6px;padding:.25rem .4rem;margin-right:.4rem">
+          <button onclick="waSaveCap()" style="padding:.25rem .7rem;border-radius:6px;border:1px solid #555;background:#222;color:#e8e0d5;cursor:pointer">שמור</button>
+        </label>
+        <div id="wa-ctrl-msg" style="font-size:.8rem;color:#7fc97f;margin-top:.5rem"></div>
+      </div>
+
+      <div style="background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:1rem">
+        <h3 style="margin:0 0 .6rem;font-size:1rem">📜 הנחיות חיות לסוכן</h3>
+        <div style="font-size:.78rem;color:#888;margin-bottom:.4rem">מה שתכתוב כאן מצטרף להנחיות הקבועות של הסוכן תוך דקה, בלי דיפלוי. עברית או אנגלית.</div>
+        <textarea id="wa-instructions" rows="6" style="width:100%;background:#111;color:#e8e0d5;border:1px solid #444;border-radius:8px;padding:.6rem;font-family:inherit;font-size:.9rem;box-sizing:border-box"></textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.5rem">
+          <button onclick="waSaveInstructions()" style="padding:.45rem 1.1rem;border-radius:8px;border:none;background:#C17E3A;color:#111;font-weight:700;cursor:pointer">שמור הנחיות</button>
+          <span id="wa-instr-meta" style="font-size:.75rem;color:#888"></span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:1rem;margin-top:1rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem">
+        <h3 style="margin:0;font-size:1rem">💬 שיחות אחרונות</h3>
+        <button onclick="waLoadEvents()" style="padding:.3rem .8rem;border-radius:6px;border:1px solid #555;background:#222;color:#e8e0d5;cursor:pointer">רענן</button>
+      </div>
+      <div id="wa-events" style="max-height:480px;overflow-y:auto;display:flex;flex-direction:column;gap:.35rem"></div>
+    </div>
+  </div>
+
   <div id="section-funnel" style="display:none;padding:1.5rem" dir="rtl">
     <h2 style="color:#e8e0d5;margin:0 0 .5rem">📊 Conversion Funnel — 30 ימים אחרונים</h2>
     <p style="color:#aaa;font-size:.85rem;margin:0 0 1.2rem;max-width:780px">
@@ -2959,8 +2998,10 @@
     document.getElementById('section-content-approval').style.display   = name === 'content-approval'   ? '' : 'none';
     document.getElementById('section-gelato-tools').style.display       = name === 'gelato-tools'       ? '' : 'none';
     document.getElementById('section-funnel').style.display             = name === 'funnel'             ? '' : 'none';
+    document.getElementById('section-wa-bot').style.display             = name === 'wa-bot'             ? '' : 'none';
     if (name === 'gelato-tools') gtInit();
     if (name === 'funnel') loadFunnel();
+    if (name === 'wa-bot') waBotInit();
     if (name === 'tasks') loadTasks();
     if (name === 'agents') loadAgentsSection();
     if (name === 'campaigns' && !_campaignsLoaded) { _campaignsLoaded = true; loadCampaigns(); }
@@ -7794,5 +7835,95 @@
 </style>
 <script src="js/products.js"></script>
 <script src="js/admin-i18n.js?v=1"></script>
+
+<script>
+// ===== WhatsApp-agent admin panel (2026-08-22) =====
+// Reads wa_bot_state / wa_bot_events, edits wa_bot_config - all via the authenticated
+// admin session (RLS: dub_admins). The bot on the server picks config changes up within ~60s.
+let _waTimer = null;
+
+async function waBotInit() {
+  await Promise.all([waLoadStatus(), waLoadConfig(), waLoadEvents()]);
+  clearInterval(_waTimer);
+  _waTimer = setInterval(() => {
+    const visible = document.getElementById('section-wa-bot').style.display !== 'none';
+    if (visible) { waLoadStatus(); waLoadEvents(); } else { clearInterval(_waTimer); }
+  }, 30000);
+}
+
+function waCard(title, value, ok) {
+  const color = ok === null ? '#e8e0d5' : ok ? '#7fc97f' : '#ff7b6b';
+  return `<div style="background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:.8rem 1rem">
+    <div style="font-size:.75rem;color:#888">${title}</div>
+    <div style="font-size:1.05rem;font-weight:700;color:${color};margin-top:.2rem">${value}</div></div>`;
+}
+
+async function waLoadStatus() {
+  const { data, error } = await _sb.from('wa_bot_state').select('*').eq('id', 1).single();
+  const row = document.getElementById('wa-status-row');
+  if (error || !data) { row.innerHTML = waCard('סטטוס', 'שגיאת קריאה: ' + (error?.message || ''), false); return; }
+  const p = data.payload || {};
+  const hb = data.last_heartbeat ? new Date(data.last_heartbeat) : null;
+  const ageSec = hb ? Math.round((Date.now() - hb.getTime()) / 1000) : null;
+  const alive = ageSec !== null && ageSec < 150;
+  const hbTxt = hb ? (alive ? `חי (לפני ${ageSec} שנ')` : `מנותק (${Math.round(ageSec/60)} דק' בלי דופק)`) : 'אין דופק';
+  row.innerHTML =
+    waCard('הסוכן', hbTxt, alive) +
+    waCard('גשר וואטסאפ', p.bridge_ok ? 'מחובר' : 'מנותק', !!p.bridge_ok && alive) +
+    waCard('תשובות היום', String(p.sends_today ?? '—'), null) +
+    waCard('מושהה?', p.paused_effective ? 'כן' : 'לא', p.paused_effective ? false : true) +
+    waCard('שרת', (p.host || '—') + (p.started_at ? '<br><span style="font-size:.7rem;color:#888">רץ מאז ' + p.started_at.replace('T',' ') + '</span>' : ''), null);
+}
+
+async function waLoadConfig() {
+  const { data, error } = await _sb.from('wa_bot_config').select('*').eq('id', 1).single();
+  if (error || !data) return;
+  window._waCfg = data;
+  document.getElementById('wa-instructions').value = data.extra_instructions || '';
+  document.getElementById('wa-cap').value = data.daily_cap;
+  document.getElementById('wa-instr-meta').textContent = data.updated_at ? 'עודכן: ' + new Date(data.updated_at).toLocaleString('he-IL') : '';
+  const pb = document.getElementById('wa-pause-btn');
+  pb.textContent = data.paused ? '▶ הפעל את הסוכן' : '⏸ השהה את הסוכן';
+  pb.style.background = data.paused ? '#7fc97f' : '#ff7b6b';
+  pb.style.color = '#111';
+  const gb = document.getElementById('wa-group-btn');
+  gb.textContent = data.group_replies ? 'קבוצות: פעיל ✓' : 'קבוצות: כבוי ✗';
+}
+
+async function _waUpdate(patch, msg) {
+  const { error } = await _sb.from('wa_bot_config').update({ ...patch, updated_at: new Date().toISOString(), updated_by: (await _sb.auth.getSession()).data.session?.user?.email || 'admin' }).eq('id', 1);
+  const el = document.getElementById('wa-ctrl-msg');
+  el.style.color = error ? '#ff7b6b' : '#7fc97f';
+  el.textContent = error ? 'שגיאה: ' + error.message : msg + ' (הסוכן יקלוט תוך דקה)';
+  if (!error) waLoadConfig();
+}
+
+function waTogglePause()  { _waUpdate({ paused: !window._waCfg?.paused }, window._waCfg?.paused ? 'הסוכן הופעל' : 'הסוכן הושהה'); }
+function waToggleGroups() { _waUpdate({ group_replies: !window._waCfg?.group_replies }, 'הגדרת הקבוצות נשמרה'); }
+function waSaveCap()      { _waUpdate({ daily_cap: parseInt(document.getElementById('wa-cap').value || '50', 10) }, 'התקרה נשמרה'); }
+function waSaveInstructions() { _waUpdate({ extra_instructions: document.getElementById('wa-instructions').value }, 'ההנחיות נשמרו'); }
+
+function waEsc(t) { const d = document.createElement('div'); d.textContent = t || ''; return d.innerHTML; }
+
+async function waLoadEvents() {
+  const { data, error } = await _sb.from('wa_bot_events').select('*').order('ts', { ascending: false }).limit(100);
+  const box = document.getElementById('wa-events');
+  if (error) { box.innerHTML = '<div style="color:#ff7b6b">שגיאת קריאה: ' + waEsc(error.message) + '</div>'; return; }
+  if (!data?.length) { box.innerHTML = '<div style="color:#888">אין אירועים עדיין - הסוכן ידווח לכאן על כל הודעה מהרגע שהעדכון רץ.</div>'; return; }
+  box.innerHTML = data.map(ev => {
+    const t = new Date(ev.ts).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const chat = waEsc((ev.chat_jid || '').replace('@s.whatsapp.net', '').replace('@g.us', ' (קבוצה)').replace('@lid', ''));
+    if (ev.kind === 'reply') {
+      return `<div style="align-self:flex-start;max-width:75%;background:#3a2c18;border:1px solid #C17E3A55;border-radius:12px 12px 12px 2px;padding:.45rem .7rem">
+        <div style="font-size:.68rem;color:#C17E3A">🤖 הסוכן ענה · ${t}</div><div style="font-size:.88rem">${waEsc(ev.content)}</div></div>`;
+    }
+    if (ev.kind === 'in') {
+      return `<div style="align-self:flex-end;max-width:75%;background:#222;border:1px solid #444;border-radius:12px 12px 2px 12px;padding:.45rem .7rem">
+        <div style="font-size:.68rem;color:#888">📥 ${chat} · ${t}</div><div style="font-size:.88rem">${waEsc(ev.content)}</div></div>`;
+    }
+    return `<div style="align-self:center;font-size:.72rem;color:#777">· ${t} דילג (${waEsc(ev.meta?.reason || ev.kind)}): ${waEsc((ev.content || '').slice(0, 60))}</div>`;
+  }).join('');
+}
+</script>
 </body>
 </html> 
