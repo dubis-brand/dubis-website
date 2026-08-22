@@ -780,9 +780,16 @@ async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
     // false OR null; the 2026-07-08 team review caught internal tests polluting
     // the funnel, so never count is_internal=true).
     let carts = 0, checkouts = 0, purchases = 0;
+    // 2026-08-22 — FUNNEL RESET AT THE CHECKOUT FIX (recorded decision 19.08):
+    // before 4ce90f7 went live, 67% of traffic hit a PayPal button whose popup
+    // died in the WebView, so pre-fix carts/checkouts measure a dead machine.
+    // Counting them fired the stop-the-budget gate on 21.08 against the signed
+    // verdict framework. Real data starts 2026-08-19.
+    const FUNNEL_RESET = '2026-08-19';
+    const funnelFrom = start && start > FUNNEL_RESET ? start : FUNNEL_RESET;
     if (start) {
       const { data: ev } = await sb.from('page_views').select('event')
-        .gte('created_at', `${start}T00:00:00Z`)
+        .gte('created_at', `${funnelFrom}T00:00:00Z`)
         .or('is_internal.is.null,is_internal.eq.false')
         .in('event', ['add_to_cart', 'checkout_start', 'purchase'])
         .limit(1000);
@@ -797,7 +804,7 @@ async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
       // PALRAM15 — the same exclusions apply here so the two never disagree.
       const { data: ord } = await sb.from('orders')
         .select('buyer_email, is_test, coupon_code, refund_id')
-        .gte('created_at', `${start}T00:00:00Z`).limit(500);
+        .gte('created_at', `${funnelFrom}T00:00:00Z`).limit(500);
       purchases = (ord || []).filter(o => {
         const r = o as Record<string, unknown>;
         if (r.is_test) return false;
@@ -836,7 +843,7 @@ async function fetchKillSwitch(sb: SB): Promise<KillSwitchRead | null> {
       gateLine = `עברנו את קו-העצירה שסיכמנו: ${sym}${spend.toFixed(0)} הוצאו ואף אחד לא הוסיף לסל — המסר או הקהל לא עובדים`;
     } else if (spend >= 600) {
       gate = 'checkout';
-      gateLine = `עברנו את קו-העצירה השני: ${sym}${spend.toFixed(0)} הוצאו · ${carts} סלים · ${checkouts} התחלות-תשלום · 0 רכישות — אנשים רוצים אבל לא סוגרים, הבעיה בקופה/אמון`;
+      gateLine = `מאז תיקון-הצ׳קאאוט (19.08): ${carts} סלים · ${checkouts} התחלות-תשלום · 0 רכישות. סה"כ הוצא ${sym}${spend.toFixed(0)} — ההחלטה מ-19.08 בתוקף: רצים עד פסק-הדין 08-09.09 על נתוני-אמת בלבד`;
     } else {
       gateLine = active ? `הכל בתוך הכללים שקבענו: ${sym}${spend.toFixed(0)}${budgetTotal ? ` מתוך ${sym}${budgetTotal.toFixed(0)}` : ''} · ${carts} סלים · ${purchases} רכישות` : 'הקמפיין לא פעיל';
     }
@@ -854,12 +861,16 @@ function deriveDecisions(
 ): DecisionItem[] {
   const items: DecisionItem[] = [];
   if (ks && ks.active && ks.gate === 'checkout') {
+    // 2026-08-22: this used to demand "לעצור את יתרת התקציב" off pre-fix funnel
+    // data — re-litigating the RECORDED 19.08 decision (funnel reset at the
+    // checkout fix; verdict 08-09.09 stands). The decision item now presents the
+    // post-fix read inside the agreed frame instead of reopening it.
     items.push({
-      pr: 'P0',
-      title: 'לעצור את יתרת תקציב-הקמפיין — ולתקן קופה/אמון לפני שקל-תנועה נוסף',
-      why: `${ks.gateLine} · ${ks.clicks} קליקים הגיעו ולא קנו`,
-      cost: `כל יום נוסף שורף ~${ks.sym}${ks.dailyBudget.toFixed(0)}${ks.remaining !== null ? `; נותרו ~${ks.sym}${ks.remaining.toFixed(0)}${ks.endDate ? ` עד ${ks.endDate}` : ''}` : ''} על תנועה שנוחתת על הצעה שוברת`,
-      owner: 'אורן (המתג) · Marketing (אבחון המשפך)',
+      pr: 'P1',
+      title: 'לקרוא את המשפך של אחרי-התיקון — פסק-הדין 08-09.09 בתוקף',
+      why: `${ks.gateLine}`,
+      cost: `אם עד פסק-הדין הנתונים-מ-19.08 יישארו על 0 רכישות — זו התשובה של המבחן, לפי המסגרת שנחתמה מראש`,
+      owner: 'Marketing (קריאת-משפך) · אורן מכריע רק ב-08-09.09',
     });
   } else if (ks && ks.active && ks.gate === 'desire') {
     items.push({
@@ -2432,12 +2443,35 @@ async function harvestRecommendations(sb: SB): Promise<{ harvested: number }> {
   };
 
   // 1) Email-monitor idea analyses (48h)
+  // 2026-08-22 (oren: "נושאים כאילו לא סיכמנו אותם") — two skip rules:
+  //   (a) NEWSLETTER-class insights (substack marketing tips etc.) stay in the
+  //       email digest; they are reading material, not decisions. On 21.08 two
+  //       substack promos became "צריך תשובה שלך" board items with the same
+  //       visual weight as real strategy.
+  //   (b) insights whose task a session already marked DONE are handled — the
+  //       flower test email became a board decision + ledger commitment a full
+  //       day AFTER the flower was drawn and delivered.
+  //   (c) titles matching app_config.acknowledged_alerts (oren declared them
+  //       resolved) are suppressed — e.g. the IG unknown-login alert he closed
+  //       on 14.08 that kept resurfacing as a "critical security event".
+  let ackList: string[] = [];
+  try {
+    const { data: ack } = await sb.from('app_config').select('value').eq('key', 'acknowledged_alerts').limit(1);
+    const v = ack && ack[0] && (ack[0] as Record<string, unknown>).value;
+    if (Array.isArray(v)) ackList = v.map(String);
+    else if (typeof v === 'string') ackList = JSON.parse(v);
+  } catch (_) { /* no list — nothing suppressed */ }
+  const isAcked = (txt: string) => ackList.some(pat => { try { return new RegExp(pat, 'i').test(txt); } catch { return txt.includes(pat); } });
+
   const { data: mails } = await sb.from('agent_tasks')
-    .select('id, title, content_data, created_at')
+    .select('id, title, content_data, created_at, status')
     .eq('category', 'gmail_insight').gte('created_at', since)
     .order('created_at', { ascending: false }).limit(20);
   for (const r of (mails || []) as Array<Record<string, unknown>>) {
     const cd = (r.content_data || {}) as Record<string, unknown>;
+    if (cd.newsletter === true) continue;                 // (a)
+    if (String(r.status) === 'done') continue;            // (b)
+    if (isAcked(String(cd.subject || r.title || ''))) continue; // (c)
     const a = (cd.dubis_analysis || null) as { idea?: string; relevance?: string; recommendation?: string; next_step?: string; agent?: string } | null;
     if (!a || !a.recommendation) continue;
     await tryInsert({
