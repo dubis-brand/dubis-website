@@ -538,13 +538,22 @@ async function fetchLedgerDeltaHtml(sb: SB): Promise<string> {
     const o = (opened || []) as Array<{ title: string; due_date: string; owner: string }>;
     if (!c.length && !o.length) return '';
     const rows: string[] = [];
-    for (const r of c) {
+    // 2026-08-23 (oren: "איך יודעים מתי בוצע וכמה זמן זה יופיע?"): every ✅ line
+    // now carries the exact completion time (IL clock). The section itself is a
+    // rolling 36-hour window — an item shows for up to 36h after it was closed,
+    // then drops; the header says so.
+    const ilTime = (iso: string | null) => {
+      if (!iso) return '';
+      try { return new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' }); } catch { return ''; }
+    };
+    for (const r of (c as Array<{ title: string; last_done_at?: string | null; last_proof: string | null }>)) {
       const proof = String(r.last_proof || '');
       const m = proof.match(/https?:\/\/[^\s"']+/);
       const proofBit = m
         ? ` · <a href="${esc(m[0])}" style="color:#2f7a45">הוכחה →</a>`
         : (proof ? ` · <span style="color:#888">${esc(proof.slice(0, 90))}</span>` : '');
-      rows.push(`<div dir="rtl" style="padding:6px 10px;background:#f2f8f3;margin:4px 0;border-radius:4px;border-right:3px solid #2f7a45;font-size:12.5px;text-align:right">✅ <b>בוצע:</b> ${esc(r.title.slice(0, 90))}${proofBit}</div>`);
+      const whenBit = ilTime(r.last_done_at || null);
+      rows.push(`<div dir="rtl" style="padding:6px 10px;background:#f2f8f3;margin:4px 0;border-radius:4px;border-right:3px solid #2f7a45;font-size:12.5px;text-align:right">✅ <b>בוצע${whenBit ? ` ${whenBit}` : ''}:</b> ${esc(r.title.slice(0, 90))}${proofBit}</div>`);
     }
     for (const r of o) {
       rows.push(`<div dir="rtl" style="padding:6px 10px;background:#f8f6f0;margin:4px 0;border-radius:4px;border-right:3px solid #c8a96e;font-size:12.5px;text-align:right">📌 <b>נרשם:</b> ${esc(r.title.slice(0, 90))} · יעד ${esc(String(r.due_date))} · ${r.owner === 'oren' ? 'אורן' : 'סשן-הניהול'}</div>`);
@@ -3816,7 +3825,7 @@ Deno.serve(async (req: Request) => {
     // 2026-08-21 (oren: "כאילו לא דיברנו ותחקרנו כלום") — the ledger delta:
     // what got CLOSED with proof and what got AGREED since the last report.
     const ledgerDeltaHtml = await fetchLedgerDeltaHtml(sb);
-    if (ledgerDeltaHtml) sections += sectionCard('🤝 מה סיכמנו — ומה כבר בוצע (36 שעות)', ledgerDeltaHtml, '#2f7a45');
+    if (ledgerDeltaHtml) sections += sectionCard('🤝 מה סיכמנו — ומה כבר בוצע (36 השעות האחרונות; פריט מוצג כאן פעם אחת ואז יורד)', ledgerDeltaHtml, '#2f7a45');
     sections += autoFixHtml;
     sections += recurringHtml;
     if (opinions.length > 0) sections += sectionCard(`🚨 ממצאים חדשים (${opinions.length})`, issuesHtml);

@@ -1576,6 +1576,16 @@ Return ONLY valid JSON: {"caption_he":"...","caption_en":"...","hashtags":"#DUBI
             'tribe/community — for the rest of us, join the tribe',
             'quality — print that survives the first wash, fabric that breathes',
             'gift — the best gift for someone who knows themselves',
+            // 2026-08-23 — board decision 129d7745 (Away/@actuallyaway lesson):
+            // content as recurring SHOWS, not one-off posts. This angle writes
+            // the caption as the next entry of an ongoing DUBIS segment.
+            'series episode — write it as the next entry of a recurring DUBIS segment (e.g. "Diary of a real body" / "Things we stopped apologizing for") — an ongoing show the audience can return to, not a standalone post',
+            // 2026-08-23 — board decision bc91454c (AI visual-analogy ads):
+            // the copy-level application — open on a human, funny visual
+            // comparison for the problem DUBIS solves, then land the product.
+            // (Ad-creative application deferred to after the 08-09.09 verdict —
+            // build freeze on the live US test.)
+            'visual analogy — open with a vivid, funny everyday comparison that captures the problem DUBIS solves (clothes made for mannequins vs. a real life), then land the garment as the answer',
           ];
           const angleIdx = Math.floor(Date.now() / 86400000) % CONTENT_ANGLES.length;
           const todayAngle = CONTENT_ANGLES[angleIdx];
