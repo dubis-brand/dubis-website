@@ -866,19 +866,14 @@ function deriveDecisions(
   blocked: Array<{ title: string; days_late: number }>,
 ): DecisionItem[] {
   const items: DecisionItem[] = [];
-  if (ks && ks.active && ks.gate === 'checkout') {
-    // 2026-08-22: this used to demand "לעצור את יתרת התקציב" off pre-fix funnel
-    // data — re-litigating the RECORDED 19.08 decision (funnel reset at the
-    // checkout fix; verdict 08-09.09 stands). The decision item now presents the
-    // post-fix read inside the agreed frame instead of reopening it.
-    items.push({
-      pr: 'P1',
-      title: 'לקרוא את המשפך של אחרי-התיקון — פסק-הדין 08-09.09 בתוקף',
-      why: `${ks.gateLine}`,
-      cost: `אם עד פסק-הדין הנתונים-מ-19.08 יישארו על 0 רכישות — זו התשובה של המבחן, לפי המסגרת שנחתמה מראש`,
-      owner: 'Marketing (קריאת-משפך) · אורן מכריע רק ב-08-09.09',
-    });
-  } else if (ks && ks.active && ks.gate === 'desire') {
+  // 2026-08-23 (oren: "כתוב מה קורה אם לא מחליטים אבל החלטנו, לא?"): the
+  // 'checkout' gate no longer produces a decision item AT ALL. That state has a
+  // SIGNED decision (funnel reset 19.08, verdict 08-09.09) — a decided matter
+  // may not wear the "החלטות להיום" costume with a cost-of-inaction line. The
+  // standing state still renders every day in the 🔥 מנוע-בתשלום engines strip
+  // (single owner, drop-guard preserved). Only gates that genuinely need a NEW
+  // decision (desire = pause+swap creative, cac = scale/hold/stop) render here.
+  if (ks && ks.active && ks.gate === 'desire') {
     items.push({
       pr: 'P0',
       title: 'להשהות את הקמפיין ולהחליף זווית/קריאייטיב — הקהל לא מוסיף לסל',
@@ -897,10 +892,19 @@ function deriveDecisions(
   }
   const openEsc = (board?.recent || []).filter(r => r.decision === 'escalate' && !r.outcome).slice(0, 2);
   for (const r of openEsc) {
+    // 2026-08-23 (oren: "לא ברור על מה מדבר סעיף 3"): the raw 90-char slice cut
+    // the harvest blob mid-sentence with zero context. The blob format is
+    // "תקציר | המלצה | צעד מוצע: X" — lead with the concrete ask (the proposed
+    // step), keep the topic summary as the explanation line, and say where it
+    // came from (an email the monitor scanned).
+    const parts = String(r.recommendation || '').split('|').map(s => s.trim()).filter(Boolean);
+    const stepPart = parts.find(p => /^צעד מוצע/.test(p));
+    const ask = (stepPart ? stepPart.replace(/^צעד מוצע:?\s*/, '') : (parts[0] || '')).slice(0, 150);
+    const topic = (parts[0] || '').slice(0, 170);
     items.push({
       pr: 'P1',
-      title: `צריך תשובה שלך: ${r.recommendation.slice(0, 90)}`,
-      why: 'זו שאלה של כסף או כיוון — לכן היא שלך ולא שלנו. יש לנו המלצה מוכנה בשולחן-ההנהלה',
+      title: `צריך תשובה שלך: ${ask}`,
+      why: `הרקע (ממייל שהסוכן סרק): ${topic} · ההמלצה המלאה בשולחן-ההנהלה`,
       cost: 'עד שתענה, אף אחד לא מקדם את זה',
       owner: 'אורן',
     });
