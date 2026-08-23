@@ -4074,8 +4074,20 @@ ${replyNote}
   // (isAuthed already ran). Never sends email or writes DB.
   if (isPreview && url.searchParams.get('html') === '1') {
     // lang=en → return the English rendering (same translation path the EN email uses).
+    // lang=en&send=1 → also EMAIL the English rendering to oren (on-demand, e.g.
+    // "send me today's weekly in English now") — still no boss_reports/board side effects.
     if (url.searchParams.get('lang') === 'en') {
       const en = await translateReportHtml(html);
+      if (en && url.searchParams.get('send') === '1') {
+        let key2 = RESEND_KEY;
+        if (!key2) { try { const { data: vk } = await sb.rpc('dubis_get_vault_secret_safe', { secret_name: 'dubis_resend_api_key' }); if (vk) key2 = vk as string; } catch (_) { /* no key */ } }
+        if (!key2) return json({ ok: false, error: 'no resend key' }, 200);
+        const subj = (isWeekly ? '📅 DUBIS Weekly Board Meeting (EN) — ' : '📊 DUBIS Daily Report (EN) — ') + new Date().toISOString().slice(0, 10);
+        const to2 = (Deno.env.get('OWNER_EMAILS') || 'dubis.brand@gmail.com').split(',').map(s => s.trim()).filter(Boolean);
+        const rs = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'Authorization': `Bearer ${key2}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: 'DUBIS Manager <orders@dubis.net>', to: to2, reply_to: 'dubis.brand@gmail.com', subject: subj, html: en }) });
+        const dd = await rs.json();
+        return json({ ok: rs.ok, sent_en: rs.ok ? dd.id : null, error: rs.ok ? null : (dd.message || `HTTP ${rs.status}`) });
+      }
       return new Response(en || 'translation-failed', { status: en ? 200 : 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
     return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
