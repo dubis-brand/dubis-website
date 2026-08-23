@@ -467,7 +467,13 @@ async function opinionMarketing(meta: Record<string, unknown>, realOrders: unkno
   const cur = (meta.currency as string) || 'ILS'; const sym = cur === 'ILS' ? '₪' : '$';
   const spend = num(cw7.spend), clicks = num(cw7.clicks), cpc = num(cw7.cpc), ctr = num(cw7.ctr);
   if (spend === 0 && clicks === 0) return null;
-  if (realOrders.length === 0 && clicks > 50) return { agent:'marketing', agent_he:'מנהל השיווק', observation:`7ימ: ${sym}${spend.toFixed(0)} הוצאה, ${clicks} קליקים, 0 ממירות מ-Meta.`, recommendation:'תיקון-הצ׳קאאוט (WebView) חי מ-19.08 — כל מדידת-רכישות לפניו הייתה על כפתור מת. לקרוא checkout_start→רכישה רק מ-19.08 והלאה; אם יש התחלות-צ׳קאאוט ועדיין אפס רכישות, לבדוק בתוך דף-התשלום של PayPal', priority:'P0', theme:'campaign-conversion' };
+  // 2026-08-23 (oren: "סעיף 1 כבר תיקנו, למה הוא מופיע?"): the 0-conversions P0
+  // here DUPLICATED the kill-switch 'checkout' gate — the same standing state
+  // rendered twice, once correctly framed (P1, state-first, verdict 08-09.09)
+  // and once as a 🔴-urgent item whose text led with the ALREADY-DONE checkout
+  // fix, reading like an unfixed bug every day. Single owner now: fetchKillSwitch
+  // gateLine + deriveDecisions render the post-fix funnel daily. This function
+  // keeps only signals the kill-switch does NOT cover (token, CTR, CPC).
   if (ctr < 1) return { agent:'marketing', agent_he:'מנהל השיווק', observation:`CTR ${ctr.toFixed(2)}% — מתחת ל-benchmark.`, recommendation:'להחליף יצירתיות', priority:'P1', theme:'campaign-creative' };
   if (ctr > 2 && cpc > 2.5) return { agent:'marketing', agent_he:'מנהל השיווק', observation:`CTR ${ctr.toFixed(2)}% טוב אבל CPC ${sym}${cpc.toFixed(2)} גבוה.`, recommendation:'לצמצם טארגטינג', priority:'P2', theme:'campaign-targeting' };
   return null;
@@ -3118,10 +3124,21 @@ Deno.serve(async (req: Request) => {
   const internalRevenue = internalOrders.reduce((s, o) => s + Number((o as Record<string, unknown>).total_amount || 0), 0);
   // COGS-aware net profit + real pageviews, computed once for hero + KPI sync.
   const cwSpendForProfit = num(((isWeekly ? (metaData.last_7d as Record<string, unknown>) : (metaData.yesterday as Record<string, unknown>)) || {}).spend);
-  const realMetrics = await fetchRealMetrics(sb, isWeekly ? 7 : 1, cwSpendForProfit).catch(() => null);
   const dateStr = new Date().toLocaleDateString('he-IL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Jerusalem' });
   const cur = (metaData.currency as string) || 'ILS';
   const sym = cur === 'ILS' ? '₪' : '$';
+  // 2026-08-23 (oren): the hero mixed currencies — Meta spend arrives in the ad
+  // account's currency (ILS) but netProfit subtracted it as-is from USD revenue,
+  // so a ₪45 spend rendered "-$45 loss" next to a "₪45 Meta" tile. Convert the
+  // spend to USD (live rate, same source the site uses) before any profit math;
+  // the Meta tile keeps showing the native ₪ figure.
+  let ilsPerUsd = 3.0;
+  try {
+    const fxRes = await fetch('https://open.er-api.com/v6/latest/USD');
+    if (fxRes.ok) { const fx = await fxRes.json(); const r = Number(fx?.rates?.ILS); if (r > 2 && r < 6) ilsPerUsd = r; }
+  } catch (_) { /* keep fallback rate */ }
+  const spendUsdForProfit = cur === 'ILS' ? cwSpendForProfit / ilsPerUsd : cwSpendForProfit;
+  const realMetrics = await fetchRealMetrics(sb, isWeekly ? 7 : 1, spendUsdForProfit).catch(() => null);
 
   // ---- 🧭 Management board (2026-07-03): harvest agent recommendations →
   // embedded-Adam decides adopt/reject/escalate BEFORE the report renders,
