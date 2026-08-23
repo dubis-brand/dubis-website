@@ -40,6 +40,61 @@ const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&am
 // NEVER hard-slice operator-facing prose — a mid-word cut with no ellipsis reads
 // as a broken report. cut() ends the text at a sentence boundary when one fits,
 // else at a word boundary, and always marks a trim with an ellipsis.
+// 2026-08-23 (oren presents DUBIS in US lectures: "כל דוח יומי ושבועי יהיה גם
+// באנגלית"): full-HTML English rendering of the finished report. One Gemini call
+// translates every Hebrew text node while preserving markup; hard guards reject
+// a broken result, so a translation failure can never damage the Hebrew report
+// (which is already sent by the time this runs).
+async function translateReportHtml(html: string): Promise<string | null> {
+  const key = Deno.env.get('GEMINI_API_KEY') || '';
+  if (!key) return null;
+  const RULES = `You are translating a chunk of a Hebrew business-report HTML email into professional business English (presented in US lectures).
+STRICT RULES:
+1. Preserve ALL HTML tags, attributes, inline styles, URLs, ids and numbers EXACTLY. Translate ONLY the human-readable Hebrew text between tags. The chunk may start or end mid-document; NEVER add opening/closing tags that are not in the chunk.
+2. Change dir="rtl" to dir="ltr" and text-align:right to text-align:left everywhere they appear.
+3. Keep emoji, currency symbols and product ids (#32) unchanged.
+4. Do not use em-dashes in the English.
+5. Output ONLY the translated chunk. No markdown fences, no commentary.
+
+CHUNK:
+`;
+  // One 48KB call blows the 150s request ceiling — split at <tr boundaries into
+  // ~8KB chunks and translate them in PARALLEL, then recombine.
+  const chunks: string[] = [];
+  const TARGET = 8000;
+  let pos = 0;
+  while (pos < html.length) {
+    if (html.length - pos <= TARGET * 1.5) { chunks.push(html.slice(pos)); break; }
+    let cutAt = html.indexOf('<tr', pos + TARGET);
+    if (cutAt === -1 || cutAt - pos > TARGET * 3) cutAt = pos + TARGET * 2;
+    chunks.push(html.slice(pos, cutAt));
+    pos = cutAt;
+  }
+  const translateChunk = async (chunk: string): Promise<string | null> => {
+    try {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: RULES + chunk }] }], generationConfig: { maxOutputTokens: 16000, temperature: 0.1 } }),
+        signal: AbortSignal.timeout(110000),
+      });
+      if (!r.ok) return null;
+      const out = ((await r.json()).candidates?.[0]?.content?.parts?.[0]?.text || '') as string;
+      const cleaned = out.replace(/^```html\s*/i, '').replace(/```\s*$/, '').trim();
+      return cleaned.length >= chunk.length * 0.4 ? cleaned : null;
+    } catch (_) { return null; }
+  };
+  try {
+    const parts = await Promise.all(chunks.map(translateChunk));
+    if (parts.some(p => p === null)) return null;
+    const joined = (parts as string[]).join('\n');
+    if (joined.length < html.length * 0.5) return null;
+    if (/<\/html>/i.test(html) && !/<\/html>/i.test(joined)) return null;
+    const hebChars = (joined.match(/[֐-׿]/g) || []).length;
+    if (hebChars > 500) return null; // translation did not take
+    return joined;
+  } catch (_) { return null; }
+}
+
 function cut(s: unknown, max = 140): string {
   const t = String(s ?? '').replace(/\s+/g, ' ').trim();
   if (t.length <= max) return t;
@@ -4018,6 +4073,11 @@ ${replyNote}
   // actual report, e.g. confirm zero v_pub_url / real #product-N links). Auth-gated
   // (isAuthed already ran). Never sends email or writes DB.
   if (isPreview && url.searchParams.get('html') === '1') {
+    // lang=en → return the English rendering (same translation path the EN email uses).
+    if (url.searchParams.get('lang') === 'en') {
+      const en = await translateReportHtml(html);
+      return new Response(en || 'translation-failed', { status: en ? 200 : 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
     return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   }
   if (isPreview) {
@@ -4072,6 +4132,31 @@ ${replyNote}
       if (r.ok) resendId = data.id; else resendError = data.message || `HTTP ${r.status}`;
     } catch (e) { resendError = (e as Error).message; }
   } else { resendError = 'RESEND_API_KEY חסר'; }
+
+  // ── 2026-08-23 — English edition (oren directive: every daily + weekly report
+  // also in English, for US lectures). Runs in the BACKGROUND (waitUntil) so the
+  // translation never delays or endangers the Hebrew report; the outcome lands
+  // as an agent_runs row ('boss-en-report'), whose failures surface in tomorrow's
+  // report like any other red agent row.
+  if (useKey && resendId) {
+    const enTask = (async () => {
+      let enStatus = 'completed'; let enSummary = '';
+      try {
+        const enHtml = await translateReportHtml(html);
+        if (!enHtml) throw new Error('translation_failed');
+        const enSubj = isWeekly
+          ? `📅 DUBIS Weekly Board Meeting (EN) — ${reportDate}`
+          : `📊 DUBIS Daily Report (EN) — ${reportDate}`;
+        const r2 = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'Authorization': `Bearer ${useKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: 'DUBIS Manager <orders@dubis.net>', to: useEmails, reply_to: 'dubis.brand@gmail.com', subject: enSubj, html: enHtml }) });
+        const d2 = await r2.json();
+        if (r2.ok) enSummary = `EN report sent (resend ${d2.id})`;
+        else { enStatus = 'failed'; enSummary = `EN send failed: ${d2.message || `HTTP ${r2.status}`}`; }
+      } catch (e) { enStatus = 'failed'; enSummary = `EN report failed: ${(e as Error).message}`; }
+      try { await sb.from('agent_runs').insert({ agent_id: 'boss-en-report', status: enStatus, summary: enSummary }); } catch (_) { /* best effort */ }
+    })();
+    // deno-lint-ignore no-explicit-any
+    try { (globalThis as any).EdgeRuntime?.waitUntil ? (globalThis as any).EdgeRuntime.waitUntil(enTask) : await enTask; } catch (_) { /* never block the report */ }
+  }
 
   await sb.from('boss_reports').insert({
     report_date: reportDate,
