@@ -1491,10 +1491,17 @@ const REEL_VIDEO_PIDS  = new Set([1, 2, 3, 4, 5, 8, 10, 11, 18, 23, 25, 29, 30, 
 function personaImgUrl(productId) {
   return PERSONA_IMG_PIDS.has(Number(productId)) ? `images/personas-real/persona-${productId}.jpg` : null;
 }
+// 2026-08-23 (oren: "כשהאתר באנגלית לא יכול להיות שיש סרטונים עם עברית — זה לא
+// מקצועי"): a frame sweep of all 22 bank assets found 4 with burned-in Hebrew —
+// #32, #39, #43 carry Hebrew subtitles and/or a ₪ price line, #30 carries
+// pseudo-Hebrew glyphs on the frame edges. Until clean English replacements land
+// from the autonomous reel pipeline, these four play ONLY on the Hebrew UI.
+const HE_ONLY_REEL_PIDS = new Set([30, 32, 39, 43]);
 function reelVideoUrl(productId) {
-  return REEL_VIDEO_PIDS.has(Number(productId))
-    ? `https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/video-assets/_pilot/product-${productId}-FINAL-EN.mp4`
-    : null;
+  const pid = Number(productId);
+  if (!REEL_VIDEO_PIDS.has(pid)) return null;
+  if (HE_ONLY_REEL_PIDS.has(pid) && (window.currentLang || 'en') !== 'he') return null;
+  return `https://ntzwvqtpdmvvavbhuyeb.supabase.co/storage/v1/object/public/video-assets/_pilot/product-${pid}-FINAL-EN.mp4`;
 }
 
 // ── Homepage persona gallery (2026-07-24, oren: personas + videos on the main
@@ -1536,6 +1543,17 @@ function homePersonaPlay(ev, pid) {
   try { v.play(); } catch (_) {}
   if (window.dubisTrack) window.dubisTrack('home_video_play', { id: pid });
 }
+// Hide the static homepage ▶ buttons whose reel is not served in the current
+// language (HE_ONLY_REEL_PIDS on the EN UI) — a play button that does nothing
+// reads as broken.
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    document.querySelectorAll('.avatar-card .persona-play').forEach(btn => {
+      const m = String(btn.getAttribute('onclick') || '').match(/homePersonaPlay\(event,\s*(\d+)\)/);
+      if (m && !reelVideoUrl(Number(m[1]))) btn.style.display = 'none';
+    });
+  } catch (_) { /* cosmetic only */ }
+});
 window.homePersonaPlay = homePersonaPlay;
 
 // ── Shop-grid inline reels (2026-07-25, oren: HOODIES-style shelf — personas
