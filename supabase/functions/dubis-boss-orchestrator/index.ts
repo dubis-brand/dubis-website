@@ -2996,6 +2996,31 @@ Deno.serve(async (req: Request) => {
   const sb = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { autoRefreshToken: false, persistSession: false } });
   const url = new URL(req.url);
   const mode = url.searchParams.get('mode') || 'daily';
+
+  // ── 2026-08-23 (oren: "לא מרגיש שאתה מנתח את הקמפיין ומבצע שיפורים"):
+  // ad-level READ + the pre-signed kill-line lever, callable by sessions.
+  // mode=ad-insights → per-ad spend/clicks/ctr/actions for a campaign+window.
+  // mode=toggle-ad   → flip one ad ACTIVE/PAUSED (used ONLY to execute the
+  //                    pre-signed ₪150/cell transparency kill line or an
+  //                    oren-approved change — never new spend).
+  if (mode === 'ad-insights') {
+    const campaignId = url.searchParams.get('campaign_id') || '120250052467260267';
+    const since = url.searchParams.get('since') || '2026-08-01';
+    const until = url.searchParams.get('until') || new Date().toISOString().slice(0, 10);
+    if (!IG_TOKEN) return json({ ok: false, error: 'no token' }, 200);
+    const u = `https://graph.facebook.com/v21.0/${campaignId}/insights?level=ad&fields=ad_id,ad_name,adset_name,spend,impressions,reach,frequency,clicks,ctr,cpc,actions&time_range=${encodeURIComponent(JSON.stringify({ since, until }))}&limit=100&access_token=${IG_TOKEN}`;
+    const r = await fetch(u).then(x => x.json()).catch(e => ({ error: String(e) }));
+    return json({ ok: !r.error, insights: r });
+  }
+  if (mode === 'toggle-ad') {
+    const adId = url.searchParams.get('ad_id') || '';
+    const newStatus = (url.searchParams.get('status') || 'PAUSED').toUpperCase();
+    if (!adId || !['ACTIVE', 'PAUSED'].includes(newStatus)) return json({ error: 'ad_id + status=ACTIVE|PAUSED required' }, 400);
+    if (!IG_TOKEN) return json({ ok: false, error: 'no token' }, 200);
+    const r = await fetch(`https://graph.facebook.com/v21.0/${adId}`, { method: 'POST', body: new URLSearchParams({ status: newStatus, access_token: IG_TOKEN }) }).then(x => x.json()).catch(e => ({ error: String(e) }));
+    return json({ ok: !r.error, ad_id: adId, new_status: newStatus, result: r });
+  }
+
   const isWeekly = mode === 'weekly';
   // preview=1 → build the report + return it WITHOUT sending email or writing
   // boss_reports/agent_runs. Lets agents verify the HTML safely (2026-06-15).
