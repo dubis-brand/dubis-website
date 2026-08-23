@@ -554,6 +554,17 @@ function renderWebViewExternalHandoff() {
         </div>
     `;
 
+    // 2026-08-23 — funnel instrumentation: both post-fix abandoners (20.08 + 23.08,
+    // US Android WebView) fired checkout_start and vanished WITHOUT clicking the
+    // redirect button. Log the screen render, fallback opens and redirect errors so
+    // the next read can say WHERE the drop happens instead of guessing (n=2
+    // discipline — analyst verdict 23.08).
+    if (window.dubisTrack) { try { window.dubisTrack('wv_checkout_screen_shown', { items: (cart || []).length, lang: he ? 'he' : 'en' }); } catch (_) {} }
+    const fbDetails = container.querySelector('.fb-webview-fallback');
+    if (fbDetails) fbDetails.addEventListener('toggle', () => {
+        if (fbDetails.open && window.dubisTrack) { try { window.dubisTrack('wv_fallback_opened'); } catch (_) {} }
+    });
+
     const btn    = document.getElementById('fbia-paypal-redirect-btn');
     const errEl  = document.getElementById('fbia-paypal-error');
     if (!btn) return;
@@ -562,7 +573,7 @@ function renderWebViewExternalHandoff() {
         if (errEl) errEl.style.display = 'none';
         const originalLabel = btn.textContent;
         btn.disabled = true;
-        btn.textContent = 'מכין תשלום…';
+        btn.textContent = he ? 'מכין תשלום…' : 'Preparing payment…';
 
         try {
             if (!Array.isArray(cart) || cart.length === 0) {
@@ -619,6 +630,7 @@ function renderWebViewExternalHandoff() {
         } catch (e) {
             btn.disabled = false;
             btn.textContent = originalLabel;
+            if (window.dubisTrack) { try { window.dubisTrack('wv_redirect_error', { reason: String((e && e.message) || 'unknown').slice(0, 80) }); } catch (_) {} }
             // The Israeli WhatsApp number is useless to a US shopper — offer the
             // brand inbox instead when the UI is English.
             const msg = (e && e.message === 'empty_cart')

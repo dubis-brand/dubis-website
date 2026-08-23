@@ -1771,8 +1771,14 @@
     </script>
 
     <script>
-      // ── DUBIS Analytics — funnel event tracking ──
-      window.dubisTrack = function (event, meta) {
+      // ── DUBIS Analytics — funnel event tracking (FALLBACK ONLY) ──
+      // 2026-08-23: the FULL tracker (session_id + UTM attribution) lives in
+      // js/main.js, which loads EARLIER in document order — so this bare inline
+      // copy used to OVERRIDE it and every event (add_to_cart, checkout_start,
+      // cta_click…) was written with session_id=NULL and no campaign attribution.
+      // Guard: never clobber an existing tracker; and even the fallback carries
+      // the session id so funnel events stay joinable to their sessions.
+      if (!window.dubisTrack) window.dubisTrack = function (event, meta) {
         try {
           fetch('/api/analytics/track', {
             method: 'POST',
@@ -1782,6 +1788,7 @@
               referrer: document.referrer || null,
               event: event || 'pageview',
               meta: meta || null,
+              session_id: (function(){ try { return sessionStorage.getItem('dubis-sid'); } catch(e) { return null; }})(),
             }),
             keepalive: true,
           }).catch(() => {});
