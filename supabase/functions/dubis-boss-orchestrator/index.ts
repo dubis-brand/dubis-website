@@ -36,6 +36,19 @@ type SB = ReturnType<typeof createClient>;
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json' } });
 const num = (v: unknown) => Number(v) || 0;
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c] as string));
+// 2026-08-23 (oren: "המשפט המסיים חתוך ולא ברור מה הוא אומר, ככה זה כבר שבועות"):
+// NEVER hard-slice operator-facing prose — a mid-word cut with no ellipsis reads
+// as a broken report. cut() ends the text at a sentence boundary when one fits,
+// else at a word boundary, and always marks a trim with an ellipsis.
+function cut(s: unknown, max = 140): string {
+  const t = String(s ?? '').replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  const head = t.slice(0, max);
+  const sentEnd = Math.max(head.lastIndexOf('. '), head.lastIndexOf('! '), head.lastIndexOf('? '));
+  if (sentEnd > max * 0.5) return head.slice(0, sentEnd + 1);
+  const sp = head.lastIndexOf(' ');
+  return (sp > max * 0.6 ? head.slice(0, sp) : head) + '…';
+}
 
 function isAuthed(req: Request): boolean {
   const url = new URL(req.url);
@@ -551,12 +564,12 @@ async function fetchLedgerDeltaHtml(sb: SB): Promise<string> {
       const m = proof.match(/https?:\/\/[^\s"']+/);
       const proofBit = m
         ? ` · <a href="${esc(m[0])}" style="color:#2f7a45">הוכחה →</a>`
-        : (proof ? ` · <span style="color:#888">${esc(proof.slice(0, 90))}</span>` : '');
+        : (proof ? ` · <span style="color:#888">${esc(cut(proof, 90))}</span>` : '');
       const whenBit = ilTime(r.last_done_at || null);
-      rows.push(`<div dir="rtl" style="padding:6px 10px;background:#f2f8f3;margin:4px 0;border-radius:4px;border-right:3px solid #2f7a45;font-size:12.5px;text-align:right">✅ <b>בוצע${whenBit ? ` ${whenBit}` : ''}:</b> ${esc(r.title.slice(0, 90))}${proofBit}</div>`);
+      rows.push(`<div dir="rtl" style="padding:6px 10px;background:#f2f8f3;margin:4px 0;border-radius:4px;border-right:3px solid #2f7a45;font-size:12.5px;text-align:right">✅ <b>בוצע${whenBit ? ` ${whenBit}` : ''}:</b> ${esc(cut(r.title, 90))}${proofBit}</div>`);
     }
     for (const r of o) {
-      rows.push(`<div dir="rtl" style="padding:6px 10px;background:#f8f6f0;margin:4px 0;border-radius:4px;border-right:3px solid #c8a96e;font-size:12.5px;text-align:right">📌 <b>נרשם:</b> ${esc(r.title.slice(0, 90))} · יעד ${esc(String(r.due_date))} · ${r.owner === 'oren' ? 'אורן' : 'סשן-הניהול'}</div>`);
+      rows.push(`<div dir="rtl" style="padding:6px 10px;background:#f8f6f0;margin:4px 0;border-radius:4px;border-right:3px solid #c8a96e;font-size:12.5px;text-align:right">📌 <b>נרשם:</b> ${esc(cut(r.title, 90))} · יעד ${esc(String(r.due_date))} · ${r.owner === 'oren' ? 'אורן' : 'סשן-הניהול'}</div>`);
     }
     return rows.join('');
   } catch (_) { return ''; }
@@ -908,8 +921,8 @@ function deriveDecisions(
     // came from (an email the monitor scanned).
     const parts = String(r.recommendation || '').split('|').map(s => s.trim()).filter(Boolean);
     const stepPart = parts.find(p => /^צעד מוצע/.test(p));
-    const ask = (stepPart ? stepPart.replace(/^צעד מוצע:?\s*/, '') : (parts[0] || '')).slice(0, 150);
-    const topic = (parts[0] || '').slice(0, 170);
+    const ask = cut(stepPart ? stepPart.replace(/^צעד מוצע:?\s*/, '') : (parts[0] || ''), 150);
+    const topic = cut(parts[0] || '', 170);
     items.push({
       pr: 'P1',
       title: `צריך תשובה שלך: ${ask}`,
@@ -921,7 +934,7 @@ function deriveDecisions(
   for (const b of blocked.filter(x => x.days_late > 30).slice(0, 1)) {
     items.push({
       pr: 'P1',
-      title: `בצע-או-מחק: ${b.title.slice(0, 80)}`,
+      title: `בצע-או-מחק: ${cut(b.title, 80)}`,
       why: `חסם עליך כבר ${b.days_late} ימים`,
       cost: 'חסם שלא מזדקן הוא ערוץ שנשאר סגור בחינם',
       owner: 'אורן',
@@ -965,7 +978,7 @@ function buildTopDecisionsHtml(
   const learnBit = !lrn
     ? 'אין למידה טרייה'
     : lrnAgeH < 26
-      ? `📚 קריאה שבועית חדשה: ${esc(lrn.summary.slice(0, 130))}`
+      ? `📚 קריאה שבועית חדשה: ${esc(cut(lrn.summary, 200))}`
       : `הקריאה השבועית מ-${lrnDate} בתוקף (הבאה ביום א׳)`;
   const dEng = (contentPerf && prevEngines && typeof prevEngines.eng7 === 'number') ? contentPerf.totalEng - prevEngines.eng7 : null;
   const dClk = (contentPerf && prevEngines && typeof prevEngines.clicks30 === 'number') ? contentPerf.siteClicks.total - prevEngines.clicks30 : null;
@@ -1100,7 +1113,7 @@ function humanizeAgentSummary(
       if (published > 0) return `פרסם ${published} פוסט${published === 1 ? '' : 'ים'} (IG+FB)`;
       if (queued > 0) return `יצר ${queued} משימות תוכן חדשות`;
       if (backfilled > 0) return `עדכן קישורים ל-${backfilled} פוסטים מה-72 שעות האחרונות`;
-      return cleaned.split(/\n|\.\s/)[0]?.slice(0, 120) || 'רץ — אין שינוי';
+      return cut(cleaned.split(/\n|\.\s/)[0] || '', 120) || 'רץ — אין שינוי';
     }
     case 'tiktok': {
       const caption = String(jsonData.caption || jsonData.script || '').replace(/\s+/g, ' ').slice(0, 60);
@@ -1119,7 +1132,7 @@ function humanizeAgentSummary(
         if (back > 0) parts.push(`${back} חזרו למלאי`);
         return parts.join(' · ');
       }
-      return cleaned.split(/\n|\.\s/)[0]?.slice(0, 120) || 'בדק מלאי — אין שינוי';
+      return cut(cleaned.split(/\n|\.\s/)[0] || '', 120) || 'בדק מלאי — אין שינוי';
     }
     case 'site_audit': {
       const checks = jsonData.checks as Array<{ ok?: boolean }> | undefined;
@@ -1129,7 +1142,7 @@ function humanizeAgentSummary(
           ? `בדק ${checks.length} URLs · 🔴 ${broken} שבורים`
           : `בדק ${checks.length} URLs · הכל תקין ✅`;
       }
-      return cleaned.split(/\n|\.\s/)[0]?.slice(0, 120) || 'בדק את האתר';
+      return cut(cleaned.split(/\n|\.\s/)[0] || '', 120) || 'בדק את האתר';
     }
     case 'email_monitor': {
       // The cloud runner's summary JSON is {scanned, saved, filtered, analyzed} —
@@ -1163,13 +1176,13 @@ function humanizeAgentSummary(
       const slogans = n('slogans');
       if (created > 0) return `יצר ${created} משימות מוצר חדשות`;
       if (slogans > 0) return `${slogans} סלוגנים חדשים מומלצים`;
-      return cleaned.split(/\n|\.\s/)[0]?.slice(0, 120) || 'רץ — אין מוצרים חדשים';
+      return cut(cleaned.split(/\n|\.\s/)[0] || '', 120) || 'רץ — אין מוצרים חדשים';
     }
     case 'marketing': {
       const spend = n('spend');
       const clicks = n('clicks');
       if (spend > 0) return `סקירת קמפיין — הוצאה $${spend.toFixed(0)} · ${clicks} קליקים`;
-      return cleaned.split(/\n|\.\s/)[0]?.slice(0, 120) || 'בדק את הקמפיין';
+      return cut(cleaned.split(/\n|\.\s/)[0] || '', 120) || 'בדק את הקמפיין';
     }
     case 'supply': {
       const synced = n('synced') || n('updated');
@@ -1177,14 +1190,14 @@ function humanizeAgentSummary(
     }
     case 'design': {
       const created = n('created') || n('queued');
-      return created > 0 ? `יצר ${created} ויזואלים חדשים` : (cleaned.split(/\n|\.\s/)[0]?.slice(0, 120) || 'רץ — אין שינוי');
+      return created > 0 ? `יצר ${created} ויזואלים חדשים` : (cut(cleaned.split(/\n|\.\s/)[0] || '', 120) || 'רץ — אין שינוי');
     }
     case 'cto':
     case 'planner':
     case 'video':
     default: {
       const first = cleaned.split(/\n|\.\s/)[0]?.trim() || '';
-      return first.slice(0, 120) || 'רץ ללא שינוי';
+      return cut(first, 120) || 'רץ ללא שינוי';
     }
   }
 }
@@ -3556,7 +3569,7 @@ Deno.serve(async (req: Request) => {
   };
   const renderTiktokItem = (it: { caption: string; url: string | null; product_url: string | null; late_id: string | null; product_slug: string | null }) => {
     // Caption is already cleaned of JSON upstream. Build a friendly label.
-    const captionShort = it.caption ? esc(it.caption.slice(0, 120)) : '';
+    const captionShort = it.caption ? esc(cut(it.caption, 120)) : '';
     const productBit = it.product_slug ? esc(it.product_slug) : '';
     const label = [productBit, captionShort].filter(Boolean).join(' · ');
     const headlineHtml = label
@@ -3934,7 +3947,7 @@ Deno.serve(async (req: Request) => {
       ? '<p dir="rtl" style="font-size:12.5px;color:#888;margin:0;text-align:right">לא עלו המלצות חדשות להכרעה השבוע.</p>'
       : [
           adopted.length ? `<div dir="rtl" style="font-size:12.5px;font-weight:700;color:#1e6b1e;margin:4px 0;text-align:right">✅ אימצנו (${adopted.length}):</div>` + adopted.map(r => bRow(`${esc(r.recommendation.slice(0, 150))} ← <b>${esc(r.owner_agent || 'manual')}</b> (${taskStatusHe[r.created_task_id ? (managementBoard!.taskStatus[r.created_task_id] || 'backlog') : 'backlog'] || 'בתור'})`, '#27ae60')).join('') : '',
-          rejected.length ? `<div dir="rtl" style="font-size:12.5px;font-weight:700;color:#777;margin:8px 0 4px;text-align:right">❌ דחינו (${rejected.length}):</div>` + rejected.map(r => bRow(`${esc(r.recommendation.slice(0, 120))} — <span style="color:#888">${esc((r.rationale || '').slice(0, 120))}</span>`, '#bbb')).join('') : '',
+          rejected.length ? `<div dir="rtl" style="font-size:12.5px;font-weight:700;color:#777;margin:8px 0 4px;text-align:right">❌ דחינו (${rejected.length}):</div>` + rejected.map(r => bRow(`${esc(cut(r.recommendation, 120))} — <span style="color:#888">${esc(cut(r.rationale || '', 120))}</span>`, '#bbb')).join('') : '',
           escalated.length ? `<div dir="rtl" style="font-size:12.5px;font-weight:700;color:#a12020;margin:8px 0 4px;text-align:right">⬆️ העלינו אליך (${escalated.length}):</div>` + escalated.map(r => bRow(`${esc(r.recommendation.slice(0, 150))}${r.rationale ? ` — <span style="color:#888">${esc(r.rationale.slice(0, 100))}</span>` : ''}`, '#c0392b')).join('') : '',
         ].filter(Boolean).join('');
 
