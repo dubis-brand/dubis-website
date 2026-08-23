@@ -4133,31 +4133,6 @@ ${replyNote}
     } catch (e) { resendError = (e as Error).message; }
   } else { resendError = 'RESEND_API_KEY חסר'; }
 
-  // ── 2026-08-23 — English edition (oren directive: every daily + weekly report
-  // also in English, for US lectures). Runs in the BACKGROUND (waitUntil) so the
-  // translation never delays or endangers the Hebrew report; the outcome lands
-  // as an agent_runs row ('boss-en-report'), whose failures surface in tomorrow's
-  // report like any other red agent row.
-  if (useKey && resendId) {
-    const enTask = (async () => {
-      let enStatus = 'completed'; let enSummary = '';
-      try {
-        const enHtml = await translateReportHtml(html);
-        if (!enHtml) throw new Error('translation_failed');
-        const enSubj = isWeekly
-          ? `📅 DUBIS Weekly Board Meeting (EN) — ${reportDate}`
-          : `📊 DUBIS Daily Report (EN) — ${reportDate}`;
-        const r2 = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'Authorization': `Bearer ${useKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: 'DUBIS Manager <orders@dubis.net>', to: useEmails, reply_to: 'dubis.brand@gmail.com', subject: enSubj, html: enHtml }) });
-        const d2 = await r2.json();
-        if (r2.ok) enSummary = `EN report sent (resend ${d2.id})`;
-        else { enStatus = 'failed'; enSummary = `EN send failed: ${d2.message || `HTTP ${r2.status}`}`; }
-      } catch (e) { enStatus = 'failed'; enSummary = `EN report failed: ${(e as Error).message}`; }
-      try { await sb.from('agent_runs').insert({ agent_id: 'boss-en-report', status: enStatus, summary: enSummary }); } catch (_) { /* best effort */ }
-    })();
-    // deno-lint-ignore no-explicit-any
-    try { (globalThis as any).EdgeRuntime?.waitUntil ? (globalThis as any).EdgeRuntime.waitUntil(enTask) : await enTask; } catch (_) { /* never block the report */ }
-  }
-
   await sb.from('boss_reports').insert({
     report_date: reportDate,
     ok_count: agentCounts.ok_count, amber_count: agentCounts.amber_count,
@@ -4213,6 +4188,32 @@ ${replyNote}
         raw_data: { ...prev, plan_status: planStatus, plan_status_at: new Date().toISOString() },
       }, { onConflict: 'snapshot_date' });
     } catch (e) { console.error('[boss] daily_snapshots.raw_data patch failed:', (e as Error).message); }
+  }
+
+  // ── 2026-08-23 — English edition (oren directive: every daily + weekly report
+  // also in English, for US lectures). Placed LAST — after the boss_reports insert
+  // and snapshots — so even a worst-case inline await can never starve the
+  // report's own persistence. Runs in the background (waitUntil) when available;
+  // the outcome lands as an agent_runs row ('boss-en-report'), whose failures
+  // surface in tomorrow's report like any other red agent row.
+  if (useKey && resendId) {
+    const enTask = (async () => {
+      let enStatus = 'completed'; let enSummary = '';
+      try {
+        const enHtml = await translateReportHtml(html);
+        if (!enHtml) throw new Error('translation_failed');
+        const enSubj = isWeekly
+          ? `📅 DUBIS Weekly Board Meeting (EN) — ${reportDate}`
+          : `📊 DUBIS Daily Report (EN) — ${reportDate}`;
+        const r2 = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'Authorization': `Bearer ${useKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: 'DUBIS Manager <orders@dubis.net>', to: useEmails, reply_to: 'dubis.brand@gmail.com', subject: enSubj, html: enHtml }) });
+        const d2 = await r2.json();
+        if (r2.ok) enSummary = `EN report sent (resend ${d2.id})`;
+        else { enStatus = 'failed'; enSummary = `EN send failed: ${d2.message || `HTTP ${r2.status}`}`; }
+      } catch (e) { enStatus = 'failed'; enSummary = `EN report failed: ${(e as Error).message}`; }
+      try { await sb.from('agent_runs').insert({ agent_id: 'boss-en-report', status: enStatus, summary: enSummary }); } catch (_) { /* best effort */ }
+    })();
+    // deno-lint-ignore no-explicit-any
+    try { (globalThis as any).EdgeRuntime?.waitUntil ? (globalThis as any).EdgeRuntime.waitUntil(enTask) : await enTask; } catch (_) { /* never block the report */ }
   }
 
   return json({
