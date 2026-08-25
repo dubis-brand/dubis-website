@@ -1496,7 +1496,10 @@ function personaImgUrl(productId) {
 // #32, #39, #43 carry Hebrew subtitles and/or a ₪ price line, #30 carries
 // pseudo-Hebrew glyphs on the frame edges. Until clean English replacements land
 // from the autonomous reel pipeline, these four play ONLY on the Hebrew UI.
-const HE_ONLY_REEL_PIDS = new Set([30, 32, 39, 43]);
+// 2026-08-25: all four Hebrew-burned assets were REPLACED with frame-verified
+// English-clean Higgsfield-preset reels (sticker-peel #32, cardboard #30,
+// action-figure #39, earth-zoom #43) — the gate emptied the same day it was due.
+const HE_ONLY_REEL_PIDS = new Set([]);
 function reelVideoUrl(productId) {
   const pid = Number(productId);
   if (!REEL_VIDEO_PIDS.has(pid)) return null;

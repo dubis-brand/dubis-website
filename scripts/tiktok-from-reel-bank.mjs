@@ -70,8 +70,6 @@ const REEL_OVERRIDES = {
   38: 'https://www.dubis.net/preview/reels/format-38-unboxing-v4.mp4',
   23: 'https://www.dubis.net/preview/reels/fmt-23-paparazzi.mp4',
   40: 'https://www.dubis.net/preview/reels/fmt-40-streetstop.mp4',
-  43: 'https://www.dubis.net/preview/reels/fmt-43-endingfairy.mp4',
-  39: 'https://www.dubis.net/preview/reels/fmt-39-summerhaze.mp4',
   41: 'https://www.dubis.net/preview/reels/fmt-41-headphones.mp4',
   42: 'https://www.dubis.net/preview/reels/fmt-42-supermarket.mp4',
   // 2026-08-01: first Hebrew-narration reels (oren voice-clone + Naomi, minimax) — fresh music per reel
