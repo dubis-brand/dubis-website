@@ -630,6 +630,43 @@ async function fetchLedgerDeltaHtml(sb: SB): Promise<string> {
   } catch (_) { return ''; }
 }
 
+// 2026-08-25 (oren, 4th variety strike since 07-03: "אני לא צריך כל פעם לעדכן
+// אותך שהרילסים משעממים — זאת אחריות שלך... שזה יעבוד בצורה עצמאית"):
+// VARIETY DROP-GUARD. Variety is now a MACHINE property with a loud verifier —
+// the report screams P0 when TikTok recycles an asset or the bank stops growing,
+// instead of waiting for oren to notice. Two independent checks:
+//   (a) repeat-rate: the same video_url twice within the last 10 TikTok posts
+//   (b) bank staleness: newest product-*-FINAL-EN asset older than 7 days
+async function opinionReelVariety(sb: SB): Promise<Opinion | null> {
+  try {
+    const { data: posts } = await sb.from('agent_tasks').select('content_data')
+      .eq('agent_id', 'tiktok').eq('status', 'done')
+      .order('created_at', { ascending: false }).limit(10);
+    const urls = (posts || [])
+      .map(t => String(((t as Record<string, unknown>).content_data as Record<string, unknown> || {}).video_url || ''))
+      .filter(Boolean);
+    const dupes = urls.length - new Set(urls).size;
+
+    const { data: objs } = await sb.storage.from('video-assets').list('_pilot', { limit: 300 });
+    const newest = (objs || [])
+      .filter(o => /^product-\d+-FINAL-EN\.mp4$/.test(o.name))
+      .map(o => Date.parse(String((o as Record<string, unknown>).updated_at || '')))
+      .filter(Number.isFinite)
+      .sort((a, b) => b - a)[0];
+    const bankAgeDays = newest ? Math.floor((Date.now() - newest) / 86400000) : 999;
+
+    if (dupes >= 2 || bankAgeDays > 7) {
+      return {
+        agent: 'video', agent_he: 'וידאו',
+        observation: `גיוון-הרילים נשחק: ${dupes} פרסומים חוזרים מתוך 10 האחרונים בטיקטוק · הנכס החדש ביותר בבנק בן ${bankAgeDays} ימים.`,
+        recommendation: 'חוזה-הגיוון (25.08): המחולל מייצר פורמט שונה כל ריצה והרוטציה לא חוזרת על קובץ בתוך 10 פרסומים — לתקן את המחולל/המפיץ עכשיו, לא לחכות שאורן ישים לב',
+        priority: 'P0', theme: 'reel-variety-collapse',
+      };
+    }
+    return null;
+  } catch (_) { return null; }
+}
+
 async function opinionSitcomCadence(sb: SB): Promise<Opinion | null> {
   try {
     const { data } = await sb.from('agent_tasks').select('updated_at')
@@ -3306,6 +3343,7 @@ Deno.serve(async (req: Request) => {
     opinionPlanner(sb),
     opinionCheckoutCanary(sb), // 2026-05-23 — Gelato ↔ orders.row diff
     opinionSitcomCadence(sb), // 2026-07-27 — weekly episode drop-guard
+    opinionReelVariety(sb),   // 2026-08-25 — variety drop-guard (repeats + bank staleness)
     opinionStandingCommitments(sb), // 2026-07-27 — the commitments ledger clock
   ]);
   const allOpinions: Opinion[] = rawOps.filter((o): o is Opinion => o !== null);
@@ -3344,6 +3382,7 @@ Deno.serve(async (req: Request) => {
     'checkout-canary-error',
     'sitcom-cadence',           // weekly episode drop-guard
     'reel-bank-collapse',
+    'reel-variety-collapse',    // standing condition until the machine varies again (oren 25.08)
     'inventory-fully-oos',
   ]);
   const opinions = nonRecurring.filter(o =>
