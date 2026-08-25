@@ -259,6 +259,30 @@ const SCENES = [
   'in a cluttered home office at the end of the day', 'in a doorway with the afternoon light behind them',
   'on a couch with the TV off', 'in a hallway holding car keys',
 ];
+
+// ── FORMAT ROTATION (2026-08-25, oren: "נראה משעמם וחוזר על עצמו — לא כמו
+// שסיכמנו שאתה מגוון") ── the video prompt used to hardcode "They speak
+// directly to camera", so EVERY autonomous reel was a talking-head — the exact
+// format oren banned as a default on 2026-07-10. Each reel now rotates through
+// scene FORMATS; talking-head survives as one option in seven, never the default.
+//   speak: 'vo'     → narration is an unseen VOICE-OVER while the person acts
+//   speak: 'camera' → the person says the line to camera
+//   apparel: true   → only makes sense worn; mugs/bottles/totes draw from the rest
+const FORMATS = [
+  { key: 'broll',       speak: 'vo',     apparel: false, action: 'goes about the scene naturally, absorbed in a small everyday task, never looking at the camera — candid documentary b-roll' },
+  { key: 'mirror',      speak: 'vo',     apparel: true,  action: 'stands at a mirror giving themselves a quick honest once-over, adjusting the garment, ending on a small approving nod' },
+  { key: 'unboxing',    speak: 'vo',     apparel: false, action: 'opens a plain cardboard package at a table and lifts the product out, turning it over appreciatively — close framing on hands and product' },
+  { key: 'delivery',    speak: 'vo',     apparel: false, action: 'stands at the front door having just received a package, opens it on the spot, breaks into a knowing half-smile' },
+  { key: 'cctv',        speak: 'vo',     apparel: false, action: 'is seen from a slightly high static security-camera-style angle, going about the scene unaware of being filmed' },
+  { key: 'streetstop',  speak: 'camera', apparel: true,  action: 'pauses mid-walk as if a street interviewer just stopped them, relaxed and amused' },
+  { key: 'talkinghead', speak: 'camera', apparel: false, action: 'sits comfortably and talks straight to camera' },
+];
+function pickFormat(p, idx) {
+  const day = Math.floor(Date.now() / 86400000);
+  const worn = !NON_APPAREL.has(p.clothing_type);
+  const pool = FORMATS.filter(f => worn || !f.apparel);
+  return pool[(Number(p.product_id_numeric) + day + idx) % pool.length];
+}
 function fallbackScript(p) {
   const n = Number(p.product_id_numeric) || 1;
   return {
@@ -338,7 +362,12 @@ async function makeVideo(p, s, heroPath) {
     worn
       ? `Wearing a ${color} ${p.clothing_type}. The garment MUST remain the same ${color} ${p.clothing_type} for the entire clip — it must not morph and the printed chest design must not change or re-letter.`
       : `Holding the ${color} ${p.clothing_type}. The object must not morph and its printed design must not change.`
-  } They speak directly to camera in a warm, dry, slightly sardonic voice at a relaxed conversational pace. Spoken words: "${s.narration}" Subtle natural gestures, a small knowing half-smile at the end. Stays front-facing. Soft golden afternoon light, Kodak Portra grain. No on-screen text, no captions, no subtitles.`;
+  } ${(() => {
+    const fmt = s._format || FORMATS[FORMATS.length - 1];
+    return fmt.speak === 'camera'
+      ? `They ${fmt.action}. They speak directly to camera in a warm, dry, slightly sardonic voice at a relaxed conversational pace. Spoken words: "${s.narration}"`
+      : `They ${fmt.action}. They do NOT address or look at the camera. An unseen narrator with a warm, dry, slightly sardonic voice speaks over the scene at a relaxed pace, as a voice-over: "${s.narration}"`;
+  })()} ${worn ? 'The printed chest design stays clearly readable for most of the clip.' : 'The printed design on the product stays clearly readable.'} Subtle natural movement, a small knowing half-smile at the end. Soft golden afternoon light, Kodak Portra grain. No on-screen text, no captions, no subtitles.`;
 
   const params = {
     prompt, aspect_ratio: '9:16', duration: 8, quality: 'high',
@@ -422,11 +451,14 @@ async function publish(p, finalPath, s) {
   log(`targets: ${targets.map(t => `#${t.product_id_numeric}${t._age === -1 ? ' (no reel yet)' : ''}`).join(', ')}`);
 
   const results = [];
+  let fmtIdx = 0;
   for (const p of targets) {
     const pid = p.product_id_numeric;
     try {
       log(`▶ #${pid} "${String(p.slogan).slice(0, 46)}" (${p.clothing_type})`);
       const s = await writeScript(p);
+      s._format = pickFormat(p, fmtIdx++);
+      log(`  format: ${s._format.key} (${s._format.speak})`);
       log(`  ${s.person} ${s.age}, ${s.scene}`);
       log(`  says: "${s.narration}"`);
       if (DRY_RUN) { results.push({ pid, ok: true, dry: true, script: s }); continue; }

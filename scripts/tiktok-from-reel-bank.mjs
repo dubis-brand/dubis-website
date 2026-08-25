@@ -105,12 +105,22 @@ async function buildAvailableBank() {
     .map(r => ({ product_id: Number(r.product_id_numeric), slogan: r.slogan, url: bankUrl(Number(r.product_id_numeric)) }))
     .filter(c => Number.isFinite(c.product_id));
 
-  // FRESH-FORMAT ONLY (2026-07-24, oren: "הטיקטוק ממשיך עם סרטונים משעממים"):
-  // until the product-keyed bank is regenerated in the new scene formats, rotation
-  // serves ONLY the REEL_OVERRIDES set — each one a frame-verified new-format reel.
-  // The old June try-on bank is retired from TikTok. Remove this filter only after
-  // the full bank refresh.
-  const fresh = candidates.filter(c => REEL_OVERRIDES[c.product_id]);
+  // FRESH-FORMAT ONLY (2026-07-24, oren: "הטיקטוק ממשיך עם סרטונים משעממים").
+  // 2026-08-25 (oren: "משעמם וחוזר על עצמו — לא כמו שסיכמנו"): the static
+  // override list froze into a 9-video loop — meanwhile the autonomous pipeline
+  // (2026-08-21+) writes NEW reels into the product-keyed bank (incl. the mug
+  // accessories #44/#45) that this filter silently excluded. Freshness is now
+  // DYNAMIC: overrides ∪ any bank object the pipeline wrote since FRESH_BANK_SINCE.
+  // The pre-pipeline June try-on bank stays retired from TikTok.
+  const FRESH_BANK_SINCE = '2026-08-20';
+  let freshBankIds = new Set();
+  try {
+    const { data: objs } = await sb.storage.from('video-assets').list('_pilot', { limit: 300 });
+    freshBankIds = new Set((objs || [])
+      .filter(o => /^product-\d+-FINAL-EN\.mp4$/.test(o.name) && String(o.updated_at || '') >= FRESH_BANK_SINCE)
+      .map(o => Number(o.name.match(/^product-(\d+)-/)[1])));
+  } catch (e) { console.log(`storage list failed (${e.message}) — overrides-only freshness`); }
+  const fresh = candidates.filter(c => REEL_OVERRIDES[c.product_id] || freshBankIds.has(c.product_id));
   if (fresh.length >= 3) candidates = fresh; // safety: never shrink to a tiny/empty pool
 
   const checks = await Promise.all(candidates.map(c => checkReelExists(c.url)));
