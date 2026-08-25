@@ -16,7 +16,7 @@ Vercel Hobby plan allows MAX 12 Serverless Functions per deployment.
 | 1 | `api/analytics/track.js` | Page view tracking |
 | 2 | `api/create-gelato-order.js` | Gelato order creation |
 | 3 | `api/cron/morning-report.js` | Morning cron + content pipeline (?type=content) |
-| 4 | `api/cron/review-requests.js` | Review request emails (7d post-delivery) |
+| 4 | `api/cron/review-requests.js` | Delivery thank-you + review emails (on delivery, HE/EN by ship country, product links, logs agent_runs) |
 | 5 | `api/email/confirm-order.js` | Order confirmation email |
 | 6 | `api/orders/save.js` | Save order to Supabase |
 | 7 | `api/webhooks/gelato.js` | Gelato webhook |

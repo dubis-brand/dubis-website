@@ -57,7 +57,7 @@ All endpoints return JSON:
 | 04:00 | 06:00 | /api/cron/morning-report?type=agents | Agent runs |
 | 05:00 | 07:00 | /api/cron/morning-report | Morning report + boss agent |
 | 06:00 | 08:00 | /api/cron/morning-report?type=auto-run | **Auto-execute tasks** |
-| 08:00 | 10:00 | /api/cron/review-requests | Review request emails |
+| 08:00 | 10:00 | /api/cron/review-requests | Delivery thank-you + review emails (sent as soon as gelato-sync marks 'delivered'; HE for IL / EN otherwise; ?p={id} product links; agent_runs row per run) |
 | 10:00 | 12:00 | /api/cron/morning-report?type=content | Content — HE post |
 | 12:00 | 14:00 | /api/cron/morning-report?type=auto-run | **Auto-execute tasks** |
 | 16:00 | 18:00 | /api/cron/morning-report?type=content | Content — EN post |
