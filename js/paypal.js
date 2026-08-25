@@ -217,6 +217,52 @@ async function checkout() {
     // Sync state-field visibility/required to currently-selected country.
     const ctryElInit = document.getElementById('checkout-country');
     updateStateFieldForCountry(ctryElInit?.value || 'US');
+
+    // ── Branch-2 (2026-08-25): the contact step was a blind spot — all 3
+    // post-fix abandons died here with zero telemetry. (a) lead the step with a
+    // compact "what am I buying / what happens next" strip (the full summary
+    // sits BELOW the 9-field form, off-screen on mobile); (b) instrument the
+    // step: shown / first field focus / continue clicked / validated ok.
+    try { renderContactMiniSummary(); } catch (_) {}
+    if (window.dubisTrack) {
+        const isWv = typeof window.dubisIsFacebookWebView === 'function' && window.dubisIsFacebookWebView();
+        try { window.dubisTrack('checkout_contact_shown', { items: cart.length, wv: !!isWv }); } catch (_) {}
+    }
+    try { armContactFieldTelemetry(); } catch (_) {}
+}
+
+// Compact single-strip order recap + next-step reassurance at the TOP of the
+// contact step. Bilingual; product/total truth comes from the same cart math
+// the summary below uses.
+function renderContactMiniSummary() {
+    const el = document.getElementById('contact-mini-summary');
+    if (!el) return;
+    const he = (window.currentLang || 'en') === 'he';
+    const count = cart.reduce((s, i) => s + (i.quantity || 1), 0);
+    const itemTotal = cart.reduce((s, i) => s + (Number(i.price) || 0) * (i.quantity || 1), 0);
+    const first = cart[0] || {};
+    const firstName = (first.phrase || first.type || 'DUBIS item');
+    const more = count > 1 ? (he ? ` ‏+ עוד ${count - 1}` : ` +${count - 1} more`) : '';
+    el.innerHTML = `
+      <div dir="${he ? 'rtl' : 'ltr'}" style="background:#faf6ee;border:1px solid #e6d9bd;border-radius:10px;padding:10px 14px;margin:0 0 14px;text-align:${he ? 'right' : 'left'}">
+        <div style="font-size:13.5px;color:#2c2c2c;font-weight:600">🛒 ${count}× ${String(firstName).slice(0, 40)}${more} · $${itemTotal.toFixed(0)}</div>
+        <div style="font-size:12px;color:#7a6a4a;margin-top:3px">${he ? '🔒 בשלב הבא: תשלום בכרטיס אשראי או PayPal. הסל שמור.' : '🔒 Next step: pay by card or PayPal. Your cart is saved.'}</div>
+      </div>`;
+}
+
+// One event per field, first focus only — tells us HOW FAR into the form
+// shoppers get before abandoning (the contact step had zero telemetry).
+function armContactFieldTelemetry() {
+    const ids = ['checkout-name', 'checkout-email', 'checkout-phone', 'checkout-addr1', 'checkout-city', 'checkout-state', 'checkout-zip', 'checkout-country'];
+    for (const id of ids) {
+        const f = document.getElementById(id);
+        if (!f || f.__dubisFocusArmed) continue;
+        f.__dubisFocusArmed = true;
+        f.addEventListener('focus', function onFirst() {
+            f.removeEventListener('focus', onFirst);
+            if (window.dubisTrack) { try { window.dubisTrack('checkout_field_focus', { field: id.replace('checkout-', '') }); } catch (_) {} }
+        });
+    }
 }
 
 // ===== CONTACT STEP SUBMISSION =====
@@ -253,6 +299,9 @@ window.dubisHebrewCheck = function (el) {
 };
 
 async function submitContactStep() {
+    // Branch-2 telemetry: continue clicked (validation outcome = a following
+    // checkout_contact_ok event, or its absence).
+    if (window.dubisTrack) { try { window.dubisTrack('checkout_contact_continue', { items: cart.length }); } catch (_) {} }
     const nameEl  = document.getElementById('checkout-name');
     const emailEl = document.getElementById('checkout-email');
     const phoneEl = document.getElementById('checkout-phone');
@@ -395,6 +444,10 @@ async function submitContactStep() {
     const continueRow = document.getElementById('contact-continue-row');
     if (continueRow) continueRow.style.display = 'none';
     document.getElementById('payment-step').style.display  = '';
+    if (window.dubisTrack) {
+        const wvNow = typeof window.dubisIsFacebookWebView === 'function' && window.dubisIsFacebookWebView();
+        try { window.dubisTrack('checkout_contact_ok', { wv: !!wvNow }); } catch (_) {}
+    }
 
     // 2026-07-10: trust strip at the exact moment of doubt — 3 real IL shoppers
     // reached this step (via the IG/FB in-app browser) and dropped at PayPal.
@@ -534,9 +587,18 @@ function renderWebViewExternalHandoff() {
         copy:     'Copy link',
     };
 
+    // Branch-2 (2026-08-25): recap what's being paid for + reassure the cart
+    // survives the app-switch — Dana's hypothesis for the redirect-CTA hesitation.
+    const wvCount = cart.reduce((s, i) => s + (i.quantity || 1), 0);
+    const wvTotal = cart.reduce((s, i) => s + (Number(i.price) || 0) * (i.quantity || 1), 0);
+    const wvFirst = (cart[0] && (cart[0].phrase || cart[0].type)) || 'DUBIS item';
+    const wvMore  = wvCount > 1 ? (he ? ` ‏+ עוד ${wvCount - 1}` : ` +${wvCount - 1} more`) : '';
+    const recap = `<div style="background:#faf6ee;border:1px solid #e6d9bd;border-radius:8px;padding:8px 12px;margin:8px 0;font-size:13px;color:#2c2c2c;font-weight:600">🛒 ${wvCount}× ${String(wvFirst).slice(0, 40)}${wvMore} · $${wvTotal.toFixed(0)}<div style="font-size:11.5px;color:#7a6a4a;font-weight:400;margin-top:2px">${he ? 'הסל שמור אצלנו — חוזרים לכאן אוטומטית בסיום.' : 'Your cart is saved with us. You come straight back here when payment is done.'}</div></div>`;
+
     container.innerHTML = `
         <div class="fb-webview-notice" dir="${dir}">
             <h4>${T.title}</h4>
+            ${recap}
             <p>${T.body}</p>
             <div class="fb-webview-actions">
                 <button type="button" id="fbia-paypal-redirect-btn" class="fb-webview-btn">${T.cta}</button>
