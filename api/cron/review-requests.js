@@ -41,6 +41,13 @@ module.exports = async function handler(req, res) {
         { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
+    // ── Route: ?slogan_received={id} — instant "we got your slogan" confirmation ──
+    // Fired by the trg_slogan_received pg_net trigger on slogan_candidates INSERT.
+    // Bilingual (no ship country to key off). ack_email_sent_at guards double-send.
+    if (req.query && req.query.slogan_received) {
+        return sendSloganReceivedAck(supabase, String(req.query.slogan_received), res);
+    }
+
     const startedAt = Date.now();
 
     // Newly delivered orders that haven't been thanked yet.
@@ -235,6 +242,98 @@ module.exports = async function handler(req, res) {
         eligible: orders.length,
     });
 };
+
+// "We got your slogan" confirmation — sent once per submission (ack_email_sent_at guard).
+// The site promises the 15% coupon only IF the slogan goes live; this email says
+// exactly that, so submitters know the form worked without over-promising.
+async function sendSloganReceivedAck(supabase, sloganId, res) {
+    const { data: row, error } = await supabase
+        .from('slogan_candidates')
+        .select('id, text_en, submitter_email, ack_email_sent_at, source')
+        .eq('id', sloganId)
+        .single();
+
+    if (error || !row) return res.status(404).json({ success: false, error: 'slogan_not_found' });
+    if (row.source !== 'visitor_submission') return res.status(200).json({ success: true, skipped: 'not_visitor_submission' });
+    if (!row.submitter_email || !row.submitter_email.includes('@')) return res.status(200).json({ success: true, skipped: 'no_email' });
+    if (row.ack_email_sent_at) return res.status(200).json({ success: true, skipped: 'already_sent' });
+
+    const esc = s => String(s || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const slogan = esc((row.text_en || '').substring(0, 120));
+
+    const html = `
+<!DOCTYPE html>
+<html lang="he">
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#0f0f0f;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f0f0f;padding:40px 0;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#1a1a1a;border:1px solid #2e2e2e;border-radius:8px;overflow:hidden;">
+        <tr><td style="background:linear-gradient(135deg,#1e1a12,#1a1a1a);padding:32px;text-align:center;border-bottom:1px solid #2e2e2e;">
+          <div style="font-size:28px;font-weight:bold;color:#c8a96e;letter-spacing:2px;">DUBIS</div>
+        </td></tr>
+        <tr><td style="padding:32px;" dir="rtl">
+          <p style="font-size:16px;color:#e8e0d5;margin:0 0 12px;">קיבלנו את הסלוגן שלך:</p>
+          <p style="font-size:18px;color:#c8a96e;font-weight:bold;margin:0 0 20px;text-align:center;" dir="ltr">"${slogan}"</p>
+          <p style="font-size:14px;color:#9a9080;margin:0 0 8px;line-height:1.7;">
+            הצוות שלנו עובר על כל הצעה. אם הסלוגן שלך ייבחר ויעלה למוצר אמיתי באתר,
+            נשלח לך למייל הזה קופון 15% הנחה, כמו שהבטחנו.
+          </p>
+        </td></tr>
+        <tr><td style="padding:0 32px 32px;" dir="ltr">
+          <hr style="border:none;border-top:1px solid #2e2e2e;margin:0 0 20px;">
+          <p style="font-size:14px;color:#9a9080;margin:0;line-height:1.7;">
+            We got your slogan. Our team reviews every submission, and if yours goes
+            live on a real product you will get a 15% coupon at this address, as promised.
+          </p>
+        </td></tr>
+        <tr><td style="padding:24px 32px;border-top:1px solid #2e2e2e;text-align:center;">
+          <p style="font-size:11px;color:#666;margin:0;">
+            DUBIS
+            <br><span style="font-style:italic;">Built for the body you actually live in.</span>
+            <br>
+            <a href="https://www.dubis.net" style="color:#c8a96e;text-decoration:none;">dubis.net</a>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+    try {
+        const response = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                from: SENDER_EMAIL,
+                to: [row.submitter_email],
+                bcc: [BRAND_INBOX],
+                reply_to: BRAND_INBOX,
+                subject: 'קיבלנו את הסלוגן שלך! | We got your slogan',
+                html,
+            }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Send failed');
+
+        await supabase
+            .from('slogan_candidates')
+            .update({ ack_email_sent_at: new Date().toISOString() })
+            .eq('id', row.id);
+
+        console.log(`Slogan ack sent to ${row.submitter_email} for ${row.id} (resend id: ${data.id || 'n/a'})`);
+        return res.status(200).json({ success: true, sent: 1 });
+    } catch (err) {
+        console.error(`Slogan ack failed for ${sloganId}:`, err.message);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+}
 
 // Log the run so the daily Boss report sees the check happened (or failed)
 async function logRun(supabase, status, summary, startedAt, errorMessage) {

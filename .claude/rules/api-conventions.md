@@ -22,6 +22,7 @@ All API files use query param routing internally:
 
 /api/cron/morning-report?type=notify-oren          → POST {subject, html}. Generic agent→oren email via live Resend key. Recipient HARDCODED to dubis.brand@gmail.com. Auth: same gate (CRON/AGENT secret or x-pg-trigger-token). Added 2026-07-11 (local RESEND/AGENT keys are stale post-rotation).
 
+/api/cron/review-requests?slogan_received={id}     → Instant bilingual "we got your slogan" confirmation. Fired by trg_slogan_received (pg_net, AFTER INSERT on slogan_candidates). ack_email_sent_at guards double-send. The 15% coupon email still goes out only when the slogan goes live (weekly-slogan-product).
 /api/create-gelato-order                           → POST. Fulfillment. Client SDK already captured PayPal in onApprove; this POST takes {cartItems, shippingAddress, paypalOrderId, buyerEmail} → Gelato order(s). Does NOT itself capture PayPal.
 /api/create-gelato-order?action=stock-probe        → POST. Pre-flight quote-API probe. Returns mode ∈ {quote_ok, quote_split_required, quote_partial_oos, all_blocked_pre_gelato}.
 /api/create-gelato-order?action=create-draft       → POST. Admin-only. Creates FREE Gelato draft order for QA (no real charge).
