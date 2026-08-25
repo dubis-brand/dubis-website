@@ -1552,6 +1552,11 @@
             <div class="paypal-modal-header">
                 <h2>Complete Your Order</h2>
             </div>
+            <!-- 2026-08-25 (Branch-2): the modal used to open on a 9-field wall with the
+                 product + total buried BELOW the form — all 3 post-fix abandoners died
+                 right here. A compact what-am-I-buying + what-happens-next strip now
+                 leads the step; the full country-sensitive summary stays below. -->
+            <div id="contact-mini-summary"></div>
             <!-- Step 1: Contact details (rendered FIRST so customer enters country before seeing shipping) -->
             <div id="contact-step">
                 <p class="contact-step-title">Your details</p>
