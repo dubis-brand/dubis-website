@@ -104,7 +104,14 @@ module.exports = async function handler(req, res) {
             const isHebrew = countryOf(order) === 'IL';
             const firstName = firstNameOf(order);
             const shortOrderId = (order.paypal_order_id || order.id).toString().substring(0, 8).toUpperCase();
-            const reviewLink = `https://www.dubis.net/returns?review=true&order=${encodeURIComponent(shortOrderId)}`;
+            // 2026-08-27 (oren, after Vlad landed on the RETURNS page): the only
+            // review form on the site lives inside the product modal (js/reviews.js,
+            // loaded by index.html). /returns has no review UI — never send the
+            // review CTA there. Point it at the first purchased product's modal.
+            const firstProductId = (items.find(i => i && i.id) || {}).id;
+            const reviewLink = firstProductId
+                ? `https://www.dubis.net/?p=${firstProductId}`
+                : 'https://www.dubis.net';
 
             // Each purchased item, with a visible link to the exact product page
             const itemsList = items.map(item => {
