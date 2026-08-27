@@ -45,7 +45,7 @@ jobs:
   publish-product:
     name: Build print files + Gelato draft + real mockups for one product
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
 
     env:
       PRODUCT_UUID:    ${{ github.event.client_payload.product_id || github.event.inputs.product_id }}
