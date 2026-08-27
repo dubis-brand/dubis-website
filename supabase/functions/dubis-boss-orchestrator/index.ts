@@ -3244,15 +3244,19 @@ Deno.serve(async (req: Request) => {
   } catch (_) { /* best-effort — the funnel falls back to the generic gap copy */ }
 
   let igPosts7d = 0, dupes = 0;
+  const dupLinks: string[] = []; // permalinks of the DUPLICATE copies (2026-08-27 — so the report can hand oren the exact posts to delete)
   if (IG_TOKEN && IG_ACCOUNT) {
     try {
       const since = Math.floor((Date.now() - 7*86400000)/1000);
-      const r = await fetch(`https://graph.facebook.com/v19.0/${IG_ACCOUNT}/media?fields=id,caption,timestamp&since=${since}&limit=30&access_token=${IG_TOKEN}`);
+      const r = await fetch(`https://graph.facebook.com/v19.0/${IG_ACCOUNT}/media?fields=id,caption,timestamp,permalink&since=${since}&limit=30&access_token=${IG_TOKEN}`);
       const d = await r.json();
       const list = d.data || [];
       igPosts7d = list.length;
-      const captions = (list as { caption?: string }[]).map(m => (m.caption || '').slice(0, 80));
-      const seen = new Set<string>(); for (const c of captions) { if (seen.has(c)) dupes++; else seen.add(c); }
+      const seen = new Set<string>();
+      for (const m of (list as { caption?: string; permalink?: string }[])) {
+        const c = (m.caption || '').slice(0, 80);
+        if (seen.has(c)) { dupes++; if (m.permalink) dupLinks.push(m.permalink); } else seen.add(c);
+      }
     } catch (_) {}
   }
 
@@ -3414,19 +3418,14 @@ Deno.serve(async (req: Request) => {
       continue;
     }
     if (/למחוק מ.IG|Phase.*dedup|dedup/i.test(text)) {
-      try {
-        await sb.from('agent_tasks')
-          .update({ status: 'done', updated_at: new Date().toISOString() })
-          .eq('agent_id', 'design')
-          .in('status', ['pending','approved','pending_approval','backlog'])
-          .or('description.ilike.%dedup%,description.ilike.%כפילויות%');
-      } catch (_) { /* best-effort close */ }
-      autoFixes.push({
-        action: 'auto_close_ig_dedup',
-        succeeded: true,
-        note: 'נמצאו פוסטים כפולים ב-Instagram — הסוכן מטפל',
-      });
-      recurring.push({ ...r, rec: '🟠 בעיה חשובה: נמצאו פוסטים כפולים ב-Instagram — הסוכן מטפל' });
+      // 2026-08-27 (oren: "אתה רושם שאתה מבצע ולא קורה במציאות כלום"): the old
+      // branch auto-closed the cleanup task, logged succeeded:true with no real
+      // side-effect, and re-listed the finding — 6 straight days of "fixed" while
+      // zero IG posts were deleted. IG Graph has NO media-delete API, so this is
+      // oren's action BY CONSTRUCTION: say so, hand him the exact posts, and
+      // claim nothing. The cleanup task stays open until the detector goes quiet.
+      const linksBit = dupLinks.length ? ' למחיקה: ' + dupLinks.slice(0, 3).join(' · ') : '';
+      recurring.push({ ...r, priority: 'P0', rec: `פעולה שלך (ממתינה ${r.days} ימים): פוסטים כפולים באינסטגרם — למחיקת פוסט אין API, רק אתה יכול למחוק.${linksBit}` });
       continue;
     }
     recurring.push(r);
@@ -3580,8 +3579,12 @@ Deno.serve(async (req: Request) => {
         <p dir="rtl" style="margin:0 0 10px;color:#666;font-size:12px">הבעיות הבאות מופיעות בדוח שלושה ימים ומעלה — דורש החלטה.</p>
         ${recurring.map(r => {
           const p = PRIORITY_HE[r.priority] || { label: r.priority, color: '#888' };
+          // 2026-08-27: linkify bare URLs AFTER escaping, so an oren-action row
+          // can hand him the exact posts to open (email clients don't linkify HTML text).
+          const recBody = esc(cleanRecommendationText(r.rec))
+            .replace(/(https?:\/\/[^\s<]+)/g, (u) => `<a href="${u}" style="color:${p.color}">${u.replace('https://www.instagram.com/', 'instagram.com/')}</a>`);
           return `<div dir="rtl" style="padding:8px 12px;background:#fff;margin:4px 0;border-radius:4px;text-align:right;font-size:13px;border-right:3px solid ${p.color}">
-            <b style="color:${p.color}">${p.label}:</b> ${esc(cleanRecommendationText(r.rec))}
+            <b style="color:${p.color}">${p.label}:</b> ${recBody}
             <span style="background:${p.color};color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-right:6px">${r.days} ימים</span>
           </div>`;
         }).join('')}
