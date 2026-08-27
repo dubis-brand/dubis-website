@@ -1494,7 +1494,14 @@ function selectCardColor(productId, color, dotEl) {
 // Reel bank videos (same characters, front+back garment beats) live in the
 // public Supabase video-assets bucket. Both lists are verified-200 at build
 // time (2026-07-24); a missing asset simply hides its thumb — nothing breaks.
-const PERSONA_IMG_PIDS = new Set([1, 2, 5, 18, 23, 25, 29, 30, 32, 34, 38, 39, 40, 41, 42, 43]);
+// 2026-08-27 (oren: "האנשים בתמונה בכלל לא מופיעים אחר כך בסרטונים — לא מקצועי"):
+// a persona photo shows on a product page ONLY when that person actually appears
+// in the product's reel. Frame-audit of all 16 photos vs all 22 reels found just
+// these 4 true matches (the Higgsfield preset reels built FROM the persona
+// heroes). The other 12 photos showed the right garment but a DIFFERENT person
+// than the video — removed from PDPs; their carousel cards keep the photo but
+// lost the ▶ (index.html). Full matrix: M-memory session log 2026-08-27.
+const PERSONA_IMG_PIDS = new Set([30, 32, 39, 43]);
 const REEL_VIDEO_PIDS  = new Set([1, 2, 3, 4, 5, 8, 10, 11, 18, 23, 25, 29, 30, 31, 32, 34, 38, 39, 40, 41, 42, 43]);
 function personaImgUrl(productId) {
   return PERSONA_IMG_PIDS.has(Number(productId)) ? `images/personas-real/persona-${productId}.jpg` : null;
