@@ -4234,6 +4234,19 @@ ${replyNote}
       }
       return new Response(en || 'translation-failed', { status: en ? 200 : 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
+    // 2026-08-27 (oren: "מה עם המייל של סיכום הסוכנים?") — on-demand HEBREW send,
+    // same contract as the EN path above: emails the rendered report with zero
+    // boss_reports/board side effects. Route: preview=1&html=1&send=1 (no lang).
+    if (url.searchParams.get('send') === '1') {
+      let keyH = RESEND_KEY;
+      if (!keyH) { try { const { data: vk } = await sb.rpc('dubis_get_vault_secret_safe', { secret_name: 'dubis_resend_api_key' }); if (vk) keyH = vk as string; } catch (_) { /* no key */ } }
+      if (!keyH) return json({ ok: false, error: 'no resend key' }, 200);
+      const subjH = (isWeekly ? '🪑 DUBIS ישיבת צוות שבועית — ' : '📊 DUBIS דוח יומי (שליחה יזומה) — ') + new Date().toISOString().slice(0, 10);
+      const toH = (Deno.env.get('OWNER_EMAILS') || 'dubis.brand@gmail.com').split(',').map(s => s.trim()).filter(Boolean);
+      const rsH = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'Authorization': `Bearer ${keyH}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: 'DUBIS Manager <orders@dubis.net>', to: toH, reply_to: 'dubis.brand@gmail.com', subject: subjH, html }) });
+      const ddH = await rsH.json();
+      return json({ ok: rsH.ok, sent_he: rsH.ok ? ddH.id : null, error: rsH.ok ? null : (ddH.message || `HTTP ${rsH.status}`) });
+    }
     return new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   }
   if (isPreview) {
