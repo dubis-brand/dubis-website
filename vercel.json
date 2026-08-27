@@ -19,6 +19,7 @@
     { "source": "/returns", "destination": "/returns.html" },
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/accessibility", "destination": "/accessibility.html" },
+    { "source": "/p/:id", "destination": "/index.html" },
     { "source": "/us", "destination": "/index.html" },
     { "source": "/us/:path*", "destination": "/index.html" },
     { "source": "/ig-content/:path*", "destination": "https://ntzwvqtpdmvvavbhuyeb.supabase.co/functions/v1/agents?type=serve-image&f=:path*" },

@@ -109,15 +109,18 @@ module.exports = async function handler(req, res) {
             // loaded by index.html). /returns has no review UI — never send the
             // review CTA there. Point it at the first purchased product's modal.
             const firstProductId = (items.find(i => i && i.id) || {}).id;
+            // Clean path (/p/N, no query) — Gmail's link wrapper showed a scary
+            // redirect-notice on the ?p= form (Vlad, 27.08). Vercel rewrites
+            // /p/:id to index.html and main.js opens the product modal.
             const reviewLink = firstProductId
-                ? `https://www.dubis.net/?p=${firstProductId}`
+                ? `https://www.dubis.net/p/${firstProductId}`
                 : 'https://www.dubis.net';
 
             // Each purchased item, with a visible link to the exact product page
             const itemsList = items.map(item => {
                 const label = esc((item.phrase || item.typeLabel || 'DUBIS Item').substring(0, 60));
                 const type = esc(item.typeLabel || item.type || '');
-                const productUrl = item.id ? `https://www.dubis.net/?p=${item.id}` : 'https://www.dubis.net';
+                const productUrl = item.id ? `https://www.dubis.net/p/${item.id}` : 'https://www.dubis.net';
                 const linkText = isHebrew ? 'למוצר באתר' : 'View the product';
                 return `<li style="margin:8px 0;color:#e8e0d5;">${label}${type ? ` · ${type}` : ''}
                     <br><a href="${productUrl}" style="color:#c8a96e;text-decoration:none;font-size:13px;">${linkText}: ${productUrl}</a></li>`;

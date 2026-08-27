@@ -3107,6 +3107,18 @@ window.dubisTrack = function(event, meta) {
   // and the URL also looks clean (replaceState so the back button isn't polluted).
   function openFromQueryParam() {
     try {
+      // Clean-path deep link `/p/N` (2026-08-27) — used in transactional EMAILS,
+      // where Gmail's google.com/url wrapper choked on the `?p=` query form and
+      // showed customers a scary redirect-notice page. Social captions keep the
+      // established `?p=N` (IG-safe). Both normalize to #product-N.
+      const pm = window.location.pathname.match(/^\/p\/(\d+)\/?$/);
+      if (pm) {
+        const pid = Number(pm[1]);
+        window.history.replaceState({}, '', '/#product-' + pid);
+        __dubisLastHash = '#product-' + pid;
+        openFromHash(__dubisLastHash, 'path-p');
+        return true;
+      }
       const params = new URLSearchParams(window.location.search);
       const p = params.get('p');
       if (p && /^\d+$/.test(p)) {
