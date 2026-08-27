@@ -4122,7 +4122,9 @@ Deno.serve(async (req: Request) => {
       agentCard('✍️', 'תוכן אורגני', 'content',
         [weeklyMktg ? `פרסמתי ${weeklyMktg.done}/${weeklyMktg.total} מהתוכנית + ${weeklyMktg.extra} מחוץ לה` : 'אין תוכנית פעילה',
          contentPerf ? `${contentPerf.totalEng} מעורבות · ${contentPerf.siteClicks.total} כניסות לאתר מהתוכן (30 ימים)` : ''],
-        propOf('content', contentPerf?.learning ? esc(contentPerf.learning.summary.slice(0, 160)) : 'ממשיכים לפי התוכנית השבועית')),
+        // cut(), never raw slice — oren caught a mid-word chop here 27.08,
+        // the exact class the 23.08 cut() fix was written for.
+        propOf('content', contentPerf?.learning ? esc(cut(contentPerf.learning.summary, 220)) : 'ממשיכים לפי התוכנית השבועית')),
       agentCard('🎬', 'וידאו ורילים', 'video',
         [reelGaps ? `בנק הרילים מכסה ${reelGaps.withReel}/${reelGaps.total} מוצרים` : '',
          personaData ? `סדרת הסוכנים: ${personaData.remaining} פוסטים בתור` : ''],
@@ -4152,7 +4154,10 @@ Deno.serve(async (req: Request) => {
     const bRow = (txt: string, color: string) => `<div dir="rtl" style="font-size:12px;color:#333;padding:6px 10px;background:#fcfbf7;border-right:3px solid ${color};border-radius:4px;margin:3px 0;text-align:right">${txt}</div>`;
     const adopted = wb.filter(r => r.decision === 'adopt');
     const rejected = wb.filter(r => r.decision === 'reject');
-    const escalated = wb.filter(r => r.decision === 'escalate');
+    // An escalation WITH an outcome is ANSWERED — it must never render again as
+    // a question for oren (27.08: the closed dubis.site row resurfaced hours
+    // after his answer was recorded; the report-trust rule, weekly edition).
+    const escalated = wb.filter(r => r.decision === 'escalate' && !r.outcome);
     const weeklyBoardHtml = (adopted.length + rejected.length + escalated.length) === 0
       ? '<p dir="rtl" style="font-size:12.5px;color:#888;margin:0;text-align:right">לא עלו הצעות חדשות להכרעה השבוע.</p>'
       : [
