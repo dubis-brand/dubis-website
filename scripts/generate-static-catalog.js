@@ -170,6 +170,28 @@ ${lines}
 `;
 }
 
+// ── 3b. sitemap.xml — full regeneration including every product URL ──
+// (pre-2026-08-27 this only refreshed <lastmod>, so the catalog was invisible
+//  to the sitemap — 3 static URLs vs 31 live products; audit P2 finding.)
+function buildSitemap(products) {
+  const today = new Date().toISOString().slice(0, 10);
+  const urlEntry = (loc, changefreq, priority) => [
+    '  <url>',
+    `    <loc>${loc}</loc>`,
+    `    <lastmod>${today}</lastmod>`,
+    `    <changefreq>${changefreq}</changefreq>`,
+    `    <priority>${priority}</priority>`,
+    '  </url>',
+  ].join('\n');
+  const statics = [
+    urlEntry(`${SITE}/`, 'weekly', '1.0'),
+    urlEntry(`${SITE}/returns`, 'monthly', '0.5'),
+    urlEntry(`${SITE}/terms`, 'monthly', '0.5'),
+  ];
+  const productUrls = products.map((p) => urlEntry(`${SITE}/?p=${p.id}`, 'weekly', '0.8'));
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${[...statics, ...productUrls].join('\n')}\n</urlset>\n`;
+}
+
 // ── 4. Freshness contract: compare generated catalog against the live DB ──
 async function verifyAgainstDb(products) {
   const url = process.env.SUPABASE_URL;
@@ -210,13 +232,9 @@ async function verifyAgainstDb(products) {
 
   fs.writeFileSync(LLMS, buildLlms(products));
 
-  if (fs.existsSync(SITEMAP)) {
-    const today = new Date().toISOString().slice(0, 10);
-    const sm = fs.readFileSync(SITEMAP, 'utf8').replace(/<lastmod>[^<]*<\/lastmod>/g, `<lastmod>${today}</lastmod>`);
-    fs.writeFileSync(SITEMAP, sm);
-  }
+  fs.writeFileSync(SITEMAP, buildSitemap(products));
 
-  console.log(`generated: static grid + Product schema (${products.length} products), llms.txt, sitemap lastmod.`);
+  console.log(`generated: static grid + Product schema (${products.length} products), llms.txt, sitemap (${products.length + 3} URLs).`);
 
   if (process.argv.includes('--verify-db')) await verifyAgainstDb(products);
 })().catch((e) => { console.error(e.message || e); process.exit(1); });
