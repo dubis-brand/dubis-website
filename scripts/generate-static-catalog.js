@@ -62,12 +62,26 @@ function mockupUrl(p) {
   return `images/product-${p.id}-${encodeURIComponent(c)}-front.jpg`;
 }
 
+// The garment-mockup path is CONSTRUCTED — accessories (mug/bottle/tote) have no
+// images/product-{id}-{Color}-front.jpg on disk, so blindly emitting it put 404s in the
+// JSON-LD (2026-08-27 audit). Verify on disk; dead → the product's own image field
+// (synced from dubis_products.image_url). Returns an ABSOLUTE url for JSON-LD.
+function productImageUrl(p) {
+  const rel = mockupUrl(p);
+  if (fs.existsSync(path.join(ROOT, rel))) return `${SITE}/${rel}`;
+  if (p.image) return /^https?:/i.test(p.image) ? p.image : `${SITE}/${String(p.image).replace(/^\//, '')}`;
+  return `${SITE}/${rel}`;
+}
+
 // 2026-07-25 (HOODIES-style shelf): the static card leads with the real-body
 // persona photo where one exists on disk — crawlers index the on-model look.
 // JSON-LD keeps the flat mockup (product image, not lifestyle — Merchant rules).
 function staticCardImgUrl(p) {
   const persona = `images/personas-real/persona-${p.id}.jpg`;
-  return fs.existsSync(path.join(ROOT, persona)) ? persona : mockupUrl(p);
+  if (fs.existsSync(path.join(ROOT, persona))) return persona;
+  const rel = mockupUrl(p);
+  if (fs.existsSync(path.join(ROOT, rel))) return rel; // keep same-origin relative path
+  return productImageUrl(p); // accessory fallback (absolute, from the synced image field)
 }
 
 // ── 1. Static grid cards (crawler content + no-JS fallback; JS hydrates over) ──
@@ -97,7 +111,7 @@ function buildSchema(products) {
       item: {
         '@type': 'Product',
         name: p.phrase,
-        image: `${SITE}/${mockupUrl(p)}`,
+        image: productImageUrl(p),
         description: p.description || `${p.phrase}. ${TYPE_LABEL[p.type] || 'Apparel'} from DUBIS — built for the body you actually live in.`,
         url: `${SITE}/?p=${p.id}`,
         brand: { '@type': 'Brand', name: 'DUBIS' },

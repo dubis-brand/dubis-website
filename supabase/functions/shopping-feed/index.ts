@@ -25,7 +25,7 @@ Deno.serve(async (_req: Request) => {
 
   const { data: products, error: pErr } = await sb
     .from('dubis_products')
-    .select('id, product_id_numeric, slogan, clothing_type, gender, price_usd, colors, description_en, category')
+    .select('id, product_id_numeric, slogan, clothing_type, gender, price_usd, colors, description_en, category, image_url')
     .eq('active', true)
     .order('product_id_numeric', { ascending: true });
   if (pErr) return new Response(`DB error: ${pErr.message}`, { status: 500 });
@@ -75,17 +75,41 @@ Deno.serve(async (_req: Request) => {
   };
   const apparelSizes = ['S', 'M', 'L', 'XL', 'XXL', 'XXXL'];
 
+  // Garment-mockup paths are CONSTRUCTED, not guaranteed: accessories (mug/bottle/tote)
+  // have no images/product-{id}-{Color}-front.jpg, so a blind path 404s in Merchant Center
+  // (2026-08-27 audit — same bug class as the 2026-08-08 publish-ready outage).
+  // HEAD-verify each constructed URL in parallel; dead → fall back to dubis_products.image_url.
+  // Browser UA: the Vercel WAF 403s bot-looking clients. Feed is CDN-cached 6h, so ~31 HEADs/6h.
+  const mockupUrlFor = (p: any): string | null => {
+    const colorList: string[] = Array.isArray(p.colors) ? p.colors : [];
+    const mockColor = colorList.includes('Black') ? 'Black' : colorList[0];
+    return mockColor
+      ? `https://www.dubis.net/images/product-${p.product_id_numeric}-${encodeURIComponent(mockColor)}-front.jpg`
+      : null;
+  };
+  const HEAD_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+  const mockupAlive = new Map<string, boolean>();
+  await Promise.all((products || []).map(async (p: any) => {
+    const url = mockupUrlFor(p);
+    if (!url) return;
+    try {
+      const r = await fetch(url, { method: 'HEAD', headers: { 'User-Agent': HEAD_UA } });
+      mockupAlive.set(url, r.ok);
+    } catch {
+      mockupAlive.set(url, false);
+    }
+  }));
+
   const items: string[] = [];
   for (const p of (products || []) as any[]) {
     const id = p.product_id_numeric;
-    // Primary image = canonical catalog mockup (SoT per CLAUDE.md): images/product-{id}-{Color}-front.jpg
-    // Prefer Black (every product carries it), else first color; fall back to dubis_images lifestyle shot.
+    // Primary image = canonical catalog mockup (SoT per CLAUDE.md) WHEN it exists;
+    // else the product's own image_url (accessories); else dubis_images lifestyle shot.
     const colorList: string[] = Array.isArray(p.colors) ? p.colors : [];
     const mockColor = colorList.includes('Black') ? 'Black' : colorList[0];
-    const mockupUrl = mockColor
-      ? `https://www.dubis.net/images/product-${id}-${encodeURIComponent(mockColor)}-front.jpg`
-      : null;
-    const img = mockupUrl || bestImageByProduct.get(p.id);
+    const candidate = mockupUrlFor(p);
+    const mockupUrl = candidate && mockupAlive.get(candidate) ? candidate : null;
+    const img = mockupUrl || p.image_url || bestImageByProduct.get(p.id);
     if (!img) continue;
     const typeLbl = clothingTypeLabel[p.clothing_type] || p.clothing_type || 'Apparel';
     const title = `DUBIS — ${p.slogan} ${typeLbl}`;
@@ -111,7 +135,7 @@ Deno.serve(async (_req: Request) => {
       <g:title>${esc(title)} (${esc(size)})</g:title>
       <g:description>${esc(desc)}</g:description>
       <g:link>${link}</g:link>
-      <g:image_link>${esc(img)}</g:image_link>${mockupUrl && bestImageByProduct.get(p.id) ? `
+      <g:image_link>${esc(img)}</g:image_link>${bestImageByProduct.get(p.id) && bestImageByProduct.get(p.id) !== img ? `
       <g:additional_image_link>${esc(bestImageByProduct.get(p.id))}</g:additional_image_link>` : ''}
       <g:availability>in_stock</g:availability>
       <g:price>${price}</g:price>
