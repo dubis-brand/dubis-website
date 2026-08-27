@@ -3,6 +3,14 @@
 // Features: IP-based Hebrew detection, full i18n, color swatch preview
 
 let cart = [];
+// Declared HERE (top of script) and not next to loadProductReviews below:
+// openProductModal reads `productReviews`, and the deep-link auto-open IIFE
+// calls it synchronously DURING script evaluation — a `let` declared lower in
+// the file is still in its temporal dead zone at that moment, so even
+// `typeof productReviews` THROWS. That single ReferenceError killed EVERY
+// `?p=`/`#product-` deep link (they all landed on the homepage) from Wave A
+// until 2026-08-27, when Vlad's review email exposed it.
+let productReviews = {};
 let currentLang  = 'en';
 window.currentLang = currentLang;  // initial mirror — updated by setLanguage()
 let _activeFilter = 'all';
@@ -3084,8 +3092,10 @@ window.dubisTrack = function(event, meta) {
           typeof products !== 'undefined' &&
           Array.isArray(products) &&
           products.length > 0) {
-        try { window.openProductModal(pid); } catch(e) { console.error('openProductModal failed:', e); }
-        return;
+        // A throw here means a dependency wasn't ready yet (the 2026-08-27 TDZ
+        // bug proved it) — keep retrying instead of giving up on first failure.
+        try { window.openProductModal(pid); return; }
+        catch(e) { console.error('openProductModal failed (will retry):', e); }
       }
       if (attempts < 40) setTimeout(tryOpen, 150); // up to 6s total
     };
@@ -3214,7 +3224,8 @@ document.querySelectorAll('.nav-links a').forEach(a => {
 });
 
 // ── Load product reviews for badge display ──
-let productReviews = {};
+// (`productReviews` itself is declared at the top of the file — see the
+//  deep-link TDZ note there. Do NOT re-declare it here.)
 async function loadProductReviews() {
   try {
     if (!window.DUBIS_SUPABASE_URL) return;
