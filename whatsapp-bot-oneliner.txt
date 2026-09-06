@@ -1,0 +1,14 @@
+DUBIS - WhatsApp bot: emergency one-liner (no repo needed)
+Paste the single line below into a normal PowerShell window on the PC.
+It: removes any PAUSED kill-switch, registers BOTH the bridge and bot.py as
+AtLogOn scheduled tasks (auto-restart every 2 min), starts them now, and prints
+the live PIDs. Same as whatsapp-bot-fix.bat, without needing this repo.
+
+---------------------------------------------------------------------------
+PLAN B - only if the line above fails with 'Access is denied' on
+Register-ScheduledTask (group policy blocks task creation).
+This starts both processes detached right now. It does NOT survive a restart,
+so it is a stopgap: the bot answers again, but you must re-run it after reboot.
+---------------------------------------------------------------------------
+
+$R="C:\whatsapp-mcp"; gci $R -r -Filter "PAUSED*" -File -EA 0 | ri -Force; $b=gci $R -r -Filter *.exe -File -EA 0 | ?{$_.Name -match 'bridge|whatsapp' -or $_.DirectoryName -match 'bridge'} | sort LastWriteTime -Desc | select -First 1; $p=gci $R -r -Filter bot.py -File -EA 0 | select -First 1; $u=(gcm uv -EA 0).Source; if(!$u){$u=(gcm python -EA 0).Source}; if(!$b -or !$p -or !$u){ "MISSING -> bridge=$($b.FullName) bot=$($p.FullName) runner=$u" } else { $arg = if($u -match 'uv'){"run `"$($p.FullName)`""} else {"`"$($p.FullName)`""}; Start-Process $b.FullName -WorkingDirectory $b.DirectoryName -WindowStyle Hidden; sleep 5; Start-Process $u -ArgumentList $arg -WorkingDirectory $p.DirectoryName -WindowStyle Hidden; sleep 10; gcim Win32_Process | ?{$_.CommandLine -match 'bot\.py' -or $_.CommandLine -match [regex]::Escape($b.FullName)} | select ProcessId,Name | ft }

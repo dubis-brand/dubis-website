@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>סוכן הווטסאפ לא מגיב — אבחון 20.08.2026</title>
+<style>
+  :root{
+    --bg:#faf8f5; --card:#fff; --ink:#1a1a1a; --muted:#6b6b6b; --line:#e6e0d8;
+    --red:#c0392b; --amber:#c47f17; --green:#1e7a4d; --accent:#111;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#14120f; --card:#1c1a17; --ink:#f2efe9; --muted:#a09a90; --line:#332f2a;
+           --red:#ff6b5a; --amber:#ffb347; --green:#4fd18b; --accent:#f2efe9; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);direction:rtl;text-align:right;
+       font-family:"Segoe UI",Arial,"Helvetica Neue",sans-serif;line-height:1.75;padding:28px 16px 80px}
+  .wrap{max-width:900px;margin:0 auto}
+  h1{font-size:1.9rem;margin:0 0 6px;letter-spacing:-.5px}
+  .sub{color:var(--muted);margin:0 0 28px;font-size:.95rem}
+  h2{font-size:1.25rem;margin:38px 0 12px;padding-bottom:8px;border-bottom:2px solid var(--line)}
+  h3{font-size:1.02rem;margin:22px 0 6px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:14px 0}
+  .verdict{border-right:5px solid var(--red)}
+  .tag{display:inline-block;font-size:.75rem;padding:2px 10px;border-radius:99px;border:1px solid var(--line);
+       color:var(--muted);margin-inline-start:8px;vertical-align:middle}
+  .rank{display:inline-flex;width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--bg);
+        align-items:center;justify-content:center;font-weight:700;font-size:.85rem;margin-inline-end:8px}
+  code,pre{font-family:Consolas,"Courier New",monospace;direction:ltr;text-align:left}
+  code{background:rgba(128,128,128,.14);padding:2px 6px;border-radius:5px;font-size:.9em;display:inline-block}
+  pre{background:rgba(128,128,128,.12);padding:14px 16px;border-radius:10px;overflow-x:auto;font-size:.86rem;margin:10px 0}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.92rem;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--line);padding:9px 12px;text-align:right;vertical-align:top}
+  th{background:rgba(128,128,128,.1);font-weight:600;white-space:nowrap}
+  ul,ol{padding-inline-start:0;padding-inline-end:22px;margin:8px 0}
+  li{margin:5px 0}
+  .red{color:var(--red);font-weight:600}
+  .amber{color:var(--amber);font-weight:600}
+  .green{color:var(--green);font-weight:600}
+  .note{font-size:.88rem;color:var(--muted)}
+  .big{font-size:1.05rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>סוכן הווטסאפ לא מגיב — אבחון</h1>
+  <p class="sub">20.08.2026 · נבדק מסשן ענן (Claude Code on the web) · הסוכן עצמו רץ על המחשב שלך, לא בענן</p>
+
+  <div class="card verdict">
+    <h3 style="margin-top:0">שורה תחתונה</h3>
+    <p class="big">בדקתי את כל מה שאפשר לבדוק מרחוק: <strong>הבעיה לא בקוד של DUBIS</strong>. סוכן הווטסאפ לא נמצא באף מקום מהתשתית הענן — לא ב-repo, לא ב-Edge Functions של סופאבייס, לא ב-Vercel, לא בבסיס הנתונים. הוא רץ <strong>אך ורק על המחשב שלך</strong> ב-<code>C:\whatsapp-mcp</code>, ולכן אני פיזית לא יכול לראות אם הוא חי.</p>
+    <p>מה שכן יכולתי לעשות: לשחזר מהפנקס הארגוני בדיוק איך הוא בנוי, לזהות את <strong>נקודת-הכשל שהושארה פתוחה במודע</strong> ביום שסיימנו אותו (19.08), ולכתוב לך שני סקריפטים — אחד שמאבחן, אחד שמתקן.</p>
+    <p class="red">ההימור שלי, בביטחון גבוה: <strong>bot.py לא רץ.</strong> הגשר קיבל משימה מתוזמנת שמרימה אותו בהתחברות; הבוט עצמו — לא. הוא הורם ידנית בסשן, ותהליך שמורם ככה מת ברגע שהחלון שהריץ אותו נסגר (זה בדיוק ה-Job Object של Windows שכבר הרג לנו את הגשר ב-13.08).</p>
+  </div>
+
+  <h2>מה נבדק בפועל <span class="tag">מרחוק</span></h2>
+  <table>
+    <tr><th>מקום</th><th>מה חיפשתי</th><th>תוצאה</th></tr>
+    <tr><td>repo <code>dubis-website</code></td><td>קוד ווטסאפ, webhook, ספק (Twilio / 360dialog / Green API)</td><td class="green">אין. רק מספר טלפון בקישורים באתר</td></tr>
+    <tr><td>Supabase Edge Functions</td><td>פונקציה ייעודית או route בסוכנים</td><td class="green">31 פונקציות, אף אחת לא ווטסאפ</td></tr>
+    <tr><td>Vercel API</td><td>נתיב webhook נכנס</td><td class="green">12/12 פונקציות, אף אחת לא ווטסאפ</td></tr>
+    <tr><td>בסיס הנתונים</td><td>טבלאות, ריצות סוכנים, קונפיג</td><td class="green">אין טבלה, אין <code>agent_runs</code>, אין מפתח ב-<code>app_config</code></td></tr>
+    <tr><td>GitHub</td><td>ענפים ו-PR פתוחים</td><td class="green">47 ענפים — אף אחד לא ווטסאפ</td></tr>
+    <tr><td>פנקס ההתחייבויות</td><td>היסטוריית הפיילוט</td><td class="amber">כאן היה הכל — ראה למטה</td></tr>
+  </table>
+
+  <h2>איך הסוכן בנוי (מהפנקס, 12–19.08)</h2>
+  <div class="card">
+    <table>
+      <tr><th>רכיב</th><th>איפה</th><th>איך עולה</th></tr>
+      <tr><td>גשר (Go / whatsmeow)</td><td><code>C:\whatsapp-mcp</code></td><td class="green">משימה מתוזמנת <code>DUBIS-WhatsApp-Bridge</code>, AtLogOn</td></tr>
+      <tr><td>הבוט (Python + uv)</td><td><code>C:\whatsapp-mcp\whatsapp-bot\bot.py</code></td><td class="red">שום דבר. הורם ידנית בלבד</td></tr>
+      <tr><td>מוח</td><td>Claude API</td><td>מפתח <code>ANTHROPIC_API_KEY</code> שהגדרת ב-setx</td></tr>
+      <tr><td>אחסון הודעות</td><td>SQLite של הגשר</td><td>הבוט קורא ממנו, שולח דרך ה-REST של הגשר</td></tr>
+    </table>
+    <p class="note">בלמים שבנינו בכוונה, וכל אחד מהם יכול להיות הסיבה לשקט: קובץ <code>PAUSED</code> לעצירה מיידית · תקרת שליחה 50 הודעות ליום · הבוט לא עונה לעצמו · תגובות בקבוצות רק בתיוג.</p>
+  </div>
+
+  <h2>חשודים, לפי סדר הסבירות</h2>
+
+  <div class="card">
+    <h3><span class="rank">1</span>bot.py פשוט לא רץ <span class="tag">סבירות גבוהה מאוד</span></h3>
+    <p>ב-19.08 רשמנו משימה מתוזמנת <em>לגשר</em> — ורק לו. הבוט הורם ידנית מתוך הסשן. ב-13.08 כבר גילינו על בשרנו ש-Windows הורג תהליכי-ילד כשהחלון שהריץ אותם נסגר, למרות <code>nohup</code>. אותה מלכודת בדיוק, עכשיו על הבוט. כל ריסטארט, יציאה מהחשבון או סגירת החלון = שקט מוחלט, בלי שום הודעת שגיאה.</p>
+    <p class="note">תסמין מזהה: הגשר חי (הודעות ממשיכות להיכנס ל-SQLite) אבל אף תשובה לא יוצאת.</p>
+  </div>
+
+  <div class="card">
+    <h3><span class="rank">2</span>הגשר לא עלה אחרי ריסטארט <span class="tag">סבירות בינונית</span></h3>
+    <p>המשימה המתוזמנת של הגשר נבדקה בהפעלה ידנית בלבד — <strong>מעולם לא באתחול אמיתי</strong>. זה תועד ב-19.08 כפער פתוח. אם המחשב עשה ריסטארט מאז, זו הפעם הראשונה שהמנגנון נבחן באמת.</p>
+    <p class="note">תסמין מזהה: חותמת הזמן של קובץ ה-SQLite תקועה — הודעות שנשלחו אליך היום לא נכנסות בכלל. הסקריפט בודק בדיוק את זה.</p>
+  </div>
+
+  <div class="card">
+    <h3><span class="rank">3</span>קובץ PAUSED נשאר מהבדיקות <span class="tag">סבירות בינונית</span></h3>
+    <p>בלם החירום שבנינו. אם הוא נשאר על הדיסק מהבדיקות של 19.08 — הבוט רץ, קורא הודעות, ומחליט בשקט לא לענות. הכי מתסכל, הכי קל לתיקון: מוחקים קובץ.</p>
+  </div>
+
+  <div class="card">
+    <h3><span class="rank">4</span>המפתח לא מגיע לתהליך <span class="tag">סבירות נמוכה-בינונית</span></h3>
+    <p><code>setx</code> משפיע רק על תהליכים שנפתחו <em>אחריו</em>. אם הבוט הורם לפני שהגדרת את המפתח, או מתוך חלון ישן — הוא רץ בלי מוח, וכל הודעה נופלת ב-401.</p>
+  </div>
+
+  <div class="card">
+    <h3><span class="rank">5</span>ווטסאפ ניתק את המכשיר <span class="tag">סבירות נמוכה</span></h3>
+    <p>כבר נתקלנו ב-<code>client outdated</code> ב-13.08. אם ווטסאפ ניתקה את החיבור, הגשר רץ אבל מנותק — צריך סריקת QR מחדש מהטלפון.</p>
+  </div>
+
+  <div class="card">
+    <h3><span class="rank">6</span>תקרת 50 הודעות ליום <span class="tag">סבירות נמוכה</span></h3>
+    <p>רק אם היה יום עמוס במיוחד. הבוט יעצור לשלוח עד חצות. מופיע בלוג.</p>
+  </div>
+
+  <h2>מה לעשות עכשיו — 3 דקות</h2>
+  <div class="card">
+    <p>שני הקבצים כבר יושבים ב-repo (עשה <code>git pull</code> בתיקיית האתר):</p>
+    <h3>שלב 1 — אבחון (לא משנה כלום)</h3>
+    <pre>whatsapp-bot-doctor.bat</pre>
+    <p>דאבל-קליק. בודק: הגשר חי? הפורט עונה? המשימות המתוזמנות במצב תקין? bot.py רץ? יש PAUSED? המפתח מוגדר? מתי לאחרונה נכתב ל-SQLite? + 12 השורות האחרונות מהלוג, עם דגל אדום על <code>logged out</code> / <code>401</code> / <code>traceback</code>. בסוף מודפס <strong>VERDICT</strong> עם רשימת הכשלים לפי סדר.</p>
+
+    <h3>שלב 2 — תיקון</h3>
+    <pre>whatsapp-bot-fix.bat</pre>
+    <p>מרים את הגשר ואת הבוט, ורושם את <strong>שניהם</strong> כמשימות מתוזמנות AtLogOn עם restart אוטומטי כל 2 דקות אם הם נופלים. זה סוגר את החור המבני: מהיום שניהם חוזרים לבד אחרי ריסטארט, ואף חלון שנסגר לא הורג אותם. אם יש PAUSED — הסקריפט ישאל לפני שהוא מוחק.</p>
+    <p class="note">רוצה לראות מה הוא עומד לעשות בלי לגעת בכלום: <code>powershell -ExecutionPolicy Bypass -File whatsapp-bot-fix.ps1 -WhatIf</code></p>
+
+    <h3>שלב 3 — אימות</h3>
+    <p>שלח הודעה <strong>מטלפון אחר</strong> (הבוט לעולם לא עונה לעצמו — זו הגנה מכוונת, לא באג). אם עדיין שקט, הרץ שוב את הדוקטור ושלח לי את ה-VERDICT.</p>
+  </div>
+
+  <h2>האמת הלא-נעימה</h2>
+  <div class="card">
+    <p>הבוט הזה הוא נקודת-כשל יחידה שתלויה במחשב אחד שדולק בבית. גם אחרי התיקון הזה — כל כיבוי, כל עדכון Windows, כל ניתוק חשמל = שקט מול לקוחות, בלי שאף אחד יידע. אין ניטור, אין התראה, ואתה מגלה על התקלה רק כשמישהו לא נענה.</p>
+    <p>תוכנית ההעברה לענן כבר מוכנה ומחכה להחלטה שלך מ-19.08 (<code>DUBIS_WHATSAPP_BOT_CLOUD_DEPLOY_2026-08-19.html</code>) — כולל 4 הבאגים שכבר תוקנו כדי שלא יתגלו מחדש. <strong>התקלה של היום היא בדיוק הסיבה שהתוכנית ההיא נכתבה.</strong> הסקריפטים כאן קונים יציבות, לא פותרים את התלות.</p>
+    <p>מינימום שכדאי להוסיף בלי קשר: התראה כשהבוט שותק מעל שעה. אחרת התקלה הבאה תתגלה שוב רק כשלקוח לא נענה.</p>
+  </div>
+
+  <p class="note" style="margin-top:34px">
+    שקיפות: הסקריפטים נכתבו כאן ולא הורצו על Windows — אין PowerShell בסביבת הענן הזו. הדוקטור לקריאה בלבד (לא משנה כלום), ולסקריפט התיקון יש <code>-WhatIf</code>. אם משהו נופל — שלח לי את השגיאה ואתקן.
+  </p>
+
+</div>
+</body>
+</html>
