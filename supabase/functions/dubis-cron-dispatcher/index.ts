@@ -58,6 +58,8 @@ const JOBS: Record<string, Job> = {
   'create-il-campaign': { name: 'create-il-campaign', url: `${FNS_BASE}/agents?type=create-il-campaign`, method: 'POST' },
   'create-us-campaign': { name: 'create-us-campaign', url: `${FNS_BASE}/agents?type=create-us-campaign`, method: 'POST' },
   'pause-old-il': { name: 'pause-old-il', url: `${FNS_BASE}/agents?type=meta-pause&cid=120245295587010267`, method: 'POST' },
+  // 2026-09-07: oren asked to stop the live US campaign (DUBIS US Last Run).
+  'pause-us-campaign': { name: 'pause-us-campaign', url: `${FNS_BASE}/agents?type=meta-pause&cid=120250052467260267`, method: 'POST' },
   // 2026-08-01: split the US campaign into cold + remarketing adsets (ori.ai.israel lesson)
   'us-campaign-restructure': { name: 'us-campaign-restructure', url: `${FNS_BASE}/agents?type=us-campaign-restructure`, method: 'POST' },
   'fix-campaign-copy': { name: 'fix-campaign-copy', url: `${FNS_BASE}/agents?type=fix-campaign-copy`, method: 'POST' },
