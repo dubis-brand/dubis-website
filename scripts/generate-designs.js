@@ -135,9 +135,14 @@ function addNoise(ctx, width, height, alpha = 1) {
     seed = (seed * 1664525 + 1013904223) & 0xFFFFFFFF;
     const noise = (seed >>> 24) & 0x01; // 0 or 1
     if (noise) {
-      data[i]     = (data[i]     + 1) & 0xFF; // R
-      data[i + 1] = (data[i + 1] + 1) & 0xFF; // G
-      data[i + 2] = (data[i + 2] + 1) & 0xFF; // B
+      // 2026-09-09 FIX: `& 0xFF` WRAPPED 255 -> 0, turning ~50% of every WHITE
+      // ink pixel pure BLACK. Measured on the live files: back_design_54_white
+      // was 49.9% black / 50.1% white, i.e. a checkerboard that prints mid-grey
+      // instead of white. Every white-ink garment since 8002274 (02.04.2026)
+      // shipped this way. Clamp instead of wrap. NEVER reintroduce `& 0xFF` here.
+      data[i]     = Math.min(255, data[i]     + 1); // R
+      data[i + 1] = Math.min(255, data[i + 1] + 1); // G
+      data[i + 2] = Math.min(255, data[i + 2] + 1); // B
       if (data[i + 3] === 0) data[i + 3] = alpha; // force slight alpha on transparent px
     }
   }
