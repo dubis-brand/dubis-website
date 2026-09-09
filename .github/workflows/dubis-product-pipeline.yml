@@ -143,10 +143,31 @@ jobs:
             done
           fi
 
-      - name: 2️⃣b Wait 60s for Vercel deploy to serve new design files
+      # 2026-09-09: this was a blind `sleep 60`. Vercel took longer than that, so
+      # the pipeline went ahead and Gelato fetched the PREVIOUS artwork, cached it
+      # under the new ?v= URL, and produced a mockup that silently contradicted the
+      # print file we had just generated. It cost two full pilot cycles before
+      # anyone compared the two. Never sleep-and-hope: verify the ARTIFACT.
+      - name: Gate - wait until dubis.net serves the files we just built
+        working-directory: .
         run: |
-          echo "Waiting for Vercel auto-deploy so Gelato sees the new design files..."
-          sleep 60
+          set -uo pipefail
+          fail=0
+          for f in designs/back_design_${PRODUCT_NUMERIC}_white.png designs/back_design_${PRODUCT_NUMERIC}_dark.png designs/front_logo_white.png; do
+            if [ ! -f "$f" ]; then echo "local $f absent, skipping"; continue; fi
+            want=$(sha256sum "$f" | cut -d' ' -f1)
+            ok=0
+            for i in $(seq 1 40); do
+              got=$(curl -fsSL -A "dubis-pipeline" "https://www.dubis.net/$f?cb=$i$RANDOM" 2>/dev/null | sha256sum | cut -d' ' -f1)
+              if [ "$got" = "$want" ]; then echo "OK  $f live after $((i*15))s"; ok=1; break; fi
+              sleep 15
+            done
+            if [ "$ok" != 1 ]; then echo "STALE $f - dubis.net never served the new bytes"; fail=1; fi
+          done
+          if [ "$fail" = 1 ]; then
+            echo "::error::Design files did not propagate. Refusing to build a Gelato draft from stale artwork."
+            exit 1
+          fi
 
       # ──────────────────────────────────────────────────────────
       # STEP 3 — Create Gelato draft + download REAL preview images
