@@ -325,6 +325,47 @@ function generateBack(product, color, outPath) {
     if (product.after) blocks.push({ text: product.after, size: fitFontSizeEmph(ctx, product.after, AFTER_SIZE, SAFE_W_SMALL, emph), emphasize: emph });
   }
 
+  // ---- 1b) GROW the whole stack to the safe width (2026-09-09) ----
+  // fitFontSize only ever SHRINKS. A short keyword like HEAVY or DUBIS therefore
+  // rendered at its base 700px and occupied only 52-73% of the canvas width,
+  // against the 85-90% the brand's own design rule calls for. Measured across
+  // the catalog before this fix. The print looked like a small label floating in
+  // the middle of a large shirt.
+  //
+  // Scale the ENTIRE stack by one factor so the relative size contrast between
+  // the keyword and the small lines is preserved exactly (the 3-5x punchword
+  // ratio the design guidelines require). Grow only: a long keyword that
+  // fitFontSize already shrank has growFactor <= 1 and is left untouched.
+  const MAX_GROW = 1.6; // guard: a 3-letter keyword must not become absurd
+  {
+    let growFactor = Infinity;
+    for (const b of blocks) {
+      const safe = (b.size >= BIG_SIZE * 0.9) ? SAFE_W_BIG : SAFE_W_SMALL;
+      setFont(ctx, b.size);
+      const w = measureMaxWidth(ctx, b.text);
+      if (w > 0) growFactor = Math.min(growFactor, safe / w);
+    }
+    if (Number.isFinite(growFactor) && growFactor > 1) {
+      let g = Math.min(growFactor, MAX_GROW);
+      // Height guard: GAP is a fixed pixel value and does NOT scale, so the
+      // stack height is g*Σ(caps) + GAP*(n-1). Cap g so the stack never exceeds
+      // MAX_STACK_H of the canvas — otherwise a tall 3-line layout would grow
+      // past the printable area and Gelato would clip it.
+      const MAX_STACK_H = BACK_H * 0.78;
+      let capSum = 0, lineCount = 0;
+      for (const b of blocks) {
+        const subs = b.text.split(String.fromCharCode(10));
+        lineCount += subs.length;
+        capSum += subs.length * b.size * CAP_RATIO;
+      }
+      const gapTotal = GAP * Math.max(0, lineCount - 1);
+      if (capSum > 0 && capSum * g + gapTotal > MAX_STACK_H) {
+        g = Math.max(1, (MAX_STACK_H - gapTotal) / capSum);
+      }
+      if (g > 1) for (const b of blocks) b.size = b.size * g;
+    }
+  }
+
   // ---- 2) Flatten multi-line blocks into individual visual lines ----
   //     Lines with an emphasized word carry a `segs` array; their cap-height
   //     is driven by the largest segment so the stack still vertically aligns.
