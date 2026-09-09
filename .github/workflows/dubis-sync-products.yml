@@ -46,7 +46,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
-          token: ${{ secrets.GH_PAT }}
+          # 2026-09-09: was secrets.GH_PAT. That PAT was human-managed and died the
+          # moment it was rotated, breaking this pipeline with a checkout failure.
+          # The built-in GITHUB_TOKEN can push here because `permissions: contents:
+          # write` is declared above, and NO workflow in this repo triggers on push,
+          # so we do not need a PAT to chain a downstream run.
           fetch-depth: 0
 
       - name: Setup Node 24
