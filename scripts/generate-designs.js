@@ -135,9 +135,14 @@ function addNoise(ctx, width, height, alpha = 1) {
     seed = (seed * 1664525 + 1013904223) & 0xFFFFFFFF;
     const noise = (seed >>> 24) & 0x01; // 0 or 1
     if (noise) {
-      data[i]     = (data[i]     + 1) & 0xFF; // R
-      data[i + 1] = (data[i + 1] + 1) & 0xFF; // G
-      data[i + 2] = (data[i + 2] + 1) & 0xFF; // B
+      // 2026-09-09 FIX: `& 0xFF` WRAPPED 255 -> 0, turning ~50% of every WHITE
+      // ink pixel pure BLACK. Measured on the live files: back_design_54_white
+      // was 49.9% black / 50.1% white, i.e. a checkerboard that prints mid-grey
+      // instead of white. Every white-ink garment since 8002274 (02.04.2026)
+      // shipped this way. Clamp instead of wrap. NEVER reintroduce `& 0xFF` here.
+      data[i]     = Math.min(255, data[i]     + 1); // R
+      data[i + 1] = Math.min(255, data[i + 1] + 1); // G
+      data[i + 2] = Math.min(255, data[i + 2] + 1); // B
       if (data[i + 3] === 0) data[i + 3] = alpha; // force slight alpha on transparent px
     }
   }
@@ -346,8 +351,11 @@ function generateBack(product, color, outPath) {
   const totalH = lines.reduce((s, l) => s + l.cap, 0)
                + GAP * (lines.length - 1);
 
-  // ---- 4) Center stack vertically in canvas ----
-  let topY = (BACK_H - totalH) / 2;
+  // ---- 4) Anchor stack at the shoulder-blade line, NOT the canvas centre ----
+  // RESTORED 2026-09-09: ec7f2ed replaced STACK_CENTER_Y (0.43) with a pure canvas centre
+  // (0.50), pushing every back slogan ~2.0cm down the garment. 0.43 is the spec of record.
+  const STACK_CENTER_Y = BACK_H * 0.43;
+  let topY = STACK_CENTER_Y - totalH / 2;
 
   // ---- 5) Draw each line at its cap-top → baseline = topY + cap ----
   //     Plain lines: single fillText centered on canvas.
@@ -412,7 +420,10 @@ const FRONT_H = 4200;
 const LOGO_FONT_SIZE = 300;  // polo-style chest-left, ~2.5cm printed
 const TM_RATIO       = 0.45; // TM is ~45% of the main letter height
 const LOGO_CENTER_X_RATIO = 0.78; // wearer's left chest, safe-print-zone validated
-const LOGO_CENTER_Y_RATIO = 0.32; // heart level — pocket position
+const LOGO_CENTER_Y_RATIO = 0.17; // upper chest, below collar — RESTORED 2026-09-09.
+// ⚠️ NEVER raise this to 0.32. ec7f2ed (16.05.2026) set 0.32 ("pocket position") and printed
+// the chest logo ~5.3cm too low on every garment until 09.09.2026. Spec of record:
+// M-memory/checkout-guardrails.md §1b. Changing this WITHOUT a Gelato draft check is forbidden.
 
 function generateFrontLogo(color, outPath) {
   const canvas = createCanvas(FRONT_W, FRONT_H);
