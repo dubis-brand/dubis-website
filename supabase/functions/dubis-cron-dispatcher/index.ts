@@ -1,7 +1,10 @@
 // DUBIS Cron Dispatcher — single entry point for pg_cron
 // pg_cron calls this with ?job=NAME&token=PG_CRON_TOKEN
 // This fn uses SERVICE_ROLE_KEY (from env) to call other edge functions internally.
-// Authentication: hardcoded PG_CRON_TOKEN matches the vault secret 'dubis_pg_cron_token'.
+// Authentication: the token is NEVER in this file. We ask Postgres to verify it via
+// rpc/dubis_verify_cron_token, so the secret lives only in vault 'dubis_pg_cron_token'.
+// 2026-09-09 rotation: the previous build hardcoded the literal in a PUBLIC repo for
+// months. Rotating is now a one-line vault update with no redeploy and no code change.
 //
 // Why this exists: pg_cron can't easily store a JWT, but it CAN call this fn with a
 // fixed token. We then translate to SERVICE_ROLE_KEY for downstream calls.
@@ -15,7 +18,6 @@
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 
-const PG_CRON_TOKEN = 'dubis-pg-cron-trigger-a554cd187bdfaf88a0a5dd8dcf571bea32658e1eb8ec217c';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 // Service-role key — rotation 2026-06: prefer the sb_secret 'dubissecretkey' key (Supabase
 // injects it in SUPABASE_SECRET_KEYS as JSON), fall back to the legacy service_role JWT
@@ -80,8 +82,18 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
   const url = new URL(req.url);
   const token = url.searchParams.get('token') || req.headers.get('x-cron-token') || '';
-  if (token !== PG_CRON_TOKEN && token !== SERVICE_ROLE) {
-    return json({ error: 'Unauthorized' }, 401);
+  if (!token) return json({ error: 'Unauthorized' }, 401);
+  if (token !== SERVICE_ROLE) {
+    let okToken = false;
+    try {
+      const vr = await fetch(`${SUPABASE_URL}/rest/v1/rpc/dubis_verify_cron_token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}` },
+        body: JSON.stringify({ p_token: token }),
+      });
+      okToken = vr.ok && (await vr.json()) === true;
+    } catch (_e) { okToken = false; }
+    if (!okToken) return json({ error: 'Unauthorized' }, 401);
   }
 
   const jobName = url.searchParams.get('job') || '';
