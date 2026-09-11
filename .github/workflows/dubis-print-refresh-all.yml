@@ -79,7 +79,7 @@ jobs:
           # The trigger file may carry "limit=N" on its first line so a plain push can
           # run a small probe without workflow_dispatch auth.
           if [ -z "$LIMIT_N" ] && [ -f .github/print-refresh-trigger ]; then
-            LIMIT_N=$(head -1 .github/print-refresh-trigger | sed -n 's/^limit=\([0-9]*\).*//p')
+            LIMIT_N=$(head -1 .github/print-refresh-trigger | sed -n 's/^limit=\([0-9]*\).*/\1/p')
             export LIMIT_N
           fi
           echo "limit=${LIMIT_N:-all}"
