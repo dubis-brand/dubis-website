@@ -76,6 +76,13 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           LIMIT_N: ${{ github.event.inputs.limit }}
         run: |
+          # The trigger file may carry "limit=N" on its first line so a plain push can
+          # run a small probe without workflow_dispatch auth.
+          if [ -z "$LIMIT_N" ] && [ -f .github/print-refresh-trigger ]; then
+            LIMIT_N=$(head -1 .github/print-refresh-trigger | sed -n 's/^limit=\([0-9]*\).*//p')
+            export LIMIT_N
+          fi
+          echo "limit=${LIMIT_N:-all}"
           node -e "
           (async () => {
             const url = process.env.SUPABASE_URL.replace(/\/+\$/,'');
@@ -196,6 +203,17 @@ jobs:
           echo "SUMMARY ok=$okc failed=$failc"
           [ -n "$failed" ] && echo "::warning::products that need a re-run:$failed"
           echo "$failed" > /tmp/failed.txt
+          # Diagnostic report committed to the repo: the job log needs auth to read,
+          # a file in git does not. Keeps the last 25 lines of every product's log.
+          {
+            echo "# print-refresh report $(date -u +%Y-%m-%dT%H:%MZ)"
+            echo "ok=$okc failed=$failc failed_ids=[$failed]"
+            echo "images written: $(git status --porcelain images/ | wc -l)"
+            for f in /tmp/draft_*.log; do
+              [ -f "$f" ] || continue
+              echo; echo "## $(basename $f)"; tail -25 "$f" | sed 's/^/    /'
+            done
+          } > .github/print-refresh-report.md
           # Do not hard-fail the whole run for a couple of slow-Gelato products;
           # the summary + warning name them so they can be re-run individually.
           exit 0
@@ -208,7 +226,7 @@ jobs:
 
       - name: 6 - Commit + push mockups + products.js
         run: |
-          git add images/ js/products.js
+          git add images/ js/products.js .github/print-refresh-report.md
           if git diff --cached --quiet; then
             echo "No image changes."
           else

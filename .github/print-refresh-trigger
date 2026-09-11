@@ -1,3 +1,2 @@
-print refresh trigger
-2026-09-11 catalog-wide regeneration after the three print fixes (position / white ink / occupancy)
-run 1
+limit=1
+probe run to capture the step-4 diagnostic
