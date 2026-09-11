@@ -1,0 +1,228 @@
+name: DUBIS Print Refresh — ALL active products
+
+# 2026-09-11: one-shot catalog-wide regeneration of print files + Gelato mockups
+# after the three print defects fixed on 09.09:
+#   1. ec7f2ed (16.05) printed the chest logo 5.3cm and the back slogan 2.0cm too low
+#   2. addNoise wrapped 255 -> 0, making 49.9% of every WHITE ink pixel pure black
+#   3. fitFontSize never grew short keywords, so backs occupied 52-73% instead of 85-90%
+#
+# Why a batch workflow instead of 28 dispatches of dubis-product-pipeline:
+#   - ONE propagation wait instead of 28 (the per-product pipeline waits for Vercel
+#     to serve the new bytes before it lets Gelato render; doing that 28 times is
+#     28 x up-to-10-minutes of dead time)
+#   - ONE designs commit instead of 28 racing pushes against main
+#   - the per-product pipeline stays untouched, so the autonomous new-product flow
+#     keeps working even if this one has a bad day
+#
+# Trigger: push to .github/print-refresh-trigger (a push by a real PAT triggers
+# workflows; a push by GITHUB_TOKEN would not, which is why this is not chained
+# from another workflow). Also runnable by hand from the Actions tab.
+
+on:
+  push:
+    paths:
+      - '.github/print-refresh-trigger'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Optional: only process the first N products (dry-ish test run). Empty = all.'
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dubis-print-refresh-all
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Regenerate print files + Gelato mockups for the whole catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: System deps - node-canvas + Anton font
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libcairo2-dev libpango1.0-dev libjpeg-dev \
+            libgif-dev librsvg2-dev build-essential pkg-config python3
+          mkdir -p $HOME/.fonts
+          curl -sSL -o $HOME/.fonts/Anton-Regular.ttf \
+            "https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf"
+          fc-cache -f
+          fc-list | grep -i anton || (echo "Anton font failed to install" && exit 1)
+
+      - name: Install npm deps
+        run: npm install --no-audit --no-fund
+
+      # Read the catalog from the DB, never a hard-coded list (guardrail 7).
+      - name: Resolve active products from the DB
+        id: catalog
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LIMIT_N: ${{ github.event.inputs.limit }}
+        run: |
+          node -e "
+          (async () => {
+            const url = process.env.SUPABASE_URL.replace(/\/+\$/,'');
+            const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+            const r = await fetch(url + '/rest/v1/dubis_products?active=eq.true&select=id,product_id_numeric,clothing_type&order=product_id_numeric.asc', {
+              headers: { apikey: key, Authorization: 'Bearer ' + key }
+            });
+            if (!r.ok) { console.error('DB query failed', r.status, await r.text()); process.exit(1); }
+            let rows = await r.json();
+            const n = Number(process.env.LIMIT_N || 0);
+            if (n > 0) rows = rows.slice(0, n);
+            require('fs').writeFileSync('/tmp/catalog.json', JSON.stringify(rows));
+            console.log('active products:', rows.length);
+            console.log(rows.map(x => x.product_id_numeric).join(' '));
+          })();
+          "
+          echo "count=$(node -e "console.log(require('/tmp/catalog.json').length)")" >> $GITHUB_OUTPUT
+
+      - name: 1 - Regenerate print files for every product
+        env:
+          DUBIS_FONT_PATH: /home/runner/.fonts/Anton-Regular.ttf
+          DUBIS_FONT_FAMILY: Anton
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -uo pipefail
+          fail=0
+          : > /tmp/gen.log
+          for N in $(node -e "console.log(require('/tmp/catalog.json').map(r=>r.product_id_numeric).join(' '))"); do
+            echo "::group::generate #$N"
+            if node scripts/generate-designs.js --product-numeric=$N 2>&1 | tee -a /tmp/gen.log; then
+              echo "ok #$N"
+            else
+              echo "FAILED to generate #$N"; fail=1
+            fi
+            echo "::endgroup::"
+          done
+          if [ "$fail" = 1 ]; then echo "::error::at least one product failed to generate"; exit 1; fi
+
+      # Fail loudly if the font silently fell back. node-canvas does this on some
+      # platforms and it produced an entire catalog in the wrong typeface once.
+      - name: 1b - Guard against a silent font fallback
+        run: |
+          if grep -qi "falling back" /tmp/gen.log 2>/dev/null; then
+            echo "::error::node-canvas fell back from Anton. Refusing to ship."
+            exit 1
+          fi
+          echo "no fallback warnings captured"
+
+      - name: 2 - Commit + push all print files at once
+        run: |
+          git config user.name  "dubis-pipeline-bot"
+          git config user.email "dubis-pipeline-bot@users.noreply.github.com"
+          git add designs/
+          if git diff --cached --quiet; then
+            echo "No print-file changes."
+          else
+            git commit -m "feat(designs): catalog-wide print regeneration - position + white ink + occupancy (${{ steps.catalog.outputs.count }} products)"
+            for i in 1 2 3 4 5; do
+              if git push origin main; then echo "pushed on attempt $i"; break; fi
+              git -c rebase.autostash=true pull --rebase --autostash origin main || true
+              sleep $((RANDOM % 8 + 2))
+            done
+          fi
+
+      # The gate that the per-product pipeline learned on 09.09: never let Gelato
+      # render from dubis.net until dubis.net actually serves the bytes we built.
+      - name: 3 - Gate - wait until dubis.net serves the new files
+        run: |
+          set -uo pipefail
+          fail=0
+          CHECK="designs/front_logo_white.png"
+          for N in $(node -e "console.log(require('/tmp/catalog.json').map(r=>r.product_id_numeric).join(' '))"); do
+            [ -f "designs/back_design_${N}_white.png" ] && CHECK="$CHECK designs/back_design_${N}_white.png"
+          done
+          for f in $CHECK; do
+            want=$(sha256sum "$f" | cut -d' ' -f1)
+            ok=0
+            for i in $(seq 1 40); do
+              got=$(curl -fsSL -A "dubis-pipeline" "https://www.dubis.net/$f?cb=$i$RANDOM" 2>/dev/null | sha256sum | cut -d' ' -f1)
+              if [ "$got" = "$want" ]; then ok=1; break; fi
+              sleep 15
+            done
+            if [ "$ok" = 1 ]; then echo "OK  $f"; else echo "STALE $f"; fail=1; fi
+          done
+          if [ "$fail" = 1 ]; then
+            echo "::error::Design files did not propagate. Refusing to build Gelato drafts from stale artwork."
+            exit 1
+          fi
+
+      - name: 4 - Gelato draft + real mockups, per product
+        env:
+          GELATO_API_KEY: ${{ secrets.GELATO_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -uo pipefail
+          okc=0; failc=0; failed=""
+          for N in $(node -e "console.log(require('/tmp/catalog.json').map(r=>r.product_id_numeric).join(' '))"); do
+            echo "::group::gelato #$N"
+            if node scripts/create-gelato-drafts.js --product=$N --save-as-site-images --json | tee /tmp/draft_$N.log; then
+              awk '/===JSON_MANIFEST===/{f=1;next}/===END_JSON_MANIFEST===/{f=0}f' /tmp/draft_$N.log > /tmp/manifest.json || true
+              if [ -s /tmp/manifest.json ]; then
+                export PRODUCT_ID_NUMERIC=$N
+                export PREVIEWS_JSON=$(node -e "const m=require('/tmp/manifest.json');console.log(JSON.stringify(m.previews||{}))")
+                node scripts/_migrate-products-images.mjs 2>&1 | tail -5 || echo "migrate warned for #$N"
+                okc=$((okc+1))
+              else
+                echo "no manifest for #$N"; failc=$((failc+1)); failed="$failed $N"
+              fi
+            else
+              echo "draft failed for #$N"; failc=$((failc+1)); failed="$failed $N"
+            fi
+            echo "::endgroup::"
+            sleep 3
+          done
+          echo "SUMMARY ok=$okc failed=$failc"
+          [ -n "$failed" ] && echo "::warning::products that need a re-run:$failed"
+          echo "$failed" > /tmp/failed.txt
+          # Do not hard-fail the whole run for a couple of slow-Gelato products;
+          # the summary + warning name them so they can be re-run individually.
+          exit 0
+
+      - name: 5 - Regenerate js/products.js from DB
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/sync-products-to-js.js --write
+
+      - name: 6 - Commit + push mockups + products.js
+        run: |
+          git add images/ js/products.js
+          if git diff --cached --quiet; then
+            echo "No image changes."
+          else
+            git commit -m "feat(product): catalog-wide Gelato mockup refresh after the print fixes"
+            for i in 1 2 3 4 5; do
+              if git push origin main; then echo "pushed on attempt $i"; break; fi
+              git -c rebase.autostash=true pull --rebase --autostash origin main || true
+              sleep $((RANDOM % 8 + 2))
+            done
+          fi
+
+      - name: 7 - Report
+        run: |
+          echo "### Print refresh complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Products processed: ${{ steps.catalog.outputs.count }}" >> $GITHUB_STEP_SUMMARY
+          echo "Needing a re-run: $(cat /tmp/failed.txt 2>/dev/null || echo none)" >> $GITHUB_STEP_SUMMARY
