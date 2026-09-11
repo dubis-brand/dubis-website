@@ -1,2 +1,1 @@
-limit=1
-probe run 2: workflow parse fixed (0x01 byte removed)
+full catalog run 2 with diagnostics, 20s pacing between products

@@ -198,7 +198,7 @@ jobs:
               echo "draft failed for #$N"; failc=$((failc+1)); failed="$failed $N"
             fi
             echo "::endgroup::"
-            sleep 3
+            sleep 20   # 2026-09-11: the first full run wrote 0 mockups; pacing Gelato between products
           done
           echo "SUMMARY ok=$okc failed=$failc"
           [ -n "$failed" ] && echo "::warning::products that need a re-run:$failed"
