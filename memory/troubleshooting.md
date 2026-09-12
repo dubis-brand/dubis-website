@@ -1,5 +1,11 @@
 # Resolved Issues — DUBIS
 
+## 2026-09-07 — Supabase MCP deploy_edge_function silently flips verify_jwt to TRUE
+**Symptom:** After deploying `dubis-cron-dispatcher` via the Supabase MCP tool, every pg_cron call returned `UNAUTHORIZED_NO_AUTH_HEADER` (401 from the platform gateway, before our code ran).
+**Root cause:** `deploy_edge_function` (MCP) defaults `verify_jwt=true`, overriding the function's existing `verify_jwt=false`. pg_cron calls the dispatcher with only `?token=` — no JWT — so the gateway rejects them.
+**Fix:** Redeploy immediately with explicit `verify_jwt: false` in the MCP call. Caught within ~1 minute; no cron firings were scheduled in the broken window.
+**Prevention:** ANY MCP deploy of `dubis-cron-dispatcher` (or other token-authed functions) MUST pass `verify_jwt: false` explicitly, and the first pg_net test call after deploy is mandatory.
+
 ## 2026-03 — Gelato prints wrong design ("J B" instead of DUBIS logo)
 **Symptom:** Customer received garment with wrong front print.
 **Root cause:** Front design file was under 200KB → Gelato silently used fallback/placeholder.
