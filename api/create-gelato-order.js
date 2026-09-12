@@ -1396,7 +1396,12 @@ async function handleSubmitCorrectedAddress(req, res) {
       files:           getDesignFiles(item.id, item.selectedColor, item.designRef, item.type),
       quantity:        1,
     })),
-    shipmentMethodUid: 'express',
+    // 2026-09-12 hotfix: 'normal' = the cheapest method, which is exactly what the
+    // daily probe (gelato-stock-check → app_config.gelato_ship_*_usd) priced to the
+    // customer. 'express' resolved to DHL Express Worldwide ($78.52 to IL) while the
+    // site charged $14.99 — Hila's order DUBIS-3VR20733RS3125724 then failed on
+    // insufficient_balance. Guardrail §7: shipping is a verbatim passthrough.
+    shipmentMethodUid: 'normal',
     shippingAddress: {
       firstName,
       lastName,
@@ -1893,7 +1898,12 @@ function buildGelatoSubOrderPayload({ paypalOrderId, subCart, splitIndex, splitC
       files:           getDesignFiles(e.item.id, e.item.selectedColor, e.item.designRef, e.item.type),
       quantity:        1,
     })),
-    shipmentMethodUid: 'express',
+    // 2026-09-12 hotfix: 'normal' = the cheapest method, which is exactly what the
+    // daily probe (gelato-stock-check → app_config.gelato_ship_*_usd) priced to the
+    // customer. 'express' resolved to DHL Express Worldwide ($78.52 to IL) while the
+    // site charged $14.99 — Hila's order DUBIS-3VR20733RS3125724 then failed on
+    // insufficient_balance. Guardrail §7: shipping is a verbatim passthrough.
+    shipmentMethodUid: 'normal',
     shippingAddress: {
       firstName,
       lastName,
@@ -2917,7 +2927,12 @@ module.exports = async function handler(req, res) {
       files:           getDesignFiles(item.id, item.selectedColor, item.designRef, item.type),
       quantity:        1,
     })),
-    shipmentMethodUid: 'express',
+    // 2026-09-12 hotfix: 'normal' = the cheapest method, which is exactly what the
+    // daily probe (gelato-stock-check → app_config.gelato_ship_*_usd) priced to the
+    // customer. 'express' resolved to DHL Express Worldwide ($78.52 to IL) while the
+    // site charged $14.99 — Hila's order DUBIS-3VR20733RS3125724 then failed on
+    // insufficient_balance. Guardrail §7: shipping is a verbatim passthrough.
+    shipmentMethodUid: 'normal',
     shippingAddress: {
       firstName:    firstName,
       lastName:     lastName,
