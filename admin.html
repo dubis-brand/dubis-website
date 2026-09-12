@@ -7893,8 +7893,53 @@ function waFilterChat(jid) {
   waLoadEvents();
 }
 
+// בריאות-תשובות: הדופק אומר שהבוט חי, לא שהוא עונה. 01-12.09.2026 הבוט היה "ירוק" 11 ימים בלי תשובה אחת.
+// כלל: הודעה ישירה (לא קבוצה) שלא קיבלה reply באותה שיחה תוך 5 דק' = לא נענתה. קבוצות מוחרגות (עונה רק כשמתייגים).
+const WA_REPLY_GRACE_MS = 5 * 60 * 1000;
+const WA_STALE_REPLY_MS = 24 * 60 * 60 * 1000;
+
+function waAgo(ms) {
+  const m = Math.round(ms / 60000);
+  if (m < 60) return `לפני ${m} דק'`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `לפני ${h} שע'`;
+  return `לפני ${Math.round(h / 24)} ימים`;
+}
+
+async function waReplyHealth() {
+  const since = new Date(Date.now() - 7 * 86400000).toISOString();
+  const { data, error } = await _sb.from('wa_bot_events').select('ts,chat_jid,kind').gte('ts', since).order('ts', { ascending: false }).limit(500);
+  if (error || !data) return { error: error?.message || 'no data' };
+  const now = Date.now();
+  const rows = data.map(r => ({ ...r, t: new Date(r.ts).getTime() }));
+  const isDirect = r => r.chat_jid && !r.chat_jid.endsWith('@g.us') && r.chat_jid !== 'probe';
+  const lastReply = rows.find(r => r.kind === 'reply') || null;
+  const unanswered = rows.filter(r =>
+    r.kind === 'in' && isDirect(r) && now - r.t > WA_REPLY_GRACE_MS &&
+    !rows.some(x => x.kind === 'reply' && x.chat_jid === r.chat_jid && x.t >= r.t && x.t - r.t <= WA_REPLY_GRACE_MS)
+  );
+  const inSinceReply = rows.some(r => r.kind === 'in' && isDirect(r) && (!lastReply || r.t > lastReply.t));
+  return { lastReply, unanswered, inSinceReply, now };
+}
+
+function waHealthCards(h) {
+  if (!h || h.error) return waCard('בריאות תשובות', 'שגיאת קריאה: ' + (h?.error || ''), false);
+  const n = h.unanswered.length;
+  const newest = h.unanswered[0];
+  const unansweredCard = n
+    ? waCard('⚠ הודעות ישירות ללא תשובה (7 ימים)', `${n} · אחרונה ${waAgo(h.now - newest.t)}<br><span style="font-size:.7rem;color:#888">${waEsc((window._waChatNames[newest.chat_jid] || newest.chat_jid || '').replace('@lid','').replace('@s.whatsapp.net',''))}</span>`, false)
+    : waCard('הודעות ישירות ללא תשובה (7 ימים)', '0', true);
+  const stale = h.lastReply ? (h.now - h.lastReply.t > WA_STALE_REPLY_MS && h.inSinceReply) : h.inSinceReply;
+  const lastTxt = h.lastReply ? waAgo(h.now - h.lastReply.t) : 'אין תשובה ב-7 ימים';
+  const lastCard = waCard('תשובה אחרונה', lastTxt + (stale ? '<br><span style="font-size:.7rem">יש הודעות נכנסות מאז — הבוט לא עונה</span>' : ''), stale ? false : (h.lastReply ? true : null));
+  return unansweredCard + lastCard;
+}
+
 async function waLoadStatus() {
-  const { data, error } = await _sb.from('wa_bot_state').select('*').eq('id', 1).single();
+  const [{ data, error }, health] = await Promise.all([
+    _sb.from('wa_bot_state').select('*').eq('id', 1).single(),
+    waReplyHealth()
+  ]);
   const row = document.getElementById('wa-status-row');
   if (error || !data) { row.innerHTML = waCard('סטטוס', 'שגיאת קריאה: ' + (error?.message || ''), false); return; }
   const p = data.payload || {};
@@ -7908,7 +7953,8 @@ async function waLoadStatus() {
     waCard('גשר וואטסאפ', p.bridge_ok ? 'מחובר' : 'מנותק', !!p.bridge_ok && alive) +
     waCard('תשובות היום', String(p.sends_today ?? '—'), null) +
     waCard('מושהה?', p.paused_effective ? 'כן' : 'לא', p.paused_effective ? false : true) +
-    waCard('שרת', (p.host || '—') + (p.started_at ? '<br><span style="font-size:.7rem;color:#888">רץ מאז ' + p.started_at.replace('T',' ') + '</span>' : ''), null);
+    waCard('שרת', (p.host || '—') + (p.started_at ? '<br><span style="font-size:.7rem;color:#888">רץ מאז ' + p.started_at.replace('T',' ') + '</span>' : ''), null) +
+    waHealthCards(health);
 }
 
 async function waLoadConfig() {
