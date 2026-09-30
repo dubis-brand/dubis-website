@@ -55,3 +55,16 @@
 **Verified:** Playwright with setItem-throwing storage + l.facebook.com referer + Android wv UA → session_id present, attr = facebook/inapp on add_to_cart beacons; 3 rapid clicks = 1 cart line + visible toast; intentional re-add after 1.4s works.
 **Still open:** confirm the ad destination URL in Ads Manager carries utm_campaign — without it campaign-level (not just source-level) attribution stays blind.
 **Report:** docs/plans/FB_CAMPAIGN_ANALYSIS_2026-08-08.html
+
+## 2026-08-20 — WhatsApp bot went silent: it lives on oren's PC, NOT in any cloud infra
+**Symptom:** oren reported "the WhatsApp agent we built isn't answering messages".
+**First finding (cost ~15 min of searching — write it down so nobody repeats it):** the WhatsApp bot exists in NO part of the cloud stack. Not in `dubis-website` (only `tel:`/`wa.me` links + the customer-care manifest entry), not among the 31 Supabase Edge Functions, not in the 12 Vercel functions, no table, no `agent_runs` row, no `app_config` key, no branch, no PR. **A cloud session cannot diagnose it directly.**
+**Where it actually lives (recovered from `standing_commitments` id `6cbb7e56…`, the 12–19.08 pilot log):**
+  - Bridge: Go/whatsmeow at `C:\whatsapp-mcp` → Windows Scheduled Task `DUBIS-WhatsApp-Bridge` (AtLogOn)
+  - Bot: `C:\whatsapp-mcp\whatsapp-bot\bot.py` (Python+uv), reads the bridge's SQLite, sends via its REST API, brain = Claude API (`ANTHROPIC_API_KEY` via setx)
+  - Deliberate brakes, each a silent-failure candidate: `PAUSED` file · 50 msg/day cap · never self-replies · groups only on mention
+**Most likely root cause (high confidence, unverified — needs oren at the PC):** `bot.py` has **no** scheduled task — only the bridge got one. It was started by hand inside the session, and Windows Job Objects kill child processes when the launching window closes (the exact bug that killed the *bridge* on 13.08, now repeated on the bot). Restart/logoff/window-close = total silence, no error anywhere.
+**Runner-up causes, in order:** bridge AtLogOn task never verified on a REAL restart (documented gap, 19.08) · leftover `PAUSED` file · `setx` key invisible to a process started before it · WhatsApp device logged out (`client outdated` already hit once on 13.08) · daily 50-cap.
+**Shipped this session:** `whatsapp-bot-doctor.bat/.ps1` (read-only: processes, port, both scheduled tasks, PAUSED, bot.py config, key presence, SQLite staleness, log tail with red flags → ranked VERDICT) and `whatsapp-bot-fix.bat/.ps1` (starts both AND registers **both** as AtLogOn tasks with 2-min auto-restart; `-WhatIf` supported). Written on Linux — never executed against Windows.
+**Structural lesson:** a customer-facing bot on a single home PC has no monitoring — the failure surfaces only when a customer goes unanswered. Cloud-migration plan already written and awaiting oren's decision since 19.08 (`O-output/plans/operations/DUBIS_WHATSAPP_BOT_CLOUD_DEPLOY_2026-08-19.html`). Minimum interim: an alert when the bot is silent > 1h.
+**Report:** docs/plans/operations/DUBIS_WHATSAPP_BOT_DIAGNOSIS_2026-08-20.html
