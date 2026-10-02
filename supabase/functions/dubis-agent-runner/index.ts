@@ -63,33 +63,52 @@ async function runMarketing(sb: SB): Promise<Record<string, unknown>> {
 async function runSupply(sb: SB): Promise<Record<string, unknown>> {
   if (!GELATO_KEY) return { ok: false, error: 'GELATO_API_KEY missing' };
   try {
-    const { data: openOrders } = await sb.from('orders').select('id, printful_order_id, status, tracking_number')
+    const { data: openOrders } = await sb.from('orders').select('id, printful_order_id, status, tracking_number, tracking_url, shipped_at')
       .in('status', ['pending', 'in_production', 'shipped'])
       .not('printful_order_id', 'is', null);
-    let updated = 0;
+    let updated = 0, errors = 0;
     const updates: unknown[] = [];
-    for (const o of (openOrders || []).slice(0, 25)) {
-      const oid = (o as Record<string, unknown>).printful_order_id as string;
+    for (const o of (openOrders || []).slice(0, 25) as Record<string, unknown>[]) {
+      const oid = o.printful_order_id as string;
       try {
         const r = await fetch(`https://order.gelatoapis.com/v4/orders/${oid}`, { headers: { 'X-API-KEY': GELATO_KEY } });
-        if (!r.ok) continue;
+        if (!r.ok) { errors++; continue; }
         const d = await r.json();
-        const newStatus = mapGelatoStatus(d.fulfillmentStatus || d.financialStatus);
-        const tracking = d.shipments?.[0]?.trackingCode || null;
-        const trackingUrl = d.shipments?.[0]?.trackingUrl || null;
-        if (newStatus !== (o as Record<string, unknown>).status || tracking !== (o as Record<string, unknown>).tracking_number) {
-          await sb.from('orders').update({ status: newStatus, tracking_number: tracking, tracking_url: trackingUrl }).eq('id', (o as Record<string, unknown>).id);
-          updated++;
-          updates.push({ order_id: (o as Record<string, unknown>).id, new_status: newStatus, tracking });
+        // v4 shape: shipment.packages[] (singular "shipment"). 2026-10-02: the old
+        // read of d.shipments[0].trackingCode was always null, and the write below
+        // then wiped any tracking number already on the row, every day.
+        const pkg = d.shipment?.packages?.[0] || d.shipments?.[0]?.packages?.[0] || d.shipments?.[0] || null;
+        const tracking = pkg?.trackingCode || null;
+        const trackingUrl = pkg?.trackingUrl || null;
+        // Unknown Gelato status keeps the current one; never regress to 'pending'.
+        const newStatus = mapGelatoStatus(d.fulfillmentStatus) || (o.status as string);
+        const patch: Record<string, unknown> = {};
+        if (newStatus !== o.status) patch.status = newStatus;
+        if (tracking && tracking !== o.tracking_number) {
+          patch.tracking_number = tracking;
+          if (trackingUrl) patch.tracking_url = trackingUrl;
+          if (!o.shipped_at) patch.shipped_at = new Date().toISOString();
         }
-      } catch (_e) { /* per-order swallow */ }
+        if (Object.keys(patch).length) {
+          await sb.from('orders').update(patch).eq('id', o.id);
+          updated++;
+          updates.push({ order_id: o.id, gelato_status: d.fulfillmentStatus, ...patch });
+        }
+      } catch (_e) { errors++; }
     }
-    return { ok: true, checked: (openOrders || []).length, updated, updates };
+    return { ok: true, checked: (openOrders || []).length, updated, errors, updates };
   } catch (e) { return { ok: false, error: (e as Error).message }; }
 }
-function mapGelatoStatus(s: string): string {
-  const m: Record<string, string> = { pending: 'pending', printed: 'in_production', shipped: 'shipped', delivered: 'delivered', cancelled: 'cancelled', returned: 'returned' };
-  return m[(s || '').toLowerCase()] || 'pending';
+// Gelato v4 fulfillmentStatus → orders.status. Returns null for unknown values.
+function mapGelatoStatus(s: string): string | null {
+  const m: Record<string, string> = {
+    created: 'pending', passed: 'pending', pending: 'pending', on_hold: 'pending', not_connected: 'pending',
+    in_production: 'in_production', printed: 'in_production', packaged: 'in_production', digitized: 'in_production',
+    in_transit: 'shipped', shipped: 'shipped', dispatched: 'shipped',
+    delivered: 'delivered',
+    canceled: 'cancelled', cancelled: 'cancelled', failed: 'cancelled', returned: 'returned',
+  };
+  return m[(s || '').toLowerCase().replace(/[- ]/g, '_')] || null;
 }
 
 // ========== DESIGN (image freshness check) ==========
@@ -159,6 +178,12 @@ function classifyEmail(from: string, subject: string): EmailClass {
   // sender override, so oren's replies to the daily report ("Re: … דוח יומי")
   // were unconditionally dropped. Sender identity is checked FIRST, always.
   if (EMAIL_SIGNAL_SENDERS.some(addr => f.includes(addr))) return 'signal';
+  // oren also replies FROM the brand mailbox itself (verified 2026-08-21: his
+  // "Re: דוח יומי" test arrived from dubis.brand@gmail.com). A "Re:" from the
+  // brand account is always a human — the system never replies to its own
+  // reports — so it is signal. Non-reply mail from the brand account stays
+  // subject to the normal rules (our own outbound summaries etc.).
+  if (f.includes('dubis.brand@gmail.com') && /^\s*re:/i.test(subject)) return 'signal';
   // Self-ingested reports (from the system itself) are noise.
   if (EMAIL_SELF_RX.test(s)) return 'noise';
   // Newsletter PLATFORMS are newsletter-class by definition — checked BEFORE

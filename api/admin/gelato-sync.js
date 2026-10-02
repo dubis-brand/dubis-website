@@ -64,7 +64,8 @@ async function runBulkSync(req, res) {
             if (!gRes.ok) { results.errors++; continue; }
             const g = await gRes.json();
 
-            const rawStatus = (g.status || '').toLowerCase().replace(/ /g, '_');
+            // v4 carries fulfillmentStatus; `status` is the v3 field name.
+            const rawStatus = (g.fulfillmentStatus || g.status || '').toLowerCase().replace(/ /g, '_');
             const newStatus = GELATO_STATUS_MAP[rawStatus] || order.status;
 
             let trackingNumber = order.tracking_number;
